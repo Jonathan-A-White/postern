@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { db } from '../../src/data/db';
@@ -106,6 +106,27 @@ describe('KeyVault', () => {
     expect(await screen.findByRole('button', { name: 'Unlock with fingerprint' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Unlock with fingerprint' }));
     expect(await screen.findByText('Key unlocked')).toBeInTheDocument();
+  });
+
+  it('copies exactly the twelve space-joined words to the clipboard, matching the words on screen', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+      writable: true,
+    });
+    render(<KeyVault />);
+
+    await user.click(await screen.findByRole('button', { name: 'Generate a new key' }));
+    const words = await screen.findAllByTestId('mnemonic-word');
+    const mnemonic = words.map((word) => word.textContent).join(' ');
+
+    await user.click(screen.getByRole('button', { name: 'Copy the twelve words' }));
+
+    expect(writeText).toHaveBeenCalledWith(mnemonic);
+    expect(mnemonic.split(' ')).toHaveLength(12);
+    expect(screen.getByTestId('mnemonic-words').textContent).toBe(mnemonic);
   });
 
   it('unlocks an existing phrase-wrapped key by typing the phrase again', async () => {

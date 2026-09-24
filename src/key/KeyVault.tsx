@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { vaultRepo } from '../data/repositories';
 import type { VaultRow } from '../data/db';
 import { isWebAuthnAvailable, createPrfPasskey, getPrfSecret } from '../services/webauthnPrf';
@@ -12,6 +12,8 @@ import {
   wrapKey,
   unwrapKey,
 } from '../services/vault';
+
+type CopyStatus = 'idle' | 'copied' | 'unavailable';
 
 type Screen =
   | { name: 'loading' }
@@ -63,6 +65,7 @@ export function KeyVault() {
   const [screen, setScreen] = useState<Screen>({ name: 'loading' });
   const [error, setError] = useState<string | null>(null);
   const [phraseInput, setPhraseInput] = useState('');
+  const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle');
 
   useEffect(() => {
     void vaultRepo.get().then((vault) => {
@@ -73,7 +76,19 @@ export function KeyVault() {
   async function handleGenerate() {
     const mnemonic = createMnemonic();
     const key = await deriveMasterKey(mnemonic);
+    setCopyStatus('idle');
     setScreen({ name: 'reveal', mnemonic, key });
+  }
+
+  async function handleCopyWords(mnemonic: string) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API not available');
+      await navigator.clipboard.writeText(mnemonic);
+      setCopyStatus('copied');
+      setTimeout(() => setCopyStatus('idle'), 3000);
+    } catch {
+      setCopyStatus('unavailable');
+    }
   }
 
   async function handleConfirmWritten(mnemonic: string, key: Uint8Array) {
@@ -174,13 +189,21 @@ export function KeyVault() {
       {screen.name === 'reveal' && (
         <div className="flex flex-col gap-2">
           <p>Write down these 12 words. This is the only time they will be shown.</p>
-          <ol className="grid grid-cols-3 gap-2">
-            {screen.mnemonic.split(' ').map((word, i) => (
-              <li key={i} data-testid="mnemonic-word">
-                {word}
-              </li>
+          <p data-testid="mnemonic-words" className="select-all rounded bg-slate-800 p-3 font-mono">
+            {screen.mnemonic.split(' ').map((word, i, words) => (
+              <Fragment key={i}>
+                <span data-testid="mnemonic-word">{word}</span>
+                {i < words.length - 1 ? ' ' : ''}
+              </Fragment>
             ))}
-          </ol>
+          </p>
+          <button
+            className="rounded bg-slate-700 px-4 py-2"
+            onClick={() => void handleCopyWords(screen.mnemonic)}
+          >
+            {copyStatus === 'copied' ? 'Copied' : 'Copy the twelve words'}
+          </button>
+          {copyStatus === 'unavailable' && <p>Copy is not available here: select the words by hand</p>}
           <button
             className="rounded bg-slate-700 px-4 py-2"
             onClick={() => void handleConfirmWritten(screen.mnemonic, screen.key)}

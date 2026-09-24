@@ -9,8 +9,10 @@ this is a prototype of the key mechanism only.
 1. On your Android phone, open https://postern.allmymind.org/?screen=key in Chrome.
 2. You should see "The key vault" with two buttons: "Generate a new key" and
    "Restore from a phrase".
-3. Tap "Generate a new key". Twelve words appear — write them down on paper.
-   They are shown once and are never stored on the phone.
+3. Tap "Generate a new key". Twelve words appear on a single line — write them
+   down on paper. They are shown once and are never stored on the phone. You
+   can also tap "Copy the twelve words" to copy exactly those twelve words,
+   space-separated, to paste into Part 2.
 4. Tap "I've written it down". Chrome should prompt you to register a passkey —
    confirm with your fingerprint. A moment later it should ask for your
    fingerprint again (this second prompt reads the secret the first one
@@ -43,7 +45,7 @@ wordlist.
 1. On a second phone (or after clearing Postern's site data on the same
    phone, so it has no stored key), open
    https://postern.allmymind.org/?screen=key.
-2. Tap "Restore from a phrase" and type in the 12 words from Part 1.
+2. Tap "Restore from a phrase" and type in, or paste, the 12 words from Part 1.
 3. Tap "Restore". You should land on "Key unlocked" showing the *same* key
    fingerprint as Part 1, step 5 — proving the phrase alone reconstructs the
    same key.

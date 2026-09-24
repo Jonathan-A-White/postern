@@ -103,8 +103,9 @@ describe('KeyVault', () => {
     unmount();
 
     render(<KeyVault />);
-    expect(await screen.findByRole('button', { name: 'Unlock with fingerprint' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Unlock with fingerprint' }));
+    expect(await screen.findByText('The key is locked.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Unlock with your fingerprint' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Unlock with your fingerprint' }));
     expect(await screen.findByText('Key unlocked')).toBeInTheDocument();
   });
 

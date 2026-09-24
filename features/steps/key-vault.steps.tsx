@@ -198,6 +198,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
 
     Then('the locked screen says the key is wrapped by the recovery phrase', async () => {
+      expect(await screen.findByText('The key is locked.')).toBeInTheDocument();
       expect(
         await screen.findByText(/fingerprint unlock is not available on this phone or browser/i),
       ).toBeInTheDocument();
@@ -394,7 +395,8 @@ describeFeature(feature, ({ Scenario }) => {
     });
 
     Then('the locked screen offers to unlock with your fingerprint', async () => {
-      expect(await screen.findByText('Unlock with your fingerprint.')).toBeInTheDocument();
+      expect(await screen.findByText('The key is locked.')).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Unlock with your fingerprint' })).toBeInTheDocument();
     });
   });
 });

@@ -22,10 +22,22 @@ npm run build        # tsc -b + vite build -> dist/
 npm run preview      # serve dist/ locally
 npm run typecheck    # tsc strict checking
 npm run lint         # eslint
-npm test             # vitest run
+npm test             # vitest run (unit tests and feature specs)
 npm run test:watch   # vitest watch mode
+npm run test:bdd     # vitest run, features/ only
 npm run test:e2e     # playwright, against `npm run preview`
 ```
+
+## Tests
+
+- Test-first: write the failing test or scenario before the code that makes it pass.
+- Every behaviour gets a scenario under `features/*.feature`, with steps in
+  `features/steps/*.steps.ts(x)` (@amiceli/vitest-cucumber). `npm test` runs these
+  alongside the unit tests; `npm run test:bdd` runs only the features. Tags don't
+  reach vitest's reported test names, so put the AC id in the Scenario title text too.
+- Unit tests live in `tests/unit/`.
+- End-to-end tests live in `tests/e2e/`, outside the gate command (run by hand with
+  `npm run test:e2e`).
 
 ## Layout
 
@@ -36,6 +48,9 @@ src/
 │   ├── db.ts           # Dexie database schema (v1), one store: settings
 │   └── repositories/   # Repository pattern; barrel index.ts
 pwa-manifest.ts          # The PWA manifest object, shared by vite.config.ts and its unit test
+features/
+├── *.feature            # Gherkin scenarios, one behaviour per scenario
+└── steps/                # Step definitions (@amiceli/vitest-cucumber), *.steps.ts(x)
 tests/
 ├── setup.ts            # fake-indexeddb + jest-dom, loaded by vitest.config.ts
 ├── unit/                # vitest, jsdom

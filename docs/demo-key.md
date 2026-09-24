@@ -19,9 +19,10 @@ this is a prototype of the key mechanism only.
    created).
 5. You should land on "Key unlocked" with a short "Key fingerprint" hex value.
    Note it down for Part 2.
-6. Reload the page (still at `?screen=key`). You should now see "Unlock with
-   your fingerprint" — tap it and confirm with your fingerprint. You should
-   land back on "Key unlocked" with the same fingerprint as step 5.
+6. Reload the page (still at `?screen=key`). You should now see "The key is
+   locked" with an "Unlock with your fingerprint" button — tap it and confirm
+   with your fingerprint. You should land back on "Key unlocked" with the same
+   fingerprint as step 5.
 
 Before tapping "Generate a new key", the empty screen shows one line:
 "Fingerprint unlock on this device: available / not available". That tells you

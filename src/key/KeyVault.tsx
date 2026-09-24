@@ -268,18 +268,19 @@ export function KeyVault() {
 
       {screen.name === 'locked' && screen.vault.mode === 'prf' && (
         <div className="flex flex-col gap-2">
-          <p>Unlock with your fingerprint.</p>
+          <p>The key is locked.</p>
           <button
             className="rounded bg-slate-700 px-4 py-2"
             onClick={() => void handleUnlockWithFingerprint(screen.vault)}
           >
-            Unlock with fingerprint
+            Unlock with your fingerprint
           </button>
         </div>
       )}
 
       {screen.name === 'locked' && screen.vault.mode === 'phrase' && (
         <div className="flex flex-col gap-2">
+          <p>The key is locked.</p>
           <p>
             This phone holds your key wrapped by the recovery phrase (
             {describeFallbackClause(screen.vault.prfFallbackReason)}): type the twelve words

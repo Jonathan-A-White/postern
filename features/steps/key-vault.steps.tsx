@@ -199,7 +199,7 @@ describeFeature(feature, ({ Scenario }) => {
 
     Then('the locked screen says the key is wrapped by the recovery phrase', async () => {
       expect(
-        await screen.findByText(/fingerprint unlock was not available when it was created/i),
+        await screen.findByText(/fingerprint unlock is not available on this phone or browser/i),
       ).toBeInTheDocument();
     });
   });
@@ -269,6 +269,132 @@ describeFeature(feature, ({ Scenario }) => {
 
     Then('the key is unlocked', async () => {
       expect(await screen.findByText('Key unlocked')).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-10: no platform passkey names the fallback as unavailable', ({ Given, And, When, Then }) => {
+    Given('no platform passkey is available', async () => {
+      await freshScreen();
+    });
+
+    And('the key screen is opened', async () => {
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Generate a new key' });
+    });
+
+    When('a new key is generated and the phrase is confirmed', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Generate a new key' }));
+      await screen.findAllByTestId('mnemonic-word');
+      await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+    });
+
+    Then('the confirmation names the case as fingerprint unlock not available on this phone or browser', async () => {
+      expect(
+        await screen.findByText(/fingerprint unlock was not used: fingerprint unlock is not available/i),
+      ).toBeInTheDocument();
+    });
+
+    And('the locked screen on reopening names the same case', async () => {
+      cleanup();
+      render(<KeyVault />);
+      expect(
+        await screen.findByText(/fingerprint unlock is not available on this phone or browser/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-11: a passkey created without PRF support names the fallback', ({ Given, And, When, Then }) => {
+    Given('a platform passkey without PRF support is available', async () => {
+      await freshScreen();
+      installMockAuthenticator({ prfSupported: false });
+    });
+
+    And('the key screen is opened', async () => {
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Generate a new key' });
+    });
+
+    When('a new key is generated and the phrase is confirmed', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Generate a new key' }));
+      await screen.findAllByTestId('mnemonic-word');
+      await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+    });
+
+    Then('the confirmation names the case as the passkey being created but reporting no PRF support', async () => {
+      expect(
+        await screen.findByText(/fingerprint unlock was not used: the passkey was created but reports no PRF support/i),
+      ).toBeInTheDocument();
+    });
+
+    And('the locked screen on reopening names the same case', async () => {
+      cleanup();
+      render(<KeyVault />);
+      expect(
+        await screen.findByText(/the passkey was created but reports no PRF support/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  Scenario(
+    'AC-12: a passkey that reports PRF support but returns no secret names the fallback',
+    ({ Given, And, When, Then }) => {
+      Given('a platform passkey that reports PRF support but returns no secret is available', async () => {
+        await freshScreen();
+        installMockAuthenticator({ prfSupported: true, prfGetResult: 'empty' });
+      });
+
+      And('the key screen is opened', async () => {
+        render(<KeyVault />);
+        await screen.findByRole('button', { name: 'Generate a new key' });
+      });
+
+      When('a new key is generated and the phrase is confirmed', async () => {
+        await userEvent.click(screen.getByRole('button', { name: 'Generate a new key' }));
+        await screen.findAllByTestId('mnemonic-word');
+        await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+      });
+
+      Then('the confirmation names the case as the passkey returning no usable fingerprint secret', async () => {
+        expect(
+          await screen.findByText(/fingerprint unlock was not used: the passkey did not return a usable fingerprint secret/i),
+        ).toBeInTheDocument();
+      });
+
+      And('the locked screen on reopening names the same case', async () => {
+        cleanup();
+        render(<KeyVault />);
+        expect(
+          await screen.findByText(/the passkey did not return a usable fingerprint secret/i),
+        ).toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario('AC-13: a PRF-capable phone offers to unlock by fingerprint on reopening', ({ Given, And, When, Then }) => {
+    Given('a platform passkey with fingerprint unlock is available', async () => {
+      await freshScreen();
+      installMockAuthenticator({ prfSupported: true });
+    });
+
+    And('the key screen is opened', async () => {
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Generate a new key' });
+    });
+
+    When('a new key is generated and the phrase is confirmed', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Generate a new key' }));
+      await screen.findAllByTestId('mnemonic-word');
+      await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+      await screen.findByText('Key unlocked');
+    });
+
+    And('the key screen is reopened', () => {
+      cleanup();
+      render(<KeyVault />);
+    });
+
+    Then('the locked screen offers to unlock with your fingerprint', async () => {
+      expect(await screen.findByText('Unlock with your fingerprint.')).toBeInTheDocument();
     });
   });
 });

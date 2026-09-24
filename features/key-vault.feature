@@ -51,3 +51,31 @@ Feature: The key vault
     Given a phrase-wrapped vault exists from a previously generated key
     When the recovery phrase is typed one word per line and used to unlock
     Then the key is unlocked
+
+  Scenario: AC-10: no platform passkey names the fallback as unavailable
+    Given no platform passkey is available
+    And the key screen is opened
+    When a new key is generated and the phrase is confirmed
+    Then the confirmation names the case as fingerprint unlock not available on this phone or browser
+    And the locked screen on reopening names the same case
+
+  Scenario: AC-11: a passkey created without PRF support names the fallback
+    Given a platform passkey without PRF support is available
+    And the key screen is opened
+    When a new key is generated and the phrase is confirmed
+    Then the confirmation names the case as the passkey being created but reporting no PRF support
+    And the locked screen on reopening names the same case
+
+  Scenario: AC-12: a passkey that reports PRF support but returns no secret names the fallback
+    Given a platform passkey that reports PRF support but returns no secret is available
+    And the key screen is opened
+    When a new key is generated and the phrase is confirmed
+    Then the confirmation names the case as the passkey returning no usable fingerprint secret
+    And the locked screen on reopening names the same case
+
+  Scenario: AC-13: a PRF-capable phone offers to unlock by fingerprint on reopening
+    Given a platform passkey with fingerprint unlock is available
+    And the key screen is opened
+    When a new key is generated and the phrase is confirmed
+    And the key screen is reopened
+    Then the locked screen offers to unlock with your fingerprint

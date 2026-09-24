@@ -86,6 +86,7 @@ describe('KeyVault', () => {
     const { unmount } = render(<KeyVault />);
 
     await user.click(await screen.findByRole('button', { name: 'Generate a new key' }));
+    await screen.findAllByTestId('mnemonic-word');
     await user.click(screen.getByRole('button', { name: "I've written it down" }));
     await screen.findByText('Key unlocked');
     unmount();

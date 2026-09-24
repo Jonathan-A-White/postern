@@ -1,5 +1,6 @@
 import { Gate } from './gate';
 import { KeyVault } from './key';
+import { Compose } from './compose';
 
 // No router: the app is one page today. A query string (not a path segment)
 // picks the screen so a static file server needs no extra rewrite rule to
@@ -9,6 +10,10 @@ export function App() {
 
   if (screen === 'key') {
     return <KeyVault />;
+  }
+
+  if (screen === 'compose') {
+    return <Compose />;
   }
 
   return <Gate />;

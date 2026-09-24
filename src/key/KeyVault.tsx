@@ -5,6 +5,7 @@ import { isWebAuthnAvailable, createPrfPasskey, getPrfSecret } from '../services
 import {
   createMnemonic,
   isValidMnemonic,
+  findInvalidWords,
   deriveMasterKey,
   deriveAesKeyFromPrf,
   deriveAesKeyFromPhrase,
@@ -24,6 +25,13 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+function describeInvalidWords(words: string[]): string {
+  const quoted = words.map((word) => `'${word}'`).join(', ');
+  return words.length === 1
+    ? `${quoted} is not a word of the recovery list.`
+    : `${quoted} are not words of the recovery list.`;
 }
 
 async function storeKey(mnemonic: string, key: Uint8Array): Promise<void> {
@@ -80,6 +88,11 @@ export function KeyVault() {
 
   async function handleRestore() {
     setError(null);
+    const invalidWords = findInvalidWords(phraseInput);
+    if (invalidWords.length > 0) {
+      setError(describeInvalidWords(invalidWords));
+      return;
+    }
     if (!isValidMnemonic(phraseInput)) {
       setError('That is not a valid recovery phrase.');
       return;
@@ -110,6 +123,11 @@ export function KeyVault() {
 
   async function handleUnlockWithPhrase(vault: VaultRow) {
     setError(null);
+    const invalidWords = findInvalidWords(phraseInput);
+    if (invalidWords.length > 0) {
+      setError(describeInvalidWords(invalidWords));
+      return;
+    }
     try {
       if (!vault.salt) throw new Error('No recovery salt is stored for this key.');
       const aesKey = await deriveAesKeyFromPhrase(phraseInput, vault.salt);
@@ -135,6 +153,9 @@ export function KeyVault() {
 
       {screen.name === 'empty' && (
         <div className="flex flex-col gap-2">
+          <p className="text-sm text-slate-400">
+            Fingerprint unlock on this device: {isWebAuthnAvailable() ? 'available' : 'not available'}
+          </p>
           <button
             className="rounded bg-slate-700 px-4 py-2"
             onClick={() => void handleGenerate()}
@@ -197,7 +218,10 @@ export function KeyVault() {
 
       {screen.name === 'locked' && screen.vault.mode === 'phrase' && (
         <div className="flex flex-col gap-2">
-          <p>Enter your recovery phrase to unlock.</p>
+          <p>
+            This phone holds your key wrapped by the recovery phrase (fingerprint unlock was not
+            available when it was created): type the twelve words
+          </p>
           <label htmlFor="recovery-phrase">Recovery phrase</label>
           <textarea
             id="recovery-phrase"

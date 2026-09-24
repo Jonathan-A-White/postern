@@ -27,13 +27,29 @@ Before tapping "Generate a new key", the empty screen shows one line:
 "Fingerprint unlock on this device: available / not available". That tells you
 in advance which path you're on — note it for the resolution.
 
-If step 4 never prompts for a fingerprint and instead goes straight to "Key
-unlocked", your phone or Chrome build doesn't support the PRF extension; the
-vault fell back to wrapping the key with the phrase itself, and step 6 will
-show "This phone holds your key wrapped by the recovery phrase (fingerprint
-unlock was not available when it was created): type the twelve words" and ask
-you to type the phrase back in, rather than offering a fingerprint prompt.
-That is the expected fallback, not a bug — note it as a resolution either way.
+If step 6 doesn't offer "Unlock with your fingerprint" — the vault fell back
+to wrapping the key with the phrase itself. When that happens, "Key unlocked"
+in step 5 shows one line naming why, and step 6's locked screen names the
+same reason inside its parenthetical. The three reasons and what each means:
+
+- **fingerprint unlock is not available on this phone or browser** — this
+  phone/Chrome build has no WebAuthn platform authenticator at all; the empty
+  screen's "Fingerprint unlock on this device: not available" line already
+  told you this in advance.
+- **the passkey was created but reports no PRF support** — step 4's first
+  fingerprint prompt (registering the passkey) succeeded, but a follow-up
+  attempt to read its PRF secret failed outright, so this authenticator does
+  not support the PRF extension.
+- **the passkey did not return a usable fingerprint secret** — the passkey
+  reported PRF support, but reading the secret came back empty; try clearing
+  site data and starting Part 1 fresh, since this can be a one-off ceremony
+  glitch rather than a genuine lack of support.
+
+Any of these is an expected fallback, not a bug — note which one you saw as a
+resolution either way. A fresh run of Part 1 needs Postern's site data cleared
+first (Chrome: Settings, Site settings, All sites, postern.allmymind.org,
+Delete data), otherwise step 6 will show the locked screen from a previous
+run instead of prompting to generate a new key.
 
 Type the phrase exactly as written; a capital letter, an autocorrected word, or
 extra spaces from the keyboard don't matter — the app normalises the phrase

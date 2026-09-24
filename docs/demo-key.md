@@ -67,9 +67,30 @@ wordlist.
    fingerprint as Part 1, step 5 — proving the phrase alone reconstructs the
    same key.
 
+## Part 3 — mint your licence (testnet)
+
+This mints a real testnet License token to your own key, spending real
+testnet sats (no mainnet money is involved). Your phone key needs a small
+testnet balance first — it already holds about 24,986 testnet sats; if a
+fresh key shows 0, fund it from a testnet faucet before continuing.
+
+1. With the key unlocked (Part 1 or 2), you should see a "Mint my licence
+   (testnet)" button below your key fingerprint. It's greyed out until your
+   balance is fetched and covers the mint (currently 10,001 sat: a 1-sat
+   License token plus its 10,000-sat Fuel).
+2. Tap "Mint my licence (testnet)". This builds, signs and broadcasts the
+   mint transaction — it can take a few seconds.
+3. On success you should see "Minted:" followed by the transaction id as a
+   link; tapping it opens the transaction on WhatsOnChain's testnet
+   explorer. On failure you should see the provider's error in words instead
+   — note it down as a resolution.
+4. Reload to `?screen=` (the gate, no query) or navigate there. The gate
+   should now show "Licensed" instead of "No licence found" — it rechecks
+   your key's testnet history and finds the licence this mint just created.
+
 ## Resolution
 
-Record on mw-f758y.6 whether Parts 1 and 2 worked as described, whether your
-phone's Chrome offered the fingerprint prompts in Part 1, and anything that
-blocked either part. That result is what feeds the key design into the map's
-decisions.
+Record on mw-f758y.6 whether Parts 1, 2 and 3 worked as described, whether
+your phone's Chrome offered the fingerprint prompts in Part 1, and anything
+that blocked any part. That result is what feeds the key design into the
+map's decisions.

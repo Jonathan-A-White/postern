@@ -9,6 +9,7 @@ import {
   deriveMasterKey,
   deriveAesKeyFromPrf,
   deriveAesKeyFromPhrase,
+  publicKeyHexFromMasterKey,
   wrapKey,
   unwrapKey,
 } from '../services/vault';
@@ -58,7 +59,14 @@ async function storePhraseWrapped(
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const aesKey = await deriveAesKeyFromPhrase(mnemonic, salt);
   const wrapped = await wrapKey(key, aesKey);
-  await vaultRepo.save({ mode: 'phrase', ciphertext: wrapped.ciphertext, iv: wrapped.iv, salt, prfFallbackReason });
+  await vaultRepo.save({
+    mode: 'phrase',
+    ciphertext: wrapped.ciphertext,
+    iv: wrapped.iv,
+    salt,
+    prfFallbackReason,
+    publicKeyHex: publicKeyHexFromMasterKey(key),
+  });
 }
 
 // Stores the key, wrapped by a fingerprint passkey when one is usable and by
@@ -91,6 +99,7 @@ async function storeKey(mnemonic: string, key: Uint8Array): Promise<PrfFallbackR
       ciphertext: wrapped.ciphertext,
       iv: wrapped.iv,
       credentialId: passkey.credentialId,
+      publicKeyHex: publicKeyHexFromMasterKey(key),
     });
     return null;
   }

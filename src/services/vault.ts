@@ -5,6 +5,7 @@
 // recovery phrase is never stored — only the wrapped 32-byte key is.
 import { generateMnemonic, mnemonicToSeedWebcrypto, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';
+import { PrivateKey, Utils } from '@bsv/sdk';
 
 const PBKDF2_ITERATIONS = 210_000;
 
@@ -83,6 +84,12 @@ export async function deriveAesKeyFromPhrase(mnemonic: string, salt: Uint8Array)
     false,
     ['encrypt', 'decrypt'],
   );
+}
+
+// The compressed public key (hex) this master key signs for — public, so it is
+// stored in the clear on the vault row and shown on the gate without unlocking.
+export function publicKeyHexFromMasterKey(key: Uint8Array): string {
+  return PrivateKey.fromHex(Utils.toHex(Array.from(key))).toPublicKey().toString();
 }
 
 export interface WrappedKey {

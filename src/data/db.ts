@@ -20,6 +20,11 @@ export interface VaultRow {
   salt?: Uint8Array;
   credentialId?: ArrayBuffer;
   prfFallbackReason?: PrfFallbackReason;
+  // The compressed secp256k1 public key (hex), derived once at creation and stored
+  // in the clear: it is not secret, and the gate (src/services/licence.ts) needs it
+  // to show the key's testnet address and check for a licence without unlocking
+  // the wrapped private key.
+  publicKeyHex: string;
 }
 
 class PosternDB extends Dexie {

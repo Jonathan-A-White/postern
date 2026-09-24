@@ -17,6 +17,7 @@ describe('vaultRepo', () => {
       ciphertext: new Uint8Array([1, 2, 3]).buffer,
       iv: new Uint8Array([4, 5, 6]),
       credentialId: new Uint8Array([7, 8]).buffer,
+      publicKeyHex: '02'.padEnd(66, '1'),
     });
 
     const row = await vaultRepo.get();
@@ -30,6 +31,7 @@ describe('vaultRepo', () => {
       ciphertext: new Uint8Array([9]).buffer,
       iv: new Uint8Array([1]),
       salt: new Uint8Array([2, 3]),
+      publicKeyHex: '02'.padEnd(66, '1'),
     });
 
     const row = await vaultRepo.get();
@@ -38,7 +40,13 @@ describe('vaultRepo', () => {
   });
 
   it('clears the stored vault row', async () => {
-    await vaultRepo.save({ mode: 'phrase', ciphertext: new Uint8Array([1]).buffer, iv: new Uint8Array([1]), salt: new Uint8Array([1]) });
+    await vaultRepo.save({
+      mode: 'phrase',
+      ciphertext: new Uint8Array([1]).buffer,
+      iv: new Uint8Array([1]),
+      salt: new Uint8Array([1]),
+      publicKeyHex: '02'.padEnd(66, '1'),
+    });
     await vaultRepo.clear();
     expect(await vaultRepo.get()).toBeUndefined();
   });

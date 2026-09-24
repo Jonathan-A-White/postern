@@ -14,6 +14,7 @@ import {
   unwrapKey,
 } from '../services/vault';
 import { fetchBalanceSatoshis, mintCostSatoshis, mintMyLicence } from '../services/mint';
+import { addressForPublicKey } from '../services/licence';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
 
@@ -23,6 +24,11 @@ type MintOutcome =
   | { name: 'idle' }
   | { name: 'minting' }
   | { name: 'success'; txid: string }
+  | { name: 'error'; message: string };
+
+type BalanceState =
+  | { name: 'loading' }
+  | { name: 'loaded'; satoshis: number }
   | { name: 'error'; message: string };
 
 type Screen =
@@ -123,7 +129,9 @@ export function KeyVault() {
   const [error, setError] = useState<string | null>(null);
   const [phraseInput, setPhraseInput] = useState('');
   const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle');
-  const [balance, setBalance] = useState<number | null>(null);
+  const [addressCopyStatus, setAddressCopyStatus] = useState<CopyStatus>('idle');
+  const [balanceState, setBalanceState] = useState<BalanceState>({ name: 'loading' });
+  const [balanceRefreshToken, setBalanceRefreshToken] = useState(0);
   const [mintOutcome, setMintOutcome] = useState<MintOutcome>({ name: 'idle' });
 
   useEffect(() => {
@@ -135,10 +143,15 @@ export function KeyVault() {
   useEffect(() => {
     if (screen.name !== 'unlocked') return;
     const publicKeyHex = publicKeyHexFromMasterKey(screen.key);
-    void fetchBalanceSatoshis(publicKeyHex)
-      .then(setBalance)
-      .catch(() => setBalance(null));
-  }, [screen]);
+    fetchBalanceSatoshis(publicKeyHex)
+      .then((satoshis) => setBalanceState({ name: 'loaded', satoshis }))
+      .catch((err) => setBalanceState({ name: 'error', message: (err as Error).message }));
+  }, [screen, balanceRefreshToken]);
+
+  function handleRefreshBalance() {
+    setBalanceState({ name: 'loading' });
+    setBalanceRefreshToken((token) => token + 1);
+  }
 
   async function handleMint(key: Uint8Array) {
     setMintOutcome({ name: 'minting' });
@@ -165,6 +178,17 @@ export function KeyVault() {
       setTimeout(() => setCopyStatus('idle'), 3000);
     } catch {
       setCopyStatus('unavailable');
+    }
+  }
+
+  async function handleCopyAddress(address: string) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API not available');
+      await navigator.clipboard.writeText(address);
+      setAddressCopyStatus('copied');
+      setTimeout(() => setAddressCopyStatus('idle'), 3000);
+    } catch {
+      setAddressCopyStatus('unavailable');
     }
   }
 
@@ -346,9 +370,53 @@ export function KeyVault() {
           )}
           <p>Key fingerprint: {toHex(screen.key.slice(0, 4))}</p>
 
+          <p className="text-sm text-slate-400">
+            Testnet address:{' '}
+            <span data-testid="testnet-address">
+              {addressForPublicKey(publicKeyHexFromMasterKey(screen.key))}
+            </span>
+          </p>
+          <button
+            className="rounded bg-slate-700 px-4 py-2"
+            onClick={() => void handleCopyAddress(addressForPublicKey(publicKeyHexFromMasterKey(screen.key)))}
+          >
+            {addressCopyStatus === 'copied' ? 'Copied' : 'Copy address'}
+          </button>
+
+          {balanceState.name === 'loading' && <p>Checking balance…</p>}
+
+          {balanceState.name === 'loaded' && (
+            <>
+              <p>Balance: {balanceState.satoshis} sats</p>
+              {balanceState.satoshis < mintCostSatoshis() && (
+                <p>
+                  Needs {mintCostSatoshis().toLocaleString('en-US')} testnet sats; this key holds{' '}
+                  {balanceState.satoshis}. Send testnet sats to{' '}
+                  {addressForPublicKey(publicKeyHexFromMasterKey(screen.key))}.
+                </p>
+              )}
+              <button className="rounded bg-slate-700 px-4 py-2" onClick={handleRefreshBalance}>
+                Refresh balance
+              </button>
+            </>
+          )}
+
+          {balanceState.name === 'error' && (
+            <>
+              <p>Balance unavailable (WhatsOnChain): {balanceState.message}</p>
+              <button className="rounded bg-slate-700 px-4 py-2" onClick={handleRefreshBalance}>
+                Retry
+              </button>
+            </>
+          )}
+
           <button
             className="rounded bg-slate-700 px-4 py-2 disabled:opacity-50"
-            disabled={balance === null || balance < mintCostSatoshis() || mintOutcome.name === 'minting'}
+            disabled={
+              balanceState.name !== 'loaded' ||
+              balanceState.satoshis < mintCostSatoshis() ||
+              mintOutcome.name === 'minting'
+            }
             onClick={() => void handleMint(screen.key)}
           >
             Mint my licence (testnet)

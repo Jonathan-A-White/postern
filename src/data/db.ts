@@ -5,6 +5,13 @@ export interface SettingRow {
   value: unknown;
 }
 
+// Recorded on a phrase-mode vault row so the UI can name, rather than merely
+// report the absence of, the fingerprint ceremony's outcome:
+// - webauthn-unavailable: this phone/browser has no WebAuthn platform authenticator.
+// - passkey-created-without-prf: a passkey was created but returned no usable PRF secret.
+// - prf-secret-empty: the passkey reported PRF support but its secret evaluated empty.
+export type PrfFallbackReason = 'webauthn-unavailable' | 'passkey-created-without-prf' | 'prf-secret-empty';
+
 export interface VaultRow {
   id: string;
   mode: 'prf' | 'phrase';
@@ -12,6 +19,7 @@ export interface VaultRow {
   iv: Uint8Array;
   salt?: Uint8Array;
   credentialId?: ArrayBuffer;
+  prfFallbackReason?: PrfFallbackReason;
 }
 
 class PosternDB extends Dexie {

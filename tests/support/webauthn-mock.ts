@@ -15,7 +15,19 @@ export interface MockAuthenticator {
 // same mocked passkey deterministic, the way a real one would be for a fixed salt.
 const HARDWARE_SECRET = new Uint8Array(32).map((_, i) => i + 1);
 
-export function installMockAuthenticator({ prfSupported }: { prfSupported: boolean }): MockAuthenticator {
+export interface MockAuthenticatorOptions {
+  prfSupported: boolean;
+  // What the assertion (get()) ceremony yields once it runs. Defaults follow the
+  // original two-state behaviour: a PRF-supporting authenticator yields a secret,
+  // a non-supporting one refuses the assertion outright. 'empty' simulates an
+  // authenticator that reports PRF support at creation but evaluates to nothing.
+  prfGetResult?: 'secret' | 'empty' | 'throws';
+}
+
+export function installMockAuthenticator({
+  prfSupported,
+  prfGetResult = prfSupported ? 'secret' : 'throws',
+}: MockAuthenticatorOptions): MockAuthenticator {
   let credentialId: ArrayBuffer | null = null;
 
   const create = vi.fn(async () => {
@@ -27,12 +39,15 @@ export function installMockAuthenticator({ prfSupported }: { prfSupported: boole
   });
 
   const get = vi.fn(async () => {
-    if (!prfSupported) {
+    if (prfGetResult === 'throws') {
       throw new Error('mock authenticator: PRF is not supported');
     }
     return {
       rawId: credentialId,
-      getClientExtensionResults: () => ({ prf: { results: { first: HARDWARE_SECRET.slice().buffer } } }),
+      getClientExtensionResults: () =>
+        prfGetResult === 'empty'
+          ? { prf: { results: {} } }
+          : { prf: { results: { first: HARDWARE_SECRET.slice().buffer } } },
     };
   });
 

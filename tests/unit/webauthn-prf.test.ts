@@ -37,4 +37,12 @@ describe('webauthnPrf', () => {
     expect(first).not.toBeNull();
     expect(new Uint8Array(first!)).toEqual(new Uint8Array(second!));
   });
+
+  it('requests a discoverable, user-verified credential so Android stores it as a PRF-capable passkey', async () => {
+    const authenticator = installMockAuthenticator({ prfSupported: true });
+    await createPrfPasskey('governor', 'The Governor');
+    const options = authenticator.create.mock.calls[0][0].publicKey;
+    expect(options.authenticatorSelection.residentKey).toBe('required');
+    expect(options.authenticatorSelection.userVerification).toBe('required');
+  });
 });

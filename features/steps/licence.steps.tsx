@@ -168,6 +168,93 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await getCachedLicenceStatus()).toBeUndefined();
     });
   });
+
+  Scenario('AC-5: an unfunded key names the sats it needs to mint', ({ Given, When, Then, And }) => {
+    Given('the key screen is opened', async () => {
+      await freshScreen();
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Generate a new key' });
+    });
+
+    When('a new key is generated and the phrase is confirmed', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Generate a new key' }));
+      await screen.findAllByTestId('mnemonic-word');
+      await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+      await screen.findByText('Key unlocked');
+    });
+
+    Then("the screen shows the key's testnet address and a balance of 0 sats", async () => {
+      expect(await screen.findByTestId('testnet-address')).not.toBeEmptyDOMElement();
+      expect(await screen.findByText('Balance: 0 sats')).toBeInTheDocument();
+    });
+
+    And('the screen says it needs 10,001 testnet sats sent to that address', async () => {
+      const address = screen.getByTestId('testnet-address').textContent;
+      expect(
+        await screen.findByText(`Needs 10,001 testnet sats; this key holds 0. Send testnet sats to ${address}.`),
+      ).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-6: a balance lookup failure names the reason and offers Retry', ({ Given, And, When, Then }) => {
+    Given('the key screen is opened', async () => {
+      await freshScreen();
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Generate a new key' });
+    });
+
+    And('the chain is unreachable', () => {
+      fakeProvider.offline = true;
+    });
+
+    When('a new key is generated and the phrase is confirmed', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Generate a new key' }));
+      await screen.findAllByTestId('mnemonic-word');
+      await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+      await screen.findByText('Key unlocked');
+    });
+
+    Then('the screen shows balance unavailable from WhatsOnChain naming the reason', async () => {
+      expect(
+        await screen.findByText('Balance unavailable (WhatsOnChain): the chain is unreachable'),
+      ).toBeInTheDocument();
+    });
+
+    And('a "Retry" control is offered', () => {
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-7: retrying after funding the key enables the mint button', ({ Given, And, When, Then }) => {
+    Given('the key screen is opened', async () => {
+      await freshScreen();
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Generate a new key' });
+    });
+
+    And('the chain is unreachable', () => {
+      fakeProvider.offline = true;
+    });
+
+    When('a new key is generated and the phrase is confirmed', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Generate a new key' }));
+      await screen.findAllByTestId('mnemonic-word');
+      await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+      await screen.findByText('Key unlocked');
+    });
+
+    And('the chain is funded with 20,000 sats and "Retry" is chosen', async () => {
+      await screen.findByRole('button', { name: 'Retry' });
+      const address = screen.getByTestId('testnet-address').textContent ?? '';
+      fakeProvider.offline = false;
+      fakeProvider.setUtxos(address, [{ txid: 'a'.repeat(64), vout: 0, satoshis: 20_000 }]);
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+
+    Then('the "Mint my licence (testnet)" button is enabled', async () => {
+      expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeEnabled();
+    });
+  });
 });
 
 afterAll(() => {

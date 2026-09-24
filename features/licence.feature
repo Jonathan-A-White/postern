@@ -24,3 +24,23 @@ Feature: Minting a licence
     When "Mint my licence (testnet)" is chosen
     Then the provider's error is shown in words
     And nothing is cached
+
+  Scenario: AC-5: an unfunded key names the sats it needs to mint
+    Given the key screen is opened
+    When a new key is generated and the phrase is confirmed
+    Then the screen shows the key's testnet address and a balance of 0 sats
+    And the screen says it needs 10,001 testnet sats sent to that address
+
+  Scenario: AC-6: a balance lookup failure names the reason and offers Retry
+    Given the key screen is opened
+    And the chain is unreachable
+    When a new key is generated and the phrase is confirmed
+    Then the screen shows balance unavailable from WhatsOnChain naming the reason
+    And a "Retry" control is offered
+
+  Scenario: AC-7: retrying after funding the key enables the mint button
+    Given the key screen is opened
+    And the chain is unreachable
+    When a new key is generated and the phrase is confirmed
+    And the chain is funded with 20,000 sats and "Retry" is chosen
+    Then the "Mint my licence (testnet)" button is enabled

@@ -21,11 +21,22 @@ this is a prototype of the key mechanism only.
    your fingerprint" — tap it and confirm with your fingerprint. You should
    land back on "Key unlocked" with the same fingerprint as step 5.
 
+Before tapping "Generate a new key", the empty screen shows one line:
+"Fingerprint unlock on this device: available / not available". That tells you
+in advance which path you're on — note it for the resolution.
+
 If step 4 never prompts for a fingerprint and instead goes straight to "Key
 unlocked", your phone or Chrome build doesn't support the PRF extension; the
 vault fell back to wrapping the key with the phrase itself, and step 6 will
-ask you to type the phrase back in rather than offering a fingerprint prompt.
+show "This phone holds your key wrapped by the recovery phrase (fingerprint
+unlock was not available when it was created): type the twelve words" and ask
+you to type the phrase back in, rather than offering a fingerprint prompt.
 That is the expected fallback, not a bug — note it as a resolution either way.
+
+Type the phrase exactly as written; a capital letter, an autocorrected word, or
+extra spaces from the keyboard don't matter — the app normalises the phrase
+before checking it, and names any word it doesn't recognise from the recovery
+wordlist.
 
 ## Part 2 — restore the key on a second phone (or after clearing site data)
 

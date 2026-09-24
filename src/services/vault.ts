@@ -1,0 +1,89 @@
+// src/services/vault.ts — the BSV key itself: generated from a BIP39 recovery
+// phrase, and wrapped at rest with AES-GCM. The wrapping key comes from either
+// a WebAuthn PRF passkey (src/services/webauthnPrf.ts) or, when no PRF-capable
+// passkey is available, from the recovery phrase itself via PBKDF2. The
+// recovery phrase is never stored — only the wrapped 32-byte key is.
+import { generateMnemonic, mnemonicToSeedWebcrypto, validateMnemonic } from '@scure/bip39';
+import { wordlist } from '@scure/bip39/wordlists/english.js';
+
+const PBKDF2_ITERATIONS = 210_000;
+
+export function createMnemonic(): string {
+  return generateMnemonic(wordlist, 128);
+}
+
+export function isValidMnemonic(mnemonic: string): boolean {
+  return validateMnemonic(mnemonic.trim(), wordlist);
+}
+
+// The BIP32 master key derivation (HMAC-SHA512("Bitcoin seed", seed)): IL
+// becomes the 32-byte private key. This is the standard way a BSV/BTC wallet
+// turns a BIP39 seed into its first key, without pulling in a full BIP32 tree.
+export async function deriveMasterKey(mnemonic: string): Promise<Uint8Array> {
+  const seed = await mnemonicToSeedWebcrypto(mnemonic.trim());
+  const hmacKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode('Bitcoin seed'),
+    { name: 'HMAC', hash: 'SHA-512' },
+    false,
+    ['sign'],
+  );
+  const digest = await crypto.subtle.sign('HMAC', hmacKey, seed);
+  return new Uint8Array(digest).slice(0, 32);
+}
+
+export async function deriveAesKeyFromPrf(prfSecret: ArrayBuffer): Promise<CryptoKey> {
+  // Re-wrapped in this realm's Uint8Array: prfSecret may cross a realm boundary
+  // (a mocked authenticator in tests, or the platform's own credential API),
+  // and SubtleCrypto's instanceof checks on ArrayBuffer are realm-sensitive.
+  const hkdfKey = await crypto.subtle.importKey('raw', new Uint8Array(prfSecret), 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(0),
+      info: new TextEncoder().encode('postern-vault-aes-v1'),
+    },
+    hkdfKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+export async function deriveAesKeyFromPhrase(mnemonic: string, salt: Uint8Array): Promise<CryptoKey> {
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(mnemonic.trim()),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: new Uint8Array(salt), iterations: PBKDF2_ITERATIONS },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+export interface WrappedKey {
+  ciphertext: ArrayBuffer;
+  iv: Uint8Array;
+}
+
+export async function wrapKey(key: Uint8Array, aesKey: CryptoKey): Promise<WrappedKey> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, new Uint8Array(key));
+  return { ciphertext, iv };
+}
+
+export async function unwrapKey(wrapped: WrappedKey, aesKey: CryptoKey): Promise<Uint8Array> {
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: new Uint8Array(wrapped.iv) },
+    aesKey,
+    new Uint8Array(wrapped.ciphertext),
+  );
+  return new Uint8Array(plaintext);
+}

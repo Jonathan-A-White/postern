@@ -13,8 +13,17 @@ import {
   wrapKey,
   unwrapKey,
 } from '../services/vault';
+import { fetchBalanceSatoshis, mintCostSatoshis, mintMyLicence } from '../services/mint';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
+
+const WHATSONCHAIN_TESTNET_TX_URL = 'https://test.whatsonchain.com/tx/';
+
+type MintOutcome =
+  | { name: 'idle' }
+  | { name: 'minting' }
+  | { name: 'success'; txid: string }
+  | { name: 'error'; message: string };
 
 type Screen =
   | { name: 'loading' }
@@ -114,12 +123,32 @@ export function KeyVault() {
   const [error, setError] = useState<string | null>(null);
   const [phraseInput, setPhraseInput] = useState('');
   const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle');
+  const [balance, setBalance] = useState<number | null>(null);
+  const [mintOutcome, setMintOutcome] = useState<MintOutcome>({ name: 'idle' });
 
   useEffect(() => {
     void vaultRepo.get().then((vault) => {
       setScreen(vault ? { name: 'locked', vault } : { name: 'empty' });
     });
   }, []);
+
+  useEffect(() => {
+    if (screen.name !== 'unlocked') return;
+    const publicKeyHex = publicKeyHexFromMasterKey(screen.key);
+    void fetchBalanceSatoshis(publicKeyHex)
+      .then(setBalance)
+      .catch(() => setBalance(null));
+  }, [screen]);
+
+  async function handleMint(key: Uint8Array) {
+    setMintOutcome({ name: 'minting' });
+    try {
+      const result = await mintMyLicence(key);
+      setMintOutcome({ name: 'success', txid: result.txid });
+    } catch (err) {
+      setMintOutcome({ name: 'error', message: (err as Error).message });
+    }
+  }
 
   async function handleGenerate() {
     const mnemonic = createMnemonic();
@@ -316,6 +345,25 @@ export function KeyVault() {
             <p>Fingerprint unlock was not used: {describeFallbackClause(screen.prfFallbackReason)}.</p>
           )}
           <p>Key fingerprint: {toHex(screen.key.slice(0, 4))}</p>
+
+          <button
+            className="rounded bg-slate-700 px-4 py-2 disabled:opacity-50"
+            disabled={balance === null || balance < mintCostSatoshis() || mintOutcome.name === 'minting'}
+            onClick={() => void handleMint(screen.key)}
+          >
+            Mint my licence (testnet)
+          </button>
+
+          {mintOutcome.name === 'success' && (
+            <p>
+              Minted:{' '}
+              <a className="underline" href={`${WHATSONCHAIN_TESTNET_TX_URL}${mintOutcome.txid}`}>
+                {mintOutcome.txid}
+              </a>
+            </p>
+          )}
+
+          {mintOutcome.name === 'error' && <p>{mintOutcome.message}</p>}
         </div>
       )}
     </main>

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -69,6 +70,27 @@ func TestMessagesReturnsRecordsAfterSince(t *testing.T) {
 	}
 	if out.Next != 2 {
 		t.Fatalf("next = %d, want 2", out.Next)
+	}
+}
+
+func TestMessagesReturnsEmptyArrayNotNullOnEmptyStore(t *testing.T) {
+	server, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	resp, err := http.Get(server.URL + "/api/messages?since=0")
+	if err != nil {
+		t.Fatalf("GET /api/messages: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if !strings.Contains(string(body), `"records":[]`) {
+		t.Fatalf("body = %s, want it to contain \"records\":[]", body)
 	}
 }
 

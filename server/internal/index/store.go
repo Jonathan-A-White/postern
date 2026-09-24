@@ -126,7 +126,7 @@ func (s *Store) Since(since uint64) ([]Record, uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var out []Record
+	out := []Record{}
 	for _, rec := range s.records {
 		if rec.Seq > since {
 			out = append(out, rec)

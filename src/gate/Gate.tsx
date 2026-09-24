@@ -38,6 +38,9 @@ export function Gate() {
         <h1 className="text-3xl font-semibold">Postern</h1>
         <p className="text-xl">Licensed</p>
         <p className="text-sm text-slate-400">Testnet address: {screen.address}</p>
+        <a className="text-sm underline" href="?screen=compose">
+          Send a message
+        </a>
         <a className="text-sm underline" href="?screen=key">
           Manage your key
         </a>

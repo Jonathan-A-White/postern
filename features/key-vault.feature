@@ -39,3 +39,15 @@ Feature: The key vault
     Given a phrase-wrapped vault exists from a previously generated key
     When the key screen is reopened
     Then the locked screen says the key is wrapped by the recovery phrase
+
+  Scenario: AC-8: the generated words are shown on one line and the Copy button copies exactly the twelve words
+    Given the key screen is opened
+    And a new key has been generated
+    When "Copy the twelve words" is tapped
+    Then the twelve words are shown on a single line with no line breaks
+    And the clipboard holds exactly the twelve space-joined words
+
+  Scenario: AC-9: a phrase pasted one word per line unlocks a phrase-wrapped key
+    Given a phrase-wrapped vault exists from a previously generated key
+    When the recovery phrase is typed one word per line and used to unlock
+    Then the key is unlocked

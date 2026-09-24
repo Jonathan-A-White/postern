@@ -7,7 +7,7 @@
 import '@testing-library/react/dont-cleanup-after-each';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterAll, expect } from 'vitest';
+import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { KeyVault } from '../../src/key';
 import { db } from '../../src/data/db';
@@ -201,6 +201,74 @@ describeFeature(feature, ({ Scenario }) => {
       expect(
         await screen.findByText(/fingerprint unlock was not available when it was created/i),
       ).toBeInTheDocument();
+    });
+  });
+
+  Scenario(
+    'AC-8: the generated words are shown on one line and the Copy button copies exactly the twelve words',
+    ({ Given, And, When, Then }) => {
+      let mnemonic = '';
+      let writeText: ReturnType<typeof vi.fn>;
+
+      Given('the key screen is opened', async () => {
+        await freshScreen();
+        writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+          value: { writeText },
+          configurable: true,
+          writable: true,
+        });
+        render(<KeyVault />);
+        await screen.findByRole('button', { name: 'Generate a new key' });
+      });
+
+      And('a new key has been generated', async () => {
+        await userEvent.click(screen.getByRole('button', { name: 'Generate a new key' }));
+        const words = await screen.findAllByTestId('mnemonic-word');
+        mnemonic = words.map((word) => word.textContent).join(' ');
+      });
+
+      When('"Copy the twelve words" is tapped', async () => {
+        await userEvent.click(screen.getByRole('button', { name: 'Copy the twelve words' }));
+      });
+
+      Then('the twelve words are shown on a single line with no line breaks', () => {
+        const container = screen.getByTestId('mnemonic-words');
+        expect(container.textContent).toBe(mnemonic);
+        expect(container.textContent).not.toMatch(/\n/);
+      });
+
+      And('the clipboard holds exactly the twelve space-joined words', () => {
+        expect(writeText).toHaveBeenCalledWith(mnemonic);
+      });
+    },
+  );
+
+  Scenario('AC-9: a phrase pasted one word per line unlocks a phrase-wrapped key', ({ Given, When, Then }) => {
+    let mnemonic = '';
+
+    Given('a phrase-wrapped vault exists from a previously generated key', async () => {
+      await freshScreen();
+      const { unmount } = render(<KeyVault />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Generate a new key' }));
+      const words = await screen.findAllByTestId('mnemonic-word');
+      mnemonic = words.map((word) => word.textContent).join(' ');
+      await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+      await screen.findByText('Key unlocked');
+      unmount();
+      cleanup();
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Unlock' });
+    });
+
+    When('the recovery phrase is typed one word per line and used to unlock', async () => {
+      const oneWordPerLine = mnemonic.split(' ').join('\n');
+      await userEvent.type(screen.getByLabelText('Recovery phrase'), oneWordPerLine);
+      await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+    });
+
+    Then('the key is unlocked', async () => {
+      expect(await screen.findByText('Key unlocked')).toBeInTheDocument();
     });
   });
 });

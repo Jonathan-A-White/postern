@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { vaultRepo } from '../data/repositories';
-import type { VaultRow } from '../data/db';
+import type { PrfFallbackReason, VaultRow } from '../data/db';
 import { isWebAuthnAvailable, createPrfPasskey, getPrfSecret } from '../services/webauthnPrf';
 import {
   createMnemonic,
@@ -21,7 +21,21 @@ type Screen =
   | { name: 'reveal'; mnemonic: string; key: Uint8Array }
   | { name: 'restore' }
   | { name: 'locked'; vault: VaultRow }
-  | { name: 'unlocked'; key: Uint8Array };
+  | { name: 'unlocked'; key: Uint8Array; prfFallbackReason?: PrfFallbackReason };
+
+// One clause per PrfFallbackReason, worded to read naturally both as the tail
+// of "Fingerprint unlock was not used: ..." (the reveal step's confirmation)
+// and inside "...wrapped by the recovery phrase (...)" (the locked screen) —
+// the same case named in two places (mw-f758y.16).
+const PRF_FALLBACK_CLAUSES: Record<PrfFallbackReason, string> = {
+  'webauthn-unavailable': 'fingerprint unlock is not available on this phone or browser',
+  'passkey-created-without-prf': 'the passkey was created but reports no PRF support',
+  'prf-secret-empty': 'the passkey did not return a usable fingerprint secret',
+};
+
+function describeFallbackClause(reason: PrfFallbackReason | undefined): string {
+  return reason ? PRF_FALLBACK_CLAUSES[reason] : 'fingerprint unlock was not available when it was created';
+}
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
@@ -36,29 +50,54 @@ function describeInvalidWords(words: string[]): string {
     : `${quoted} are not words of the recovery list.`;
 }
 
-async function storeKey(mnemonic: string, key: Uint8Array): Promise<void> {
-  if (isWebAuthnAvailable()) {
-    const passkey = await createPrfPasskey('postern-governor', 'The Governor');
-    if (passkey.prfSupported) {
-      const prfSecret = await getPrfSecret(passkey.credentialId);
-      if (prfSecret) {
-        const aesKey = await deriveAesKeyFromPrf(prfSecret);
-        const wrapped = await wrapKey(key, aesKey);
-        await vaultRepo.save({
-          mode: 'prf',
-          ciphertext: wrapped.ciphertext,
-          iv: wrapped.iv,
-          credentialId: passkey.credentialId,
-        });
-        return;
-      }
-    }
-  }
-
+async function storePhraseWrapped(
+  mnemonic: string,
+  key: Uint8Array,
+  prfFallbackReason: PrfFallbackReason,
+): Promise<void> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const aesKey = await deriveAesKeyFromPhrase(mnemonic, salt);
   const wrapped = await wrapKey(key, aesKey);
-  await vaultRepo.save({ mode: 'phrase', ciphertext: wrapped.ciphertext, iv: wrapped.iv, salt });
+  await vaultRepo.save({ mode: 'phrase', ciphertext: wrapped.ciphertext, iv: wrapped.iv, salt, prfFallbackReason });
+}
+
+// Stores the key, wrapped by a fingerprint passkey when one is usable and by
+// the recovery phrase otherwise. Returns the reason for a phrase fallback (or
+// null when PRF was used) so the caller can name the case on screen.
+//
+// create()'s prf.enabled is not trusted on its own — some authenticators only
+// report PRF support once it's actually evaluated in a get() ceremony (MDN;
+// see the comment on createPrfPasskey) — so a get() is always attempted once
+// WebAuthn is available, regardless of what create() reported.
+async function storeKey(mnemonic: string, key: Uint8Array): Promise<PrfFallbackReason | null> {
+  if (!isWebAuthnAvailable()) {
+    await storePhraseWrapped(mnemonic, key, 'webauthn-unavailable');
+    return 'webauthn-unavailable';
+  }
+
+  const passkey = await createPrfPasskey('postern-governor', 'The Governor');
+  let prfSecret: ArrayBuffer | null = null;
+  try {
+    prfSecret = await getPrfSecret(passkey.credentialId);
+  } catch {
+    prfSecret = null;
+  }
+
+  if (prfSecret) {
+    const aesKey = await deriveAesKeyFromPrf(prfSecret);
+    const wrapped = await wrapKey(key, aesKey);
+    await vaultRepo.save({
+      mode: 'prf',
+      ciphertext: wrapped.ciphertext,
+      iv: wrapped.iv,
+      credentialId: passkey.credentialId,
+    });
+    return null;
+  }
+
+  const reason: PrfFallbackReason = passkey.prfSupported ? 'prf-secret-empty' : 'passkey-created-without-prf';
+  await storePhraseWrapped(mnemonic, key, reason);
+  return reason;
 }
 
 export function KeyVault() {
@@ -94,8 +133,8 @@ export function KeyVault() {
   async function handleConfirmWritten(mnemonic: string, key: Uint8Array) {
     setError(null);
     try {
-      await storeKey(mnemonic, key);
-      setScreen({ name: 'unlocked', key });
+      const prfFallbackReason = await storeKey(mnemonic, key);
+      setScreen({ name: 'unlocked', key, prfFallbackReason: prfFallbackReason ?? undefined });
     } catch (err) {
       setError((err as Error).message);
     }
@@ -114,9 +153,9 @@ export function KeyVault() {
     }
     try {
       const key = await deriveMasterKey(phraseInput);
-      await storeKey(phraseInput, key);
+      const prfFallbackReason = await storeKey(phraseInput, key);
       setPhraseInput('');
-      setScreen({ name: 'unlocked', key });
+      setScreen({ name: 'unlocked', key, prfFallbackReason: prfFallbackReason ?? undefined });
     } catch (err) {
       setError((err as Error).message);
     }
@@ -242,8 +281,8 @@ export function KeyVault() {
       {screen.name === 'locked' && screen.vault.mode === 'phrase' && (
         <div className="flex flex-col gap-2">
           <p>
-            This phone holds your key wrapped by the recovery phrase (fingerprint unlock was not
-            available when it was created): type the twelve words
+            This phone holds your key wrapped by the recovery phrase (
+            {describeFallbackClause(screen.vault.prfFallbackReason)}): type the twelve words
           </p>
           <label htmlFor="recovery-phrase">Recovery phrase</label>
           <textarea
@@ -263,6 +302,9 @@ export function KeyVault() {
       {screen.name === 'unlocked' && (
         <div className="flex flex-col gap-2">
           <p>Key unlocked</p>
+          {screen.prfFallbackReason && (
+            <p>Fingerprint unlock was not used: {describeFallbackClause(screen.prfFallbackReason)}.</p>
+          )}
           <p>Key fingerprint: {toHex(screen.key.slice(0, 4))}</p>
         </div>
       )}

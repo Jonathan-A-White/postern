@@ -4,27 +4,37 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/Jonathan-A-White/postern/server/internal/api"
+	"github.com/Jonathan-A-White/postern/server/internal/config"
+	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/poller"
+	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
 
-func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
-}
-
-func newMux() *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", healthzHandler)
-	return mux
-}
-
 func main() {
-	addr := os.Getenv("POSTERN_ADDR")
-	if addr == "" {
-		addr = "127.0.0.1:8787"
+	cfg, err := config.Load(os.Getenv)
+	if err != nil {
+		log.Fatalf("loading config: %v", err)
 	}
 
-	log.Printf("postern server listening on %s", addr)
-	if err := http.ListenAndServe(addr, newMux()); err != nil {
+	store, err := index.Open(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("opening index: %v", err)
+	}
+	defer store.Close()
+
+	client := woc.NewClient(cfg.WocBase)
+
+	p := poller.New(client, store, cfg.Anchor)
+	stop := make(chan struct{})
+	defer close(stop)
+	go p.Run(stop)
+
+	handler := api.NewHandler(store, client)
+
+	log.Printf("postern server listening on %s (network=%s, anchor=%s, woc=%s)", cfg.Addr, cfg.Network, cfg.Anchor, cfg.WocBase)
+	if err := http.ListenAndServe(cfg.Addr, handler); err != nil {
 		log.Fatal(err)
 	}
 }

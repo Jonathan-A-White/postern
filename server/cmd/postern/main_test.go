@@ -5,10 +5,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Jonathan-A-White/postern/server/internal/api"
+	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
 
 func TestHealthz(t *testing.T) {
-	server := httptest.NewServer(newMux())
+	store, err := index.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("index.Open: %v", err)
+	}
+	defer store.Close()
+	client := woc.NewClient("http://unused.invalid")
+
+	server := httptest.NewServer(api.NewHandler(store, client))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/healthz")

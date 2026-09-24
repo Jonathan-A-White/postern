@@ -24,3 +24,18 @@ Feature: The key vault
     Given a fresh phone with no stored key
     When the recovery phrase from a previously generated key is entered to restore it
     Then the restored key matches the original key
+
+  Scenario: AC-5: a capitalised, newline-trailed, double-spaced phrase still unlocks a phrase-wrapped key
+    Given a phrase-wrapped vault exists from a previously generated key
+    When the recovery phrase is typed with a capital first letter, a trailing newline and a double space and used to unlock
+    Then the key is unlocked
+
+  Scenario: AC-6: an unknown word in the recovery phrase is named in the error
+    Given the key screen is opened
+    When a phrase containing the word "Aple" is submitted to restore
+    Then the error names "Aple" as not a word of the recovery list
+
+  Scenario: AC-7: the locked screen names the recovery-phrase unlock mode
+    Given a phrase-wrapped vault exists from a previously generated key
+    When the key screen is reopened
+    Then the locked screen says the key is wrapped by the recovery phrase

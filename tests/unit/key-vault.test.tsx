@@ -69,12 +69,23 @@ describe('KeyVault', () => {
     expect(await screen.findByText(`Key fingerprint: ${toHex(expectedKey.slice(0, 4))}`)).toBeInTheDocument();
   });
 
-  it('rejects an invalid recovery phrase', async () => {
+  it('rejects a recovery phrase with an unknown word, naming it', async () => {
     const user = userEvent.setup();
     render(<KeyVault />);
 
     await user.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
     await user.type(screen.getByLabelText('Recovery phrase'), 'not a real recovery phrase at all');
+    await user.click(screen.getByRole('button', { name: 'Restore' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not words? of the recovery list/i);
+  });
+
+  it('rejects a wordlist-valid recovery phrase with a bad checksum', async () => {
+    const user = userEvent.setup();
+    render(<KeyVault />);
+
+    await user.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
+    await user.type(screen.getByLabelText('Recovery phrase'), 'abandon '.repeat(11) + 'zoo');
     await user.click(screen.getByRole('button', { name: 'Restore' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/not a valid recovery phrase/i);

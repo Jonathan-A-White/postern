@@ -125,6 +125,84 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await screen.findByText(`Key fingerprint: ${toHex(expectedKey.slice(0, 4))}`)).toBeInTheDocument();
     });
   });
+
+  Scenario(
+    'AC-5: a capitalised, newline-trailed, double-spaced phrase still unlocks a phrase-wrapped key',
+    ({ Given, When, Then }) => {
+      let mnemonic = '';
+
+      Given('a phrase-wrapped vault exists from a previously generated key', async () => {
+        await freshScreen();
+        const { unmount } = render(<KeyVault />);
+        await userEvent.click(await screen.findByRole('button', { name: 'Generate a new key' }));
+        const words = await screen.findAllByTestId('mnemonic-word');
+        mnemonic = words.map((word) => word.textContent).join(' ');
+        await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+        await screen.findByText('Key unlocked');
+        unmount();
+        cleanup();
+        render(<KeyVault />);
+        await screen.findByRole('button', { name: 'Unlock' });
+      });
+
+      When(
+        'the recovery phrase is typed with a capital first letter, a trailing newline and a double space and used to unlock',
+        async () => {
+          const words = mnemonic.split(' ');
+          const capitalised = words[0][0].toUpperCase() + words[0].slice(1);
+          const distorted = `${capitalised}  ${words.slice(1).join(' ')}\n`;
+          await userEvent.type(screen.getByLabelText('Recovery phrase'), distorted);
+          await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+        },
+      );
+
+      Then('the key is unlocked', async () => {
+        expect(await screen.findByText('Key unlocked')).toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario('AC-6: an unknown word in the recovery phrase is named in the error', ({ Given, When, Then }) => {
+    Given('the key screen is opened', async () => {
+      await freshScreen();
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Restore from a phrase' });
+    });
+
+    When('a phrase containing the word "Aple" is submitted to restore', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Restore from a phrase' }));
+      const phrase = 'Aple ' + 'abandon '.repeat(10) + 'about';
+      await userEvent.type(screen.getByLabelText('Recovery phrase'), phrase);
+      await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    });
+
+    Then('the error names "Aple" as not a word of the recovery list', async () => {
+      expect(await screen.findByRole('alert')).toHaveTextContent("'Aple' is not a word of the recovery list.");
+    });
+  });
+
+  Scenario('AC-7: the locked screen names the recovery-phrase unlock mode', ({ Given, When, Then }) => {
+    Given('a phrase-wrapped vault exists from a previously generated key', async () => {
+      await freshScreen();
+      const { unmount } = render(<KeyVault />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Generate a new key' }));
+      await screen.findAllByTestId('mnemonic-word');
+      await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+      await screen.findByText('Key unlocked');
+      unmount();
+    });
+
+    When('the key screen is reopened', async () => {
+      cleanup();
+      render(<KeyVault />);
+    });
+
+    Then('the locked screen says the key is wrapped by the recovery phrase', async () => {
+      expect(
+        await screen.findByText(/fingerprint unlock was not available when it was created/i),
+      ).toBeInTheDocument();
+    });
+  });
 });
 
 afterAll(() => {

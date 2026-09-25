@@ -4,15 +4,37 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
+
+// fakeNotifier records every record it was told about, so a test can assert
+// the poller calls it once per stored record and never for a skipped tx.
+type fakeNotifier struct {
+	mu       sync.Mutex
+	notified []string // txid:payload
+}
+
+func (f *fakeNotifier) NotifyRecord(txid string, payload json.RawMessage) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.notified = append(f.notified, txid+":"+string(payload))
+	return nil
+}
+
+func (f *fakeNotifier) calls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.notified...)
+}
 
 func pushData(data []byte) []byte {
 	out := make([]byte, 0, len(data)+1)
@@ -140,6 +162,56 @@ func TestPollOnceIndexesRecordsAndSkipsSeenTx(t *testing.T) {
 	records, next = store.Since(0)
 	if len(records) != 2 || next != 2 {
 		t.Fatalf("second poll changed the index: records=%d next=%d", len(records), next)
+	}
+}
+
+func TestPollOnceNotifiesOncePerStoredRecord(t *testing.T) {
+	msg1 := buildRecordScript(1, []byte(`{"kind":"msg","to":"aaa"}`))
+	msg2 := buildRecordScript(1, []byte(`{"kind":"msg","to":"bbb"}`))
+	notRecord := []byte{0x76, 0xa9, 0x00, 0x88, 0xac}
+
+	fake := &fakeWOC{
+		history: `[{"tx_hash":"tx1","height":100},{"tx_hash":"tx2","height":101}]`,
+		txHex: map[string]string{
+			"tx1": buildRawTx([][]byte{msg1, notRecord}),
+			"tx2": buildRawTx([][]byte{msg2}),
+		},
+		hexFetches: map[string]int{},
+	}
+	server := httptest.NewServer(fake.handler())
+	defer server.Close()
+
+	client := woc.NewClient(server.URL, woc.WithMinSpacing(0), woc.WithSleep(func(time.Duration) {}))
+	store, err := index.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("index.Open: %v", err)
+	}
+	defer store.Close()
+
+	notifier := &fakeNotifier{}
+	p := New(client, store, "mAnchor", WithNotifier(notifier))
+
+	if err := p.PollOnce(); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+
+	calls := notifier.calls()
+	if len(calls) != 2 {
+		t.Fatalf("calls = %v, want 2 (one per stored record)", calls)
+	}
+	if calls[0] != `tx1:{"kind":"msg","to":"aaa"}` {
+		t.Fatalf("calls[0] = %q, want the tx1 record", calls[0])
+	}
+	if calls[1] != `tx2:{"kind":"msg","to":"bbb"}` {
+		t.Fatalf("calls[1] = %q, want the tx2 record", calls[1])
+	}
+
+	// A second poll must not re-notify: both txs are already seen.
+	if err := p.PollOnce(); err != nil {
+		t.Fatalf("second PollOnce: %v", err)
+	}
+	if len(notifier.calls()) != 2 {
+		t.Fatalf("calls after second poll = %v, want still 2", notifier.calls())
 	}
 }
 

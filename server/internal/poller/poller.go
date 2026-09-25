@@ -4,6 +4,7 @@
 package poller
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -15,6 +16,14 @@ import (
 // DefaultInterval is how often Run polls the anchor address.
 const DefaultInterval = 5 * time.Second
 
+// Notifier is told about every record the poller newly stores, so it can
+// push to any subscription addressed by that record's payload. A record
+// with no payload, or a payload NotifyRecord doesn't recognise as addressed,
+// is its business to ignore, not the poller's.
+type Notifier interface {
+	NotifyRecord(txid string, payload json.RawMessage) error
+}
+
 // Poller polls one anchor address via client and stores what it finds in
 // store.
 type Poller struct {
@@ -22,11 +31,24 @@ type Poller struct {
 	store    *index.Store
 	anchor   string
 	interval time.Duration
+	notifier Notifier
+}
+
+// Option configures a Poller constructed by New.
+type Option func(*Poller)
+
+// WithNotifier tells the Poller to notify n of every record it newly stores.
+func WithNotifier(n Notifier) Option {
+	return func(p *Poller) { p.notifier = n }
 }
 
 // New builds a Poller for anchor, using DefaultInterval between passes.
-func New(client *woc.Client, store *index.Store, anchor string) *Poller {
-	return &Poller{client: client, store: store, anchor: anchor, interval: DefaultInterval}
+func New(client *woc.Client, store *index.Store, anchor string, opts ...Option) *Poller {
+	p := &Poller{client: client, store: store, anchor: anchor, interval: DefaultInterval}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 // Run polls at p.interval until stop is closed.
@@ -95,6 +117,10 @@ func (p *Poller) processTx(txid string, height int) error {
 			Payload:   decoded.Payload,
 		}); err != nil {
 			return fmt.Errorf("storing record: %w", err)
+		}
+
+		if p.notifier != nil {
+			_ = p.notifier.NotifyRecord(txid, decoded.Payload) //nolint:errcheck // a push failure shouldn't block indexing; nothing to do with the error here but try again on the next matching record
 		}
 	}
 

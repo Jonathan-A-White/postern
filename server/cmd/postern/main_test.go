@@ -8,6 +8,7 @@ import (
 
 	"github.com/Jonathan-A-White/postern/server/internal/api"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
 
@@ -18,8 +19,12 @@ func TestHealthz(t *testing.T) {
 	}
 	defer store.Close()
 	client := woc.NewClient("http://unused.invalid")
+	pushStore, err := push.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("push.OpenStore: %v", err)
+	}
 
-	server := httptest.NewServer(api.NewHandler(store, client))
+	server := httptest.NewServer(api.NewHandler(store, client, "test-vapid-public-key", pushStore))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/healthz")

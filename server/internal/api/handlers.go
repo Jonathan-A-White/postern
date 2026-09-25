@@ -11,20 +11,35 @@ import (
 	"strconv"
 
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
+	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
-const maxBroadcastBodyBytes = 1 << 20 // 1 MiB, generous for a rawtx hex string
+// webpushSubscription mirrors the browser's PushSubscription.toJSON() shape,
+// the body POST /api/push/subscribe expects under "subscription".
+type webpushSubscription struct {
+	Endpoint string       `json:"endpoint"`
+	Keys     webpush.Keys `json:"keys"`
+}
+
+const (
+	maxBroadcastBodyBytes = 1 << 20 // 1 MiB, generous for a rawtx hex string
+	maxSubscribeBodyBytes = 1 << 16 // 64 KiB, generous for a PushSubscription
+)
 
 // NewHandler builds the full /api/* surface (plus /healthz) backed by store
-// and client.
-func NewHandler(store *index.Store, client *woc.Client) http.Handler {
+// and client. vapidPublicKey is handed to GET /api/push/vapid-public-key;
+// pushStore backs POST /api/push/subscribe.
+func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.HandleFunc("GET /api/messages", handleMessages(store))
 	mux.HandleFunc("POST /api/broadcast", handleBroadcast(client))
 	mux.HandleFunc("GET /api/utxos/{address}", handleUtxos(client))
 	mux.HandleFunc("GET /api/balance/{address}", handleBalance(client))
+	mux.HandleFunc("GET /api/push/vapid-public-key", handleVAPIDPublicKey(vapidPublicKey))
+	mux.HandleFunc("POST /api/push/subscribe", handlePushSubscribe(pushStore))
 	return mux
 }
 
@@ -115,6 +130,47 @@ func handleBalance(client *woc.Client) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, balance)
+	}
+}
+
+func handleVAPIDPublicKey(publicKey string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, struct {
+			PublicKey string `json:"publicKey"`
+		}{PublicKey: publicKey})
+	}
+}
+
+func handlePushSubscribe(store *push.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			PublicKeyHex string              `json:"pubkey"`
+			Subscription webpushSubscription `json:"subscription"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, maxSubscribeBodyBytes)).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		if req.PublicKeyHex == "" {
+			writeError(w, http.StatusBadRequest, "pubkey is required")
+			return
+		}
+		if req.Subscription.Endpoint == "" {
+			writeError(w, http.StatusBadRequest, "subscription.endpoint is required")
+			return
+		}
+
+		sub := push.Subscription{
+			PublicKeyHex: req.PublicKeyHex,
+			Endpoint:     req.Subscription.Endpoint,
+			Keys:         req.Subscription.Keys,
+		}
+		if err := store.Add(sub); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		writeJSON(w, http.StatusOK, struct{}{})
 	}
 }
 

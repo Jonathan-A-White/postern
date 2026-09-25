@@ -10,10 +10,17 @@ import (
 	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
 
 func newTestServer(t *testing.T, wocHandler http.HandlerFunc) (*httptest.Server, *index.Store) {
+	t.Helper()
+	server, store, _ := newTestServerWithPush(t, wocHandler)
+	return server, store
+}
+
+func newTestServerWithPush(t *testing.T, wocHandler http.HandlerFunc) (*httptest.Server, *index.Store, *push.Store) {
 	t.Helper()
 	wocServer := httptest.NewServer(wocHandler)
 	t.Cleanup(wocServer.Close)
@@ -25,10 +32,15 @@ func newTestServer(t *testing.T, wocHandler http.HandlerFunc) (*httptest.Server,
 	}
 	t.Cleanup(func() { store.Close() })
 
-	handler := NewHandler(store, client)
+	pushStore, err := push.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("push.OpenStore: %v", err)
+	}
+
+	handler := NewHandler(store, client, "test-vapid-public-key", pushStore)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-	return server, store
+	return server, store, pushStore
 }
 
 func TestHealthz(t *testing.T) {
@@ -245,6 +257,74 @@ func TestBalanceProxiesProvider(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&out)
 	if out.Confirmed != 100 || out.Unconfirmed != 5 {
 		t.Fatalf("balance = %+v", out)
+	}
+}
+
+func TestVAPIDPublicKeyReturnsConfiguredKey(t *testing.T) {
+	server, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	resp, err := http.Get(server.URL + "/api/push/vapid-public-key")
+	if err != nil {
+		t.Fatalf("GET /api/push/vapid-public-key: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var out struct {
+		PublicKey string `json:"publicKey"`
+	}
+	json.NewDecoder(resp.Body).Decode(&out)
+	if out.PublicKey != "test-vapid-public-key" {
+		t.Fatalf("publicKey = %q, want test-vapid-public-key", out.PublicKey)
+	}
+}
+
+func TestPushSubscribeStoresSubscription(t *testing.T) {
+	server, _, pushStore := newTestServerWithPush(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	body := `{"pubkey":"abc123","subscription":{"endpoint":"https://push.example/1","keys":{"p256dh":"p","auth":"a"}}}`
+	resp, err := http.Post(server.URL+"/api/push/subscribe", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /api/push/subscribe: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	subs := pushStore.ByPublicKey("abc123")
+	if len(subs) != 1 || subs[0].Endpoint != "https://push.example/1" {
+		t.Fatalf("subs = %+v, want one subscription for abc123", subs)
+	}
+}
+
+func TestPushSubscribeRejectsMissingPubkey(t *testing.T) {
+	server, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	body := `{"subscription":{"endpoint":"https://push.example/1","keys":{"p256dh":"p","auth":"a"}}}`
+	resp, err := http.Post(server.URL+"/api/push/subscribe", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /api/push/subscribe: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestPushSubscribeRejectsMissingEndpoint(t *testing.T) {
+	server, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	body := `{"pubkey":"abc123","subscription":{"keys":{"p256dh":"p","auth":"a"}}}`
+	resp, err := http.Post(server.URL+"/api/push/subscribe", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /api/push/subscribe: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
 }
 

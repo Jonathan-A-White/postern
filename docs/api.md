@@ -112,6 +112,65 @@ Proxies WhatsOnChain's balance for `address`.
   Both fields are satoshis.
 - `502` — the provider proxy failed; `error` carries what's known of why.
 
+## GET /api/push/vapid-public-key
+
+Returns this backend's VAPID public key, for the app to pass as
+`applicationServerKey` when it subscribes (`PushManager.subscribe`).
+
+- `200 application/json`:
+
+  ```json
+  { "publicKey": "<base64url>" }
+  ```
+
+## POST /api/push/subscribe
+
+Registers a browser's `PushSubscription` against a recipient public key, so a
+future record addressed to that key (its payload's `to`, `docs/protocol.md`)
+triggers a push to it.
+
+- Request body:
+
+  ```json
+  {
+    "pubkey": "<recipient compressed public key hex>",
+    "subscription": {
+      "endpoint": "https://...",
+      "keys": { "p256dh": "<base64url>", "auth": "<base64url>" }
+    }
+  }
+  ```
+
+- `200 application/json` — `{}` on success. Re-subscribing with the same
+  `endpoint` replaces the stored subscription (its `pubkey` and keys, if
+  either changed).
+- `400` — the body isn't valid JSON, or `pubkey`/`subscription.endpoint` is
+  missing.
+
+## The push notifier
+
+Wired into the poller (`server/internal/poller`): every record it newly
+stores is handed to a `push.Sender`, which parses the payload for `to` and
+`class` (`docs/protocol.md`) and, for each subscription registered against
+that `to`, sends a Web Push (RFC 8291/8292, via
+`github.com/SherClockHolmes/webpush-go`) whose body is:
+
+```json
+{ "class": "alarm", "txid": "3af1...", "ts": 1758700000 }
+```
+
+No plaintext ever leaves the backend in a push — the app decrypts the
+record's `ct` itself once it syncs. A record with no `to`/`class` (a License
+mint/transfer record, for instance) or a `to` no device has subscribed for is
+silently skipped. A push endpoint that answers `410 Gone` has its
+subscription dropped from the store.
+
+VAPID keys are generated once into `POSTERN_DATA/postern-vapid.json` the
+first time this backend runs, unless `POSTERN_VAPID_PUBLIC_KEY` and
+`POSTERN_VAPID_PRIVATE_KEY` are both set, in which case those are used
+instead and nothing is written to disk. Subscriptions are persisted in
+`POSTERN_DATA/postern-push-subscriptions.json`.
+
 ## Configuration (environment)
 
 | Variable | Meaning | Default |
@@ -120,7 +179,10 @@ Proxies WhatsOnChain's balance for `address`.
 | `POSTERN_NETWORK` | Network label (informational; doesn't affect request URLs) | `testnet` |
 | `POSTERN_ANCHOR` | The anchor address the poller watches | *(required, no default)* |
 | `POSTERN_WOC_BASE` | WhatsOnChain API base URL | `https://api.whatsonchain.com/v1/bsv/test` |
-| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`) | `./data` |
+| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`) and push state | `./data` |
+| `POSTERN_VAPID_PUBLIC_KEY` | VAPID public key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
+| `POSTERN_VAPID_PRIVATE_KEY` | VAPID private key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
+| `POSTERN_PUSH_SUBSCRIBER` | The VAPID contact (an https URL or `mailto:` email) sent to push services | `https://postern.allmymind.org` |
 
 ## The poller
 

@@ -14,7 +14,7 @@ import {
   unwrapKey,
 } from '../services/vault';
 import { fetchBalanceSatoshis, mintCostSatoshis, mintMyLicence } from '../services/mint';
-import { addressForPublicKey } from '../services/licence';
+import { addressForPublicKey, getCachedLicenceStatus } from '../services/licence';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
 
@@ -30,6 +30,17 @@ type BalanceState =
   | { name: 'loading' }
   | { name: 'loaded'; satoshis: number }
   | { name: 'error'; message: string };
+
+type LicenceState = { name: 'checking' } | { name: 'not-licensed' } | { name: 'licensed'; txid: string };
+
+// Pure: reads the cached licence-status settings row the gate's own checks keep up to
+// date (src/services/licence.ts), so opening the key screen never has to touch the
+// chain itself. Called as `void determineLicenceState().then(setLicenceState)` so the
+// setter is applied at the call site (see the balance effect for the same pattern).
+async function determineLicenceState(): Promise<LicenceState> {
+  const cached = await getCachedLicenceStatus();
+  return cached?.held ? { name: 'licensed', txid: cached.outpoint.txid } : { name: 'not-licensed' };
+}
 
 type Screen =
   | { name: 'loading' }
@@ -133,6 +144,7 @@ export function KeyVault() {
   const [balanceState, setBalanceState] = useState<BalanceState>({ name: 'loading' });
   const [balanceRefreshToken, setBalanceRefreshToken] = useState(0);
   const [mintOutcome, setMintOutcome] = useState<MintOutcome>({ name: 'idle' });
+  const [licenceState, setLicenceState] = useState<LicenceState>({ name: 'checking' });
 
   useEffect(() => {
     void vaultRepo.get().then((vault) => {
@@ -147,6 +159,11 @@ export function KeyVault() {
       .then((satoshis) => setBalanceState({ name: 'loaded', satoshis }))
       .catch((err) => setBalanceState({ name: 'error', message: (err as Error).message }));
   }, [screen, balanceRefreshToken]);
+
+  useEffect(() => {
+    if (screen.name !== 'unlocked') return;
+    void determineLicenceState().then(setLicenceState);
+  }, [screen]);
 
   function handleRefreshBalance() {
     setBalanceState({ name: 'loading' });
@@ -388,7 +405,7 @@ export function KeyVault() {
           {balanceState.name === 'loaded' && (
             <>
               <p>Balance: {balanceState.satoshis} sats</p>
-              {balanceState.satoshis < mintCostSatoshis() && (
+              {licenceState.name !== 'licensed' && balanceState.satoshis < mintCostSatoshis() && (
                 <p>
                   Needs {mintCostSatoshis().toLocaleString('en-US')} testnet sats; this key holds{' '}
                   {balanceState.satoshis}. Send testnet sats to{' '}
@@ -410,17 +427,29 @@ export function KeyVault() {
             </>
           )}
 
-          <button
-            className="rounded bg-slate-700 px-4 py-2 disabled:opacity-50"
-            disabled={
-              balanceState.name !== 'loaded' ||
-              balanceState.satoshis < mintCostSatoshis() ||
-              mintOutcome.name === 'minting'
-            }
-            onClick={() => void handleMint(screen.key)}
-          >
-            Mint my licence (testnet)
-          </button>
+          {licenceState.name === 'licensed' ? (
+            <>
+              <p>Licensed</p>
+              <p>
+                Minted:{' '}
+                <a className="underline" href={`${WHATSONCHAIN_TESTNET_TX_URL}${licenceState.txid}`}>
+                  {licenceState.txid}
+                </a>
+              </p>
+            </>
+          ) : (
+            <button
+              className="rounded bg-slate-700 px-4 py-2 disabled:opacity-50"
+              disabled={
+                balanceState.name !== 'loaded' ||
+                balanceState.satoshis < mintCostSatoshis() ||
+                mintOutcome.name === 'minting'
+              }
+              onClick={() => void handleMint(screen.key)}
+            >
+              Mint my licence (testnet)
+            </button>
+          )}
 
           {mintOutcome.name === 'success' && (
             <p>

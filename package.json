@@ -21,7 +21,8 @@
     "dexie": "^4.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "spell-forge-bsv": "https://github.com/Jonathan-A-White/spell-forge/releases/download/bsv-v0.1.0/spell-forge-bsv-0.1.0.tgz"
+    "spell-forge-bsv": "https://github.com/Jonathan-A-White/spell-forge/releases/download/bsv-v0.1.0/spell-forge-bsv-0.1.0.tgz",
+    "workbox-precaching": "7.4.1"
   },
   "devDependencies": {
     "@amiceli/vitest-cucumber": "7.0.0",

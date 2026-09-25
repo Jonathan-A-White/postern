@@ -22,6 +22,7 @@ import {
 } from '../../src/services/vault';
 import { decryptMessage, encryptMessage, setMayorPublicKey, type MessageClass, type MessagePayload } from '../../src/services/messages';
 import { installMockAuthenticator, removeMockAuthenticator } from '../../tests/support/webauthn-mock';
+import { lock } from '../../src/services/keySession';
 
 const MAYOR_KEY = PrivateKey.fromHex('11'.repeat(32));
 const SENDER_KEY = PrivateKey.fromHex('22'.repeat(32));
@@ -33,6 +34,7 @@ async function freshCompose(): Promise<void> {
   await db.vault.clear();
   await db.settings.clear();
   await db.messages.clear();
+  lock();
   vi.unstubAllGlobals();
 }
 
@@ -106,6 +108,10 @@ async function privateKeyHexFromMnemonic(mnemonic: string): Promise<string> {
 async function unlockInbox(mnemonic: string): Promise<void> {
   await userEvent.type(await screen.findByLabelText('Recovery phrase'), mnemonic);
   await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+  // Waits for the unlock's async tail (setKey included) to fully settle before
+  // the step returns — otherwise it can still be in flight when the next
+  // scenario's freshCompose() calls lock(), leaking this key into it.
+  await screen.findByRole('button', { name: 'Lock' });
 }
 
 /** Saves a real phrase-wrapped vault (genuine wrapping, unlockable through the UI

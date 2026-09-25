@@ -24,6 +24,7 @@ import {
 } from '../../src/services/vault';
 import { encryptMessage } from '../../src/services/messages';
 import type { QuestionBody } from '../../src/services/questions';
+import { lock } from '../../src/services/keySession';
 
 const SENDER_KEY = PrivateKey.fromHex('44'.repeat(32));
 const MESSAGE_TEXT = 'meet at the usual place';
@@ -61,6 +62,7 @@ async function freshScreen(): Promise<void> {
   await db.vault.clear();
   await db.settings.clear();
   await db.messages.clear();
+  lock();
   vi.unstubAllGlobals();
 }
 

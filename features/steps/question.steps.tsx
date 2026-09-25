@@ -22,6 +22,7 @@ import {
 } from '../../src/services/vault';
 import { decryptMessage, encryptMessage, setMayorPublicKey, type MessagePayload } from '../../src/services/messages';
 import { encodeQuestion, type Snapshot } from '../../src/services/questions';
+import { lock } from '../../src/services/keySession';
 
 const MAYOR_KEY = PrivateKey.fromHex('77'.repeat(32));
 
@@ -51,6 +52,7 @@ async function freshScreen(): Promise<void> {
   await db.messages.clear();
   await db.snapshot.clear();
   await db.answers.clear();
+  lock();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
 }
@@ -160,6 +162,10 @@ function decodedReplyFromBroadcast(fetchMock: ReturnType<typeof installCombinedF
 async function unlockScreen(mnemonic: string): Promise<void> {
   await userEvent.type(await screen.findByLabelText('Recovery phrase'), mnemonic);
   await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+  // Waits for the unlock's async tail (setKey included) to fully settle before
+  // the step returns — otherwise it can still be in flight when the next
+  // scenario's freshScreen() calls lock(), leaking this key into it.
+  await screen.findByRole('button', { name: 'Lock' });
 }
 
 function assertQuestionScreenVisible(): void {
@@ -260,7 +266,7 @@ describeFeature(feature, ({ Scenario }) => {
         cleanup();
         window.history.pushState({}, '', `?screen=project&epic=${EPIC_ID}`);
         render(<App />);
-        await unlockScreen(mnemonic);
+        // mw-tfne4.23: the key unlocked on the inbox carries over, no second prompt.
         await screen.findByText('The epic');
         expect(screen.queryByTestId('needs-you-row')).not.toBeInTheDocument();
         expect(screen.getByText('Nothing needs you.')).toBeInTheDocument();
@@ -320,7 +326,7 @@ describeFeature(feature, ({ Scenario }) => {
       cleanup();
       window.history.pushState({}, '', `?screen=project&epic=${EPIC_ID}`);
       render(<App />);
-      await unlockScreen(mnemonic);
+      // mw-tfne4.23: the key unlocked on the inbox carries over, no second prompt.
       await screen.findByText('The epic');
       expect(screen.queryByTestId('needs-you-row')).not.toBeInTheDocument();
       expect(screen.getByText('Nothing needs you.')).toBeInTheDocument();
@@ -380,7 +386,8 @@ describeFeature(feature, ({ Scenario }) => {
       cleanup();
       window.history.pushState({}, '', href);
       render(<App />);
-      await unlockScreen(mnemonic);
+      // mw-tfne4.23: the key unlocked on the Project screen carries over, so the
+      // bead screen needs no second fingerprint/phrase prompt within the session.
     });
 
     Then(

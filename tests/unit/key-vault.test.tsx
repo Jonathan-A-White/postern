@@ -7,6 +7,7 @@ import { KeyVault } from '../../src/key';
 import { addressForPublicKey, checkLicence } from '../../src/services/licence';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { installMockAuthenticator, removeMockAuthenticator } from '../support/webauthn-mock';
+import { lock } from '../../src/services/keySession';
 import { FakeChainProvider } from '../support/fake-chain-provider';
 import { mintRecordTxHex } from '../support/nftgate-fixtures';
 
@@ -28,6 +29,7 @@ describe('KeyVault', () => {
     fakeProvider = new FakeChainProvider();
     await db.vault.clear();
     await db.settings.clear();
+    lock();
   });
 
   afterEach(() => {
@@ -114,6 +116,7 @@ describe('KeyVault', () => {
     await user.click(screen.getByRole('button', { name: "I've written it down" }));
     await screen.findByText('Key unlocked');
     unmount();
+    lock();
 
     render(<KeyVault />);
     expect(await screen.findByText('The key is locked.')).toBeInTheDocument();
@@ -196,6 +199,7 @@ describe('KeyVault', () => {
     await user.click(screen.getByRole('button', { name: "I've written it down" }));
     await screen.findByText('Key unlocked');
     unmount();
+    lock();
 
     render(<KeyVault />);
     await user.type(await screen.findByLabelText('Recovery phrase'), mnemonic);

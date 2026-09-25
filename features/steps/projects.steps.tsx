@@ -22,6 +22,7 @@ import {
 } from '../../src/services/vault';
 import type { Snapshot } from '../../src/services/questions';
 import { installMockAuthenticator, removeMockAuthenticator } from '../../tests/support/webauthn-mock';
+import { lock } from '../../src/services/keySession';
 
 const MAYOR_KEY = PrivateKey.fromHex('66'.repeat(32));
 
@@ -32,6 +33,7 @@ async function freshScreen(): Promise<void> {
   await db.settings.clear();
   await db.messages.clear();
   await db.snapshot.clear();
+  lock();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
 }
@@ -315,7 +317,7 @@ describeFeature(feature, ({ Scenario }) => {
       cleanup();
       vi.stubGlobal('fetch', unreachableFetchMock());
       render(<ProjectsScreen />);
-      await unlockScreen(mnemonic);
+      // mw-tfne4.23: the key unlocked moments ago is still cached, no second prompt.
     });
 
     Then('the cached snapshot is shown with "Offline, as of" and its age', async () => {
@@ -371,7 +373,7 @@ describeFeature(feature, ({ Scenario }) => {
       cleanup();
       window.history.pushState({}, '', href);
       render(<App />);
-      await unlockScreen(mnemonic);
+      // mw-tfne4.23: the key unlocked on the Project screen carries over, no second prompt.
     });
 
     Then('the bead screen shows the question\'s title, "Needs you", its recommended answer and its options', async () => {

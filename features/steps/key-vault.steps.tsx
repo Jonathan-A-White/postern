@@ -13,6 +13,7 @@ import { KeyVault } from '../../src/key';
 import { db } from '../../src/data/db';
 import { vaultRepo } from '../../src/data/repositories';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
+import { lock } from '../../src/services/keySession';
 import { installMockAuthenticator, removeMockAuthenticator } from '../../tests/support/webauthn-mock';
 
 function toHex(bytes: Uint8Array): string {
@@ -25,6 +26,7 @@ async function freshScreen() {
   cleanup();
   removeMockAuthenticator();
   await db.vault.clear();
+  lock();
 }
 
 const feature = await loadFeature('features/key-vault.feature');
@@ -142,6 +144,7 @@ describeFeature(feature, ({ Scenario }) => {
         await screen.findByText('Key unlocked');
         unmount();
         cleanup();
+        lock();
         render(<KeyVault />);
         await screen.findByRole('button', { name: 'Unlock' });
       });
@@ -195,6 +198,7 @@ describeFeature(feature, ({ Scenario }) => {
 
     When('the key screen is reopened', async () => {
       cleanup();
+      lock();
       render(<KeyVault />);
     });
 
@@ -259,6 +263,7 @@ describeFeature(feature, ({ Scenario }) => {
       await screen.findByText('Key unlocked');
       unmount();
       cleanup();
+      lock();
       render(<KeyVault />);
       await screen.findByRole('button', { name: 'Unlock' });
     });
@@ -298,6 +303,7 @@ describeFeature(feature, ({ Scenario }) => {
 
     And('the locked screen on reopening names the same case', async () => {
       cleanup();
+      lock();
       render(<KeyVault />);
       expect(
         await screen.findByText(/fingerprint unlock is not available on this phone or browser/i),
@@ -330,6 +336,7 @@ describeFeature(feature, ({ Scenario }) => {
 
     And('the locked screen on reopening names the same case', async () => {
       cleanup();
+      lock();
       render(<KeyVault />);
       expect(
         await screen.findByText(/the passkey was created but reports no PRF support/i),
@@ -364,6 +371,7 @@ describeFeature(feature, ({ Scenario }) => {
 
       And('the locked screen on reopening names the same case', async () => {
         cleanup();
+        lock();
         render(<KeyVault />);
         expect(
           await screen.findByText(/the passkey did not return a usable fingerprint secret/i),
@@ -392,6 +400,7 @@ describeFeature(feature, ({ Scenario }) => {
 
     And('the key screen is reopened', () => {
       cleanup();
+      lock();
       render(<KeyVault />);
     });
 

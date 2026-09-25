@@ -20,6 +20,7 @@ import { db } from '../../src/data/db';
 import { addressForPublicKey, checkLicence, getCachedLicenceStatus } from '../../src/services/licence';
 import { mintCostSatoshis } from '../../src/services/mint';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
+import { lock } from '../../src/services/keySession';
 import { FakeChainProvider } from '../../tests/support/fake-chain-provider';
 import { mintRecordTxHex } from '../../tests/support/nftgate-fixtures';
 
@@ -45,6 +46,7 @@ async function freshScreen(): Promise<void> {
   cleanup();
   await db.vault.clear();
   await db.settings.clear();
+  lock();
   fakeProvider = new FakeChainProvider();
   buildContractMintTransactionMock.mockReset();
   buildContractMintTransactionMock.mockResolvedValue({ hex: 'deadbeef' });
@@ -66,6 +68,7 @@ describeFeature(feature, ({ Scenario }) => {
 
     When('the key screen is reopened', () => {
       cleanup();
+      lock();
       render(<KeyVault />);
     });
 

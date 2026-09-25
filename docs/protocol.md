@@ -141,3 +141,142 @@ implementation (`mw-1589l.11`) — must decrypt these to the stated plaintext.
 Both vectors were generated directly against `@bsv/sdk` 2.2.0's `EncryptedMessage.encrypt`
 (fixed, deterministic sender/recipient private keys), then round-tripped through
 `EncryptedMessage.decrypt` to confirm correctness before being recorded here.
+
+## 6. Questions and replies
+
+The envelope from §1 is unchanged for a question or a reply — same `{v, kind, class,
+to, from, ts, ct}` payload, same BRC-78 encryption. What differs is the shape of the
+decrypted plaintext `ct` wraps, for two of the four classes (decided on `mw-f758y.2`):
+
+- **A question** — `class: "decision-needed"`. The decrypted plaintext MAY be UTF-8
+  JSON:
+
+  ```json
+  { "bead": "mw-xyz12.3", "q": "<the question>", "rec": "<recommended option label>", "options": ["<label>", "<label>", "..."] }
+  ```
+
+  - `bead` — the bead id the reply becomes a comment on (`mw-f758y.2`'s "How it
+    becomes his word on a bead").
+  - `q` — the question text; the app's Play control reads it aloud.
+  - `rec` — the Mayor's recommended option, one of `options`.
+  - `options` — the short labels the app renders as buttons.
+
+- **A reply** — `class: "message"`, same as any other message. The decrypted
+  plaintext MAY be UTF-8 JSON:
+
+  ```json
+  { "bead": "mw-xyz12.3", "answer": "<option label, or free text>" }
+  ```
+
+  - `bead` — names which question this answers.
+  - `answer` — one of the question's `options` labels (a tap) or free text (typed
+    or dictated).
+
+A decrypted plaintext that does not parse as a JSON object with a string `bead`
+field is plain text, exactly as today — an old message, or any `message` /
+`landing` / `alarm` payload that was never structured, is shown as-is rather than
+as a question or a reply. `src/services/questions.ts`'s `isStructured` makes that
+check; `decodeQuestion` and `decodeReply` return `undefined` for anything that
+fails it.
+
+### Question and reply vectors
+
+Both built with the same two fixed private keys as §5's vectors — no new keys
+introduced. `tests/unit/questions.test.ts` decrypts each with `decryptMessage`
+(§2) and decodes the result with `decodeQuestion` / `decodeReply`.
+
+**Question vector** — recipient private key (hex):
+`0000000000000000000000000000000000000000000000000000000000000fa4`
+
+```json
+{
+  "v": 1,
+  "kind": "msg",
+  "class": "decision-needed",
+  "to": "02874de6497645f144d1b63414c7b4310105089b0b4c6b6fb6e7da41125e90b471",
+  "from": "029cbf013d04ca50ba852816c2802b06ca5ed37b44be9597fc0f95360e209afa97",
+  "ts": 1758700800,
+  "ct": "QkIQMwKcvwE9BMpQuoUoFsKAKwbKXtN7RL6Vl/wPlTYOIJr6lwKHTeZJdkXxRNG2NBTHtDEBBQibC0xrb7bn2kESXpC0cfUTYJju0iaS49EXvwfnOFzmhXmTg2rkY/fKFZoWPWIsnOlK+qTGT8mzFDsasyjArVmGLaN6keDBmn8ZIfxI188ceMVf3fH5lYyAHkijb5uR4kicdu5LSostB3XRPNRG/mHRhKgdfYFLR1jaUI0YhyQpegvb7HHEt1BJMypStI6QVsDa2beMuIwLtbqxPe3cPlQjPSx0xOyX+G2I35GTn4ed4yjqKBIFnlu6U1I8T6gGRi3eB8z2Idocga1v6yKsMSra77q67aRH"
+}
+```
+
+Expected decrypted plaintext:
+`{"bead":"mw-xyz12.3","q":"Ship the walking skeleton now, or wait for WireGuard?","rec":"ship","options":["ship","wait"]}`
+
+**Reply vector** — recipient private key (hex):
+`00000000000000000000000000000000000000000000000000000000000007d2`
+
+```json
+{
+  "v": 1,
+  "kind": "msg",
+  "class": "message",
+  "to": "029cbf013d04ca50ba852816c2802b06ca5ed37b44be9597fc0f95360e209afa97",
+  "from": "02874de6497645f144d1b63414c7b4310105089b0b4c6b6fb6e7da41125e90b471",
+  "ts": 1758700900,
+  "ct": "QkIQMwKHTeZJdkXxRNG2NBTHtDEBBQibC0xrb7bn2kESXpC0cQKcvwE9BMpQuoUoFsKAKwbKXtN7RL6Vl/wPlTYOIJr6l9PDCCGbY3BqZlHrHfCoyORKwY0btt9/QgpmhChCxOi8NqdursM7raS+G938sW5LkBrVg9m8QRX5z+9ZljftaweMkdRKiRB1jaZ9zmbcHnFJZfg5ZzC3ZE+R9NB/5nJ7bfEJFoOo4vQgtg6kcFS/maO/8nS4Bw=="
+}
+```
+
+Expected decrypted plaintext: `{"bead":"mw-xyz12.3","answer":"ship"}`
+
+## 7. The snapshot
+
+Decided on `mw-f758y.2` ("Where the data comes from", Q1 "A"): rather than a chain
+reader or a daemon on the app's side, each notifier tick on the VPS
+(`contrib/mail-notify`, inside its lock) writes one snapshot of every live epic and
+open question, encrypted to the Governor's own public key with the same BRC-78
+envelope §2 describes (`mw postern snapshot` writes it; the tick calls it), and
+served by nginx beside `/api` at `https://postern.allmymind.org/snapshot`. The app
+fetches it on open and on pull-to-refresh, decrypts it with the unlocked key, and
+keeps the last good copy in Dexie for offline use.
+
+The response is the raw BRC-78 ciphertext bytes, base64-encoded as the response
+body text (not wrapped in the `{v, kind, class, to, from, ts, ct}` envelope — there
+is exactly one recipient and one purpose, so the envelope's fields carry nothing
+the client doesn't already know), with `Cache-Control: no-store` so a stale copy is
+never served from an intermediate cache:
+
+```
+ct = base64(EncryptedMessage.encrypt(utf8Bytes(JSON.stringify(snapshot)), mayorPrivateKey, governorPublicKey))
+```
+
+`src/services/questions.ts`'s `decodeSnapshot(plaintext)` parses the decrypted
+`JSON.stringify(snapshot)` text back into the typed shape below.
+
+### Snapshot contract
+
+The decrypted plaintext is this JSON shape exactly (Mayor's reading of
+`mw-f758y.2`, provisional — the Governor to confirm against the epic tree):
+
+```json
+{
+  "written_at": "<ISO-8601 timestamp>",
+  "epics": [
+    {
+      "id": "<bead id>",
+      "title": "<epic title>",
+      "priority": "<P0..P3>",
+      "status": "<epic status>",
+      "needs_you": [
+        { "id": "<bead id>", "title": "<title>", "asked_at": "<ISO-8601>", "recommended": "<option label>", "options": ["<label>", "..."] }
+      ],
+      "landed": [
+        { "id": "<bead id>", "title": "<title>", "landed_at": "<ISO-8601>" }
+      ],
+      "working": [
+        { "id": "<bead id>", "title": "<title>", "status": "<status>", "priority": "<P0..P3>", "updated_at": "<ISO-8601>", "waits": ["<bead id>", "..."] }
+      ],
+      "closed_count": 0
+    }
+  ]
+}
+```
+
+- `needs_you` — decision-needed questions still open: a question appears here from
+  the send of its `decision-needed` message until a reply naming its bead is on
+  the bead (`mw-f758y.2`'s "How it becomes his word on a bead").
+- `landed` — landings not yet verified.
+- `working` — in-progress stories, then the frontier by priority; `waits` names
+  the bead ids it waits on.
+- `closed_count` — everything else, collapsed to a count.

@@ -14,6 +14,7 @@
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:live": "playwright test --config=playwright.live.config.ts",
     "shots": "playwright test --project=shots",
+    "shots:publish": "node scripts/publish-shots.mjs",
     "typecheck": "tsc -b --noEmit",
     "fixture": "tsx scripts/generate-fixture.ts"
   },

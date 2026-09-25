@@ -24,3 +24,8 @@ Feature: The Projects and Project screens
     And the Project screen is opened and unlocked
     When the question's row is tapped
     Then the bead screen shows the question's title, "Needs you", its recommended answer and its options
+
+  Scenario: AC-5: a non-snapshot body at /snapshot shows a friendly message, not a decoder error
+    Given the backend answers /snapshot with the SPA's index.html instead of a snapshot
+    When the Projects screen is opened and unlocked
+    Then the Projects screen shows "No snapshot published yet" and no decoder error

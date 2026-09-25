@@ -112,4 +112,50 @@ describe('fetchSnapshot', () => {
     expect(result.offline).toBe(true);
     expect(result.snapshot).toEqual(SAMPLE_SNAPSHOT);
   });
+
+  it('rejects with a friendly message, not the decoder error, when the body is the SPA index.html', async () => {
+    const indexHtml =
+      '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="UTF-8" />\n<title>Postern</title>\n</head>\n<body>\n<div id="root"></div>\n</body>\n</html>\n';
+
+    await expect(
+      fetchSnapshot({
+        unlockedKeyHex: RECIPIENT.toHex(),
+        fetchImpl: fetchReturning(200, indexHtml),
+      }),
+    ).rejects.toThrow('No snapshot published yet.');
+  });
+
+  it('rejects with a friendly message when the body is empty', async () => {
+    await expect(
+      fetchSnapshot({
+        unlockedKeyHex: RECIPIENT.toHex(),
+        fetchImpl: fetchReturning(200, ''),
+      }),
+    ).rejects.toThrow('No snapshot published yet.');
+  });
+
+  it('falls back to the cached copy with the friendly message when a later fetch returns index.html', async () => {
+    await fetchSnapshot({
+      unlockedKeyHex: RECIPIENT.toHex(),
+      fetchImpl: fetchReturning(200, encryptSnapshot(SAMPLE_SNAPSHOT)),
+    });
+
+    const result = await fetchSnapshot({
+      unlockedKeyHex: RECIPIENT.toHex(),
+      fetchImpl: fetchReturning(200, '<!doctype html><html><body>Not found</body></html>'),
+    });
+
+    expect(result.offline).toBe(true);
+    expect(result.error).toBe('No snapshot published yet.');
+    expect(result.snapshot).toEqual(SAMPLE_SNAPSHOT);
+  });
+
+  it('rethrows a 404 status message when there is no cached copy', async () => {
+    await expect(
+      fetchSnapshot({
+        unlockedKeyHex: RECIPIENT.toHex(),
+        fetchImpl: fetchReturning(404, 'not found'),
+      }),
+    ).rejects.toThrow('Could not fetch the snapshot (404).');
+  });
 });

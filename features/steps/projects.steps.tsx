@@ -72,6 +72,16 @@ function unreachableFetchMock() {
   });
 }
 
+function indexHtmlFetchMock() {
+  const indexHtml =
+    '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="UTF-8" />\n<title>Postern</title>\n</head>\n<body>\n<div id="root"></div>\n</body>\n</html>\n';
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (!url.endsWith('/snapshot')) throw new Error(`unexpected fetch: ${url}`);
+    return new Response(indexHtml, { status: 200, headers: { 'Content-Type': 'text/html' } });
+  });
+}
+
 async function unlockScreen(mnemonic: string): Promise<void> {
   await userEvent.type(await screen.findByLabelText('Recovery phrase'), mnemonic);
   await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
@@ -353,6 +363,27 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await screen.findByTestId('option-ship')).toBeInTheDocument();
       expect(screen.getByTestId('option-wait')).toBeInTheDocument();
       expect(screen.getByText('Recommended: ship')).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-5: a non-snapshot body at /snapshot shows a friendly message, not a decoder error', ({ Given, When, Then }) => {
+    let mnemonic: string;
+
+    Given("the backend answers /snapshot with the SPA's index.html instead of a snapshot", async () => {
+      await freshScreen();
+      const him = await saveVaultForHim();
+      mnemonic = him.mnemonic;
+      vi.stubGlobal('fetch', indexHtmlFetchMock());
+    });
+
+    When('the Projects screen is opened and unlocked', async () => {
+      render(<ProjectsScreen />);
+      await unlockScreen(mnemonic);
+    });
+
+    Then('the Projects screen shows "No snapshot published yet" and no decoder error', async () => {
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toBe('No snapshot published yet.');
     });
   });
 });

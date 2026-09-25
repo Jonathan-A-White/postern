@@ -38,7 +38,15 @@ Returns every indexed record after sequence number `since`, oldest first.
         "scriptHex": "006a076e667467617465010127...",
         "height": 0,
         "firstSeen": "2026-09-24T12:00:03.512Z",
-        "payload": { "kind": "msg", "ciphertext": "base64...", "ts": "2026-09-24T12:00:00.000Z" }
+        "payload": {
+          "v": 1,
+          "kind": "msg",
+          "class": "message",
+          "to": "029cbf013d04ca50ba852816c2802b06ca5ed37b44be9597fc0f95360e209afa97",
+          "from": "039d1abaec9f5715a15c7628244170951e0f85e87f68ca5393d3f9fc3fa23a69c8",
+          "ts": 1758700000,
+          "ct": "QkIQMwOdGrrsn1cVoVx2KCRBcJUeD4Xof2jKU5PT+fw/ojppyAKcvwE9BMpQuoUoFsKAKwbKXtN7RL6Vl/wPlTYOIJr6ly29yXkTykfSVSTrUVnERI/lCUsFLuvVhgyN79hFczet0W67HhaxJRMUSM/BXPUDPdFB/gQbllS0XYOgVPldzejkyjylJbipQqP4YgfBX9ZMXE8wgY4FS6wVF6bMvLwC4WA0bupV8apiP8jK9Q=="
+        }
       }
     ],
     "next": 2
@@ -53,8 +61,10 @@ Returns every indexed record after sequence number `since`, oldest first.
   - `payload` — the record's version-1 payload, re-parsed as JSON, if the
     record was version 1 and its payload parsed as JSON. Omitted for any other
     record (a different version, or a version-1 payload that didn't parse).
-    The backend never decrypts a `ciphertext` field or any other content
-    inside `payload` — it's stored and returned exactly as found on chain.
+    The backend never decrypts a `ct` field or any other content inside
+    `payload` — it's stored and returned exactly as found on chain. Its shape
+    is `docs/protocol.md` §1's envelope, the source of truth for the
+    payload's fields (the example above is that section's Vector 1, §5).
   - `next` — the current index head sequence number. Pass this back as
     `since` on the next call to page forward; when `next` stops advancing,
     the client has caught up.

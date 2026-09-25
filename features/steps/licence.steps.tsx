@@ -339,6 +339,62 @@ describeFeature(feature, ({ Scenario }) => {
       expect(screen.getByRole('button', { name: 'Refresh balance' })).toBeInTheDocument();
     });
   });
+
+  Scenario('mw-1589l.26 AC1: the mint block offers a collapsed "What is a licence?" explanation', ({ Given, When, Then }) => {
+    Given('the key screen is opened', async () => {
+      await freshScreen();
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Generate a new key' });
+    });
+
+    When('a new key is generated and the phrase is confirmed', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Generate a new key' }));
+      await screen.findAllByTestId('mnemonic-word');
+      await userEvent.click(screen.getByRole('button', { name: "I've written it down" }));
+      await screen.findByText('Key unlocked');
+    });
+
+    Then('a "What is a licence?" control is offered, collapsed', async () => {
+      const details = (await screen.findByText('What is a licence?')).closest('details') as HTMLDetailsElement;
+      expect(details.open).toBe(false);
+    });
+
+    When('"What is a licence?" is opened', async () => {
+      await userEvent.click(screen.getByText('What is a licence?'));
+    });
+
+    Then('the explanation names the licence, the key and the mint cost from the code', () => {
+      expect(screen.getByText(/proof of who you are to your Mayor/)).toBeInTheDocument();
+      expect(screen.getByText(/unlocked by your fingerprint and backed up as/)).toBeInTheDocument();
+      expect(
+        screen.getByText(`${mintCostSatoshis().toLocaleString('en-US')} testnet sats today`, { exact: false }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-1589l.26 AC3: a licensed key shows no mint block and no explanation control', ({ Given, When, Then }) => {
+    Given('a key already holds a licence', async () => {
+      await freshScreen();
+      const key = await deriveMasterKey(FUNDED_MNEMONIC);
+      const publicKeyHex = publicKeyHexFromMasterKey(key);
+      const address = addressForPublicKey(publicKeyHex);
+      fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(chainConfig.collectionId, address));
+      await checkLicence(publicKeyHex, fakeProvider);
+    });
+
+    When('the key screen is opened and unlocked', async () => {
+      render(<KeyVault />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
+      await userEvent.type(screen.getByLabelText('Recovery phrase'), FUNDED_MNEMONIC);
+      await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      await screen.findByText('Key unlocked');
+    });
+
+    Then('no "What is a licence?" control is offered', async () => {
+      await screen.findByText('Licensed');
+      expect(screen.queryByText('What is a licence?')).not.toBeInTheDocument();
+    });
+  });
 });
 
 afterAll(() => {

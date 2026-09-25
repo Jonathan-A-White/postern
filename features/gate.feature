@@ -51,3 +51,10 @@ Feature: The gate
     When the app is opened
     Then the screen shows "Your licence mint is broadcast; the chain can take a minute to show it"
     And the screen does not show "No licence found"
+
+  Scenario: mw-1589l.26 AC1: the no-licence state offers a collapsed "What is a licence?" explanation
+    Given a key exists with no licence on chain
+    When the app is opened
+    Then a "What is a licence?" control is offered, collapsed
+    When "What is a licence?" is opened
+    Then the explanation names the licence, the key and the mint cost from the code

@@ -60,3 +60,15 @@ Feature: Minting a licence
     When the key screen is opened and unlocked
     Then the screen says "Licensed" instead of asking to fund or mint
     And the balance and "Refresh balance" are still shown
+
+  Scenario: mw-1589l.26 AC1: the mint block offers a collapsed "What is a licence?" explanation
+    Given the key screen is opened
+    When a new key is generated and the phrase is confirmed
+    Then a "What is a licence?" control is offered, collapsed
+    When "What is a licence?" is opened
+    Then the explanation names the licence, the key and the mint cost from the code
+
+  Scenario: mw-1589l.26 AC3: a licensed key shows no mint block and no explanation control
+    Given a key already holds a licence
+    When the key screen is opened and unlocked
+    Then no "What is a licence?" control is offered

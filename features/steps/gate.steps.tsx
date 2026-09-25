@@ -23,6 +23,7 @@ import { Gate } from '../../src/gate';
 import { db } from '../../src/data/db';
 import { vaultRepo } from '../../src/data/repositories';
 import { setMintPending } from '../../src/services/licence';
+import { mintCostSatoshis } from '../../src/services/mint';
 import { FakeChainProvider } from '../../tests/support/fake-chain-provider';
 import { mintRecordTxHex } from '../../tests/support/nftgate-fixtures';
 
@@ -245,6 +246,34 @@ describeFeature(feature, ({ Scenario }) => {
 
     And('the screen does not show "No licence found"', () => {
       expect(screen.queryByText('No licence found')).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-1589l.26 AC1: the no-licence state offers a collapsed "What is a licence?" explanation', ({ Given, When, Then }) => {
+    Given('a key exists with no licence on chain', async () => {
+      await freshGate();
+      await saveTestVault();
+    });
+
+    When('the app is opened', () => {
+      render(<Gate />);
+    });
+
+    Then('a "What is a licence?" control is offered, collapsed', async () => {
+      const details = (await screen.findByText('What is a licence?')).closest('details') as HTMLDetailsElement;
+      expect(details.open).toBe(false);
+    });
+
+    When('"What is a licence?" is opened', async () => {
+      await userEvent.click(screen.getByText('What is a licence?'));
+    });
+
+    Then('the explanation names the licence, the key and the mint cost from the code', () => {
+      expect(screen.getByText(/proof of who you are to your Mayor/)).toBeInTheDocument();
+      expect(screen.getByText(/unlocked by your fingerprint and backed up as/)).toBeInTheDocument();
+      expect(
+        screen.getByText(`${mintCostSatoshis().toLocaleString('en-US')} testnet sats today`, { exact: false }),
+      ).toBeInTheDocument();
     });
   });
 });

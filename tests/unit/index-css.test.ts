@@ -13,4 +13,15 @@ describe('src/index.css', () => {
     expect(rule).not.toBeNull();
     expect(rule?.[1]).toContain('bg-slate-900');
   });
+
+  it('gives every input and textarea a visible field style (mw-tfne4.19)', () => {
+    const css = readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf-8');
+    const rule = css.match(/input\s*,\s*\n?\s*textarea\s*\{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    const body = rule?.[1] ?? '';
+    expect(body).toContain('border-slate-600');
+    expect(body).toContain('bg-slate-800');
+    expect(body).toContain('text-slate-100');
+    expect(body).toContain('text-base');
+  });
 });

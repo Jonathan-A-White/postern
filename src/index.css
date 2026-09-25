@@ -4,3 +4,8 @@ html,
 body {
   @apply bg-slate-900;
 }
+
+input,
+textarea {
+  @apply border border-slate-600 bg-slate-800 text-slate-100 px-3 py-2 rounded text-base;
+}

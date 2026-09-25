@@ -23,6 +23,6 @@
     "noUncheckedSideEffectImports": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "scripts"],
   "exclude": ["src/sw.ts"]
 }

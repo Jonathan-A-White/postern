@@ -54,3 +54,9 @@ Feature: Minting a licence
     Given the key screen is opened
     And the key is restored from a phrase funded with exactly the mint's stated cost
     Then the "Mint my licence (testnet)" button is enabled
+
+  Scenario: mw-1589l.25 AC1: a licensed key is not asked to mint again
+    Given a key already holds a licence
+    When the key screen is opened and unlocked
+    Then the screen says "Licensed" instead of asking to fund or mint
+    And the balance and "Refresh balance" are still shown

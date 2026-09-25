@@ -17,7 +17,7 @@ import { chainConfig } from 'spell-forge-bsv';
 import { KeyVault } from '../../src/key';
 import { Gate } from '../../src/gate';
 import { db } from '../../src/data/db';
-import { addressForPublicKey, getCachedLicenceStatus } from '../../src/services/licence';
+import { addressForPublicKey, checkLicence, getCachedLicenceStatus } from '../../src/services/licence';
 import { mintCostSatoshis } from '../../src/services/mint';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { FakeChainProvider } from '../../tests/support/fake-chain-provider';
@@ -307,6 +307,36 @@ describeFeature(feature, ({ Scenario }) => {
 
     Then('the "Mint my licence (testnet)" button is enabled', async () => {
       expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeEnabled();
+    });
+  });
+
+  Scenario('mw-1589l.25 AC1: a licensed key is not asked to mint again', ({ Given, When, Then, And }) => {
+    Given('a key already holds a licence', async () => {
+      await freshScreen();
+      const key = await deriveMasterKey(FUNDED_MNEMONIC);
+      const publicKeyHex = publicKeyHexFromMasterKey(key);
+      const address = addressForPublicKey(publicKeyHex);
+      fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(chainConfig.collectionId, address));
+      await checkLicence(publicKeyHex, fakeProvider);
+    });
+
+    When('the key screen is opened and unlocked', async () => {
+      render(<KeyVault />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
+      await userEvent.type(screen.getByLabelText('Recovery phrase'), FUNDED_MNEMONIC);
+      await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      await screen.findByText('Key unlocked');
+    });
+
+    Then('the screen says "Licensed" instead of asking to fund or mint', async () => {
+      expect(await screen.findByText('Licensed')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Mint my licence (testnet)' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Needs .* testnet sats/)).not.toBeInTheDocument();
+    });
+
+    And('the balance and "Refresh balance" are still shown', async () => {
+      expect(await screen.findByText(/Balance: \d+ sats/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Refresh balance' })).toBeInTheDocument();
     });
   });
 });

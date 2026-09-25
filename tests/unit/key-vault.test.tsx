@@ -1,10 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { chainConfig } from 'spell-forge-bsv';
 import { db } from '../../src/data/db';
 import { KeyVault } from '../../src/key';
-import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
+import { addressForPublicKey, checkLicence } from '../../src/services/licence';
+import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { installMockAuthenticator, removeMockAuthenticator } from '../support/webauthn-mock';
+import { FakeChainProvider } from '../support/fake-chain-provider';
+import { mintRecordTxHex } from '../support/nftgate-fixtures';
+
+let fakeProvider = new FakeChainProvider();
+
+vi.mock('spell-forge-bsv', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('spell-forge-bsv')>();
+  return { ...actual, createChainProvider: () => fakeProvider };
+});
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
@@ -14,7 +25,9 @@ function toHex(bytes: Uint8Array): string {
 
 describe('KeyVault', () => {
   beforeEach(async () => {
+    fakeProvider = new FakeChainProvider();
     await db.vault.clear();
+    await db.settings.clear();
   });
 
   afterEach(() => {
@@ -128,6 +141,27 @@ describe('KeyVault', () => {
     expect(writeText).toHaveBeenCalledWith(mnemonic);
     expect(mnemonic.split(' ')).toHaveLength(12);
     expect(screen.getByTestId('mnemonic-words').textContent).toBe(mnemonic);
+  });
+
+  it('shows Licensed and hides the funding sentence and mint button once the cached licence check says held', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    const publicKeyHex = publicKeyHexFromMasterKey(key);
+    const address = addressForPublicKey(publicKeyHex);
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(chainConfig.collectionId, address));
+    await checkLicence(publicKeyHex, fakeProvider);
+
+    const user = userEvent.setup();
+    render(<KeyVault />);
+
+    await user.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
+    await user.type(screen.getByLabelText('Recovery phrase'), mnemonic);
+    await user.click(screen.getByRole('button', { name: 'Restore' }));
+    await screen.findByText('Key unlocked');
+
+    expect(await screen.findByText('Licensed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mint my licence (testnet)' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Needs .* testnet sats/)).not.toBeInTheDocument();
   });
 
   it('unlocks an existing phrase-wrapped key by typing the phrase again', async () => {

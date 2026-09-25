@@ -17,6 +17,7 @@ import {
 } from '../../src/services/vault';
 import { decryptMessage, type MessagePayload } from '../../src/services/messages';
 import type { Snapshot } from '../../src/services/questions';
+import { shot } from './shot';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -163,4 +164,6 @@ test('the project view demo: a fake snapshot and question, answered and broadcas
   expect(decoded).not.toBeNull();
   const payload = JSON.parse(Utils.toUTF8(decoded!.payloadBytes)) as MessagePayload;
   expect(JSON.parse(decryptMessage(payload, MAYOR_KEY.toHex()))).toEqual({ bead: BEAD_ID, answer: RECOMMENDED });
+
+  await shot(page, 'project-view');
 });

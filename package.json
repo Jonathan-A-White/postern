@@ -11,8 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:bdd": "vitest run features/steps",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=chromium",
     "test:e2e:live": "playwright test --config=playwright.live.config.ts",
+    "shots": "playwright test --project=shots",
     "typecheck": "tsc -b --noEmit",
     "fixture": "tsx scripts/generate-fixture.ts"
   },

@@ -31,6 +31,18 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'], channel: 'chromium', launchOptions: { env: browserEnv } },
     },
+    // Used only by `npm run shots` (--project=shots): a 390px iPhone width so
+    // every e2e spec's end-of-test screenshot (tests/e2e/shot.ts) is taken at
+    // phone size.
+    {
+      name: 'shots',
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chromium',
+        viewport: { width: 390, height: 844 },
+        launchOptions: { env: browserEnv },
+      },
+    },
   ],
   webServer: {
     command: `npm run preview -- --port ${PREVIEW_PORT} --strictPort`,

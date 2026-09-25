@@ -6,6 +6,7 @@
 import { test, expect } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey, deriveAesKeyFromPhrase, wrapKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
+import { shot } from './shot';
 
 test.use({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
 
@@ -75,5 +76,5 @@ test('the Mayor\'s public key wraps at a 390px width instead of overflowing the 
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(viewportSize!.width);
 
-  await page.screenshot({ path: 'test-results/compose-390px.png', fullPage: true });
+  await shot(page, 'compose');
 });

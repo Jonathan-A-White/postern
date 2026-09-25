@@ -9,6 +9,7 @@ import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey, PublicKey, Utils } from '@bsv/sdk';
 import { EncryptedMessage } from 'spell-forge-bsv';
 import { App } from '../../src/App';
+import { setMayorPublicKey } from '../../src/services/messages';
 import { ProjectsScreen, ProjectScreen } from '../../src/projects';
 import { db } from '../../src/data/db';
 import { vaultRepo } from '../../src/data/repositories';
@@ -303,6 +304,7 @@ describeFeature(feature, ({ Scenario }) => {
       await freshScreen();
       const him = await saveVaultForHim();
       mnemonic = him.mnemonic;
+      await setMayorPublicKey(MAYOR_KEY.toPublicKey().toString());
       const snapshot: Snapshot = {
         written_at: new Date().toISOString(),
         epics: [
@@ -348,9 +350,9 @@ describeFeature(feature, ({ Scenario }) => {
     Then('the bead screen shows the question\'s title, "Needs you", its recommended answer and its options', async () => {
       expect(await screen.findByText('Ship now or wait?')).toBeInTheDocument();
       expect(screen.getByText('Needs you')).toBeInTheDocument();
+      expect(await screen.findByTestId('option-ship')).toBeInTheDocument();
+      expect(screen.getByTestId('option-wait')).toBeInTheDocument();
       expect(screen.getByText('Recommended: ship')).toBeInTheDocument();
-      expect(screen.getByText('ship')).toBeInTheDocument();
-      expect(screen.getByText('wait')).toBeInTheDocument();
     });
   });
 });

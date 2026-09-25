@@ -116,6 +116,9 @@ export function Gate() {
           <button className="rounded bg-slate-700 px-4 py-2" onClick={() => void determineScreen().then(setScreen)}>
             Check again
           </button>
+          <a className="text-sm underline" href="?screen=key">
+            Mint a licence
+          </a>
         </>
       )}
 

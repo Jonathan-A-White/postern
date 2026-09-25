@@ -21,8 +21,15 @@ export interface MockAuthenticatorOptions {
   // original two-state behaviour: a PRF-supporting authenticator yields a secret,
   // a non-supporting one refuses the assertion outright. 'empty' simulates an
   // authenticator that reports PRF support at creation but evaluates to nothing.
-  prfGetResult?: 'secret' | 'empty' | 'throws';
+  // 'not-allowed' simulates a dismissed or timed-out fingerprint prompt: real
+  // browsers reject navigator.credentials.get() with a DOMException named
+  // NotAllowedError whose message is the raw sentence mw-tfne4.18 is about.
+  prfGetResult?: 'secret' | 'empty' | 'throws' | 'not-allowed';
 }
+
+const NOT_ALLOWED_MESSAGE =
+  'The operation either timed out or was not allowed. See: ' +
+  'https://www.w3.org/TR/webauthn-2/#sctn-privacy-considerations-client.';
 
 export function installMockAuthenticator({
   prfSupported,
@@ -39,6 +46,9 @@ export function installMockAuthenticator({
   });
 
   const get = vi.fn(async () => {
+    if (prfGetResult === 'not-allowed') {
+      throw new DOMException(NOT_ALLOWED_MESSAGE, 'NotAllowedError');
+    }
     if (prfGetResult === 'throws') {
       throw new Error('mock authenticator: PRF is not supported');
     }

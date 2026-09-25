@@ -77,3 +77,19 @@ export async function getPrfSecret(credentialId: ArrayBuffer): Promise<ArrayBuff
 
   return results.prf?.results?.first ?? null;
 }
+
+// A dismissed or timed-out fingerprint prompt rejects navigator.credentials.get()
+// with a DOMException named NotAllowedError whose message is the browser's own
+// sentence plus a w3.org link (mw-tfne4.18) — not an error of the person's making,
+// and not text for a phone screen. Every unlock screen's catch should show this
+// instead of the raw err.message.
+export function describeUnlockError(err: unknown): string {
+  if (err instanceof DOMException && err.name === 'NotAllowedError') {
+    return 'Unlock cancelled. Tap Unlock to try again.';
+  }
+  if (err instanceof DOMException && err.name === 'NotSupportedError') {
+    return 'This browser cannot unlock with a fingerprint here; use the recovery phrase instead.';
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return message.replace(/\s*See:\s*https?:\/\/\S+/gi, '').replace(/https?:\/\/\S+/g, '').trim();
+}

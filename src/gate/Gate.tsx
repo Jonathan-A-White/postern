@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { vaultRepo } from '../data/repositories';
+import { vaultRepo, messagesRepo } from '../data/repositories';
 import { addressForPublicKey, checkLicence, getCachedLicenceStatus } from '../services/licence';
 
 type GateScreen =
@@ -27,9 +27,14 @@ async function determineScreen(): Promise<GateScreen> {
 
 export function Gate() {
   const [screen, setScreen] = useState<GateScreen>({ name: 'loading' });
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     void determineScreen().then(setScreen);
+  }, []);
+
+  useEffect(() => {
+    void messagesRepo.countUnread().then(setUnreadCount);
   }, []);
 
   if (screen.name === 'licensed') {
@@ -38,6 +43,9 @@ export function Gate() {
         <h1 className="text-3xl font-semibold">Postern</h1>
         <p className="text-xl">Licensed</p>
         <p className="text-sm text-slate-400">Testnet address: {screen.address}</p>
+        <a className="text-sm underline" href="?screen=inbox">
+          Inbox{unreadCount > 0 && <span data-testid="unread-count"> ({unreadCount})</span>}
+        </a>
         <a className="text-sm underline" href="?screen=compose">
           Send a message
         </a>

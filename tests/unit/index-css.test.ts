@@ -24,4 +24,11 @@ describe('src/index.css', () => {
     expect(body).toContain('text-slate-100');
     expect(body).toContain('text-base');
   });
+
+  it('sets touch-action manipulation on html so double-tap cannot zoom (mw-tfne4.20)', () => {
+    const css = readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf-8');
+    const rule = css.match(/html\s*\{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    expect(rule?.[1]).toContain('touch-action: manipulation');
+  });
 });

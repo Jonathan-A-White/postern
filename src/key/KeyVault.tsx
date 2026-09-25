@@ -390,7 +390,7 @@ export function KeyVault() {
 
           <p className="text-sm text-slate-400">
             Testnet address:{' '}
-            <span data-testid="testnet-address">
+            <span data-testid="testnet-address" className="break-all font-mono">
               {addressForPublicKey(publicKeyHexFromMasterKey(screen.key))}
             </span>
           </p>
@@ -410,7 +410,10 @@ export function KeyVault() {
                 <p>
                   Needs {mintCostSatoshis().toLocaleString('en-US')} testnet sats; this key holds{' '}
                   {balanceState.satoshis}. Send testnet sats to{' '}
-                  {addressForPublicKey(publicKeyHexFromMasterKey(screen.key))}.
+                  <span className="break-all font-mono">
+                    {addressForPublicKey(publicKeyHexFromMasterKey(screen.key))}
+                  </span>
+                  .
                 </p>
               )}
               <button className="rounded bg-slate-700 px-4 py-2" onClick={handleRefreshBalance}>
@@ -433,7 +436,7 @@ export function KeyVault() {
               <p>Licensed</p>
               <p>
                 Minted:{' '}
-                <a className="underline" href={`${WHATSONCHAIN_TESTNET_TX_URL}${licenceState.txid}`}>
+                <a className="break-all font-mono underline" href={`${WHATSONCHAIN_TESTNET_TX_URL}${licenceState.txid}`}>
                   {licenceState.txid}
                 </a>
               </p>
@@ -458,7 +461,7 @@ export function KeyVault() {
           {mintOutcome.name === 'success' && (
             <p>
               Minted:{' '}
-              <a className="underline" href={`${WHATSONCHAIN_TESTNET_TX_URL}${mintOutcome.txid}`}>
+              <a className="break-all font-mono underline" href={`${WHATSONCHAIN_TESTNET_TX_URL}${mintOutcome.txid}`}>
                 {mintOutcome.txid}
               </a>
             </p>

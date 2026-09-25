@@ -8,11 +8,11 @@ import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { PrivateKey } from '@bsv/sdk';
+import { PrivateKey, Utils } from '@bsv/sdk';
 import { Compose } from '../../src/compose';
 import { Inbox } from '../../src/inbox';
 import { db } from '../../src/data/db';
-import { vaultRepo } from '../../src/data/repositories';
+import { vaultRepo, messagesRepo } from '../../src/data/repositories';
 import {
   createMnemonic,
   deriveAesKeyFromPhrase,
@@ -94,6 +94,13 @@ async function saveVaultForHim(): Promise<{ mnemonic: string; publicKeyHex: stri
     publicKeyHex,
   });
   return { mnemonic, publicKeyHex };
+}
+
+/** His own private key, hex, from the mnemonic saveVaultForHim generated — needed
+ * to build a fixture message encrypted as if sent from his own phone. */
+async function privateKeyHexFromMnemonic(mnemonic: string): Promise<string> {
+  const key = await deriveMasterKey(mnemonic);
+  return Utils.toHex(Array.from(key));
 }
 
 async function unlockInbox(mnemonic: string): Promise<void> {
@@ -410,6 +417,111 @@ describeFeature(feature, ({ Scenario }) => {
 
       Then('the message is shown as unreadable in the inbox', async () => {
         expect(await screen.findByText('Unreadable message.')).toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario(
+    'mw-1589l.27 AC2: a message he sent is shown with his own words, not "Sent message."',
+    ({ Given, When, Then }) => {
+      let mnemonic: string;
+
+      Given('the backend has one message record he sent to the Mayor', async () => {
+        await freshCompose();
+        const him = await saveVaultForHim();
+        mnemonic = him.mnemonic;
+        const payload = encryptMessage({
+          text: 'on my way, be there by six',
+          class: 'message',
+          senderPrivateKeyHex: await privateKeyHexFromMnemonic(mnemonic),
+          recipientPublicKeyHex: MAYOR_KEY.toPublicKey().toString(),
+        });
+        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
+      });
+
+      When('the inbox is opened and unlocked', async () => {
+        render(<Inbox />);
+        await unlockInbox(mnemonic);
+      });
+
+      Then('the sent message is shown with his words in the inbox', async () => {
+        expect(await screen.findByText('on my way, be there by six')).toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario(
+    'mw-1589l.27 AC3: a sent row stored before this change is decrypted on the next sync',
+    ({ Given, When, Then }) => {
+      let mnemonic: string;
+
+      Given('a sent message row was already stored without plaintext', async () => {
+        await freshCompose();
+        const him = await saveVaultForHim();
+        mnemonic = him.mnemonic;
+        const payload = encryptMessage({
+          text: 'already on the chain before this shipped',
+          class: 'message',
+          senderPrivateKeyHex: await privateKeyHexFromMnemonic(mnemonic),
+          recipientPublicKeyHex: MAYOR_KEY.toPublicKey().toString(),
+        });
+        // Simulates a row synced before this feature existed: stored with the
+        // ciphertext, no plaintext, direction already known to be sent.
+        await messagesRepo.put({
+          id: `${'a'.repeat(64)}:0`,
+          txid: 'a'.repeat(64),
+          vout: 0,
+          seq: 1,
+          class: payload.class,
+          to: payload.to,
+          from: payload.from,
+          ts: payload.ts,
+          ciphertext: payload.ct,
+          direction: 'sent',
+          read: false,
+        });
+        vi.stubGlobal('fetch', messagesFetchMock([]));
+      });
+
+      When('the inbox is opened and unlocked', async () => {
+        render(<Inbox />);
+        await unlockInbox(mnemonic);
+      });
+
+      Then('the sent message is shown with his words in the inbox', async () => {
+        expect(await screen.findByText('already on the chain before this shipped')).toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario(
+    'mw-1589l.27 AC3: a sent record his key cannot read as sender still shows "Sent message."',
+    ({ Given, When, Then }) => {
+      let mnemonic: string;
+
+      Given('the backend has one sent message record his key cannot read as sender', async () => {
+        await freshCompose();
+        const him = await saveVaultForHim();
+        mnemonic = him.mnemonic;
+        // Encrypted by someone else, to the Mayor, then forged to claim he sent it —
+        // his key cannot recompute this ciphertext's symmetric key as sender.
+        const payload = encryptMessage({
+          text: 'not really from him',
+          class: 'message',
+          senderPrivateKeyHex: SENDER_KEY.toHex(),
+          recipientPublicKeyHex: MAYOR_KEY.toPublicKey().toString(),
+        });
+        const forged = { ...payload, from: him.publicKeyHex };
+        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload: forged }]));
+      });
+
+      When('the inbox is opened and unlocked', async () => {
+        render(<Inbox />);
+        await unlockInbox(mnemonic);
+      });
+
+      Then('the message is shown as "Sent message." in the inbox', async () => {
+        expect(await screen.findByText('Sent message.')).toBeInTheDocument();
       });
     },
   );

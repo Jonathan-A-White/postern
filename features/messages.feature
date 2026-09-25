@@ -60,6 +60,21 @@ Feature: Composing and sending an encrypted message
     And the raw browser sentence and the w3.org link never appear
     And "Unlock with your fingerprint" is still offered
 
+  Scenario: mw-1589l.27 AC2: a message he sent is shown with his own words, not "Sent message."
+    Given the backend has one message record he sent to the Mayor
+    When the inbox is opened and unlocked
+    Then the sent message is shown with his words in the inbox
+
+  Scenario: mw-1589l.27 AC3: a sent row stored before this change is decrypted on the next sync
+    Given a sent message row was already stored without plaintext
+    When the inbox is opened and unlocked
+    Then the sent message is shown with his words in the inbox
+
+  Scenario: mw-1589l.27 AC3: a sent record his key cannot read as sender still shows "Sent message."
+    Given the backend has one sent message record his key cannot read as sender
+    When the inbox is opened and unlocked
+    Then the message is shown as "Sent message." in the inbox
+
   Scenario: mw-tfne4.18 AC2: a dismissed fingerprint prompt on the send screen says "Unlock cancelled"
     Given the compose screen is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed
     When "Unlock with your fingerprint" is tapped

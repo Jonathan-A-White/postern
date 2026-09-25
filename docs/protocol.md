@@ -65,6 +65,20 @@ AES-GCM tag verifies, which requires the sender's own private key) — see
 `docs/research/messages.md` §1 for the full construction and its limits (no forward
 secrecy, no replay protection).
 
+A sender can read its own message back later too, with no second copy and no format
+change. `EncryptedMessage.encrypt`'s envelope (`version(4B) || senderPubKey(33B) ||
+recipientPubKey(33B) || keyID(32B) || AES-GCM ciphertext`) carries the recipient's
+public key and the random `keyID` in the clear, and the AES-GCM key is derived from a
+BRC-42 child of the sender's private key and the recipient's public key. So the sender,
+holding its own private key and already knowing the recipient's public key, can
+recompute the same symmetric key straight from the header — the same derivation
+`encrypt` ran, from the other side. `EncryptedMessage.decrypt` itself refuses this (it
+insists the caller's key match the header's recipient), so `src/services/messages.ts`'s
+`decryptMessageAsSender` rebuilds the derivation directly from `@bsv/sdk`'s exported
+`PrivateKey`, `PublicKey` and `SymmetricKey` primitives, never a copy of the SDK's own
+`encrypt`/`decrypt` functions. `v` stays `1` — this is a second way of reading the
+existing envelope, not a new one.
+
 ## 3. The anchor address
 
 The postern message channel's own anchor address, testnet, distinct from

@@ -49,6 +49,17 @@ export interface SnapshotRow {
   written_at: string;
 }
 
+// One row per bead his tap or free-text reply has already answered (mw-tfne4.5):
+// recorded the moment the reply broadcasts, so Needs you can hide the bead at once
+// rather than waiting for the snapshot's next tick to catch up.
+export interface AnswerRow {
+  bead: string;
+  answer: string;
+  txid: string;
+  /** Unix seconds. */
+  ts: number;
+}
+
 export interface VaultRow {
   id: string;
   mode: 'prf' | 'phrase';
@@ -69,6 +80,7 @@ class PosternDB extends Dexie {
   vault!: Table<VaultRow, string>;
   messages!: Table<MessageRow, string>;
   snapshot!: Table<SnapshotRow, string>;
+  answers!: Table<AnswerRow, string>;
 
   constructor() {
     super('PosternDB');
@@ -93,6 +105,14 @@ class PosternDB extends Dexie {
       vault: 'id',
       messages: 'id, seq, ts, read',
       snapshot: 'id',
+    });
+
+    this.version(5).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read',
+      snapshot: 'id',
+      answers: 'bead',
     });
   }
 }

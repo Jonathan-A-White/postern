@@ -1,6 +1,13 @@
 // src/projects/BeadScreen.tsx — a tapped row's brief: title, state badge, and,
-// for a Needs you question, its text (the row's own title), recommended answer
-// and options. The reply controls (buttons, free text) come in mw-tfne4.5.
+// for a Needs you question, the Question screen (mw-tfne4.5): its text, recommended
+// answer, option buttons and a free-text box, resolved by bead id against an
+// already-synced decision-needed message or, failing that, the snapshot's own
+// needs_you fields (src/projects/questionBody.ts).
+import { useEffect, useState } from 'react';
+import { getMayorPublicKey } from '../services/messages';
+import type { QuestionBody } from '../services/questions';
+import { QuestionScreen } from './QuestionScreen';
+import { resolveQuestionBody } from './questionBody';
 import { useSnapshotScreen } from './useSnapshotScreen';
 import { VaultGate } from './VaultGate';
 
@@ -31,6 +38,18 @@ export function BeadScreen({ epicId, kind, beadId }: BeadScreenProps) {
 
   const statusLabel = needsYouItem ? 'Needs you' : landedItem ? 'Landed' : workingItem?.status;
 
+  const [questionBody, setQuestionBody] = useState<QuestionBody | undefined>(undefined);
+  const [mayorPublicKey, setMayorPublicKeyState] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!needsYouItem) return;
+    void resolveQuestionBody(needsYouItem).then(setQuestionBody);
+  }, [needsYouItem]);
+
+  useEffect(() => {
+    void getMayorPublicKey().then(setMayorPublicKeyState);
+  }, []);
+
   return (
     <main className="flex min-h-screen flex-col items-center gap-4 bg-slate-900 p-6 text-slate-200">
       <a className="text-sm underline" href={`?screen=project&epic=${epicId}`}>
@@ -60,17 +79,17 @@ export function BeadScreen({ epicId, kind, beadId }: BeadScreenProps) {
               <h1 className="text-xl font-semibold">{item.title}</h1>
               <p className="text-sm text-slate-400">{statusLabel}</p>
 
-              {needsYouItem && (
-                <div className="flex flex-col gap-2">
-                  <p>Recommended: {needsYouItem.recommended}</p>
-                  <ul className="flex flex-col gap-1">
-                    {needsYouItem.options.map((option) => (
-                      <li key={option} className="rounded bg-slate-800 px-3 py-2">
-                        {option}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              {needsYouItem && questionBody && mayorPublicKey && (
+                <QuestionScreen
+                  question={questionBody}
+                  unlockedKey={vaultState.key}
+                  recipientPublicKeyHex={mayorPublicKey}
+                />
+              )}
+              {needsYouItem && !mayorPublicKey && (
+                <p role="alert" className="text-red-400">
+                  No recipient key is set.
+                </p>
               )}
             </>
           )}

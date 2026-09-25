@@ -10,6 +10,7 @@ import { getPrfSecret } from '../services/webauthnPrf';
 import { deriveAesKeyFromPhrase, deriveAesKeyFromPrf, findInvalidWords, unwrapKey } from '../services/vault';
 import { fetchSnapshot } from '../services/snapshot';
 import type { Snapshot } from '../services/questions';
+import { hideAnsweredNeedsYou } from './answeredNeedsYou';
 
 export type VaultState =
   | { name: 'loading' }
@@ -46,6 +47,7 @@ export function useSnapshotScreen() {
 
   const loadSnapshot = useCallback((key: Uint8Array) => {
     fetchSnapshot({ unlockedKeyHex: keyToHex(key) })
+      .then(async (result) => ({ ...result, snapshot: await hideAnsweredNeedsYou(result.snapshot) }))
       .then((result) => setSnapshotState({ snapshot: result.snapshot, offline: result.offline, error: result.error }))
       .catch((err: unknown) => setSnapshotState({ offline: true, error: (err as Error).message }));
   }, []);

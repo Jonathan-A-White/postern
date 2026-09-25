@@ -31,4 +31,23 @@ describe('src/index.css', () => {
     expect(rule).not.toBeNull();
     expect(rule?.[1]).toContain('touch-action: manipulation');
   });
+
+  it('locks the document so it never scrolls or bounces (mw-tfne4.21)', () => {
+    const css = readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf-8');
+    const rule = css.match(/html\s*,\s*\n?\s*body\s*\{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    const body = rule?.[1] ?? '';
+    expect(body).toContain('height: 100dvh');
+    expect(body).toContain('overflow: hidden');
+    expect(body).toContain('overscroll-behavior: none');
+  });
+
+  it('makes #root the one scroll container, sized to the viewport (mw-tfne4.21)', () => {
+    const css = readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf-8');
+    const rule = css.match(/#root\s*\{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    const body = rule?.[1] ?? '';
+    expect(body).toContain('height: 100dvh');
+    expect(body).toContain('overflow-y: auto');
+  });
 });

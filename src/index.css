@@ -3,10 +3,18 @@
 html,
 body {
   @apply bg-slate-900;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 html {
   touch-action: manipulation;
+}
+
+#root {
+  height: 100dvh;
+  overflow-y: auto;
 }
 
 input,

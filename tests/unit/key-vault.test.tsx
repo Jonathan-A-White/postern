@@ -164,6 +164,28 @@ describe('KeyVault', () => {
     expect(screen.queryByText(/Needs .* testnet sats/)).not.toBeInTheDocument();
   });
 
+  it('wraps the testnet address and the minted licence link so long hex does not overflow the screen', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    const publicKeyHex = publicKeyHexFromMasterKey(key);
+    const address = addressForPublicKey(publicKeyHex);
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(chainConfig.collectionId, address));
+    await checkLicence(publicKeyHex, fakeProvider);
+
+    const user = userEvent.setup();
+    render(<KeyVault />);
+
+    await user.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
+    await user.type(screen.getByLabelText('Recovery phrase'), mnemonic);
+    await user.click(screen.getByRole('button', { name: 'Restore' }));
+    await screen.findByText('Key unlocked');
+    await screen.findByText('Licensed');
+
+    expect(screen.getByTestId('testnet-address')).toHaveClass('break-all', 'font-mono');
+    const mintedLink = screen.getByRole('link', { name: /^[0-9a-f]{64}$/ });
+    expect(mintedLink).toHaveClass('break-all', 'font-mono', 'underline');
+  });
+
   it('unlocks an existing phrase-wrapped key by typing the phrase again', async () => {
     const user = userEvent.setup();
     const { unmount } = render(<KeyVault />);

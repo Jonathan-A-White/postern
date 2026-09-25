@@ -5,6 +5,33 @@ export interface SettingRow {
   value: unknown;
 }
 
+// docs/protocol.md's message classes. Defined here (not in src/services/messages.ts,
+// which re-exports it) so this file — the leaf data layer — never has to import from
+// the service layer.
+export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm';
+
+export interface MessageRow {
+  /** `${txid}:${vout}` — the record's own on-chain outpoint. */
+  id: string;
+  txid: string;
+  vout: number;
+  /** The backend's own sequence number (docs/api.md), kept for ordering ties. */
+  seq: number;
+  class: MessageClass;
+  to: string;
+  from: string;
+  /** Unix seconds, from the payload (docs/protocol.md). */
+  ts: number;
+  /** The payload's base64 `ct` field. */
+  ciphertext: string;
+  /** Set once decrypted with the unlocked key. Never set for a message this phone sent. */
+  plaintext?: string;
+  direction: 'received' | 'sent';
+  /** Set once decryption was attempted with the unlocked key and failed. */
+  decryptFailed?: boolean;
+  read: boolean;
+}
+
 // Recorded on a phrase-mode vault row so the UI can name, rather than merely
 // report the absence of, the fingerprint ceremony's outcome:
 // - webauthn-unavailable: this phone/browser has no WebAuthn platform authenticator.
@@ -30,6 +57,7 @@ export interface VaultRow {
 class PosternDB extends Dexie {
   settings!: Table<SettingRow, string>;
   vault!: Table<VaultRow, string>;
+  messages!: Table<MessageRow, string>;
 
   constructor() {
     super('PosternDB');
@@ -41,6 +69,12 @@ class PosternDB extends Dexie {
     this.version(2).stores({
       settings: 'key',
       vault: 'id',
+    });
+
+    this.version(3).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read',
     });
   }
 }

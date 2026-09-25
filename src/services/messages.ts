@@ -6,6 +6,9 @@
 import { PrivateKey, PublicKey, Utils } from '@bsv/sdk';
 import { EncryptedMessage } from 'spell-forge-bsv';
 import { settingsRepo } from '../data/repositories';
+import type { MessageClass } from '../data/db';
+
+export type { MessageClass };
 
 /** The postern message channel's own testnet anchor (docs/protocol.md §3) — not
  * spell-forge-bsv's chainConfig.anchorAddress, which is the leaderboard's. */
@@ -14,8 +17,6 @@ export const ANCHOR_ADDRESS = 'mt6vaAWeFxu2qC6pPs7bsqTNvv87dCwMW5';
 /** The API base every fetch in this app makes: a relative path on the app's own
  * origin, resolved at runtime — no build-time host configuration needed. */
 export const API_BASE = '/api';
-
-export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm';
 
 export interface MessagePayload {
   v: 1;

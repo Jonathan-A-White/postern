@@ -46,6 +46,9 @@ export function Gate() {
         <a className="text-sm underline" href="?screen=inbox">
           Inbox{unreadCount > 0 && <span data-testid="unread-count"> ({unreadCount})</span>}
         </a>
+        <a className="text-sm underline" href="?screen=projects">
+          Projects
+        </a>
         <a className="text-sm underline" href="?screen=compose">
           Send a message
         </a>

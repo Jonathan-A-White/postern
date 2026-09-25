@@ -39,6 +39,16 @@ export interface MessageRow {
 // - prf-secret-empty: the passkey reported PRF support but its secret evaluated empty.
 export type PrfFallbackReason = 'webauthn-unavailable' | 'passkey-created-without-prf' | 'prf-secret-empty';
 
+// One row (id: 'current'), holding the last snapshot the app decrypted successfully
+// (docs/protocol.md §7): plaintext kept whole rather than parsed apart per epic, so
+// a schema change to the snapshot shape never needs a Dexie migration. `written_at`
+// is duplicated from the plaintext so its age can be shown without parsing JSON.
+export interface SnapshotRow {
+  id: string;
+  plaintext: string;
+  written_at: string;
+}
+
 export interface VaultRow {
   id: string;
   mode: 'prf' | 'phrase';
@@ -58,6 +68,7 @@ class PosternDB extends Dexie {
   settings!: Table<SettingRow, string>;
   vault!: Table<VaultRow, string>;
   messages!: Table<MessageRow, string>;
+  snapshot!: Table<SnapshotRow, string>;
 
   constructor() {
     super('PosternDB');
@@ -75,6 +86,13 @@ class PosternDB extends Dexie {
       settings: 'key',
       vault: 'id',
       messages: 'id, seq, ts, read',
+    });
+
+    this.version(4).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read',
+      snapshot: 'id',
     });
   }
 }

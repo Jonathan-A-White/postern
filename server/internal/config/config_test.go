@@ -26,15 +26,24 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.DataDir != "./data" {
 		t.Fatalf("DataDir = %q, want ./data", cfg.DataDir)
 	}
+	if cfg.VAPIDPublicKey != "" || cfg.VAPIDPrivateKey != "" {
+		t.Fatalf("VAPID keys = %q/%q, want both empty by default", cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey)
+	}
+	if cfg.PushSubscriber != "https://postern.allmymind.org" {
+		t.Fatalf("PushSubscriber = %q, want the default subscriber URL", cfg.PushSubscriber)
+	}
 }
 
 func TestLoadOverridesFromEnv(t *testing.T) {
 	env := map[string]string{
-		"POSTERN_ADDR":     "0.0.0.0:9000",
-		"POSTERN_NETWORK":  "mainnet",
-		"POSTERN_ANCHOR":   "mAnchorAddress",
-		"POSTERN_WOC_BASE": "https://example.test/api",
-		"POSTERN_DATA":     "/var/lib/postern",
+		"POSTERN_ADDR":              "0.0.0.0:9000",
+		"POSTERN_NETWORK":           "mainnet",
+		"POSTERN_ANCHOR":            "mAnchorAddress",
+		"POSTERN_WOC_BASE":          "https://example.test/api",
+		"POSTERN_DATA":              "/var/lib/postern",
+		"POSTERN_VAPID_PUBLIC_KEY":  "pub-key",
+		"POSTERN_VAPID_PRIVATE_KEY": "priv-key",
+		"POSTERN_PUSH_SUBSCRIBER":   "mailto:governor@example.com",
 	}
 	getenv := func(key string) string { return env[key] }
 
@@ -56,6 +65,12 @@ func TestLoadOverridesFromEnv(t *testing.T) {
 	}
 	if cfg.DataDir != "/var/lib/postern" {
 		t.Fatalf("DataDir = %q", cfg.DataDir)
+	}
+	if cfg.VAPIDPublicKey != "pub-key" || cfg.VAPIDPrivateKey != "priv-key" {
+		t.Fatalf("VAPID keys = %q/%q", cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey)
+	}
+	if cfg.PushSubscriber != "mailto:governor@example.com" {
+		t.Fatalf("PushSubscriber = %q", cfg.PushSubscriber)
 	}
 }
 

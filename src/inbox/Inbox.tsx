@@ -23,8 +23,8 @@ function describeInvalidWords(words: string[]): string {
 }
 
 function messageBodyText(row: MessageRow): string {
-  if (row.direction === 'sent') return 'Sent message.';
   if (row.plaintext !== undefined) return row.plaintext;
+  if (row.direction === 'sent') return 'Sent message.';
   if (row.decryptFailed) return 'Unreadable message.';
   return 'Locked';
 }

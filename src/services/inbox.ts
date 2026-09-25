@@ -5,7 +5,7 @@
 import { Utils } from '@bsv/sdk';
 import { messagesRepo, settingsRepo } from '../data/repositories';
 import type { MessageRow } from '../data/db';
-import { API_BASE, decryptMessage, type MessagePayload } from './messages';
+import { API_BASE, decryptMessage, decryptMessageAsSender, type MessagePayload } from './messages';
 
 const CURSOR_SETTING_KEY = 'messages-cursor';
 
@@ -38,24 +38,33 @@ function keyToHex(key: Uint8Array): string {
   return Utils.toHex(Array.from(key));
 }
 
-function tryDecrypt(payload: MessagePayload, unlockedKeyHex: string): Pick<MessageRow, 'plaintext' | 'decryptFailed'> {
+/** Decrypts a payload with the unlocked key: as the recipient for a received
+ * message, or as the sender for a message this phone sent (mw-1589l.27) — the
+ * same shared key either side of a message can derive (docs/protocol.md §2). */
+function tryDecrypt(
+  payload: MessagePayload,
+  unlockedKeyHex: string,
+  direction: MessageRow['direction'],
+): Pick<MessageRow, 'plaintext' | 'decryptFailed'> {
   try {
-    return { plaintext: decryptMessage(payload, unlockedKeyHex) };
+    const plaintext =
+      direction === 'sent' ? decryptMessageAsSender(payload, unlockedKeyHex) : decryptMessage(payload, unlockedKeyHex);
+    return { plaintext };
   } catch {
     return { decryptFailed: true };
   }
 }
 
-/** Retries decrypting every stored, not-yet-decrypted received message with the
- * given unlocked key — for the case the key is unlocked after messages were
- * already synced while it was locked. */
+/** Retries decrypting every stored, not-yet-decrypted message (received or sent)
+ * with the given unlocked key — for the case the key is unlocked after messages
+ * were already synced while it was locked. */
 export async function decryptPendingMessages(unlockedKey: Uint8Array): Promise<void> {
   const unlockedKeyHex = keyToHex(unlockedKey);
   const rows = await messagesRepo.getAll();
   for (const row of rows) {
-    if (row.direction !== 'received' || row.plaintext !== undefined || row.decryptFailed) continue;
+    if (row.plaintext !== undefined || row.decryptFailed) continue;
     const payload: MessagePayload = { v: 1, kind: 'msg', class: row.class, to: row.to, from: row.from, ts: row.ts, ct: row.ciphertext };
-    await messagesRepo.put({ ...row, ...tryDecrypt(payload, unlockedKeyHex) });
+    await messagesRepo.put({ ...row, ...tryDecrypt(payload, unlockedKeyHex, row.direction) });
   }
 }
 
@@ -96,8 +105,7 @@ export async function syncMessages(params: SyncMessagesParams): Promise<void> {
     const existing = await messagesRepo.get(id);
     const direction: MessageRow['direction'] = isFromMe ? 'sent' : 'received';
 
-    const decrypted =
-      direction === 'received' && unlockedKeyHex ? tryDecrypt(payload, unlockedKeyHex) : {};
+    const decrypted = unlockedKeyHex ? tryDecrypt(payload, unlockedKeyHex, direction) : {};
 
     await messagesRepo.put({
       id,

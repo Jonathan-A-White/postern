@@ -24,7 +24,10 @@ export interface MessageRow {
   ts: number;
   /** The payload's base64 `ct` field. */
   ciphertext: string;
-  /** Set once decrypted with the unlocked key. Never set for a message this phone sent. */
+  /** Set once decrypted with the unlocked key: as the recipient for a received
+   * message, or as the sender's own key for a message this phone sent
+   * (mw-1589l.27) — the same shared key either side of a message can derive
+   * (docs/protocol.md §2). */
   plaintext?: string;
   direction: 'received' | 'sent';
   /** Set once decryption was attempted with the unlocked key and failed. */

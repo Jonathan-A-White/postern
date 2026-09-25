@@ -142,6 +142,18 @@ Both vectors were generated directly against `@bsv/sdk` 2.2.0's `EncryptedMessag
 (fixed, deterministic sender/recipient private keys), then round-tripped through
 `EncryptedMessage.decrypt` to confirm correctness before being recorded here.
 
+### Machine-checkable vectors
+
+`scripts/generate-fixture.ts` (`npm run fixture`) builds a fourth, fully machine-checkable
+fixture from a fixed sender/recipient key pair, a fixed plaintext and a fixed fake UTXO, with
+randomness pinned so its output never changes between runs. It writes
+`docs/fixtures/protocol-vectors.json`: the fixed inputs, `encryptMessage`'s output,
+`encodeRecordScript`'s hex, and a fully signed send transaction (raw hex and txid) built the
+same way `src/services/send.ts` builds one. `features/fixture.feature` re-runs the generator
+and asserts its output is byte-identical to the committed file, so it cannot drift; the Go
+backend's own tests (`mw-1589l.18`) check `Cipher`, the record script and the send tx against
+this same file instead of hand-derived vectors.
+
 ## 6. Questions and replies
 
 The envelope from §1 is unchanged for a question or a reply — same `{v, kind, class,

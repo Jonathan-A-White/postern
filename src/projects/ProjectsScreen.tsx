@@ -14,6 +14,7 @@ export function ProjectsScreen() {
     setPhraseInput,
     handleUnlockWithFingerprint,
     handleUnlockWithPhrase,
+    handleLock,
     snapshotState,
     refresh,
   } = useSnapshotScreen();
@@ -32,6 +33,7 @@ export function ProjectsScreen() {
         setPhraseInput={setPhraseInput}
         onUnlockWithFingerprint={(vault) => void handleUnlockWithFingerprint(vault)}
         onUnlockWithPhrase={(vault) => void handleUnlockWithPhrase(vault)}
+        onLock={() => void handleLock()}
       />
 
       {vaultState.name === 'ready' && (

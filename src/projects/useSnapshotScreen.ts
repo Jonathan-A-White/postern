@@ -8,6 +8,7 @@ import { vaultRepo } from '../data/repositories';
 import type { VaultRow } from '../data/db';
 import { getPrfSecret, describeUnlockError } from '../services/webauthnPrf';
 import { deriveAesKeyFromPhrase, deriveAesKeyFromPrf, findInvalidWords, unwrapKey } from '../services/vault';
+import { getKey, setKey, lock as lockSession } from '../services/keySession';
 import { fetchSnapshot } from '../services/snapshot';
 import type { Snapshot } from '../services/questions';
 import { hideAnsweredNeedsYou } from './answeredNeedsYou';
@@ -41,16 +42,28 @@ export function useSnapshotScreen() {
   const [phraseInput, setPhraseInput] = useState('');
   const [snapshotState, setSnapshotState] = useState<SnapshotState>({ offline: false });
 
-  useEffect(() => {
-    void vaultRepo.get().then((vault) => setVaultState(vault ? { name: 'locked', vault } : { name: 'no-key' }));
-  }, []);
-
   const loadSnapshot = useCallback((key: Uint8Array) => {
     fetchSnapshot({ unlockedKeyHex: keyToHex(key) })
       .then(async (result) => ({ ...result, snapshot: await hideAnsweredNeedsYou(result.snapshot) }))
       .then((result) => setSnapshotState({ snapshot: result.snapshot, offline: result.offline, error: result.error }))
       .catch((err: unknown) => setSnapshotState({ offline: true, error: (err as Error).message }));
   }, []);
+
+  useEffect(() => {
+    void vaultRepo.get().then((vault) => {
+      if (!vault) {
+        setVaultState({ name: 'no-key' });
+        return;
+      }
+      const cachedKey = getKey();
+      if (cachedKey) {
+        setVaultState({ name: 'ready', key: cachedKey });
+        loadSnapshot(cachedKey);
+      } else {
+        setVaultState({ name: 'locked', vault });
+      }
+    });
+  }, [loadSnapshot]);
 
   async function handleUnlockWithFingerprint(vault: VaultRow): Promise<void> {
     setUnlockError(null);
@@ -60,6 +73,7 @@ export function useSnapshotScreen() {
       if (!prfSecret) throw new Error('The passkey did not return a PRF secret.');
       const aesKey = await deriveAesKeyFromPrf(prfSecret);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
+      setKey(key);
       setVaultState({ name: 'ready', key });
       loadSnapshot(key);
     } catch (err) {
@@ -79,11 +93,18 @@ export function useSnapshotScreen() {
       const aesKey = await deriveAesKeyFromPhrase(phraseInput, vault.salt);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
       setPhraseInput('');
+      setKey(key);
       setVaultState({ name: 'ready', key });
       loadSnapshot(key);
     } catch {
       setUnlockError('That recovery phrase did not unlock the key.');
     }
+  }
+
+  async function handleLock(): Promise<void> {
+    lockSession();
+    const vault = await vaultRepo.get();
+    setVaultState(vault ? { name: 'locked', vault } : { name: 'no-key' });
   }
 
   const refresh = useCallback(() => {
@@ -97,6 +118,7 @@ export function useSnapshotScreen() {
     setPhraseInput,
     handleUnlockWithFingerprint,
     handleUnlockWithPhrase,
+    handleLock,
     snapshotState,
     refresh,
   };

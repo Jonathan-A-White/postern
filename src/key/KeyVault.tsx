@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { vaultRepo } from '../data/repositories';
 import type { PrfFallbackReason, VaultRow } from '../data/db';
-import { isWebAuthnAvailable, createPrfPasskey, getPrfSecret } from '../services/webauthnPrf';
+import { isWebAuthnAvailable, createPrfPasskey, getPrfSecret, describeUnlockError } from '../services/webauthnPrf';
 import {
   createMnemonic,
   isValidMnemonic,
@@ -233,7 +233,7 @@ export function KeyVault() {
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
       setScreen({ name: 'unlocked', key });
     } catch (err) {
-      setError((err as Error).message);
+      setError(describeUnlockError(err));
     }
   }
 

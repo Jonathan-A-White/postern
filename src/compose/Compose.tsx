@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { vaultRepo } from '../data/repositories';
 import type { VaultRow } from '../data/db';
-import { getPrfSecret } from '../services/webauthnPrf';
+import { getPrfSecret, describeUnlockError } from '../services/webauthnPrf';
 import { deriveAesKeyFromPrf, deriveAesKeyFromPhrase, unwrapKey, findInvalidWords } from '../services/vault';
 import { isValidCompressedPublicKeyHex } from 'spell-forge-bsv';
 import { getMayorPublicKey, setMayorPublicKey } from '../services/messages';
@@ -55,7 +55,7 @@ export function Compose() {
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
       setScreen({ name: 'ready', key });
     } catch (err) {
-      setUnlockError((err as Error).message);
+      setUnlockError(describeUnlockError(err));
     }
   }
 

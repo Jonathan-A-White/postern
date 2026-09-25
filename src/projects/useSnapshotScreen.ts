@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Utils } from '@bsv/sdk';
 import { vaultRepo } from '../data/repositories';
 import type { VaultRow } from '../data/db';
-import { getPrfSecret } from '../services/webauthnPrf';
+import { getPrfSecret, describeUnlockError } from '../services/webauthnPrf';
 import { deriveAesKeyFromPhrase, deriveAesKeyFromPrf, findInvalidWords, unwrapKey } from '../services/vault';
 import { fetchSnapshot } from '../services/snapshot';
 import type { Snapshot } from '../services/questions';
@@ -63,7 +63,7 @@ export function useSnapshotScreen() {
       setVaultState({ name: 'ready', key });
       loadSnapshot(key);
     } catch (err) {
-      setUnlockError((err as Error).message);
+      setUnlockError(describeUnlockError(err));
     }
   }
 

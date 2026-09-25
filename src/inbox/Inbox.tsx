@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { vaultRepo, messagesRepo } from '../data/repositories';
 import type { MessageRow, VaultRow } from '../data/db';
-import { getPrfSecret } from '../services/webauthnPrf';
+import { getPrfSecret, describeUnlockError } from '../services/webauthnPrf';
 import { deriveAesKeyFromPrf, deriveAesKeyFromPhrase, unwrapKey, findInvalidWords } from '../services/vault';
 import { decryptPendingMessages, syncMessages } from '../services/inbox';
 import { getMayorPublicKey } from '../services/messages';
@@ -104,7 +104,7 @@ export function Inbox() {
       await decryptPendingMessages(key);
       await refreshMessages();
     } catch (err) {
-      setUnlockError((err as Error).message);
+      setUnlockError(describeUnlockError(err));
     }
   }
 

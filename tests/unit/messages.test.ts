@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PrivateKey } from '@bsv/sdk';
-import { encryptMessage, decryptMessage, ANCHOR_ADDRESS } from '../../src/services/messages';
+import { encryptMessage, decryptMessage, decryptMessageAsSender, ANCHOR_ADDRESS } from '../../src/services/messages';
 
 // The two decrypt vectors recorded in docs/protocol.md §5 — the Go backend's
 // BRC-78 implementation (mw-1589l.11) must pass these too.
@@ -99,5 +99,48 @@ describe('messages: encryptMessage / decryptMessage', () => {
       ct: expect.any(String),
     });
     expect(wireForm.ct).not.toContain('evacuate');
+  });
+});
+
+describe('messages: decryptMessageAsSender (mw-1589l.27 AC1)', () => {
+  it('lets the sender read its own message back, the same as the recipient', () => {
+    const sender = PrivateKey.fromRandom();
+    const recipient = PrivateKey.fromRandom();
+    const payload = encryptMessage({
+      text: 'meet at the usual place, 6pm',
+      class: 'message',
+      senderPrivateKeyHex: sender.toHex(),
+      recipientPublicKeyHex: recipient.toPublicKey().toString(),
+    });
+
+    expect(decryptMessageAsSender(payload, sender.toHex())).toBe('meet at the usual place, 6pm');
+    expect(decryptMessage(payload, recipient.toHex())).toBe('meet at the usual place, 6pm');
+  });
+
+  it('fails with a clear error for the recipient key, not the sender', () => {
+    const sender = PrivateKey.fromRandom();
+    const recipient = PrivateKey.fromRandom();
+    const payload = encryptMessage({
+      text: 'meet at the usual place, 6pm',
+      class: 'message',
+      senderPrivateKeyHex: sender.toHex(),
+      recipientPublicKeyHex: recipient.toPublicKey().toString(),
+    });
+
+    expect(() => decryptMessageAsSender(payload, recipient.toHex())).toThrow();
+  });
+
+  it('fails with a clear error for an unrelated key', () => {
+    const sender = PrivateKey.fromRandom();
+    const recipient = PrivateKey.fromRandom();
+    const stranger = PrivateKey.fromRandom();
+    const payload = encryptMessage({
+      text: 'meet at the usual place, 6pm',
+      class: 'message',
+      senderPrivateKeyHex: sender.toHex(),
+      recipientPublicKeyHex: recipient.toPublicKey().toString(),
+    });
+
+    expect(() => decryptMessageAsSender(payload, stranger.toHex())).toThrow();
   });
 });

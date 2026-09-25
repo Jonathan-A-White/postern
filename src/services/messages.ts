@@ -3,7 +3,7 @@
 // EncryptedMessage, re-exported by spell-forge-bsv) so only the named recipient's
 // private key can read the ciphertext, while every other field — including the
 // class tag — stays plaintext JSON, readable by anyone who can see the chain.
-import { PrivateKey, PublicKey, Utils } from '@bsv/sdk';
+import { PrivateKey, PublicKey, SymmetricKey, Utils } from '@bsv/sdk';
 import { EncryptedMessage } from 'spell-forge-bsv';
 import { settingsRepo } from '../data/repositories';
 import type { MessageClass } from '../data/db';
@@ -62,6 +62,47 @@ export function decryptMessage(payload: MessagePayload, recipientPrivateKeyHex: 
   const recipient = PrivateKey.fromHex(recipientPrivateKeyHex);
   const encryptedBytes = Utils.toArray(payload.ct, 'base64');
   const plaintextBytes = EncryptedMessage.decrypt(encryptedBytes, recipient);
+  return Utils.toUTF8(plaintextBytes);
+}
+
+/** BRC-78's envelope version tag (docs/protocol.md §2; @bsv/sdk's EncryptedMessage). */
+const BRC78_VERSION = '42421033';
+
+/**
+ * Decrypts a record payload's `ct` field with the SENDER's own private key — the
+ * same symmetric key `encryptMessage` derived, recomputed from the envelope's own
+ * header (docs/protocol.md §2): the recipient's public key and the random keyID
+ * travel there in the clear alongside the sender's public key. `EncryptedMessage.decrypt`
+ * itself insists the caller be the recipient (it compares the header's recipient key
+ * against the caller's), so this rebuilds the same BRC-42 derivation from the sender's
+ * side, directly from the SDK's exported `PrivateKey`, `PublicKey` and `SymmetricKey`
+ * primitives. Throws a clear error if `senderPrivateKeyHex` isn't the key this message
+ * was sent from.
+ */
+export function decryptMessageAsSender(payload: MessagePayload, senderPrivateKeyHex: string): string {
+  const sender = PrivateKey.fromHex(senderPrivateKeyHex);
+  const encryptedBytes = Utils.toArray(payload.ct, 'base64');
+  const reader = new Utils.Reader(encryptedBytes);
+
+  const version = Utils.toHex(reader.read(4));
+  if (version !== BRC78_VERSION) {
+    throw new Error(`Message version mismatch: expected ${BRC78_VERSION}, received ${version}`);
+  }
+  const headerSenderHex = Utils.toHex(reader.read(33));
+  const recipient = PublicKey.fromString(Utils.toHex(reader.read(33)));
+  if (headerSenderHex !== sender.toPublicKey().toString()) {
+    throw new Error('This key is not the sender this message was encrypted by.');
+  }
+  const keyID = Utils.toBase64(reader.read(32));
+  const encrypted = reader.read(reader.bin.length - reader.pos);
+
+  const invoiceNumber = `2-message encryption-${keyID}`;
+  const signingPriv = sender.deriveChild(recipient, invoiceNumber);
+  const recipientPub = recipient.deriveChild(sender, invoiceNumber);
+  const sharedSecret = signingPriv.deriveSharedSecret(recipientPub);
+  const symmetricKey = new SymmetricKey(sharedSecret.encode(true).slice(1));
+
+  const plaintextBytes = symmetricKey.decrypt(encrypted) as number[];
   return Utils.toUTF8(plaintextBytes);
 }
 

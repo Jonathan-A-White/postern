@@ -22,6 +22,24 @@ export default defineConfig({
       events: fileURLToPath(new URL('./node_modules/spell-forge-bsv/dist/browser-events.js', import.meta.url)),
     },
   },
+  esbuild: {
+    // spell-forge-bsv ships its scrypt-ts contract classes (dist/contracts/fuel.ts,
+    // license.ts) as .ts source with no tsconfig of its own; esbuild falls back to the
+    // nearest tsconfig it can find, which for a node_modules file is postern's root
+    // tsconfig.json (no compilerOptions), so it lowers scrypt-ts's legacy
+    // @prop()/@method() decorators with TC39 standard-decorator semantics instead of the
+    // legacy semantics scrypt-ts 1.4.5 expects — a decorator called as dec(value, context)
+    // instead of dec(target, key, descriptor). scrypt-ts's method() decorator then reads
+    // `descriptor.value` of the missing legacy third argument and throws "Cannot read
+    // properties of undefined (reading 'value')" the moment the class is defined
+    // (mw-1589l.20). tsconfigRaw overrides esbuild's per-file tsconfig lookup globally, so
+    // this applies to every file esbuild transforms, node_modules included.
+    tsconfigRaw: {
+      compilerOptions: {
+        experimentalDecorators: true,
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

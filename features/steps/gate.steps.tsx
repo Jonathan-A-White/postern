@@ -14,6 +14,7 @@
 // out (or flip it offline) before "the app is opened" renders the Gate.
 import '@testing-library/react/dont-cleanup-after-each';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
@@ -21,6 +22,7 @@ import { chainConfig } from 'spell-forge-bsv';
 import { Gate } from '../../src/gate';
 import { db } from '../../src/data/db';
 import { vaultRepo } from '../../src/data/repositories';
+import { setMintPending } from '../../src/services/licence';
 import { FakeChainProvider } from '../../tests/support/fake-chain-provider';
 import { mintRecordTxHex } from '../../tests/support/nftgate-fixtures';
 
@@ -181,6 +183,68 @@ describeFeature(feature, ({ Scenario }) => {
 
     Then('the screen shows "Licensed"', async () => {
       await waitFor(() => expect(screen.getByText('Licensed')).toBeInTheDocument());
+    });
+  });
+
+  Scenario('mw-1589l.24 AC1: Check again shows a checking state until the answer lands', ({ Given, And, When, Then }) => {
+    let resolvePause: () => void = () => {};
+
+    Given('a key exists with no licence on chain', async () => {
+      await freshGate();
+      await saveTestVault();
+    });
+
+    And('the app is opened', async () => {
+      render(<Gate />);
+      await screen.findByRole('button', { name: 'Check again' });
+    });
+
+    And('the chain is slow to answer', () => {
+      fakeProvider.pauseUntil = new Promise((resolve) => {
+        resolvePause = resolve;
+      });
+    });
+
+    When('"Check again" is chosen', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    });
+
+    Then('the button is disabled and shows "Checking..."', () => {
+      expect(screen.getByRole('button', { name: 'Checking...' })).toBeDisabled();
+    });
+
+    When('the chain answers', () => {
+      fakeProvider.pauseUntil = null;
+      resolvePause();
+    });
+
+    Then('the button shows "Check again" again', async () => {
+      expect(await screen.findByRole('button', { name: 'Check again' })).toBeEnabled();
+    });
+  });
+
+  Scenario('mw-1589l.24 AC2: a just-broadcast mint shows as pending, not "No licence found"', ({ Given, And, When, Then }) => {
+    Given('a key exists with no licence on chain', async () => {
+      await freshGate();
+      await saveTestVault();
+    });
+
+    And('a licence mint has just been broadcast', async () => {
+      await setMintPending('c'.repeat(64));
+    });
+
+    When('the app is opened', () => {
+      render(<Gate />);
+    });
+
+    Then('the screen shows "Your licence mint is broadcast; the chain can take a minute to show it"', async () => {
+      expect(
+        await screen.findByText('Your licence mint is broadcast; the chain can take a minute to show it'),
+      ).toBeInTheDocument();
+    });
+
+    And('the screen does not show "No licence found"', () => {
+      expect(screen.queryByText('No licence found')).not.toBeInTheDocument();
     });
   });
 });

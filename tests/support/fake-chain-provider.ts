@@ -10,6 +10,9 @@ export class FakeChainProvider implements ChainProvider {
   broadcastError: string | null = null;
   /** The txid broadcast() resolves with when broadcastError is unset. */
   broadcastTxid = 'f'.repeat(64);
+  /** When set, getAddressHistory awaits this before resolving — lets a test observe
+   * a licence check while it is still in flight. */
+  pauseUntil: Promise<void> | null = null;
 
   private readonly historyByAddress = new Map<string, AddressHistoryEntry[]>();
   private readonly hexByTxid = new Map<string, string>();
@@ -37,6 +40,7 @@ export class FakeChainProvider implements ChainProvider {
 
   async getAddressHistory(address: string): Promise<AddressHistoryEntry[]> {
     this.assertOnline();
+    if (this.pauseUntil) await this.pauseUntil;
     return this.historyByAddress.get(address) ?? [];
   }
 

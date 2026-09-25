@@ -35,3 +35,19 @@ Feature: The gate
     Given a key exists with no licence on chain
     When the app is opened
     Then a "Mint a licence" link to the key screen is offered
+
+  Scenario: mw-1589l.24 AC1: Check again shows a checking state until the answer lands
+    Given a key exists with no licence on chain
+    And the app is opened
+    And the chain is slow to answer
+    When "Check again" is chosen
+    Then the button is disabled and shows "Checking..."
+    When the chain answers
+    Then the button shows "Check again" again
+
+  Scenario: mw-1589l.24 AC2: a just-broadcast mint shows as pending, not "No licence found"
+    Given a key exists with no licence on chain
+    And a licence mint has just been broadcast
+    When the app is opened
+    Then the screen shows "Your licence mint is broadcast; the chain can take a minute to show it"
+    And the screen does not show "No licence found"

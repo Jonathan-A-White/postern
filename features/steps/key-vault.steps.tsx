@@ -11,7 +11,8 @@ import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { KeyVault } from '../../src/key';
 import { db } from '../../src/data/db';
-import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
+import { vaultRepo } from '../../src/data/repositories';
+import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { installMockAuthenticator, removeMockAuthenticator } from '../../tests/support/webauthn-mock';
 
 function toHex(bytes: Uint8Array): string {
@@ -399,6 +400,43 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await screen.findByRole('button', { name: 'Unlock with your fingerprint' })).toBeInTheDocument();
     });
   });
+
+  Scenario(
+    'mw-tfne4.18 AC2: a dismissed fingerprint prompt on the key vault screen says "Unlock cancelled"',
+    ({ Given, When, Then, And }) => {
+      Given('a PRF-wrapped vault exists and the fingerprint prompt will be dismissed', async () => {
+        await freshScreen();
+        installMockAuthenticator({ prfSupported: true, prfGetResult: 'not-allowed' });
+        const key = await deriveMasterKey(createMnemonic());
+        await vaultRepo.save({
+          mode: 'prf',
+          ciphertext: new ArrayBuffer(16),
+          iv: new Uint8Array(12),
+          credentialId: crypto.getRandomValues(new Uint8Array(16)).buffer,
+          publicKeyHex: publicKeyHexFromMasterKey(key),
+        });
+        render(<KeyVault />);
+        await screen.findByRole('button', { name: 'Unlock with your fingerprint' });
+      });
+
+      When('"Unlock with your fingerprint" is tapped', async () => {
+        await userEvent.click(screen.getByRole('button', { name: 'Unlock with your fingerprint' }));
+      });
+
+      Then('the error says "Unlock cancelled. Tap Unlock to try again."', async () => {
+        expect(await screen.findByRole('alert')).toHaveTextContent('Unlock cancelled. Tap Unlock to try again.');
+      });
+
+      And('the raw browser sentence and the w3.org link never appear', () => {
+        expect(screen.queryByText(/timed out or was not allowed/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/w3\.org/i)).not.toBeInTheDocument();
+      });
+
+      And('"Unlock with your fingerprint" is still offered', () => {
+        expect(screen.getByRole('button', { name: 'Unlock with your fingerprint' })).toBeInTheDocument();
+      });
+    },
+  );
 });
 
 afterAll(() => {

@@ -79,3 +79,10 @@ Feature: The key vault
     When a new key is generated and the phrase is confirmed
     And the key screen is reopened
     Then the locked screen offers to unlock with your fingerprint
+
+  Scenario: mw-tfne4.18 AC2: a dismissed fingerprint prompt on the key vault screen says "Unlock cancelled"
+    Given a PRF-wrapped vault exists and the fingerprint prompt will be dismissed
+    When "Unlock with your fingerprint" is tapped
+    Then the error says "Unlock cancelled. Tap Unlock to try again."
+    And the raw browser sentence and the w3.org link never appear
+    And "Unlock with your fingerprint" is still offered

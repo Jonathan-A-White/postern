@@ -29,3 +29,10 @@ Feature: The Projects and Project screens
     Given the backend answers /snapshot with the SPA's index.html instead of a snapshot
     When the Projects screen is opened and unlocked
     Then the Projects screen shows "No snapshot published yet" and no decoder error
+
+  Scenario: mw-tfne4.18 AC2: a dismissed fingerprint prompt on the projects screen says "Unlock cancelled"
+    Given the Projects screen is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed
+    When "Unlock with your fingerprint" is tapped
+    Then the error says "Unlock cancelled. Tap Unlock to try again."
+    And the raw browser sentence and the w3.org link never appear
+    And "Unlock with your fingerprint" is still offered

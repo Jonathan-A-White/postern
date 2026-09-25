@@ -52,3 +52,17 @@ Feature: Composing and sending an encrypted message
   Scenario: mw-tfne4.15 AC1: the Mayor's public key wraps instead of overflowing the screen
     Given the compose screen is opened with an unlocked key and a recipient set
     Then the Mayor's public key is rendered in an element that wraps long text
+
+  Scenario: mw-tfne4.18 AC2: a dismissed fingerprint prompt on the inbox screen says "Unlock cancelled"
+    Given the inbox is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed
+    When "Unlock with your fingerprint" is tapped
+    Then the error says "Unlock cancelled. Tap Unlock to try again."
+    And the raw browser sentence and the w3.org link never appear
+    And "Unlock with your fingerprint" is still offered
+
+  Scenario: mw-tfne4.18 AC2: a dismissed fingerprint prompt on the send screen says "Unlock cancelled"
+    Given the compose screen is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed
+    When "Unlock with your fingerprint" is tapped
+    Then the error says "Unlock cancelled. Tap Unlock to try again."
+    And the raw browser sentence and the w3.org link never appear
+    And "Unlock with your fingerprint" is still offered

@@ -21,17 +21,34 @@ import {
   wrapKey,
 } from '../../src/services/vault';
 import type { Snapshot } from '../../src/services/questions';
+import { installMockAuthenticator, removeMockAuthenticator } from '../../tests/support/webauthn-mock';
 
 const MAYOR_KEY = PrivateKey.fromHex('66'.repeat(32));
 
 async function freshScreen(): Promise<void> {
   cleanup();
+  removeMockAuthenticator();
   await db.vault.clear();
   await db.settings.clear();
   await db.messages.clear();
   await db.snapshot.clear();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
+}
+
+/** Saves a PRF-mode vault whose fingerprint prompt is mocked to reject with a
+ * dismissed/timed-out NotAllowedError: the unwrap never runs, so the wrapped
+ * key material itself doesn't need to be genuine. */
+async function savePrfVaultWithDismissedPrompt(): Promise<void> {
+  installMockAuthenticator({ prfSupported: true, prfGetResult: 'not-allowed' });
+  const key = await deriveMasterKey(createMnemonic());
+  await vaultRepo.save({
+    mode: 'prf',
+    ciphertext: new ArrayBuffer(16),
+    iv: new Uint8Array(12),
+    credentialId: crypto.getRandomValues(new Uint8Array(16)).buffer,
+    publicKeyHex: publicKeyHexFromMasterKey(key),
+  });
 }
 
 async function saveVaultForHim(): Promise<{ mnemonic: string; publicKeyHex: string }> {
@@ -386,9 +403,39 @@ describeFeature(feature, ({ Scenario }) => {
       expect(alert.textContent).toBe('No snapshot published yet.');
     });
   });
+
+  Scenario(
+    'mw-tfne4.18 AC2: a dismissed fingerprint prompt on the projects screen says "Unlock cancelled"',
+    ({ Given, When, Then, And }) => {
+      Given('the Projects screen is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed', async () => {
+        await freshScreen();
+        await savePrfVaultWithDismissedPrompt();
+        render(<ProjectsScreen />);
+        await screen.findByRole('button', { name: 'Unlock with your fingerprint' });
+      });
+
+      When('"Unlock with your fingerprint" is tapped', async () => {
+        await userEvent.click(screen.getByRole('button', { name: 'Unlock with your fingerprint' }));
+      });
+
+      Then('the error says "Unlock cancelled. Tap Unlock to try again."', async () => {
+        expect(await screen.findByRole('alert')).toHaveTextContent('Unlock cancelled. Tap Unlock to try again.');
+      });
+
+      And('the raw browser sentence and the w3.org link never appear', () => {
+        expect(screen.queryByText(/timed out or was not allowed/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/w3\.org/i)).not.toBeInTheDocument();
+      });
+
+      And('"Unlock with your fingerprint" is still offered', () => {
+        expect(screen.getByRole('button', { name: 'Unlock with your fingerprint' })).toBeInTheDocument();
+      });
+    },
+  );
 });
 
 afterAll(() => {
   cleanup();
+  removeMockAuthenticator();
   vi.unstubAllGlobals();
 });

@@ -66,3 +66,31 @@ describe('PosternDB migration to v4 (snapshot)', () => {
     expect(await db.snapshot.count()).toBe(0);
   });
 });
+
+describe('PosternDB migration to v5 (answers)', () => {
+  it('adding the answers table does not lose an existing snapshot row', async () => {
+    db.close();
+    await Dexie.delete('PosternDB');
+
+    // Simulates a phone that already has a v4 database (no answers table) —
+    // the schema this app shipped with before this story.
+    const legacy = new Dexie('PosternDB');
+    legacy.version(1).stores({ settings: 'key' });
+    legacy.version(2).stores({ settings: 'key', vault: 'id' });
+    legacy.version(3).stores({ settings: 'key', vault: 'id', messages: 'id, seq, ts, read' });
+    legacy.version(4).stores({ settings: 'key', vault: 'id', messages: 'id, seq, ts, read', snapshot: 'id' });
+    await legacy.open();
+    await legacy.table('snapshot').put({
+      id: 'current',
+      plaintext: '{"written_at":"2026-09-24T20:00:00Z","epics":[]}',
+      written_at: '2026-09-24T20:00:00Z',
+    });
+    legacy.close();
+
+    await db.open();
+
+    const snapshot = await db.snapshot.get('current');
+    expect(snapshot?.written_at).toBe('2026-09-24T20:00:00Z');
+    expect(await db.answers.count()).toBe(0);
+  });
+});

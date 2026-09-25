@@ -191,8 +191,11 @@ describeFeature(feature, ({ Scenario }) => {
 
     And('the screen says it needs 10,008 testnet sats sent to that address', async () => {
       const address = screen.getByTestId('testnet-address').textContent;
+      const expectedText = `Needs 10,008 testnet sats; this key holds 0. Send testnet sats to ${address}.`;
       expect(
-        await screen.findByText(`Needs 10,008 testnet sats; this key holds 0. Send testnet sats to ${address}.`),
+        await screen.findByText(
+          (_, element) => element?.tagName.toLowerCase() === 'p' && element.textContent === expectedText,
+        ),
       ).toBeInTheDocument();
     });
   });

@@ -30,3 +30,8 @@ Feature: The gate
     When the chain goes offline
     And the app is opened again
     Then the screen shows "Licensed"
+
+  Scenario: AC-6: a key without a licence offers a way to mint one
+    Given a key exists with no licence on chain
+    When the app is opened
+    Then a "Mint a licence" link to the key screen is offered

@@ -138,6 +138,22 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
+  Scenario('AC-6: a key without a licence offers a way to mint one', ({ Given, When, Then }) => {
+    Given('a key exists with no licence on chain', async () => {
+      await freshGate();
+      await saveTestVault();
+    });
+
+    When('the app is opened', () => {
+      render(<Gate />);
+    });
+
+    Then('a "Mint a licence" link to the key screen is offered', async () => {
+      const link = await screen.findByRole('link', { name: 'Mint a licence' });
+      expect(link).toHaveAttribute('href', '?screen=key');
+    });
+  });
+
   Scenario('AC-5: a cached licensed answer opens the gate offline', ({ Given, And, When, Then }) => {
     Given('a key exists holding a licence on chain', async () => {
       await freshGate();

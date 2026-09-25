@@ -21,3 +21,30 @@ Feature: Composing and sending an encrypted message
     When a message is typed and sent
     Then the compose screen shows the backend's error
     And the compose screen does not show a transaction id
+
+  Scenario: AC-5: a record addressed to him is shown decrypted
+    Given the backend has one message record addressed to him
+    When the inbox is opened and unlocked
+    Then the message is shown decrypted in the inbox
+
+  Scenario: AC-6: a record addressed to someone else is not shown
+    Given the backend has one message record addressed to someone else
+    When the inbox is opened and unlocked
+    Then no message is shown in the inbox
+
+  Scenario: AC-7: the cursor advances so a second sync fetches nothing new
+    Given the backend has one message record addressed to him
+    And the inbox has already synced once
+    When the inbox is opened again
+    Then the second sync asks the backend for records since the first sync's cursor
+    And the message is still shown only once
+
+  Scenario: AC-8: offline shows the stored messages
+    Given the inbox has already synced and decrypted one message
+    When the inbox is opened while the backend is unreachable
+    Then the previously stored message is still shown in the inbox
+
+  Scenario: AC-9: a record that fails to decrypt is shown as unreadable, not dropped
+    Given the backend has one message record addressed to him that his key cannot decrypt
+    When the inbox is opened and unlocked
+    Then the message is shown as unreadable in the inbox

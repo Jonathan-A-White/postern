@@ -10,6 +10,7 @@ import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
 import { Compose } from '../../src/compose';
+import { Inbox } from '../../src/inbox';
 import { db } from '../../src/data/db';
 import { vaultRepo } from '../../src/data/repositories';
 import {
@@ -29,7 +30,58 @@ async function freshCompose(): Promise<void> {
   cleanup();
   await db.vault.clear();
   await db.settings.clear();
+  await db.messages.clear();
   vi.unstubAllGlobals();
+}
+
+interface FixtureRecord {
+  seq: number;
+  txid: string;
+  vout: number;
+  payload: unknown;
+}
+
+/** A GET /api/messages?since=<n> (docs/api.md) double: returns only fixture
+ * records with seq greater than the requested `since`, and a `next` that names
+ * the latest seq known — the same cursor contract the real backend keeps. */
+function messagesFetchMock(records: FixtureRecord[]) {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), 'http://localhost');
+    if (!url.pathname.endsWith('/messages')) throw new Error(`unexpected fetch: ${url}`);
+    const since = Number(url.searchParams.get('since') ?? '0');
+    const matching = records.filter((record) => record.seq > since);
+    const seqs = records.map((record) => record.seq);
+    const next = seqs.length > 0 ? Math.max(...seqs) : since;
+    return new Response(JSON.stringify({ records: matching, next }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+}
+
+/** Saves a real phrase-wrapped vault for "him" and returns its mnemonic and
+ * public key, so a fixture message can be addressed to it. */
+async function saveVaultForHim(): Promise<{ mnemonic: string; publicKeyHex: string }> {
+  const mnemonic = createMnemonic();
+  const key = await deriveMasterKey(mnemonic);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const aesKey = await deriveAesKeyFromPhrase(mnemonic, salt);
+  const wrapped = await wrapKey(key, aesKey);
+  const publicKeyHex = publicKeyHexFromMasterKey(key);
+  await vaultRepo.save({
+    mode: 'phrase',
+    ciphertext: wrapped.ciphertext,
+    iv: wrapped.iv,
+    salt,
+    prfFallbackReason: 'webauthn-unavailable',
+    publicKeyHex,
+  });
+  return { mnemonic, publicKeyHex };
+}
+
+async function unlockInbox(mnemonic: string): Promise<void> {
+  await userEvent.type(await screen.findByLabelText('Recovery phrase'), mnemonic);
+  await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
 }
 
 /** Saves a real phrase-wrapped vault (genuine wrapping, unlockable through the UI
@@ -184,6 +236,166 @@ describeFeature(feature, ({ Scenario }) => {
       expect(screen.queryByText(/^Sent\. Transaction id:/)).not.toBeInTheDocument();
     });
   });
+
+  Scenario('AC-5: a record addressed to him is shown decrypted', ({ Given, When, Then }) => {
+    let mnemonic: string;
+
+    Given('the backend has one message record addressed to him', async () => {
+      await freshCompose();
+      const him = await saveVaultForHim();
+      mnemonic = him.mnemonic;
+      const payload = encryptMessage({
+        text: 'meet at the usual place',
+        class: 'message',
+        senderPrivateKeyHex: SENDER_KEY.toHex(),
+        recipientPublicKeyHex: him.publicKeyHex,
+      });
+      vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
+    });
+
+    When('the inbox is opened and unlocked', async () => {
+      render(<Inbox />);
+      await unlockInbox(mnemonic);
+    });
+
+    Then('the message is shown decrypted in the inbox', async () => {
+      expect(await screen.findByText('meet at the usual place')).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-6: a record addressed to someone else is not shown', ({ Given, When, Then }) => {
+    let mnemonic: string;
+
+    Given('the backend has one message record addressed to someone else', async () => {
+      await freshCompose();
+      const him = await saveVaultForHim();
+      mnemonic = him.mnemonic;
+      const payload = encryptMessage({
+        text: 'not for him',
+        class: 'message',
+        senderPrivateKeyHex: SENDER_KEY.toHex(),
+        recipientPublicKeyHex: EAVESDROPPER_KEY.toPublicKey().toString(),
+      });
+      vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
+    });
+
+    When('the inbox is opened and unlocked', async () => {
+      render(<Inbox />);
+      await unlockInbox(mnemonic);
+    });
+
+    Then('no message is shown in the inbox', async () => {
+      expect(await screen.findByText('No messages yet.')).toBeInTheDocument();
+      expect(screen.queryByText('not for him')).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-7: the cursor advances so a second sync fetches nothing new', ({ Given, And, When, Then }) => {
+    let mnemonic: string;
+    let fetchMock: ReturnType<typeof messagesFetchMock>;
+
+    Given('the backend has one message record addressed to him', async () => {
+      await freshCompose();
+      const him = await saveVaultForHim();
+      mnemonic = him.mnemonic;
+      const payload = encryptMessage({
+        text: 'first sync catch',
+        class: 'message',
+        senderPrivateKeyHex: SENDER_KEY.toHex(),
+        recipientPublicKeyHex: him.publicKeyHex,
+      });
+      fetchMock = messagesFetchMock([{ seq: 7, txid: 'a'.repeat(64), vout: 0, payload }]);
+      vi.stubGlobal('fetch', fetchMock);
+    });
+
+    And('the inbox has already synced once', async () => {
+      render(<Inbox />);
+      await unlockInbox(mnemonic);
+      await screen.findByText('first sync catch');
+    });
+
+    When('the inbox is opened again', async () => {
+      cleanup();
+      render(<Inbox />);
+      await screen.findByText('first sync catch');
+    });
+
+    Then("the second sync asks the backend for records since the first sync's cursor", () => {
+      const calls = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(calls[0]).toBe('/api/messages?since=0');
+      expect(calls[1]).toBe('/api/messages?since=7');
+    });
+
+    And('the message is still shown only once', () => {
+      expect(screen.getAllByText('first sync catch')).toHaveLength(1);
+    });
+  });
+
+  Scenario('AC-8: offline shows the stored messages', ({ Given, When, Then }) => {
+    Given('the inbox has already synced and decrypted one message', async () => {
+      await freshCompose();
+      const him = await saveVaultForHim();
+      const payload = encryptMessage({
+        text: 'stored while online',
+        class: 'message',
+        senderPrivateKeyHex: SENDER_KEY.toHex(),
+        recipientPublicKeyHex: him.publicKeyHex,
+      });
+      vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
+
+      render(<Inbox />);
+      await unlockInbox(him.mnemonic);
+      await screen.findByText('stored while online');
+    });
+
+    When('the inbox is opened while the backend is unreachable', async () => {
+      cleanup();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          throw new Error('the network is unreachable');
+        }),
+      );
+      render(<Inbox />);
+    });
+
+    Then('the previously stored message is still shown in the inbox', async () => {
+      expect(await screen.findByText('stored while online')).toBeInTheDocument();
+    });
+  });
+
+  Scenario(
+    'AC-9: a record that fails to decrypt is shown as unreadable, not dropped',
+    ({ Given, When, Then }) => {
+      let mnemonic: string;
+
+      Given('the backend has one message record addressed to him that his key cannot decrypt', async () => {
+        await freshCompose();
+        const him = await saveVaultForHim();
+        mnemonic = him.mnemonic;
+
+        // Encrypted for the eavesdropper, not him, then its `to` field is forged
+        // to name his public key — his real key cannot decrypt this ciphertext.
+        const payload = encryptMessage({
+          text: 'not really for him',
+          class: 'message',
+          senderPrivateKeyHex: SENDER_KEY.toHex(),
+          recipientPublicKeyHex: EAVESDROPPER_KEY.toPublicKey().toString(),
+        });
+        const forged = { ...payload, to: him.publicKeyHex };
+        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload: forged }]));
+      });
+
+      When('the inbox is opened and unlocked', async () => {
+        render(<Inbox />);
+        await unlockInbox(mnemonic);
+      });
+
+      Then('the message is shown as unreadable in the inbox', async () => {
+        expect(await screen.findByText('Unreadable message.')).toBeInTheDocument();
+      });
+    },
+  );
 });
 
 afterAll(() => {

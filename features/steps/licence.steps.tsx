@@ -18,6 +18,7 @@ import { KeyVault } from '../../src/key';
 import { Gate } from '../../src/gate';
 import { db } from '../../src/data/db';
 import { addressForPublicKey, getCachedLicenceStatus } from '../../src/services/licence';
+import { mintCostSatoshis } from '../../src/services/mint';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { FakeChainProvider } from '../../tests/support/fake-chain-provider';
 import { mintRecordTxHex } from '../../tests/support/nftgate-fixtures';
@@ -188,10 +189,10 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await screen.findByText('Balance: 0 sats')).toBeInTheDocument();
     });
 
-    And('the screen says it needs 10,001 testnet sats sent to that address', async () => {
+    And('the screen says it needs 10,008 testnet sats sent to that address', async () => {
       const address = screen.getByTestId('testnet-address').textContent;
       expect(
-        await screen.findByText(`Needs 10,001 testnet sats; this key holds 0. Send testnet sats to ${address}.`),
+        await screen.findByText(`Needs 10,008 testnet sats; this key holds 0. Send testnet sats to ${address}.`),
       ).toBeInTheDocument();
     });
   });
@@ -249,6 +250,59 @@ describeFeature(feature, ({ Scenario }) => {
       fakeProvider.offline = false;
       fakeProvider.setUtxos(address, [{ txid: 'a'.repeat(64), vout: 0, satoshis: 20_000 }]);
       await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+
+    Then('the "Mint my licence (testnet)" button is enabled', async () => {
+      expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeEnabled();
+    });
+  });
+
+  Scenario(
+    'mw-1589l.22 AC2a: a balance of exactly the Fuel plus the License leaves Mint disabled',
+    ({ Given, And, Then }) => {
+      Given('the key screen is opened', async () => {
+        await freshScreen();
+        render(<KeyVault />);
+        await screen.findByRole('button', { name: 'Restore from a phrase' });
+      });
+
+      And('the key is restored from a phrase funded with exactly the Fuel plus the License token', async () => {
+        const key = await deriveMasterKey(FUNDED_MNEMONIC);
+        const publicKeyHex = publicKeyHexFromMasterKey(key);
+        const address = addressForPublicKey(publicKeyHex);
+        fakeProvider.setUtxos(address, [
+          { txid: 'a'.repeat(64), vout: 0, satoshis: (chainConfig.mintFuelSatoshis ?? 0) + 1 },
+        ]);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Restore from a phrase' }));
+        await userEvent.type(screen.getByLabelText('Recovery phrase'), FUNDED_MNEMONIC);
+        await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+        await screen.findByText('Key unlocked');
+      });
+
+      Then('the "Mint my licence (testnet)" button is disabled', async () => {
+        expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
+      });
+    },
+  );
+
+  Scenario("mw-1589l.22 AC2b: a balance covering the mint's stated cost enables Mint", ({ Given, And, Then }) => {
+    Given('the key screen is opened', async () => {
+      await freshScreen();
+      render(<KeyVault />);
+      await screen.findByRole('button', { name: 'Restore from a phrase' });
+    });
+
+    And("the key is restored from a phrase funded with exactly the mint's stated cost", async () => {
+      const key = await deriveMasterKey(FUNDED_MNEMONIC);
+      const publicKeyHex = publicKeyHexFromMasterKey(key);
+      const address = addressForPublicKey(publicKeyHex);
+      fakeProvider.setUtxos(address, [{ txid: 'a'.repeat(64), vout: 0, satoshis: mintCostSatoshis() }]);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Restore from a phrase' }));
+      await userEvent.type(screen.getByLabelText('Recovery phrase'), FUNDED_MNEMONIC);
+      await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      await screen.findByText('Key unlocked');
     });
 
     Then('the "Mint my licence (testnet)" button is enabled', async () => {

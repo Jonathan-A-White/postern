@@ -29,7 +29,7 @@ Feature: Minting a licence
     Given the key screen is opened
     When a new key is generated and the phrase is confirmed
     Then the screen shows the key's testnet address and a balance of 0 sats
-    And the screen says it needs 10,001 testnet sats sent to that address
+    And the screen says it needs 10,008 testnet sats sent to that address
 
   Scenario: AC-6: a balance lookup failure names the reason and offers Retry
     Given the key screen is opened
@@ -43,4 +43,14 @@ Feature: Minting a licence
     And the chain is unreachable
     When a new key is generated and the phrase is confirmed
     And the chain is funded with 20,000 sats and "Retry" is chosen
+    Then the "Mint my licence (testnet)" button is enabled
+
+  Scenario: mw-1589l.22 AC2a: a balance of exactly the Fuel plus the License leaves Mint disabled
+    Given the key screen is opened
+    And the key is restored from a phrase funded with exactly the Fuel plus the License token
+    Then the "Mint my licence (testnet)" button is disabled
+
+  Scenario: mw-1589l.22 AC2b: a balance covering the mint's stated cost enables Mint
+    Given the key screen is opened
+    And the key is restored from a phrase funded with exactly the mint's stated cost
     Then the "Mint my licence (testnet)" button is enabled

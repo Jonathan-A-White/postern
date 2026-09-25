@@ -4,6 +4,9 @@ import type { MessageRow, VaultRow } from '../data/db';
 import { getPrfSecret } from '../services/webauthnPrf';
 import { deriveAesKeyFromPrf, deriveAesKeyFromPhrase, unwrapKey, findInvalidWords } from '../services/vault';
 import { decryptPendingMessages, syncMessages } from '../services/inbox';
+import { getMayorPublicKey } from '../services/messages';
+import { decodeQuestion, type QuestionBody } from '../services/questions';
+import { QuestionScreen } from '../projects';
 
 type VaultScreen =
   | { name: 'loading' }
@@ -31,6 +34,8 @@ export function Inbox() {
   const [phraseInput, setPhraseInput] = useState('');
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [selectedQuestion, setSelectedQuestion] = useState<QuestionBody | undefined>(undefined);
+  const [mayorPublicKey, setMayorPublicKey] = useState<string | undefined>(undefined);
   // Holds the initial background sync so an unlock (which can happen before that
   // sync's fetch resolves) waits for it to finish storing records before it tries
   // to decrypt them — otherwise a fast unlock could race the fetch and decrypt
@@ -51,6 +56,10 @@ export function Inbox() {
       )
       .then(() => messagesRepo.getAll())
       .then(setMessages);
+  }, []);
+
+  useEffect(() => {
+    void getMayorPublicKey().then(setMayorPublicKey);
   }, []);
 
   async function refreshMessages(): Promise<void> {
@@ -120,9 +129,34 @@ export function Inbox() {
   }
 
   async function handleOpenMessage(row: MessageRow) {
-    if (row.read) return;
-    await messagesRepo.markRead(row.id);
-    await refreshMessages();
+    if (!row.read) {
+      await messagesRepo.markRead(row.id);
+      await refreshMessages();
+    }
+    if (row.class === 'decision-needed' && row.plaintext !== undefined) {
+      const decoded = decodeQuestion(row.plaintext);
+      if (decoded) setSelectedQuestion(decoded);
+    }
+  }
+
+  if (screen.name === 'ready' && selectedQuestion) {
+    return (
+      <main className="flex min-h-screen flex-col items-center gap-4 bg-slate-900 p-6 text-slate-200">
+        <h1 className="text-2xl font-semibold">Inbox</h1>
+        <button className="self-start text-sm underline" onClick={() => setSelectedQuestion(undefined)}>
+          Back to inbox
+        </button>
+        <div className="flex w-full max-w-md flex-col gap-3">
+          {mayorPublicKey ? (
+            <QuestionScreen question={selectedQuestion} unlockedKey={screen.key} recipientPublicKeyHex={mayorPublicKey} />
+          ) : (
+            <p role="alert" className="text-red-400">
+              No recipient key is set.
+            </p>
+          )}
+        </div>
+      </main>
+    );
   }
 
   return (

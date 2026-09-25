@@ -15,6 +15,7 @@ import {
 } from '../services/vault';
 import { fetchBalanceSatoshis, mintCostSatoshis, mintMyLicence } from '../services/mint';
 import { addressForPublicKey, getCachedLicenceStatus } from '../services/licence';
+import { LicenceExplainer } from '../licence';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
 
@@ -438,17 +439,20 @@ export function KeyVault() {
               </p>
             </>
           ) : (
-            <button
-              className="rounded bg-slate-700 px-4 py-2 disabled:opacity-50"
-              disabled={
-                balanceState.name !== 'loaded' ||
-                balanceState.satoshis < mintCostSatoshis() ||
-                mintOutcome.name === 'minting'
-              }
-              onClick={() => void handleMint(screen.key)}
-            >
-              Mint my licence (testnet)
-            </button>
+            <>
+              <button
+                className="rounded bg-slate-700 px-4 py-2 disabled:opacity-50"
+                disabled={
+                  balanceState.name !== 'loaded' ||
+                  balanceState.satoshis < mintCostSatoshis() ||
+                  mintOutcome.name === 'minting'
+                }
+                onClick={() => void handleMint(screen.key)}
+              >
+                Mint my licence (testnet)
+              </button>
+              <LicenceExplainer />
+            </>
           )}
 
           {mintOutcome.name === 'success' && (

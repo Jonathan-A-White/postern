@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { vaultRepo, messagesRepo } from '../data/repositories';
 import { addressForPublicKey, checkLicence, getCachedLicenceStatus, getMintPending } from '../services/licence';
 import { subscribeToPush } from '../services/push';
+import { LicenceExplainer } from '../licence';
 
 type GateScreen =
   | { name: 'loading' }
@@ -129,6 +130,7 @@ export function Gate() {
           <a className="text-sm underline" href="?screen=key">
             Mint a licence
           </a>
+          <LicenceExplainer />
         </>
       )}
 

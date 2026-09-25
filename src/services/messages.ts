@@ -65,6 +65,16 @@ export function decryptMessage(payload: MessagePayload, recipientPrivateKeyHex: 
   return Utils.toUTF8(plaintextBytes);
 }
 
+/** Decrypts the raw BRC-78 ciphertext GET /snapshot returns (docs/protocol.md §7):
+ * base64 text on its own, not wrapped in a `{v, kind, ...}` envelope like a message,
+ * since there is exactly one recipient and one purpose. */
+export function decryptSnapshotCiphertext(base64Ciphertext: string, recipientPrivateKeyHex: string): string {
+  const recipient = PrivateKey.fromHex(recipientPrivateKeyHex);
+  const encryptedBytes = Utils.toArray(base64Ciphertext, 'base64');
+  const plaintextBytes = EncryptedMessage.decrypt(encryptedBytes, recipient);
+  return Utils.toUTF8(plaintextBytes);
+}
+
 const MAYOR_PUBLIC_KEY_SETTING_KEY = 'mayor-public-key';
 
 /** The Mayor's public key, pasted once and kept in Dexie — the recipient every

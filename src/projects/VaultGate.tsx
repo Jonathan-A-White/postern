@@ -12,6 +12,7 @@ export interface VaultGateProps {
   setPhraseInput: (value: string) => void;
   onUnlockWithFingerprint: (vault: VaultRow) => void;
   onUnlockWithPhrase: (vault: VaultRow) => void;
+  onLock: () => void;
 }
 
 export function VaultGate({
@@ -21,9 +22,16 @@ export function VaultGate({
   setPhraseInput,
   onUnlockWithFingerprint,
   onUnlockWithPhrase,
+  onLock,
 }: VaultGateProps) {
   return (
     <>
+      {vaultState.name === 'ready' && (
+        <button className="self-start rounded bg-slate-700 px-3 py-1 text-sm" onClick={onLock}>
+          Lock
+        </button>
+      )}
+
       {vaultState.name === 'loading' && <p>Loading…</p>}
 
       {vaultState.name === 'no-key' && (

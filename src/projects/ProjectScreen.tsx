@@ -19,6 +19,7 @@ export function ProjectScreen({ epicId }: ProjectScreenProps) {
     setPhraseInput,
     handleUnlockWithFingerprint,
     handleUnlockWithPhrase,
+    handleLock,
     snapshotState,
     refresh,
   } = useSnapshotScreen();
@@ -39,6 +40,7 @@ export function ProjectScreen({ epicId }: ProjectScreenProps) {
         setPhraseInput={setPhraseInput}
         onUnlockWithFingerprint={(vault) => void handleUnlockWithFingerprint(vault)}
         onUnlockWithPhrase={(vault) => void handleUnlockWithPhrase(vault)}
+        onLock={() => void handleLock()}
       />
 
       {vaultState.name === 'ready' && (

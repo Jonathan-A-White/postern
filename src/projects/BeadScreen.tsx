@@ -27,6 +27,7 @@ export function BeadScreen({ epicId, kind, beadId }: BeadScreenProps) {
     setPhraseInput,
     handleUnlockWithFingerprint,
     handleUnlockWithPhrase,
+    handleLock,
     snapshotState,
   } = useSnapshotScreen();
 
@@ -63,6 +64,7 @@ export function BeadScreen({ epicId, kind, beadId }: BeadScreenProps) {
         setPhraseInput={setPhraseInput}
         onUnlockWithFingerprint={(vault) => void handleUnlockWithFingerprint(vault)}
         onUnlockWithPhrase={(vault) => void handleUnlockWithPhrase(vault)}
+        onLock={() => void handleLock()}
       />
 
       {vaultState.name === 'ready' && (

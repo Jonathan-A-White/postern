@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { vaultRepo } from '../data/repositories';
 import type { PrfFallbackReason, VaultRow } from '../data/db';
 import { isWebAuthnAvailable, createPrfPasskey, getPrfSecret, describeUnlockError } from '../services/webauthnPrf';
+import { getKey, setKey, lock as lockSession } from '../services/keySession';
 import {
   createMnemonic,
   isValidMnemonic,
@@ -149,7 +150,12 @@ export function KeyVault() {
 
   useEffect(() => {
     void vaultRepo.get().then((vault) => {
-      setScreen(vault ? { name: 'locked', vault } : { name: 'empty' });
+      if (!vault) {
+        setScreen({ name: 'empty' });
+        return;
+      }
+      const cachedKey = getKey();
+      setScreen(cachedKey ? { name: 'unlocked', key: cachedKey } : { name: 'locked', vault });
     });
   }, []);
 
@@ -214,6 +220,7 @@ export function KeyVault() {
     setError(null);
     try {
       const prfFallbackReason = await storeKey(mnemonic, key);
+      setKey(key);
       setScreen({ name: 'unlocked', key, prfFallbackReason: prfFallbackReason ?? undefined });
     } catch (err) {
       setError((err as Error).message);
@@ -235,6 +242,7 @@ export function KeyVault() {
       const key = await deriveMasterKey(phraseInput);
       const prfFallbackReason = await storeKey(phraseInput, key);
       setPhraseInput('');
+      setKey(key);
       setScreen({ name: 'unlocked', key, prfFallbackReason: prfFallbackReason ?? undefined });
     } catch (err) {
       setError((err as Error).message);
@@ -249,6 +257,7 @@ export function KeyVault() {
       if (!prfSecret) throw new Error('The passkey did not return a PRF secret.');
       const aesKey = await deriveAesKeyFromPrf(prfSecret);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
+      setKey(key);
       setScreen({ name: 'unlocked', key });
     } catch (err) {
       setError(describeUnlockError(err));
@@ -267,10 +276,17 @@ export function KeyVault() {
       const aesKey = await deriveAesKeyFromPhrase(phraseInput, vault.salt);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
       setPhraseInput('');
+      setKey(key);
       setScreen({ name: 'unlocked', key });
     } catch {
       setError('That recovery phrase did not unlock the key.');
     }
+  }
+
+  async function handleLock(): Promise<void> {
+    lockSession();
+    const vault = await vaultRepo.get();
+    setScreen(vault ? { name: 'locked', vault } : { name: 'empty' });
   }
 
   return (
@@ -383,6 +399,9 @@ export function KeyVault() {
       {screen.name === 'unlocked' && (
         <div className="flex flex-col gap-2">
           <p>Key unlocked</p>
+          <button className="self-start rounded bg-slate-700 px-3 py-1 text-sm" onClick={() => void handleLock()}>
+            Lock
+          </button>
           {screen.prfFallbackReason && (
             <p>Fingerprint unlock was not used: {describeFallbackClause(screen.prfFallbackReason)}.</p>
           )}

@@ -3,6 +3,7 @@ import { vaultRepo } from '../data/repositories';
 import type { VaultRow } from '../data/db';
 import { getPrfSecret, describeUnlockError } from '../services/webauthnPrf';
 import { deriveAesKeyFromPrf, deriveAesKeyFromPhrase, unwrapKey, findInvalidWords } from '../services/vault';
+import { getKey, setKey, lock as lockSession } from '../services/keySession';
 import { isValidCompressedPublicKeyHex } from 'spell-forge-bsv';
 import { getMayorPublicKey, setMayorPublicKey } from '../services/messages';
 import { sendTextMessage } from '../services/send';
@@ -41,7 +42,12 @@ export function Compose() {
   useEffect(() => {
     void Promise.all([vaultRepo.get(), getMayorPublicKey()]).then(([vault, mayorPublicKey]) => {
       setRecipient(mayorPublicKey);
-      setScreen(vault ? { name: 'locked', vault } : { name: 'no-key' });
+      if (!vault) {
+        setScreen({ name: 'no-key' });
+        return;
+      }
+      const cachedKey = getKey();
+      setScreen(cachedKey ? { name: 'ready', key: cachedKey } : { name: 'locked', vault });
     });
   }, []);
 
@@ -53,6 +59,7 @@ export function Compose() {
       if (!prfSecret) throw new Error('The passkey did not return a PRF secret.');
       const aesKey = await deriveAesKeyFromPrf(prfSecret);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
+      setKey(key);
       setScreen({ name: 'ready', key });
     } catch (err) {
       setUnlockError(describeUnlockError(err));
@@ -71,10 +78,17 @@ export function Compose() {
       const aesKey = await deriveAesKeyFromPhrase(phraseInput, vault.salt);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
       setPhraseInput('');
+      setKey(key);
       setScreen({ name: 'ready', key });
     } catch {
       setUnlockError('That recovery phrase did not unlock the key.');
     }
+  }
+
+  async function handleLock(): Promise<void> {
+    lockSession();
+    const vault = await vaultRepo.get();
+    setScreen(vault ? { name: 'locked', vault } : { name: 'no-key' });
   }
 
   async function handleSaveRecipient() {
@@ -178,6 +192,12 @@ export function Compose() {
 
       {screen.name === 'ready' && recipient && (
         <div className="flex flex-col gap-2">
+          <button
+            className="self-start rounded bg-slate-700 px-3 py-1 text-sm"
+            onClick={() => void handleLock()}
+          >
+            Lock
+          </button>
           <label htmlFor="message-text">Message</label>
           <textarea id="message-text" value={text} onChange={(e) => setText(e.target.value)} />
           <button

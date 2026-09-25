@@ -3,6 +3,7 @@ import { vaultRepo, messagesRepo } from '../data/repositories';
 import type { MessageRow, VaultRow } from '../data/db';
 import { getPrfSecret, describeUnlockError } from '../services/webauthnPrf';
 import { deriveAesKeyFromPrf, deriveAesKeyFromPhrase, unwrapKey, findInvalidWords } from '../services/vault';
+import { getKey, setKey, lock as lockSession } from '../services/keySession';
 import { decryptPendingMessages, syncMessages } from '../services/inbox';
 import { getMayorPublicKey } from '../services/messages';
 import { decodeQuestion, type QuestionBody } from '../services/questions';
@@ -44,10 +45,16 @@ export function Inbox() {
   const initialSyncRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
+    let cachedKey: Uint8Array | null = null;
     initialSyncRef.current = vaultRepo
       .get()
       .then((vault) => {
-        setScreen(vault ? { name: 'locked', vault } : { name: 'no-key' });
+        if (!vault) {
+          setScreen({ name: 'no-key' });
+          return undefined;
+        }
+        cachedKey = getKey();
+        setScreen(cachedKey ? { name: 'ready', key: cachedKey } : { name: 'locked', vault });
         return vault;
       })
       .then((vault) =>
@@ -55,6 +62,7 @@ export function Inbox() {
           ? syncMessages({ publicKeyHex: vault.publicKeyHex }).catch((err) => setSyncError((err as Error).message))
           : undefined,
       )
+      .then(() => (cachedKey ? decryptPendingMessages(cachedKey) : undefined))
       .then(() => messagesRepo.getAll())
       .then(setMessages);
   }, []);
@@ -99,6 +107,7 @@ export function Inbox() {
       if (!prfSecret) throw new Error('The passkey did not return a PRF secret.');
       const aesKey = await deriveAesKeyFromPrf(prfSecret);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
+      setKey(key);
       setScreen({ name: 'ready', key });
       await initialSyncRef.current;
       await decryptPendingMessages(key);
@@ -120,6 +129,7 @@ export function Inbox() {
       const aesKey = await deriveAesKeyFromPhrase(phraseInput, vault.salt);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
       setPhraseInput('');
+      setKey(key);
       setScreen({ name: 'ready', key });
       await initialSyncRef.current;
       await decryptPendingMessages(key);
@@ -127,6 +137,13 @@ export function Inbox() {
     } catch {
       setUnlockError('That recovery phrase did not unlock the key.');
     }
+  }
+
+  async function handleLock(): Promise<void> {
+    lockSession();
+    setSelectedQuestion(undefined);
+    const vault = await vaultRepo.get();
+    setScreen(vault ? { name: 'locked', vault } : { name: 'no-key' });
   }
 
   async function handleOpenMessage(row: MessageRow) {
@@ -166,6 +183,12 @@ export function Inbox() {
       <a className="text-sm underline" href="/">
         Back
       </a>
+
+      {screen.name === 'ready' && (
+        <button className="self-start rounded bg-slate-700 px-3 py-1 text-sm" onClick={() => void handleLock()}>
+          Lock
+        </button>
+      )}
 
       {screen.name === 'loading' && <p>Loading…</p>}
 

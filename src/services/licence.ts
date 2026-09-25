@@ -19,6 +19,7 @@ import {
 import { settingsRepo } from '../data/repositories';
 
 const LICENCE_STATUS_SETTING_KEY = 'licence-status';
+const LICENCE_MINT_PENDING_SETTING_KEY = 'licence-mint-pending';
 
 export interface LicenceOutpoint {
   txid: string;
@@ -110,11 +111,34 @@ export async function getCachedLicenceStatus(): Promise<LicenceStatus | undefine
   return (await settingsRepo.get(LICENCE_STATUS_SETTING_KEY)) as LicenceStatus | undefined;
 }
 
-/** Checks the chain and caches the answer (with the time it was checked). */
+export interface MintPending {
+  txid: string;
+  broadcastAt: string;
+}
+
+/** Recorded the moment a mint broadcasts, so the gate can say a licence is on its way
+ * rather than "No licence found" while WhatsOnChain is still indexing it (mw-1589l.24). */
+export async function setMintPending(txid: string): Promise<void> {
+  const pending: MintPending = { txid, broadcastAt: new Date().toISOString() };
+  await settingsRepo.set(LICENCE_MINT_PENDING_SETTING_KEY, pending);
+}
+
+export async function getMintPending(): Promise<MintPending | undefined> {
+  return (await settingsRepo.get(LICENCE_MINT_PENDING_SETTING_KEY)) as MintPending | undefined;
+}
+
+async function clearMintPending(): Promise<void> {
+  await settingsRepo.set(LICENCE_MINT_PENDING_SETTING_KEY, undefined);
+}
+
+/** Checks the chain and caches the answer (with the time it was checked). Clears any
+ * mint-pending marker once the licence is found held, so a later failed check has
+ * nothing stale to fall back to (mw-1589l.24). */
 export async function checkLicence(publicKeyHex: string, provider?: ChainProvider): Promise<LicenceStatus> {
   const outpoint = await findLicence(publicKeyHex, provider);
   const checkedAt = new Date().toISOString();
   const status: LicenceStatus = outpoint ? { held: true, outpoint, checkedAt } : { held: false, checkedAt };
   await settingsRepo.set(LICENCE_STATUS_SETTING_KEY, status);
+  if (status.held) await clearMintPending();
   return status;
 }

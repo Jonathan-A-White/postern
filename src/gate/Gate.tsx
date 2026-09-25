@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { vaultRepo, messagesRepo } from '../data/repositories';
-import { addressForPublicKey, checkLicence, getCachedLicenceStatus } from '../services/licence';
+import { addressForPublicKey, checkLicence, getCachedLicenceStatus, getMintPending } from '../services/licence';
 import { subscribeToPush } from '../services/push';
 
 type GateScreen =
   | { name: 'loading' }
   | { name: 'no-key' }
   | { name: 'no-licence'; address: string }
+  | { name: 'mint-pending'; address: string; txid: string }
   | { name: 'licensed'; address: string; publicKeyHex: string };
 
 type NotifyState =
@@ -23,16 +24,17 @@ async function determineScreen(): Promise<GateScreen> {
   if (!vault) return { name: 'no-key' };
 
   const address = addressForPublicKey(vault.publicKeyHex);
+  const pending = await getMintPending();
+  const notFoundScreen: GateScreen = pending
+    ? { name: 'mint-pending', address, txid: pending.txid }
+    : { name: 'no-licence', address };
+
   try {
     const fresh = await checkLicence(vault.publicKeyHex);
-    return fresh.held
-      ? { name: 'licensed', address, publicKeyHex: vault.publicKeyHex }
-      : { name: 'no-licence', address };
+    return fresh.held ? { name: 'licensed', address, publicKeyHex: vault.publicKeyHex } : notFoundScreen;
   } catch {
     const cached = await getCachedLicenceStatus();
-    return cached?.held
-      ? { name: 'licensed', address, publicKeyHex: vault.publicKeyHex }
-      : { name: 'no-licence', address };
+    return cached?.held ? { name: 'licensed', address, publicKeyHex: vault.publicKeyHex } : notFoundScreen;
   }
 }
 
@@ -40,6 +42,7 @@ export function Gate() {
   const [screen, setScreen] = useState<GateScreen>({ name: 'loading' });
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifyState, setNotifyState] = useState<NotifyState>({ name: 'idle' });
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     void determineScreen().then(setScreen);
@@ -57,6 +60,13 @@ export function Gate() {
     } catch (err) {
       setNotifyState({ name: 'error', message: (err as Error).message });
     }
+  }
+
+  async function handleCheckAgain() {
+    setChecking(true);
+    const result = await determineScreen();
+    setScreen(result);
+    setChecking(false);
   }
 
   if (screen.name === 'licensed') {
@@ -113,12 +123,22 @@ export function Gate() {
         <>
           <p className="text-sm text-slate-400">Testnet address: {screen.address}</p>
           <p className="text-sm text-slate-400">No licence found</p>
-          <button className="rounded bg-slate-700 px-4 py-2" onClick={() => void determineScreen().then(setScreen)}>
-            Check again
+          <button className="rounded bg-slate-700 px-4 py-2" disabled={checking} onClick={() => void handleCheckAgain()}>
+            {checking ? 'Checking...' : 'Check again'}
           </button>
           <a className="text-sm underline" href="?screen=key">
             Mint a licence
           </a>
+        </>
+      )}
+
+      {screen.name === 'mint-pending' && (
+        <>
+          <p className="text-sm text-slate-400">Testnet address: {screen.address}</p>
+          <p className="text-sm text-slate-400">Your licence mint is broadcast; the chain can take a minute to show it</p>
+          <button className="rounded bg-slate-700 px-4 py-2" disabled={checking} onClick={() => void handleCheckAgain()}>
+            {checking ? 'Checking...' : 'Check again'}
+          </button>
         </>
       )}
 

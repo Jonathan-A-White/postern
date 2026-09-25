@@ -11,7 +11,7 @@ import {
   type ChainConfig,
   type ChainProvider,
 } from 'spell-forge-bsv';
-import { addressForPublicKey, checkLicence } from './licence';
+import { addressForPublicKey, setMintPending } from './licence';
 
 const TESTNET_WIF_PREFIX = [0xef];
 const LICENSE_TOKEN_SATOSHIS = 1;
@@ -57,9 +57,14 @@ export async function fetchBalanceSatoshis(
 
 /**
  * Mints a License to the key's own address, funded by the key's own testnet UTXOs, and
- * refreshes the licence cache once the mint is broadcast (so the gate opens on its next
- * check). Nothing is cached when the build or the broadcast fails — the caller shows
- * whatever error surfaces.
+ * marks the licence check pending once the mint is broadcast, rather than checking (and
+ * possibly caching held:false) right away: WhatsOnChain can take a minute or more to
+ * index a fresh transaction, so an immediate check would wrongly cache "no licence" and
+ * the gate would show that stale answer until a fresh check happens to succeed
+ * (mw-1589l.24's SEEN). The gate's own next check picks up the mint once it is indexed,
+ * and clears the pending marker itself (licence.ts's checkLicence). Nothing is cached
+ * or marked pending when the build or the broadcast fails — the caller shows whatever
+ * error surfaces.
  */
 export async function mintMyLicence(key: Uint8Array, provider: ChainProvider = createChainProvider()): Promise<MintResult> {
   const privateKey = PrivateKey.fromHex(Utils.toHex(Array.from(key)));
@@ -77,6 +82,6 @@ export async function mintMyLicence(key: Uint8Array, provider: ChainProvider = c
   });
 
   const txid = await provider.broadcast(built.hex);
-  await checkLicence(publicKeyHex, provider);
+  await setMintPending(txid);
   return { txid };
 }

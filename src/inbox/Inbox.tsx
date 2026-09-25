@@ -57,6 +57,30 @@ export function Inbox() {
     setMessages(await messagesRepo.getAll());
   }
 
+  // mw-1589l.7: a click on a push notification (self.clients.openWindow, or
+  // focusing an already-open tab) should show what arrived since the last
+  // sync, and so should simply refocusing the tab — this is the app's only
+  // background-sync signal, since a PWA can't poll on its own.
+  useEffect(() => {
+    function resync() {
+      void vaultRepo
+        .get()
+        .then((vault) => (vault ? syncMessages({ publicKeyHex: vault.publicKeyHex }).catch(() => undefined) : undefined))
+        .then(() => refreshMessages());
+    }
+
+    function handleServiceWorkerMessage(event: MessageEvent) {
+      if ((event.data as { type?: string } | undefined)?.type === 'sync-inbox') resync();
+    }
+
+    window.addEventListener('focus', resync);
+    navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage);
+    return () => {
+      window.removeEventListener('focus', resync);
+      navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage);
+    };
+  }, []);
+
   async function handleUnlockWithFingerprint(vault: VaultRow) {
     setUnlockError(null);
     try {

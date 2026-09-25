@@ -126,7 +126,10 @@ export function Compose() {
 
       {screen.name !== 'loading' && screen.name !== 'no-key' && (
         <div className="flex flex-col gap-2">
-          <p>Mayor&apos;s public key{recipient ? `: ${recipient}` : ': not set'}</p>
+          <p>
+            Mayor&apos;s public key:{' '}
+            {recipient ? <span className="break-all font-mono">{recipient}</span> : 'not set'}
+          </p>
           <label htmlFor="mayor-public-key">{recipient ? 'Change the Mayor’s public key' : 'Mayor’s public key'}</label>
           <input
             id="mayor-public-key"

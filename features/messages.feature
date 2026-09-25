@@ -48,3 +48,7 @@ Feature: Composing and sending an encrypted message
     Given the backend has one message record addressed to him that his key cannot decrypt
     When the inbox is opened and unlocked
     Then the message is shown as unreadable in the inbox
+
+  Scenario: mw-tfne4.15 AC1: the Mayor's public key wraps instead of overflowing the screen
+    Given the compose screen is opened with an unlocked key and a recipient set
+    Then the Mayor's public key is rendered in an element that wraps long text

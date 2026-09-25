@@ -396,6 +396,18 @@ describeFeature(feature, ({ Scenario }) => {
       });
     },
   );
+
+  Scenario("mw-tfne4.15 AC1: the Mayor's public key wraps instead of overflowing the screen", ({ Given, Then }) => {
+    Given('the compose screen is opened with an unlocked key and a recipient set', async () => {
+      await freshCompose();
+      await openComposeUnlockedWithRecipient();
+    });
+
+    Then("the Mayor's public key is rendered in an element that wraps long text", () => {
+      const keyElement = screen.getByText(MAYOR_KEY.toPublicKey().toString());
+      expect(keyElement.className).toContain('break-all');
+    });
+  });
 });
 
 afterAll(() => {

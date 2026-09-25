@@ -7,6 +7,7 @@ import { decryptPendingMessages, syncMessages } from '../services/inbox';
 import { getMayorPublicKey } from '../services/messages';
 import { decodeQuestion, type QuestionBody } from '../services/questions';
 import { QuestionScreen } from '../projects';
+import { PlaySpeech } from '../speech';
 
 type VaultScreen =
   | { name: 'loading' }
@@ -213,14 +214,18 @@ export function Inbox() {
       {screen.name !== 'loading' && screen.name !== 'no-key' && messages.length > 0 && (
         <ul className="flex w-full max-w-md flex-col gap-2">
           {messages.map((row) => (
-            <li key={row.id}>
-              <button className="w-full rounded bg-slate-800 p-3 text-left" onClick={() => void handleOpenMessage(row)}>
+            <li key={row.id} className="flex items-center gap-2">
+              <button
+                className="w-full flex-1 rounded bg-slate-800 p-3 text-left"
+                onClick={() => void handleOpenMessage(row)}
+              >
                 <p className="text-xs text-slate-400">
                   {row.class} · {new Date(row.ts * 1000).toISOString()}
                   {row.direction === 'received' && !row.read ? ' · unread' : ''}
                 </p>
                 <p>{messageBodyText(row)}</p>
               </button>
+              <PlaySpeech text={messageBodyText(row)} />
             </li>
           ))}
         </ul>

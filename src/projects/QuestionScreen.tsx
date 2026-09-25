@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { answersRepo } from '../data/repositories';
 import { encodeReply, type QuestionBody } from '../services/questions';
 import { sendTextMessage } from '../services/send';
+import { PlaySpeech } from '../speech';
 
 export interface QuestionScreenProps {
   question: QuestionBody;
@@ -45,10 +46,13 @@ export function QuestionScreen({ question, unlockedKey, recipientPublicKeyHex, o
     }
   }
 
+  const spokenText = [question.q, `Recommended: ${question.rec}`, question.options.join(', ')].join('. ');
+
   return (
     <div className="flex flex-col gap-3">
       <p>{question.q}</p>
       <p>Recommended: {question.rec}</p>
+      <PlaySpeech text={spokenText} />
       <ul className="flex flex-col gap-2">
         {question.options.map((option) => (
           <li key={option}>

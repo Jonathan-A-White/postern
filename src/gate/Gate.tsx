@@ -77,6 +77,9 @@ export function Gate() {
         <a className="text-sm underline" href="?screen=key">
           Manage your key
         </a>
+        <a className="text-sm underline" href="?screen=notifications">
+          Notification settings
+        </a>
         <button
           className="rounded bg-slate-700 px-4 py-2"
           disabled={notifyState.name === 'subscribing' || notifyState.name === 'subscribed'}

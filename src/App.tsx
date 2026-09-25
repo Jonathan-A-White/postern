@@ -3,6 +3,7 @@ import { KeyVault } from './key';
 import { Compose } from './compose';
 import { Inbox } from './inbox';
 import { BeadScreen, ProjectScreen, ProjectsScreen, type BeadKind } from './projects';
+import { NotificationSettingsScreen } from './settings';
 
 const BEAD_KINDS: BeadKind[] = ['needs_you', 'landed', 'working'];
 
@@ -31,6 +32,10 @@ export function App() {
 
   if (screen === 'projects') {
     return <ProjectsScreen />;
+  }
+
+  if (screen === 'notifications') {
+    return <NotificationSettingsScreen />;
   }
 
   if (screen === 'project') {

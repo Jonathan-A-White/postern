@@ -30,7 +30,7 @@ export interface SendMessageParams {
   fetchImpl?: typeof fetch;
 }
 
-async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+export async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
     const body = (await response.json()) as { error?: unknown };
     return typeof body.error === 'string' ? body.error : fallback;

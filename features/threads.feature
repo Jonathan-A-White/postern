@@ -28,3 +28,8 @@ Feature: Threads: list, open, reply and new topic (mw-f758y.21.3)
     Given a bead thread has a message from the Mayor with a heading and a bulleted list
     When the Threads screen is opened, unlocked and that thread's row is opened
     Then the thread shows the heading and the list formatted, not as literal markdown
+
+  Scenario: AC-6 (mw-dxy1c.2): attaching a screenshot with a caption sends an image message
+    Given a bead thread is open and unlocked, the backend has spendable coins and accepts uploads and broadcasts
+    When a screenshot is attached with a caption and sent
+    Then the thread shows the sent image marker and size

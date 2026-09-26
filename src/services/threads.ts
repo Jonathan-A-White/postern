@@ -10,9 +10,19 @@ import type { MessageClass } from '../data/db';
 
 export type ThreadRef = { bead: string } | { topic: string };
 
+/** docs/protocol.md §8: an image attached to a message, uploaded encrypted to
+ * POST /api/blobs. `size` is the ciphertext's byte length, not the original
+ * image's. */
+export interface Attachment {
+  hash: string;
+  size: number;
+  mime: string;
+}
+
 export interface ThreadedBody {
   thread?: ThreadRef;
   text: string;
+  attachment?: Attachment;
 }
 
 function isThreadRef(value: unknown): value is ThreadRef {
@@ -23,16 +33,28 @@ function isThreadRef(value: unknown): value is ThreadRef {
   return hasBead !== hasTopic;
 }
 
-/** Encodes a message body that may name a thread. Omitting `thread` produces the
- * same bare text an unthreaded message already carries, so an old reader (or one
- * that never learns about threads) sees no format change. */
-export function encodeThreadedMessage(body: ThreadedBody): string {
-  return body.thread === undefined ? body.text : JSON.stringify({ thread: body.thread, text: body.text });
+function isAttachment(value: unknown): value is Attachment {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.hash === 'string' && typeof candidate.size === 'number' && typeof candidate.mime === 'string';
 }
 
-/** Decodes a decrypted plaintext into its thread (if any) and text. Anything that
- * isn't the `{ thread, text }` JSON shape — plain text, or JSON of some other
- * shape — is the general thread, its text unchanged. */
+/** Encodes a message body that may name a thread and/or carry an attachment.
+ * Omitting both produces the same bare text an unthreaded, attachment-less
+ * message already carries, so an old reader (or one that never learns about
+ * threads or attachments) sees no format change. */
+export function encodeThreadedMessage(body: ThreadedBody): string {
+  if (body.thread === undefined && body.attachment === undefined) return body.text;
+  return JSON.stringify({
+    ...(body.thread !== undefined ? { thread: body.thread } : {}),
+    text: body.text,
+    ...(body.attachment !== undefined ? { attachment: body.attachment } : {}),
+  });
+}
+
+/** Decodes a decrypted plaintext into its thread (if any), attachment (if any)
+ * and text. Anything that isn't this JSON shape — plain text, or JSON of some
+ * other shape — is the general thread with no attachment, its text unchanged. */
 export function decodeThreadedMessage(text: string): ThreadedBody {
   let parsed: unknown;
   try {
@@ -42,8 +64,17 @@ export function decodeThreadedMessage(text: string): ThreadedBody {
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return { text };
   const candidate = parsed as Record<string, unknown>;
-  if (typeof candidate.text !== 'string' || !isThreadRef(candidate.thread)) return { text };
-  return { thread: candidate.thread, text: candidate.text };
+  if (typeof candidate.text !== 'string') return { text };
+  const hasThread = candidate.thread !== undefined;
+  const hasAttachment = candidate.attachment !== undefined;
+  if (!hasThread && !hasAttachment) return { text };
+  if (hasThread && !isThreadRef(candidate.thread)) return { text };
+  if (hasAttachment && !isAttachment(candidate.attachment)) return { text };
+  return {
+    text: candidate.text,
+    ...(hasThread ? { thread: candidate.thread as ThreadRef } : {}),
+    ...(hasAttachment ? { attachment: candidate.attachment as Attachment } : {}),
+  };
 }
 
 /** The thread a decrypted message belongs to, for any class (docs/protocol.md §6):

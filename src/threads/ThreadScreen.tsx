@@ -1,18 +1,25 @@
 // src/threads/ThreadScreen.tsx — mw-f758y.21.3: one thread's messages, oldest
 // first, with a reply box at the bottom whose reply carries the same thread
 // (src/services/threads.ts's encodeThreadedMessage).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { vaultRepo, messagesRepo } from '../data/repositories';
 import type { MessageRow } from '../data/db';
 import { decryptPendingMessages, syncMessages } from '../services/inbox';
 import { getMayorPublicKey } from '../services/messages';
 import { decodeQuestion, decodeReply } from '../services/questions';
 import { sendTextMessage } from '../services/send';
-import { decodeThreadedMessage, encodeThreadedMessage, threadKey, type ThreadRef } from '../services/threads';
+import { MAX_ATTACHMENT_BYTES, uploadAttachment } from '../services/attachments';
+import { decodeThreadedMessage, encodeThreadedMessage, threadKey, type Attachment, type ThreadRef } from '../services/threads';
 import { useSnapshotScreen } from '../projects/useSnapshotScreen';
 import { VaultGate } from '../projects/VaultGate';
 import { Markdown } from '../markdown';
 import { titleForThread } from './grouping';
+
+function formatKB(bytes: number): string {
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+const MAX_ATTACHMENT_MB = MAX_ATTACHMENT_BYTES / (1024 * 1024);
 
 export interface ThreadScreenProps {
   threadRef?: ThreadRef;
@@ -50,8 +57,13 @@ function displayMessage(row: MessageRow): DisplayMessage {
     const reply = decodeReply(row.plaintext);
     if (reply) return { text: reply.answer, markdown: false };
   }
-  const text = decodeThreadedMessage(row.plaintext).text;
-  return { text, markdown: row.class === 'message' && row.direction !== 'sent' };
+  const body = decodeThreadedMessage(row.plaintext);
+  if (body.attachment) {
+    if (row.direction !== 'sent') return { text: 'Image', markdown: false };
+    const caption = body.text.length > 0 ? body.text : 'Sent message.';
+    return { text: `${caption} — Image, ${formatKB(body.attachment.size)}`, markdown: false };
+  }
+  return { text: body.text, markdown: row.class === 'message' && row.direction !== 'sent' };
 }
 
 export function ThreadScreen({ threadRef }: ThreadScreenProps) {
@@ -70,38 +82,75 @@ export function ThreadScreen({ threadRef }: ThreadScreenProps) {
   const [mayorPublicKey, setMayorPublicKeyState] = useState<string | undefined>(undefined);
   const [text, setText] = useState('');
   const [sendState, setSendState] = useState<SendState>({ name: 'idle' });
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachError, setAttachError] = useState<string | undefined>(undefined);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void getMayorPublicKey().then(setMayorPublicKeyState);
   }, []);
 
+  async function fetchMessages(unlockedKey: Uint8Array): Promise<MessageRow[]> {
+    const vault = await vaultRepo.get();
+    if (vault) {
+      await syncMessages({ publicKeyHex: vault.publicKeyHex, unlockedKey }).catch(() => undefined);
+    }
+    await decryptPendingMessages(unlockedKey);
+    return messagesRepo.getAll();
+  }
+
   useEffect(() => {
     if (vaultState.name !== 'ready') return;
-    const key = vaultState.key;
-    void vaultRepo
-      .get()
-      .then((vault) => (vault ? syncMessages({ publicKeyHex: vault.publicKeyHex, unlockedKey: key }).catch(() => undefined) : undefined))
-      .then(() => decryptPendingMessages(key))
-      .then(() => messagesRepo.getAll())
-      .then(setMessages);
+    void fetchMessages(vaultState.key).then(setMessages);
   }, [vaultState]);
 
   const key = threadKey(threadRef);
   const threadMessages = messages.filter((row) => row.thread === key).sort((a, b) => a.ts - b.ts);
   const title = titleForThread(threadRef, snapshotState.snapshot);
 
+  function handleFileSelected(e: ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setAttachError(`Images must be ${MAX_ATTACHMENT_MB} MB or smaller.`);
+      setAttachedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    setAttachError(undefined);
+    setAttachedFile(file);
+  }
+
+  function handleRemoveAttachment(): void {
+    setAttachedFile(null);
+    setAttachError(undefined);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   async function handleReply(unlockedKey: Uint8Array, recipientPublicKeyHex: string): Promise<void> {
-    if (text.trim().length === 0) return;
+    if (text.trim().length === 0 && !attachedFile) return;
     setSendState({ name: 'sending' });
     try {
+      let attachment: Attachment | undefined;
+      if (attachedFile) {
+        const bytes = new Uint8Array(await attachedFile.arrayBuffer());
+        attachment = await uploadAttachment({
+          bytes,
+          mime: attachedFile.type,
+          senderKey: unlockedKey,
+          recipientPublicKeyHex,
+        });
+      }
       const txid = await sendTextMessage({
-        text: encodeThreadedMessage({ thread: threadRef, text }),
+        text: encodeThreadedMessage({ thread: threadRef, text, attachment }),
         class: 'message',
         senderKey: unlockedKey,
         recipientPublicKeyHex,
       });
       setSendState({ name: 'sent', txid });
       setText('');
+      handleRemoveAttachment();
+      setMessages(await fetchMessages(unlockedKey));
     } catch (err) {
       setSendState({ name: 'error', message: (err as Error).message });
     }
@@ -142,9 +191,38 @@ export function ThreadScreen({ threadRef }: ThreadScreenProps) {
             <div className="flex flex-col gap-2">
               <label htmlFor="thread-reply-text">Reply</label>
               <textarea id="thread-reply-text" value={text} onChange={(e) => setText(e.target.value)} />
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="thread-attach-input"
+                  className="cursor-pointer rounded bg-slate-700 px-3 py-1 text-sm"
+                >
+                  Attach image
+                </label>
+                <input
+                  ref={fileInputRef}
+                  id="thread-attach-input"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  onChange={handleFileSelected}
+                />
+                {attachedFile && (
+                  <span className="text-sm">
+                    {attachedFile.name}, {formatKB(attachedFile.size)}{' '}
+                    <button type="button" className="underline" onClick={handleRemoveAttachment}>
+                      Remove
+                    </button>
+                  </span>
+                )}
+              </div>
+              {attachError && (
+                <p role="alert" className="text-red-400">
+                  {attachError}
+                </p>
+              )}
               <button
                 className="rounded bg-slate-700 px-4 py-2"
-                disabled={sendState.name === 'sending' || text.trim().length === 0}
+                disabled={sendState.name === 'sending' || (text.trim().length === 0 && !attachedFile)}
                 onClick={() => void handleReply(vaultState.key, mayorPublicKey)}
               >
                 Send

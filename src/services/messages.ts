@@ -56,6 +56,23 @@ export function encryptMessage(params: EncryptMessageParams): MessagePayload {
   };
 }
 
+export interface EncryptAttachmentParams {
+  bytes: Uint8Array;
+  senderPrivateKeyHex: string;
+  recipientPublicKeyHex: string;
+}
+
+/** Encrypts image bytes for upload to POST /api/blobs (docs/protocol.md §8),
+ * sharing the same BRC-78 primitive `encryptMessage` uses for a message body —
+ * the ciphertext carries no envelope of its own (no v/kind/class/to/from/ts),
+ * just the raw EncryptedMessage bytes, since the backend stores it opaquely. */
+export function encryptAttachment(params: EncryptAttachmentParams): Uint8Array {
+  const sender = PrivateKey.fromHex(params.senderPrivateKeyHex);
+  const recipient = PublicKey.fromString(params.recipientPublicKeyHex);
+  const encrypted = EncryptedMessage.encrypt(Array.from(params.bytes), sender, recipient);
+  return new Uint8Array(encrypted);
+}
+
 /** Decrypts a record payload's `ct` field with the recipient's private key. Throws
  * if `recipientPrivateKeyHex` isn't the key the message was encrypted for. */
 export function decryptMessage(payload: MessagePayload, recipientPrivateKeyHex: string): string {

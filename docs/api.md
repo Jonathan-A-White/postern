@@ -79,6 +79,7 @@ Returns every indexed record after sequence number `since`, oldest first.
         "scriptHex": "006a076e667467617465010127...",
         "height": 0,
         "firstSeen": "2026-09-24T12:00:03.512Z",
+        "signer": "035666d4ea414a65801ac092a4e28be6515065adcc7ac58d9cc76db8d5597f44c4",
         "payload": {
           "v": 1,
           "kind": "msg",
@@ -99,6 +100,12 @@ Returns every indexed record after sequence number `since`, oldest first.
     newer.
   - `height` — the confirming block height, or `0` if the transaction was
     still unconfirmed when indexed.
+  - `signer` — the hex-encoded public key that signed the carrying
+    transaction: the second push of its first input's scriptSig (the
+    standard P2PKH unlocking script `<sig> <pubkey>`). Omitted if that
+    input's scriptSig isn't shaped that way (not exactly two pushes, or the
+    second push isn't a 33- or 65-byte SEC public key) — this backend
+    doesn't verify the signature itself, only extracts the key.
   - `payload` — the record's version-1 payload, re-parsed as JSON, if the
     record was version 1 and its payload parsed as JSON. Omitted for any other
     record (a different version, or a version-1 payload that didn't parse).

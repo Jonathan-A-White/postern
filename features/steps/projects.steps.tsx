@@ -509,6 +509,75 @@ describeFeature(feature, ({ Scenario }) => {
   });
 
   Scenario(
+    "mw-hy6f4.4 AC3: the Governor opens a Working bead and reads its description and last three comments",
+    ({ Given, And, When, Then }) => {
+      let mnemonic: string;
+
+      Given('the snapshot has one epic with a Working bead carrying a description and three comments', async () => {
+        await freshScreen();
+        const him = await saveVaultForHim();
+        mnemonic = him.mnemonic;
+        const snapshot: Snapshot = {
+          written_at: new Date().toISOString(),
+          epics: [
+            {
+              id: 'mw-epic',
+              title: 'The epic',
+              priority: 'P1',
+              status: 'in-progress',
+              needs_you: [],
+              landed: [],
+              working: [
+                {
+                  id: 'mw-epic.w1',
+                  title: 'Working story',
+                  status: 'in-progress',
+                  priority: 'P1',
+                  updated_at: '2026-09-26T09:00:00Z',
+                  waits: [],
+                  description: '## Plan\n\nDo the thing.',
+                  comments: [
+                    { at: '2026-09-26T10:00:00Z', text: 'Newest comment' },
+                    { at: '2026-09-26T09:00:00Z', text: 'Middle comment' },
+                    { at: '2026-09-26T08:00:00Z', text: 'Oldest comment' },
+                  ],
+                },
+              ],
+              closed_count: 0,
+            },
+          ],
+        };
+        vi.stubGlobal('fetch', snapshotFetchMock(encryptSnapshot(snapshot, him.publicKeyHex)));
+      });
+
+      And('the Project screen is opened and unlocked', async () => {
+        render(<ProjectScreen epicId="mw-epic" />);
+        await unlockScreen(mnemonic);
+        await screen.findByText('Working story');
+      });
+
+      When("the Working bead's row is tapped", async () => {
+        const link = screen.getByRole('link', { name: /Working story/ });
+        const href = link.getAttribute('href');
+        if (!href) throw new Error('the row has no href');
+        cleanup();
+        window.history.pushState({}, '', href);
+        render(<App />);
+      });
+
+      Then('the bead screen shows the description and the three comments newest first', async () => {
+        expect(await screen.findByRole('heading', { level: 2, name: 'Plan' })).toBeInTheDocument();
+        expect(screen.getByText('Do the thing.')).toBeInTheDocument();
+        const comments = screen.getAllByTestId('bead-comment');
+        expect(comments).toHaveLength(3);
+        expect(within(comments[0]).getByText('Newest comment')).toBeInTheDocument();
+        expect(within(comments[1]).getByText('Middle comment')).toBeInTheDocument();
+        expect(within(comments[2]).getByText('Oldest comment')).toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario(
     'mw-tfne4.18 AC2: a dismissed fingerprint prompt on the projects screen says "Unlock cancelled"',
     ({ Given, When, Then, And }) => {
       Given('the Projects screen is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed', async () => {

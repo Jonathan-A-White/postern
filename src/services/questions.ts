@@ -16,18 +16,29 @@ export interface ReplyBody {
   answer: string;
 }
 
+/** A bead's newest comments (docs/protocol.md §7, added by mw-hy6f4.3): newest
+ * first, each text capped at 4000 runes with a trailing marker when cut. */
+export interface SnapshotComment {
+  at: string;
+  text: string;
+}
+
 export interface SnapshotNeedsYou {
   id: string;
   title: string;
   asked_at: string;
   recommended: string;
   options: string[];
+  description?: string;
+  comments?: SnapshotComment[];
 }
 
 export interface SnapshotLanded {
   id: string;
   title: string;
   landed_at: string;
+  description?: string;
+  comments?: SnapshotComment[];
 }
 
 export interface SnapshotWorking {
@@ -37,6 +48,8 @@ export interface SnapshotWorking {
   priority: string;
   updated_at: string;
   waits: string[];
+  description?: string;
+  comments?: SnapshotComment[];
 }
 
 export interface SnapshotEpic {

@@ -4,8 +4,9 @@
 // already-synced decision-needed message or, failing that, the snapshot's own
 // needs_you fields (src/projects/questionBody.ts).
 import { useEffect, useState } from 'react';
+import { Markdown } from '../markdown';
 import { getMayorPublicKey } from '../services/messages';
-import type { QuestionBody } from '../services/questions';
+import type { QuestionBody, SnapshotComment } from '../services/questions';
 import { QuestionScreen } from './QuestionScreen';
 import { resolveQuestionBody } from './questionBody';
 import { useSnapshotScreen } from './useSnapshotScreen';
@@ -17,6 +18,19 @@ export interface BeadScreenProps {
   epicId: string;
   kind: BeadKind;
   beadId: string;
+}
+
+function BeadComments({ comments }: { comments: SnapshotComment[] }) {
+  return (
+    <ul className="flex flex-col gap-2">
+      {comments.map((comment, index) => (
+        <li key={index} data-testid="bead-comment" className="rounded bg-slate-800 p-3">
+          <p className="text-xs text-slate-400">{new Date(comment.at).toLocaleString()}</p>
+          <Markdown text={comment.text} />
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function BeadScreen({ epicId, kind, beadId }: BeadScreenProps) {
@@ -80,6 +94,14 @@ export function BeadScreen({ epicId, kind, beadId }: BeadScreenProps) {
             <>
               <h1 className="text-xl font-semibold">{item.title}</h1>
               <p className="text-sm text-slate-400">{statusLabel}</p>
+
+              {item.description && (
+                <div data-testid="bead-description">
+                  <Markdown text={item.description} />
+                </div>
+              )}
+
+              {item.comments && item.comments.length > 0 && <BeadComments comments={item.comments} />}
 
               {needsYouItem && questionBody && mayorPublicKey && (
                 <QuestionScreen

@@ -42,6 +42,12 @@ Feature: The Projects and Project screens
     When the question row's Discuss control is used
     Then the thread screen for that bead is shown, titled with the question's title
 
+  Scenario: mw-hy6f4.4 AC3: the Governor opens a Working bead and reads its description and last three comments
+    Given the snapshot has one epic with a Working bead carrying a description and three comments
+    And the Project screen is opened and unlocked
+    When the Working bead's row is tapped
+    Then the bead screen shows the description and the three comments newest first
+
   Scenario: mw-tfne4.18 AC2: a dismissed fingerprint prompt on the projects screen says "Unlock cancelled"
     Given the Projects screen is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed
     When "Unlock with your fingerprint" is tapped

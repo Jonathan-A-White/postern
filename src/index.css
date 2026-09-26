@@ -21,3 +21,43 @@ input,
 textarea {
   @apply border border-slate-600 bg-slate-800 text-slate-100 px-3 py-2 rounded text-base;
 }
+
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  @apply font-semibold mt-3 mb-1;
+}
+
+.markdown p {
+  @apply my-2;
+}
+
+.markdown ul,
+.markdown ol {
+  @apply list-disc pl-5 my-2;
+}
+
+.markdown ol {
+  @apply list-decimal;
+}
+
+.markdown li {
+  @apply my-1;
+}
+
+.markdown table {
+  @apply my-2 border-collapse;
+}
+
+.markdown th,
+.markdown td {
+  @apply border border-slate-600 px-2 py-1;
+}
+
+.markdown pre {
+  @apply my-2 overflow-x-auto rounded bg-slate-950 p-2;
+}
+
+.markdown code {
+  @apply text-sm;
+}

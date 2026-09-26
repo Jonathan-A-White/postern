@@ -50,4 +50,17 @@ describe('src/index.css', () => {
     expect(body).toContain('height: 100dvh');
     expect(body).toContain('overflow-y: auto');
   });
+
+  it('gives a rendered Markdown block readable spacing for headings and lists (mw-hy6f4.1)', () => {
+    const css = readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf-8');
+    const headingRule = css.match(/\.markdown h1,\s*\n?\s*\.markdown h2,\s*\n?\s*\.markdown h3\s*\{([^}]*)\}/);
+    expect(headingRule).not.toBeNull();
+    expect(headingRule?.[1] ?? '').toContain('font-semibold');
+
+    const listRule = css.match(/\.markdown ul,\s*\n?\s*\.markdown ol\s*\{([^}]*)\}/);
+    expect(listRule).not.toBeNull();
+    const listBody = listRule?.[1] ?? '';
+    expect(listBody).toContain('list-');
+    expect(listBody).toContain('pl-');
+  });
 });

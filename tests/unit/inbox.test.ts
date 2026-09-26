@@ -4,6 +4,7 @@ import { db } from '../../src/data/db';
 import { messagesRepo, settingsRepo } from '../../src/data/repositories';
 import { encryptMessage } from '../../src/services/messages';
 import { decryptPendingMessages, syncMessages } from '../../src/services/inbox';
+import { challengeResponse, isChallengeRequest } from '../support/challenge-fetch';
 
 const ME = PrivateKey.fromHex('44'.repeat(32));
 const SENDER = PrivateKey.fromHex('55'.repeat(32));
@@ -37,7 +38,9 @@ describe('syncMessages', () => {
       senderPrivateKeyHex: SENDER.toHex(),
       recipientPublicKeyHex: ME.toPublicKey().toString(),
     });
-    const fetchImpl = vi.fn(async () => apiResponse([recordFor(1, payload)], 1));
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+      isChallengeRequest(String(input)) ? challengeResponse() : apiResponse([recordFor(1, payload)], 1),
+    );
 
     await syncMessages({ publicKeyHex: ME.toPublicKey().toString(), unlockedKey: meKeyBytes(), fetchImpl });
 
@@ -54,7 +57,9 @@ describe('syncMessages', () => {
       senderPrivateKeyHex: SENDER.toHex(),
       recipientPublicKeyHex: STRANGER.toPublicKey().toString(),
     });
-    const fetchImpl = vi.fn(async () => apiResponse([recordFor(1, payload)], 1));
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+      isChallengeRequest(String(input)) ? challengeResponse() : apiResponse([recordFor(1, payload)], 1),
+    );
 
     await syncMessages({ publicKeyHex: ME.toPublicKey().toString(), unlockedKey: meKeyBytes(), fetchImpl });
 
@@ -85,16 +90,18 @@ describe('syncMessages', () => {
       senderPrivateKeyHex: SENDER.toHex(),
       recipientPublicKeyHex: ME.toPublicKey().toString(),
     });
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(apiResponse([recordFor(1, payload)], 1))
-      .mockResolvedValueOnce(apiResponse([], 1));
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (isChallengeRequest(url)) return challengeResponse();
+      if (url === '/api/messages?since=0') return apiResponse([recordFor(1, payload)], 1);
+      return apiResponse([], 1);
+    });
 
     await syncMessages({ publicKeyHex: ME.toPublicKey().toString(), unlockedKey: meKeyBytes(), fetchImpl });
     await syncMessages({ publicKeyHex: ME.toPublicKey().toString(), unlockedKey: meKeyBytes(), fetchImpl });
 
-    expect(fetchImpl).toHaveBeenNthCalledWith(1, '/api/messages?since=0');
-    expect(fetchImpl).toHaveBeenNthCalledWith(2, '/api/messages?since=1');
+    const messagesCalls = fetchImpl.mock.calls.map(([url]) => String(url)).filter((url) => !isChallengeRequest(url));
+    expect(messagesCalls).toEqual(['/api/messages?since=0', '/api/messages?since=1']);
     expect(await messagesRepo.getAll()).toHaveLength(1);
   });
 
@@ -134,7 +141,9 @@ describe('syncMessages', () => {
     // Claims to be addressed to me, but was actually encrypted for STRANGER, so my
     // key cannot decrypt the ciphertext.
     const forged = { ...payload, to: ME.toPublicKey().toString() };
-    const fetchImpl = vi.fn(async () => apiResponse([recordFor(1, forged)], 1));
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+      isChallengeRequest(String(input)) ? challengeResponse() : apiResponse([recordFor(1, forged)], 1),
+    );
 
     await syncMessages({ publicKeyHex: ME.toPublicKey().toString(), unlockedKey: meKeyBytes(), fetchImpl });
 

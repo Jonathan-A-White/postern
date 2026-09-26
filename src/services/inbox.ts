@@ -5,7 +5,8 @@
 import { Utils } from '@bsv/sdk';
 import { messagesRepo, settingsRepo } from '../data/repositories';
 import type { MessageRow } from '../data/db';
-import { API_BASE, decryptMessage, decryptMessageAsSender, type MessagePayload } from './messages';
+import { apiFetch } from './apiAuth';
+import { decryptMessage, decryptMessageAsSender, type MessagePayload } from './messages';
 import { threadKey, threadOf } from './threads';
 
 const CURSOR_SETTING_KEY = 'messages-cursor';
@@ -87,12 +88,14 @@ export interface SyncMessagesParams {
  * back to messagesRepo.getAll() for what's already stored.
  */
 export async function syncMessages(params: SyncMessagesParams): Promise<void> {
-  const apiBase = params.apiBase ?? API_BASE;
-  const fetchImpl = params.fetchImpl ?? fetch;
   const unlockedKeyHex = params.unlockedKey ? keyToHex(params.unlockedKey) : undefined;
 
   const since = ((await settingsRepo.get(CURSOR_SETTING_KEY)) as number | undefined) ?? 0;
-  const response = await fetchImpl(`${apiBase}/messages?since=${since}`);
+  const response = await apiFetch(`/messages?since=${since}`, undefined, {
+    unlockedKey: params.unlockedKey,
+    apiBase: params.apiBase,
+    fetchImpl: params.fetchImpl,
+  });
   if (!response.ok) throw new Error(`Could not fetch messages (${response.status}).`);
   const body = (await response.json()) as ApiResponse;
 

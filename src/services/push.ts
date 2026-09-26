@@ -3,7 +3,7 @@
 // public key (GET /api/push/vapid-public-key, docs/api.md), and posts the
 // resulting subscription so the backend can push to it
 // (POST /api/push/subscribe).
-import { API_BASE } from './messages';
+import { apiFetch } from './apiAuth';
 
 function base64UrlToUint8Array(base64Url: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64Url.length % 4)) % 4);
@@ -16,6 +16,9 @@ export interface SubscribeToPushParams {
   /** This phone's own public key (hex) — the vault row's publicKeyHex, the
    * `to` a pushed record's payload must name for this subscription to fire. */
   publicKeyHex: string;
+  /** This phone's unlocked raw master key, when a session key is cached — signs
+   * the proof docs/api.md's Authentication requires on every /api call. */
+  unlockedKey?: Uint8Array;
   apiBase?: string;
   fetchImpl?: typeof fetch;
 }
@@ -27,15 +30,14 @@ export interface SubscribeToPushParams {
  * fails — the caller shows that as an error, same as syncMessages.
  */
 export async function subscribeToPush(params: SubscribeToPushParams): Promise<void> {
-  const apiBase = params.apiBase ?? API_BASE;
-  const fetchImpl = params.fetchImpl ?? fetch;
+  const apiOptions = { unlockedKey: params.unlockedKey, apiBase: params.apiBase, fetchImpl: params.fetchImpl };
 
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
     throw new Error('Notification permission was not granted.');
   }
 
-  const keyResponse = await fetchImpl(`${apiBase}/push/vapid-public-key`);
+  const keyResponse = await apiFetch('/push/vapid-public-key', undefined, apiOptions);
   if (!keyResponse.ok) throw new Error(`Could not fetch the VAPID public key (${keyResponse.status}).`);
   const { publicKey } = (await keyResponse.json()) as { publicKey: string };
 
@@ -45,10 +47,14 @@ export async function subscribeToPush(params: SubscribeToPushParams): Promise<vo
     applicationServerKey: base64UrlToUint8Array(publicKey),
   });
 
-  const subscribeResponse = await fetchImpl(`${apiBase}/push/subscribe`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pubkey: params.publicKeyHex, subscription: subscription.toJSON() }),
-  });
+  const subscribeResponse = await apiFetch(
+    '/push/subscribe',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pubkey: params.publicKeyHex, subscription: subscription.toJSON() }),
+    },
+    apiOptions,
+  );
   if (!subscribeResponse.ok) throw new Error(`Could not register for push (${subscribeResponse.status}).`);
 }

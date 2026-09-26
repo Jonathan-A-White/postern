@@ -6,7 +6,8 @@
 // own and goes through the backend's proxy endpoints instead.
 import { P2PKH, PrivateKey, SatoshisPerKilobyte, Transaction, Utils } from '@bsv/sdk';
 import { chainConfig, encodeRecordScript, selectFeeUtxos, type Utxo } from 'spell-forge-bsv';
-import { ANCHOR_ADDRESS, API_BASE, encryptMessage, type MessageClass } from './messages';
+import { apiFetch } from './apiAuth';
+import { ANCHOR_ADDRESS, encryptMessage, type MessageClass } from './messages';
 
 const ANCHOR_OUTPUT_SATOSHIS = 1;
 
@@ -35,8 +36,7 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
  * Resolves with the txid, or throws a readable error and broadcasts nothing.
  */
 export async function sendTextMessage(params: SendMessageParams): Promise<string> {
-  const apiBase = params.apiBase ?? API_BASE;
-  const fetchImpl = params.fetchImpl ?? fetch;
+  const apiOptions = { unlockedKey: params.senderKey, apiBase: params.apiBase, fetchImpl: params.fetchImpl };
 
   const senderPrivateKeyHex = Utils.toHex(Array.from(params.senderKey));
   const privateKey = PrivateKey.fromHex(senderPrivateKeyHex);
@@ -49,7 +49,7 @@ export async function sendTextMessage(params: SendMessageParams): Promise<string
     recipientPublicKeyHex: params.recipientPublicKeyHex,
   });
 
-  const utxosResponse = await fetchImpl(`${apiBase}/utxos/${address}`);
+  const utxosResponse = await apiFetch(`/utxos/${address}`, undefined, apiOptions);
   if (!utxosResponse.ok) {
     throw new Error(await readErrorMessage(utxosResponse, 'Could not fetch spendable coins.'));
   }
@@ -82,11 +82,15 @@ export async function sendTextMessage(params: SendMessageParams): Promise<string
   }
   await transaction.sign();
 
-  const broadcastResponse = await fetchImpl(`${apiBase}/broadcast`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rawtx: transaction.toHex() }),
-  });
+  const broadcastResponse = await apiFetch(
+    '/broadcast',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rawtx: transaction.toHex() }),
+    },
+    apiOptions,
+  );
   if (!broadcastResponse.ok) {
     throw new Error(await readErrorMessage(broadcastResponse, 'The backend rejected the broadcast.'));
   }

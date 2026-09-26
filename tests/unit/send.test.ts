@@ -3,6 +3,7 @@ import { P2PKH, PrivateKey, Transaction, Utils } from '@bsv/sdk';
 import { decodeRecordScript } from 'spell-forge-bsv';
 import { sendTextMessage } from '../../src/services/send';
 import { ANCHOR_ADDRESS, decryptMessage, type MessagePayload } from '../../src/services/messages';
+import { challengeResponse, isChallengeRequest } from '../support/challenge-fetch';
 
 function utxosResponse(satoshis: number): Response {
   return new Response(
@@ -19,6 +20,7 @@ describe('sendTextMessage', () => {
 
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (isChallengeRequest(url)) return challengeResponse();
       if (url.includes('/utxos/')) {
         return utxosResponse(10_000);
       }
@@ -61,10 +63,72 @@ describe('sendTextMessage', () => {
     expect(decryptMessage(payloadJson, recipient.toHex())).toBe('the gate is open');
   });
 
+  it('signs a challenge with the sender key on every call, in a header the recipient can verify', async () => {
+    const senderKey = PrivateKey.fromRandom();
+    const senderMaster = new Uint8Array(Utils.toArray(senderKey.toHex(), 'hex'));
+    const recipient = PrivateKey.fromRandom();
+    const authHeaders: string[] = [];
+
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (isChallengeRequest(url)) return challengeResponse();
+      const auth = new Headers(init?.headers).get('Authorization');
+      if (auth) authHeaders.push(auth);
+      if (url.includes('/utxos/')) return utxosResponse(10_000);
+      if (url.endsWith('/broadcast')) {
+        const body = JSON.parse(String(init?.body)) as { rawtx: string };
+        return new Response(JSON.stringify({ txid: Transaction.fromHex(body.rawtx).id('hex') }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    await sendTextMessage({
+      text: 'the gate is open',
+      class: 'message',
+      senderKey: senderMaster,
+      recipientPublicKeyHex: recipient.toPublicKey().toString(),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(authHeaders).toHaveLength(2);
+    for (const header of authHeaders) {
+      const match = header.match(/^Postern ([0-9a-f]+):([0-9a-f]+):([0-9a-f]+)$/);
+      expect(match).not.toBeNull();
+      expect(match![1]).toBe(senderKey.toPublicKey().toString());
+    }
+  });
+
+  it('throws "Licence required" on a 401, not the raw fetch error', async () => {
+    const senderMaster = new Uint8Array(Utils.toArray(PrivateKey.fromRandom().toHex(), 'hex'));
+    const recipient = PrivateKey.fromRandom();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (isChallengeRequest(url)) return challengeResponse();
+      return new Response(JSON.stringify({ error: 'no licence held' }), { status: 401 });
+    });
+
+    await expect(
+      sendTextMessage({
+        text: 'hello',
+        class: 'message',
+        senderKey: senderMaster,
+        recipientPublicKeyHex: recipient.toPublicKey().toString(),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow('Licence required');
+  });
+
   it('throws and broadcasts nothing when the backend has no UTXOs to spend', async () => {
     const senderMaster = new Uint8Array(Utils.toArray(PrivateKey.fromRandom().toHex(), 'hex'));
     const recipient = PrivateKey.fromRandom();
-    const fetchImpl = vi.fn(async () => utxosResponse(1));
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (isChallengeRequest(url)) return challengeResponse();
+      return utxosResponse(1);
+    });
 
     await expect(
       sendTextMessage({
@@ -80,12 +144,14 @@ describe('sendTextMessage', () => {
   it('surfaces the backend error and never calls broadcast on a utxo fetch failure', async () => {
     const senderMaster = new Uint8Array(Utils.toArray(PrivateKey.fromRandom().toHex(), 'hex'));
     const recipient = PrivateKey.fromRandom();
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ error: 'WhatsOnChain said 502: unreachable' }), {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (isChallengeRequest(url)) return challengeResponse();
+      return new Response(JSON.stringify({ error: 'WhatsOnChain said 502: unreachable' }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
-      }),
-    );
+      });
+    });
 
     await expect(
       sendTextMessage({
@@ -96,7 +162,7 @@ describe('sendTextMessage', () => {
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).rejects.toThrow('WhatsOnChain said 502: unreachable');
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls.filter(([url]) => !isChallengeRequest(String(url)))).toHaveLength(1);
   });
 
   it('surfaces the backend error when broadcast is rejected', async () => {
@@ -104,6 +170,7 @@ describe('sendTextMessage', () => {
     const recipient = PrivateKey.fromRandom();
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (isChallengeRequest(url)) return challengeResponse();
       if (url.includes('/utxos/')) return utxosResponse(10_000);
       return new Response(JSON.stringify({ error: 'tx rejected: bad-txns-inputs-missingorspent' }), {
         status: 502,

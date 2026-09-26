@@ -350,4 +350,172 @@ describe('sendTextMessage', () => {
       expect(await db.pendingSpends.get('b'.repeat(64))).toBeUndefined();
     });
   });
+
+  describe('chained pending spends (mw-tfne4.33)', () => {
+    it('AC1: keeps a chained pending entry alive even when the backend has not yet listed its input, so a later send never respends it', async () => {
+      const senderKey = PrivateKey.fromRandom();
+      const senderMaster = new Uint8Array(Utils.toArray(senderKey.toHex(), 'hex'));
+      const recipient = PrivateKey.fromRandom();
+
+      const outpointX = { txid: 'a'.repeat(64), vout: 0, satoshis: 10_000, height: 100 };
+      const txidA = 'b'.repeat(64);
+      const txidB = 'c'.repeat(64);
+      const changeC = { txid: txidA, vout: 2, satoshis: 9_800 };
+      const changeD = { txid: txidB, vout: 2, satoshis: 9_600 };
+
+      // Entry A spent X and produced change C; entry B spent C and produced change D.
+      // Neither A nor B has confirmed, so WhatsOnChain still lists only the original
+      // coin X — it never lists C (A's change) or D (B's change) at all.
+      await db.pendingSpends.put({
+        txid: txidA,
+        outpoints: [outpointKey(outpointX)],
+        createdAt: new Date(),
+        changeOutpoint: changeC,
+      });
+      await db.pendingSpends.put({
+        txid: txidB,
+        outpoints: [outpointKey(changeC)],
+        createdAt: new Date(),
+        changeOutpoint: changeD,
+      });
+
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (isChallengeRequest(url)) return challengeResponse();
+        if (url.includes('/utxos/')) {
+          return new Response(JSON.stringify({ utxos: [outpointX] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/broadcast')) {
+          const body = JSON.parse(String(init?.body)) as { rawtx: string };
+          const tx = Transaction.fromHex(body.rawtx);
+          return new Response(JSON.stringify({ txid: tx.id('hex') }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      await sendTextMessage({
+        text: 'third',
+        class: 'message',
+        senderKey: senderMaster,
+        recipientPublicKeyHex: recipient.toPublicKey().toString(),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+
+      const broadcastCall = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/broadcast'));
+      expect(broadcastCall).toBeDefined();
+      const rawtx = (JSON.parse(String(broadcastCall![1]?.body)) as { rawtx: string }).rawtx;
+      const tx = Transaction.fromHex(rawtx);
+
+      expect(tx.inputs).toHaveLength(1);
+      expect(tx.inputs[0].sourceTXID).toBe(txidB);
+      expect(tx.inputs[0].sourceOutputIndex).toBe(2);
+      expect(
+        tx.inputs.some((i) => i.sourceTXID === outpointX.txid && i.sourceOutputIndex === outpointX.vout),
+      ).toBe(false);
+      expect(tx.inputs.some((i) => i.sourceTXID === txidA && i.sourceOutputIndex === 2)).toBe(false);
+    });
+
+    it('AC2: never names the same outpoint twice among the inputs, even when the backend lists it twice', async () => {
+      const senderKey = PrivateKey.fromRandom();
+      const senderMaster = new Uint8Array(Utils.toArray(senderKey.toHex(), 'hex'));
+      const recipient = PrivateKey.fromRandom();
+      const outpointY = { txid: 'd'.repeat(64), vout: 1, satoshis: 10_000, height: 100 };
+
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (isChallengeRequest(url)) return challengeResponse();
+        if (url.includes('/utxos/')) {
+          return new Response(JSON.stringify({ utxos: [outpointY, outpointY] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/broadcast')) {
+          const body = JSON.parse(String(init?.body)) as { rawtx: string };
+          const tx = Transaction.fromHex(body.rawtx);
+          return new Response(JSON.stringify({ txid: tx.id('hex') }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      await sendTextMessage({
+        text: 'hello',
+        class: 'message',
+        senderKey: senderMaster,
+        recipientPublicKeyHex: recipient.toPublicKey().toString(),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+
+      const broadcastCall = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/broadcast'));
+      const rawtx = (JSON.parse(String(broadcastCall![1]?.body)) as { rawtx: string }).rawtx;
+      const tx = Transaction.fromHex(rawtx);
+      const keys = tx.inputs.map((i) => `${i.sourceTXID}:${i.sourceOutputIndex}`);
+      expect(new Set(keys).size).toBe(keys.length);
+      expect(tx.inputs).toHaveLength(1);
+    });
+
+    it('AC2: never names a pending entry\'s change outpoint twice when the backend already lists it too', async () => {
+      const senderKey = PrivateKey.fromRandom();
+      const senderMaster = new Uint8Array(Utils.toArray(senderKey.toHex(), 'hex'));
+      const recipient = PrivateKey.fromRandom();
+      const outpointX = { txid: 'e'.repeat(64), vout: 0, satoshis: 10_000, height: 100 };
+      const txidA = 'f'.repeat(64);
+      const changeC = { txid: txidA, vout: 2, satoshis: 9_800 };
+
+      await db.pendingSpends.put({
+        txid: txidA,
+        outpoints: [outpointKey(outpointX)],
+        createdAt: new Date(),
+        changeOutpoint: changeC,
+      });
+
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (isChallengeRequest(url)) return challengeResponse();
+        if (url.includes('/utxos/')) {
+          // The backend still lists X (not yet caught up removing it) but has also
+          // started listing entry A's own change C as unspent.
+          return new Response(
+            JSON.stringify({ utxos: [outpointX, { txid: changeC.txid, vout: changeC.vout, satoshis: changeC.satoshis, height: 0 }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith('/broadcast')) {
+          const body = JSON.parse(String(init?.body)) as { rawtx: string };
+          const tx = Transaction.fromHex(body.rawtx);
+          return new Response(JSON.stringify({ txid: tx.id('hex') }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      await sendTextMessage({
+        text: 'hello',
+        class: 'message',
+        senderKey: senderMaster,
+        recipientPublicKeyHex: recipient.toPublicKey().toString(),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+
+      const broadcastCall = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/broadcast'));
+      const rawtx = (JSON.parse(String(broadcastCall![1]?.body)) as { rawtx: string }).rawtx;
+      const tx = Transaction.fromHex(rawtx);
+      const keys = tx.inputs.map((i) => `${i.sourceTXID}:${i.sourceOutputIndex}`);
+      expect(new Set(keys).size).toBe(keys.length);
+      expect(tx.inputs.some((i) => i.sourceTXID === changeC.txid && i.sourceOutputIndex === changeC.vout)).toBe(
+        true,
+      );
+    });
+  });
 });

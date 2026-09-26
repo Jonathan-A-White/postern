@@ -79,4 +79,94 @@ describeFeature(feature, ({ Scenario }) => {
       });
     },
   );
+
+  Scenario(
+    'mw-tfne4.33: a third message in a chain of unconfirmed sends never respends an earlier one\'s change',
+    ({ Given, When, Then, And }) => {
+      const senderKey = PrivateKey.fromRandom();
+      const senderMaster = new Uint8Array(Utils.toArray(senderKey.toHex(), 'hex'));
+      const recipient = PrivateKey.fromRandom();
+      const coin = { txid: 'c'.repeat(64), vout: 0, satoshis: 10_000, height: 100 };
+
+      let fetchImpl: ReturnType<typeof vi.fn>;
+      let txids: string[];
+
+      Given(
+        'the backend has one spendable coin and a stale unspent list that never catches up on a whole chain',
+        async () => {
+          await db.pendingSpends.clear();
+          fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (isChallengeRequest(url)) return challengeResponse();
+            if (url.includes('/utxos/')) {
+              // WhatsOnChain never catches up on any send in the chain: it keeps
+              // listing only the original coin, and never lists any change output.
+              return new Response(JSON.stringify({ utxos: [coin] }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              });
+            }
+            if (url.endsWith('/broadcast')) {
+              const body = JSON.parse(String(init?.body)) as { rawtx: string };
+              const txid = Transaction.fromHex(body.rawtx).id('hex');
+              return new Response(JSON.stringify({ txid }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              });
+            }
+            throw new Error(`unexpected fetch: ${url}`);
+          });
+        },
+      );
+
+      When('three messages are sent one after another', async () => {
+        const sendParams = {
+          class: 'message' as const,
+          senderKey: senderMaster,
+          recipientPublicKeyHex: recipient.toPublicKey().toString(),
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+        };
+        txids = [
+          await sendTextMessage({ ...sendParams, text: 'one' }),
+          await sendTextMessage({ ...sendParams, text: 'two' }),
+          await sendTextMessage({ ...sendParams, text: 'three' }),
+        ];
+      });
+
+      Then('all three broadcasts succeed with different transaction ids', () => {
+        expect(txids).toHaveLength(3);
+        expect(new Set(txids).size).toBe(3);
+        for (const txid of txids) expect(txid).toMatch(/^[0-9a-f]{64}$/);
+      });
+
+      And('no later transaction spends an outpoint an earlier transaction already spent', () => {
+        const broadcastCalls = fetchImpl.mock.calls.filter(([url]: [RequestInfo | URL]) =>
+          String(url).endsWith('/broadcast'),
+        );
+        expect(broadcastCalls).toHaveLength(3);
+        const spentByEarlier = new Set<string>();
+        for (const call of broadcastCalls) {
+          const rawtx = (JSON.parse(String(call[1]?.body)) as { rawtx: string }).rawtx;
+          const tx = Transaction.fromHex(rawtx);
+          for (const input of tx.inputs) {
+            const key = `${input.sourceTXID}:${input.sourceOutputIndex}`;
+            expect(spentByEarlier.has(key)).toBe(false);
+            spentByEarlier.add(key);
+          }
+        }
+      });
+
+      And('no transaction names the same outpoint twice among its inputs', () => {
+        const broadcastCalls = fetchImpl.mock.calls.filter(([url]: [RequestInfo | URL]) =>
+          String(url).endsWith('/broadcast'),
+        );
+        for (const call of broadcastCalls) {
+          const rawtx = (JSON.parse(String(call[1]?.body)) as { rawtx: string }).rawtx;
+          const tx = Transaction.fromHex(rawtx);
+          const keys = tx.inputs.map((i) => `${i.sourceTXID}:${i.sourceOutputIndex}`);
+          expect(new Set(keys).size).toBe(keys.length);
+        }
+      });
+    },
+  );
 });

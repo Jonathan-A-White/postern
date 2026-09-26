@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'node:url';
 import { pwaManifest } from './pwa-manifest';
+import { injectManifestOptions } from './pwa-precache';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
@@ -50,9 +51,7 @@ export default defineConfig({
       filename: 'sw.ts',
       includeAssets: ['icon.svg'],
       manifest: pwaManifest,
-      injectManifest: {
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
-      },
+      injectManifest: injectManifestOptions,
     }),
   ],
   define: {

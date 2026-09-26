@@ -5,8 +5,7 @@ backed by one WhatsOnChain poller (`server/internal/poller`) indexing the poster
 anchor address into an append-only store (`server/internal/index`).
 
 The backend binds `127.0.0.1` by default (`POSTERN_ADDR`); the VPS reaches it over
-WireGuard through an nginx proxy, not directly. Nothing here requires auth at this
-layer — that's the proxy's job.
+WireGuard through an nginx proxy, not directly.
 
 Every error response, from every endpoint below, is:
 
@@ -14,11 +13,53 @@ Every error response, from every endpoint below, is:
 { "error": "<message>" }
 ```
 
+## Authentication
+
+Every endpoint below except `GET /healthz` and `GET /api/challenge` requires proof
+that the caller holds a licensed key: an `Authorization` header of the form
+
+```
+Authorization: Postern <pubkeyHex>:<nonceHex>:<sigHex>
+```
+
+- `pubkeyHex` — the caller's compressed secp256k1 public key, hex.
+- `nonceHex` — a nonce this backend issued from `GET /api/challenge` and hasn't
+  already consumed.
+- `sigHex` — a DER-encoded ECDSA signature, by `pubkeyHex`, over
+  `sha256(nonceHex)` (the nonce string's UTF-8 bytes) — matching `@bsv/sdk`'s
+  `PrivateKey.sign(nonceString)` (a single SHA-256, not a double hash) and
+  `Signature.toDER()`.
+
+A nonce is consumed the moment it's presented, valid or not — it can never be
+reused, whether the proof it backed succeeded or failed. It also expires a short
+time (a few minutes) after being issued.
+
+- `401` — the header is missing or malformed, the nonce is unknown/expired/already
+  used, the signature doesn't verify, or the key holds no licence.
+- `502` — the licence check itself failed (a chain read failing), distinct from a
+  bad proof.
+
+The licence check is the same rule the PWA applies (`src/services/licence.ts`'s
+`findLicence`): a type-M record naming the key's own testnet address as holder of
+this build's collection, with no later type-TR record moving that mint's origin
+away. The answer is cached a bounded time per key so a proved request doesn't
+re-walk the chain every time.
+
 ## GET /healthz
 
 Liveness check.
 
 - `200 text/plain` — body `ok`.
+
+## GET /api/challenge
+
+Issues a nonce for the caller to sign (see Authentication, above).
+
+- `200 application/json`:
+
+  ```json
+  { "nonce": "3af1b2c3..." }
+  ```
 
 ## GET /api/messages?since=\<seq\>
 

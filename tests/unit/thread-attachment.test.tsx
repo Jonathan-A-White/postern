@@ -102,7 +102,10 @@ describe('ThreadScreen: attaching an image (mw-dxy1c.2)', () => {
     await userEvent.type(screen.getByLabelText('Reply'), 'look at this');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
 
-    await screen.findByText(/^Sent\. Transaction id:/);
+    const sentLine = await screen.findByText(/^Sent\. Transaction id:/);
+
+    // mw-tfne4.34: a 64-hex txid must not overflow the phone screen.
+    expect(sentLine.className).toContain('break-all');
 
     const blobsCall = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/blobs'));
     expect(blobsCall).toBeDefined();

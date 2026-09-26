@@ -342,10 +342,10 @@ The decrypted plaintext is this JSON shape exactly (Mayor's reading of
 - `working` — in-progress stories, then the frontier by priority; `waits` names
   the bead ids it waits on.
 - `closed_count` — everything else, collapsed to a count.
-- `description` and `comments` — optional (added by `mw-hy6f4.3`), on a
-  `needs_you`, `landed` or `working` item: the bead's own description and its
-  newest comments (newest first, each `text` capped at 4000 runes with a
-  trailing marker when cut). Both fields are Markdown text, rendered by the app
-  through the shared Markdown component (`mw-hy6f4.4`). A snapshot from before
-  this addition carries neither field; the app renders such an item exactly as
-  it always has.
+- `description` and `comments` — both optional (added by `mw-hy6f4.3`), on a
+  `needs_you`, `landed` or `working` item: the bead's own description and up
+  to its newest three comments (newest first). Both fields are Markdown text,
+  capped at 4000 runes each with a trailing marker when cut, rendered by the
+  app through the shared Markdown component (`mw-hy6f4.4`). A snapshot from
+  before this addition carries neither field; the app renders such an item
+  exactly as it always has.

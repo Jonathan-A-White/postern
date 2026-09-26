@@ -6,6 +6,7 @@ import { Utils } from '@bsv/sdk';
 import { messagesRepo, settingsRepo } from '../data/repositories';
 import type { MessageRow } from '../data/db';
 import { API_BASE, decryptMessage, decryptMessageAsSender, type MessagePayload } from './messages';
+import { threadKey, threadOf } from './threads';
 
 const CURSOR_SETTING_KEY = 'messages-cursor';
 
@@ -64,7 +65,8 @@ export async function decryptPendingMessages(unlockedKey: Uint8Array): Promise<v
   for (const row of rows) {
     if (row.plaintext !== undefined || row.decryptFailed) continue;
     const payload: MessagePayload = { v: 1, kind: 'msg', class: row.class, to: row.to, from: row.from, ts: row.ts, ct: row.ciphertext };
-    await messagesRepo.put({ ...row, ...tryDecrypt(payload, unlockedKeyHex, row.direction) });
+    const decrypted = tryDecrypt(payload, unlockedKeyHex, row.direction);
+    await messagesRepo.put({ ...row, ...decrypted, thread: threadKey(threadOf(row.class, decrypted.plaintext)) });
   }
 }
 
@@ -106,6 +108,7 @@ export async function syncMessages(params: SyncMessagesParams): Promise<void> {
     const direction: MessageRow['direction'] = isFromMe ? 'sent' : 'received';
 
     const decrypted = unlockedKeyHex ? tryDecrypt(payload, unlockedKeyHex, direction) : {};
+    const plaintext = existing?.plaintext ?? decrypted.plaintext;
 
     await messagesRepo.put({
       id,
@@ -117,10 +120,11 @@ export async function syncMessages(params: SyncMessagesParams): Promise<void> {
       from: payload.from,
       ts: payload.ts,
       ciphertext: payload.ct,
-      plaintext: existing?.plaintext ?? decrypted.plaintext,
+      plaintext,
       decryptFailed: existing?.decryptFailed ?? decrypted.decryptFailed,
       direction,
       read: existing?.read ?? false,
+      thread: existing?.thread ?? threadKey(threadOf(payload.class, plaintext)),
     });
   }
 

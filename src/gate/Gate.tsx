@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { vaultRepo, messagesRepo } from '../data/repositories';
 import { addressForPublicKey, checkLicence, getCachedLicenceStatus, getMintPending } from '../services/licence';
-import { getKey } from '../services/keySession';
+import { getKey, setKey } from '../services/keySession';
+import { getPrfSecret, describeUnlockError } from '../services/webauthnPrf';
+import { deriveAesKeyFromPrf, unwrapKey } from '../services/vault';
 import { subscribeToPush } from '../services/push';
 import { LicenceExplainer } from '../licence';
 
@@ -54,13 +56,29 @@ export function Gate() {
     void messagesRepo.countUnread().then(setUnreadCount);
   }, []);
 
+  // The gate's own fingerprint unlock, run only when there is no cached session
+  // key: the same PRF derivation Inbox.tsx's handleUnlockWithFingerprint uses
+  // (mw-tfne4.32) — the licence check that got this screen to "licensed" already
+  // proved a vault row exists, so a lapsed session just needs the key back.
+  async function unlockKey(): Promise<Uint8Array> {
+    const vault = await vaultRepo.get();
+    if (!vault || !vault.credentialId) throw new Error('No passkey is registered for this key.');
+    const prfSecret = await getPrfSecret(vault.credentialId);
+    if (!prfSecret) throw new Error('The passkey did not return a PRF secret.');
+    const aesKey = await deriveAesKeyFromPrf(prfSecret);
+    const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
+    setKey(key);
+    return key;
+  }
+
   async function handleNotifyMe(publicKeyHex: string) {
     setNotifyState({ name: 'subscribing' });
     try {
-      await subscribeToPush({ publicKeyHex, unlockedKey: getKey() ?? undefined });
+      const unlockedKey = getKey() ?? (await unlockKey());
+      await subscribeToPush({ publicKeyHex, unlockedKey });
       setNotifyState({ name: 'subscribed' });
     } catch (err) {
-      setNotifyState({ name: 'error', message: (err as Error).message });
+      setNotifyState({ name: 'error', message: describeUnlockError(err) });
     }
   }
 

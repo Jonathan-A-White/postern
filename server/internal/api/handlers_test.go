@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
+	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
@@ -69,10 +71,46 @@ func newTestServerFull(t *testing.T, wocHandler http.HandlerFunc, checker auth.L
 		t.Fatalf("push.OpenStore: %v", err)
 	}
 
-	handler := NewHandler(store, client, "test-vapid-public-key", pushStore, nonces, checker)
+	blobStore, err := blobs.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("blobs.OpenStore: %v", err)
+	}
+
+	handler := NewHandler(store, client, "test-vapid-public-key", pushStore, blobStore, nonces, checker)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return server, store, pushStore, nonces
+}
+
+// newTestServerWithBlobs builds a test server the same way newTestServerFull
+// does, but hands back the blobs.Store backing it too, for tests that need
+// to inspect what's on disk.
+func newTestServerWithBlobs(t *testing.T, wocHandler http.HandlerFunc) (*httptest.Server, *blobs.Store) {
+	t.Helper()
+	wocServer := httptest.NewServer(wocHandler)
+	t.Cleanup(wocServer.Close)
+
+	client := woc.NewClient(wocServer.URL, woc.WithMinSpacing(0), woc.WithSleep(func(time.Duration) {}))
+	store, err := index.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("index.Open: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	pushStore, err := push.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("push.OpenStore: %v", err)
+	}
+
+	blobStore, err := blobs.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("blobs.OpenStore: %v", err)
+	}
+
+	handler := NewHandler(store, client, "test-vapid-public-key", pushStore, blobStore, auth.NewNonceStore(time.Minute), &stubChecker{held: true})
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	return server, blobStore
 }
 
 // authorizedRequest issues its own request against server so it always
@@ -563,6 +601,136 @@ func TestMessagesSurfaces502WhenTheLicenceCheckFails(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", resp.StatusCode)
+	}
+}
+
+func TestBlobUploadRejects401WithNoAuthorizationHeader(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	resp, err := http.Post(server.URL+"/api/blobs", "application/octet-stream", strings.NewReader("hello"))
+	if err != nil {
+		t.Fatalf("POST /api/blobs: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestBlobUploadRejects413OverTheCap(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	body := bytes.Repeat([]byte("x"), blobs.MaxBodyBytes+1024)
+	resp := doAuthorized(t, http.MethodPost, server.URL+"/api/blobs", bytes.NewReader(body), server)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", resp.StatusCode)
+	}
+}
+
+func TestBlobUploadStoresANewBlobAndReturns201(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	body := []byte("a brand new encrypted attachment")
+	resp := doAuthorized(t, http.MethodPost, server.URL+"/api/blobs", bytes.NewReader(body), server)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+
+	var out struct {
+		Hash string `json:"hash"`
+		Size int    `json:"size"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	wantSum := sha256.Sum256(body)
+	if out.Hash != hex.EncodeToString(wantSum[:]) {
+		t.Fatalf("hash = %q, want the body's sha256 %x", out.Hash, wantSum)
+	}
+	if out.Size != len(body) {
+		t.Fatalf("size = %d, want %d", out.Size, len(body))
+	}
+}
+
+func TestBlobUploadRepeatReturns200WithSameHash(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	body := []byte("the same bytes, uploaded twice")
+	resp1 := doAuthorized(t, http.MethodPost, server.URL+"/api/blobs", bytes.NewReader(body), server)
+	defer resp1.Body.Close()
+	var out1 struct {
+		Hash string `json:"hash"`
+	}
+	json.NewDecoder(resp1.Body).Decode(&out1)
+
+	resp2 := doAuthorized(t, http.MethodPost, server.URL+"/api/blobs", bytes.NewReader(body), server)
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 on repeat upload", resp2.StatusCode)
+	}
+	var out2 struct {
+		Hash string `json:"hash"`
+		Size int    `json:"size"`
+	}
+	json.NewDecoder(resp2.Body).Decode(&out2)
+	if out2.Hash != out1.Hash {
+		t.Fatalf("repeat upload hash = %q, want %q", out2.Hash, out1.Hash)
+	}
+	if out2.Size != len(body) {
+		t.Fatalf("repeat upload size = %d, want %d", out2.Size, len(body))
+	}
+}
+
+func TestBlobDownloadReturnsUploadedBytes(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	body := []byte("bytes to round-trip through GET /api/blobs/{hash}")
+	uploadResp := doAuthorized(t, http.MethodPost, server.URL+"/api/blobs", bytes.NewReader(body), server)
+	var out struct {
+		Hash string `json:"hash"`
+	}
+	json.NewDecoder(uploadResp.Body).Decode(&out)
+	uploadResp.Body.Close()
+
+	resp := doAuthorized(t, http.MethodGet, server.URL+"/api/blobs/"+out.Hash, nil, server)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/octet-stream" {
+		t.Fatalf("Content-Type = %q, want application/octet-stream", ct)
+	}
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if !bytes.Equal(got, body) {
+		t.Fatalf("downloaded bytes don't match what was uploaded")
+	}
+}
+
+func TestBlobDownloadRejects404ForUnknownHash(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	resp := doAuthorized(t, http.MethodGet, server.URL+"/api/blobs/"+strings.Repeat("a", 64), nil, server)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestBlobDownloadRejects401WithNoAuthorizationHeader(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, func(w http.ResponseWriter, r *http.Request) {})
+
+	resp, err := http.Get(server.URL + "/api/blobs/" + strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatalf("GET /api/blobs/{hash}: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}
 }
 

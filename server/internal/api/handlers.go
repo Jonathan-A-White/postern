@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
+	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
@@ -32,10 +33,11 @@ const (
 
 // NewHandler builds the full /api/* surface (plus /healthz) backed by store
 // and client. vapidPublicKey is handed to GET /api/push/vapid-public-key;
-// pushStore backs POST /api/push/subscribe. Every /api endpoint except
-// GET /api/challenge requires a signed, licensed proof (requireLicence),
-// checked against nonces and checker.
-func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store, nonces *auth.NonceStore, checker auth.LicenceChecker) http.Handler {
+// pushStore backs POST /api/push/subscribe; blobStore backs POST/GET
+// /api/blobs. Every /api endpoint except GET /api/challenge requires a
+// signed, licensed proof (requireLicence), checked against nonces and
+// checker.
+func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store, blobStore *blobs.Store, nonces *auth.NonceStore, checker auth.LicenceChecker) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.HandleFunc("GET /api/challenge", handleChallenge(nonces))
@@ -45,6 +47,8 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 	mux.HandleFunc("GET /api/balance/{address}", requireLicence(nonces, checker, handleBalance(client)))
 	mux.HandleFunc("GET /api/push/vapid-public-key", requireLicence(nonces, checker, handleVAPIDPublicKey(vapidPublicKey)))
 	mux.HandleFunc("POST /api/push/subscribe", requireLicence(nonces, checker, handlePushSubscribe(pushStore)))
+	mux.HandleFunc("POST /api/blobs", requireLicence(nonces, checker, handleBlobUpload(blobStore)))
+	mux.HandleFunc("GET /api/blobs/{hash}", requireLicence(nonces, checker, handleBlobDownload(blobStore)))
 	return mux
 }
 
@@ -245,6 +249,59 @@ func handlePushSubscribe(store *push.Store) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, struct{}{})
+	}
+}
+
+// handleBlobUpload stores the request body as a blob, capped at
+// blobs.MaxBodyBytes (413 beyond), answering 201 {hash,size} for a new blob
+// or 200 for a repeat upload of the same bytes.
+func handleBlobUpload(store *blobs.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, blobs.MaxBodyBytes)
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				writeError(w, http.StatusRequestEntityTooLarge, "body exceeds the attachment size cap")
+				return
+			}
+			writeError(w, http.StatusBadRequest, "reading body: "+err.Error())
+			return
+		}
+
+		hash, size, existed, err := store.Put(data)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		status := http.StatusCreated
+		if existed {
+			status = http.StatusOK
+		}
+		writeJSON(w, status, struct {
+			Hash string `json:"hash"`
+			Size int    `json:"size"`
+		}{Hash: hash, Size: size})
+	}
+}
+
+// handleBlobDownload streams the blob named by the {hash} path value, 404
+// if the hash is malformed or names no blob currently on disk (never
+// uploaded, or already swept).
+func handleBlobDownload(store *blobs.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		file, size, err := store.Open(r.PathValue("hash"))
+		if err != nil {
+			writeError(w, http.StatusNotFound, "blob not found")
+			return
+		}
+		defer file.Close()
+
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+		w.WriteHeader(http.StatusOK)
+		io.Copy(w, file)
 	}
 }
 

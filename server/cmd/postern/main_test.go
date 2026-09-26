@@ -9,6 +9,7 @@ import (
 
 	"github.com/Jonathan-A-White/postern/server/internal/api"
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
+	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
@@ -30,9 +31,13 @@ func TestHealthz(t *testing.T) {
 	if err != nil {
 		t.Fatalf("push.OpenStore: %v", err)
 	}
+	blobStore, err := blobs.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("blobs.OpenStore: %v", err)
+	}
 
 	nonces := auth.NewNonceStore(time.Minute)
-	server := httptest.NewServer(api.NewHandler(store, client, "test-vapid-public-key", pushStore, nonces, &stubChecker{held: true}))
+	server := httptest.NewServer(api.NewHandler(store, client, "test-vapid-public-key", pushStore, blobStore, nonces, &stubChecker{held: true}))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/healthz")

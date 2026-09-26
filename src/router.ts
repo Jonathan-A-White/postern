@@ -6,6 +6,10 @@
 // same-origin `?screen=` link into history.pushState keeps the same page (and the
 // same module instance) across a screen change; a link elsewhere, or opened in a
 // new tab, is untouched.
+//
+// mw-tfne4.29: every screen's own "Back" link points at the bare root ('/'),
+// which App.tsx also renders with no page load (an empty search shows the
+// Gate) — so that link is routed the same way as a `?screen=` link.
 import { useSyncExternalStore } from 'react';
 
 const listeners = new Set<() => void>();
@@ -34,6 +38,10 @@ function isPlainLeftClick(event: MouseEvent): boolean {
   return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 }
 
+function isRoutableHref(href: string): boolean {
+  return href.startsWith('?screen=') || href === '/' || href.startsWith('/?');
+}
+
 function handleScreenLinkClick(event: MouseEvent): void {
   if (event.defaultPrevented || !isPlainLeftClick(event)) return;
   const target = event.target;
@@ -43,7 +51,7 @@ function handleScreenLinkClick(event: MouseEvent): void {
   if (anchor.target && anchor.target !== '_self') return;
 
   const href = anchor.getAttribute('href');
-  if (!href || !href.startsWith('?screen=')) return;
+  if (!href || !isRoutableHref(href)) return;
 
   event.preventDefault();
   window.history.pushState(null, '', href);

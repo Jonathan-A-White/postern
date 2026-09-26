@@ -99,6 +99,7 @@ func (p *Poller) processTx(txid string, height int) error {
 	if err != nil {
 		return fmt.Errorf("parsing tx: %w", err)
 	}
+	signer, _ := record.ExtractSignerPublicKey(rawTxHex) // "" if the scriptSig isn't pubkey-shaped
 
 	found := false
 	for _, output := range outputs {
@@ -115,6 +116,7 @@ func (p *Poller) processTx(txid string, height int) error {
 			Height:    height,
 			FirstSeen: time.Now().UTC(),
 			Payload:   decoded.Payload,
+			Signer:    signer,
 		}); err != nil {
 			return fmt.Errorf("storing record: %w", err)
 		}

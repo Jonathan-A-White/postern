@@ -57,13 +57,18 @@ func writeVarInt(buf *bytes.Buffer, n uint64) {
 }
 
 func buildRawTx(outputScripts [][]byte) string {
+	return buildRawTxWithScriptSig(nil, outputScripts)
+}
+
+func buildRawTxWithScriptSig(scriptSig []byte, outputScripts [][]byte) string {
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.LittleEndian, uint32(1))
 
 	writeVarInt(&buf, 1)
 	buf.Write(bytes.Repeat([]byte{0x11}, 32))
 	binary.Write(&buf, binary.LittleEndian, uint32(0))
-	writeVarInt(&buf, 0)
+	writeVarInt(&buf, uint64(len(scriptSig)))
+	buf.Write(scriptSig)
 	binary.Write(&buf, binary.LittleEndian, uint32(0xffffffff))
 
 	writeVarInt(&buf, uint64(len(outputScripts)))
@@ -75,6 +80,15 @@ func buildRawTx(outputScripts [][]byte) string {
 
 	binary.Write(&buf, binary.LittleEndian, uint32(0))
 	return hex.EncodeToString(buf.Bytes())
+}
+
+// buildP2PKHScriptSig builds a standard <sig> <pubkey> unlocking script.
+func buildP2PKHScriptSig(pubKey []byte) []byte {
+	sig := bytes.Repeat([]byte{0x30}, 71)
+	var script []byte
+	script = append(script, pushData(sig)...)
+	script = append(script, pushData(pubKey)...)
+	return script
 }
 
 // fakeWOC serves a fixed history and a fixed set of transaction hexes,
@@ -252,6 +266,73 @@ func TestPollOnceSkipsTxWithNoRecords(t *testing.T) {
 	}
 	if fake.hexFetches["tx1"] != 1 {
 		t.Fatalf("tx1 hex fetched %d times, want 1 (should not be re-fetched)", fake.hexFetches["tx1"])
+	}
+}
+
+func TestPollOnceRecordsSignerFromScriptSig(t *testing.T) {
+	pubKey := append([]byte{0x02}, bytes.Repeat([]byte{0xcd}, 32)...)
+	msg := buildRecordScript(1, []byte(`{"kind":"msg"}`))
+	fake := &fakeWOC{
+		history: `[{"tx_hash":"tx1","height":100}]`,
+		txHex: map[string]string{
+			"tx1": buildRawTxWithScriptSig(buildP2PKHScriptSig(pubKey), [][]byte{msg}),
+		},
+		hexFetches: map[string]int{},
+	}
+	server := httptest.NewServer(fake.handler())
+	defer server.Close()
+
+	client := woc.NewClient(server.URL, woc.WithMinSpacing(0), woc.WithSleep(func(time.Duration) {}))
+	store, err := index.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("index.Open: %v", err)
+	}
+	defer store.Close()
+
+	p := New(client, store, "mAnchor")
+	if err := p.PollOnce(); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+
+	records, _ := store.Since(0)
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	if records[0].Signer != hex.EncodeToString(pubKey) {
+		t.Fatalf("Signer = %q, want %q", records[0].Signer, hex.EncodeToString(pubKey))
+	}
+}
+
+func TestPollOnceEmptyScriptSigLeavesSignerBlank(t *testing.T) {
+	msg := buildRecordScript(1, []byte(`{"kind":"msg"}`))
+	fake := &fakeWOC{
+		history: `[{"tx_hash":"tx1","height":100}]`,
+		txHex: map[string]string{
+			"tx1": buildRawTx([][]byte{msg}),
+		},
+		hexFetches: map[string]int{},
+	}
+	server := httptest.NewServer(fake.handler())
+	defer server.Close()
+
+	client := woc.NewClient(server.URL, woc.WithMinSpacing(0), woc.WithSleep(func(time.Duration) {}))
+	store, err := index.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("index.Open: %v", err)
+	}
+	defer store.Close()
+
+	p := New(client, store, "mAnchor")
+	if err := p.PollOnce(); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+
+	records, _ := store.Since(0)
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	if records[0].Signer != "" {
+		t.Fatalf("Signer = %q, want empty", records[0].Signer)
 	}
 }
 

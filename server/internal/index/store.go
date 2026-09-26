@@ -26,6 +26,7 @@ type Record struct {
 	Height    int             `json:"height"`
 	FirstSeen time.Time       `json:"firstSeen"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
+	Signer    string          `json:"signer,omitempty"`
 }
 
 // Store is the in-memory index, backed by an append-only JSONL file. Safe

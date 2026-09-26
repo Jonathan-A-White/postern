@@ -33,6 +33,12 @@ export interface MessageRow {
   /** Set once decryption was attempted with the unlocked key and failed. */
   decryptFailed?: boolean;
   read: boolean;
+  /** The thread this message belongs to (docs/protocol.md §1 and §6), as
+   * src/services/threads.ts's `threadKey` encodes it: `bead:<id>`, `topic:<name>`,
+   * or absent for the general thread — including every row stored before this
+   * field existed. Computed once the message decrypts; a message that fails to
+   * decrypt, or hasn't yet, reads as the general thread until it does. */
+  thread?: string;
 }
 
 // Recorded on a phrase-mode vault row so the UI can name, rather than merely
@@ -114,6 +120,14 @@ class PosternDB extends Dexie {
       settings: 'key',
       vault: 'id',
       messages: 'id, seq, ts, read',
+      snapshot: 'id',
+      answers: 'bead',
+    });
+
+    this.version(6).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read, thread',
       snapshot: 'id',
       answers: 'bead',
     });

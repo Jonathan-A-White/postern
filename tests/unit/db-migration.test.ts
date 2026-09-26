@@ -94,3 +94,59 @@ describe('PosternDB migration to v5 (answers)', () => {
     expect(await db.answers.count()).toBe(0);
   });
 });
+
+describe('PosternDB migration to v6 (message thread)', () => {
+  it('adding the thread index does not lose an existing messages row, which reads as the general thread', async () => {
+    db.close();
+    await Dexie.delete('PosternDB');
+
+    // Simulates a phone that already has a v5 database (no thread index on
+    // messages) — the schema this app shipped with before this story.
+    const legacy = new Dexie('PosternDB');
+    legacy.version(1).stores({ settings: 'key' });
+    legacy.version(2).stores({ settings: 'key', vault: 'id' });
+    legacy.version(3).stores({ settings: 'key', vault: 'id', messages: 'id, seq, ts, read' });
+    legacy.version(4).stores({ settings: 'key', vault: 'id', messages: 'id, seq, ts, read', snapshot: 'id' });
+    legacy
+      .version(5)
+      .stores({ settings: 'key', vault: 'id', messages: 'id, seq, ts, read', snapshot: 'id', answers: 'bead' });
+    await legacy.open();
+    await legacy.table('messages').put({
+      id: 'a'.repeat(64) + ':0',
+      txid: 'a'.repeat(64),
+      vout: 0,
+      seq: 1,
+      class: 'message',
+      to: '02'.padEnd(66, '1'),
+      from: '03'.padEnd(66, '2'),
+      ts: 1758700800,
+      ciphertext: 'abcd',
+      direction: 'received',
+      read: false,
+    });
+    legacy.close();
+
+    await db.open();
+
+    const message = await db.messages.get('a'.repeat(64) + ':0');
+    expect(message?.class).toBe('message');
+    expect(message?.thread).toBeUndefined();
+
+    await db.messages.put({
+      id: 'b'.repeat(64) + ':0',
+      txid: 'b'.repeat(64),
+      vout: 0,
+      seq: 2,
+      class: 'message',
+      to: '02'.padEnd(66, '1'),
+      from: '03'.padEnd(66, '2'),
+      ts: 1758700900,
+      ciphertext: 'efgh',
+      direction: 'received',
+      read: false,
+      thread: 'bead:mw-xyz12.3',
+    });
+    const threaded = await db.messages.where('thread').equals('bead:mw-xyz12.3').toArray();
+    expect(threaded.map((row) => row.id)).toEqual(['b'.repeat(64) + ':0']);
+  });
+});

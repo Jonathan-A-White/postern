@@ -4,6 +4,8 @@ import { Compose } from './compose';
 import { Inbox } from './inbox';
 import { BeadScreen, ProjectScreen, ProjectsScreen, type BeadKind } from './projects';
 import { NotificationSettingsScreen } from './settings';
+import { ThreadScreen, ThreadsScreen } from './threads';
+import { parseThreadKey } from './services/threads';
 
 const BEAD_KINDS: BeadKind[] = ['needs_you', 'landed', 'working'];
 
@@ -36,6 +38,14 @@ export function App() {
 
   if (screen === 'notifications') {
     return <NotificationSettingsScreen />;
+  }
+
+  if (screen === 'threads') {
+    return <ThreadsScreen />;
+  }
+
+  if (screen === 'thread') {
+    return <ThreadScreen threadRef={parseThreadKey(params.get('thread') ?? undefined)} />;
   }
 
   if (screen === 'project') {

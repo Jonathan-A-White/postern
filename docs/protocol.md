@@ -320,13 +320,13 @@ The decrypted plaintext is this JSON shape exactly (Mayor's reading of
       "priority": "<P0..P3>",
       "status": "<epic status>",
       "needs_you": [
-        { "id": "<bead id>", "title": "<title>", "asked_at": "<ISO-8601>", "recommended": "<option label>", "options": ["<label>", "..."] }
+        { "id": "<bead id>", "title": "<title>", "asked_at": "<ISO-8601>", "recommended": "<option label>", "options": ["<label>", "..."], "description": "<markdown, optional>", "comments": [{ "at": "<ISO-8601>", "text": "<markdown>" }] }
       ],
       "landed": [
-        { "id": "<bead id>", "title": "<title>", "landed_at": "<ISO-8601>" }
+        { "id": "<bead id>", "title": "<title>", "landed_at": "<ISO-8601>", "description": "<markdown, optional>", "comments": [{ "at": "<ISO-8601>", "text": "<markdown>" }] }
       ],
       "working": [
-        { "id": "<bead id>", "title": "<title>", "status": "<status>", "priority": "<P0..P3>", "updated_at": "<ISO-8601>", "waits": ["<bead id>", "..."] }
+        { "id": "<bead id>", "title": "<title>", "status": "<status>", "priority": "<P0..P3>", "updated_at": "<ISO-8601>", "waits": ["<bead id>", "..."], "description": "<markdown, optional>", "comments": [{ "at": "<ISO-8601>", "text": "<markdown>" }] }
       ],
       "closed_count": 0
     }
@@ -337,7 +337,15 @@ The decrypted plaintext is this JSON shape exactly (Mayor's reading of
 - `needs_you` — decision-needed questions still open: a question appears here from
   the send of its `decision-needed` message until a reply naming its bead is on
   the bead (`mw-f758y.2`'s "How it becomes his word on a bead").
-- `landed` — landings not yet verified.
+- `landed` — landings within the last 24 hours of `written_at`; an older landing
+  leaves the list but stays counted in `closed_count`.
 - `working` — in-progress stories, then the frontier by priority; `waits` names
   the bead ids it waits on.
 - `closed_count` — everything else, collapsed to a count.
+- `description` and `comments` — optional (added by `mw-hy6f4.3`), on a
+  `needs_you`, `landed` or `working` item: the bead's own description and its
+  newest comments (newest first, each `text` capped at 4000 runes with a
+  trailing marker when cut). Both fields are Markdown text, rendered by the app
+  through the shared Markdown component (`mw-hy6f4.4`). A snapshot from before
+  this addition carries neither field; the app renders such an item exactly as
+  it always has.

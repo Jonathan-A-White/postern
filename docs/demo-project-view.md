@@ -65,8 +65,37 @@ that his answer lands on the bead as his word — on testnet, end to end.
 3. Pull to refresh the Projects screen on his phone (or reload it after the
    next tick) — the bead no longer lists under Needs you there either.
 
+## Part 4 — Markdown, diagrams and bead text (mw-hy6f4, on his phone)
+
+1. On the VPS, send yourself a thread message whose body is Markdown with a
+   fenced mermaid diagram, e.g.:
+
+   ````
+   mw postern send --class message --bead mw-xyz12.3 '## Status
+
+   Rolling out now:
+
+   ```mermaid
+   graph TD
+     A[Build] --> B[Test]
+     B --> C[Land]
+   ```
+   '
+   ````
+
+2. On his phone, open the bead's thread (Discuss on its row, or Projects →
+   the epic → the bead → Discuss). The heading and diagram draw formatted,
+   not as raw Markdown text.
+3. Pick a bead under Working and tap its row. The bead screen shows the
+   bead's own description under its title, rendered the same way, and its
+   newest comments below it, newest first, each with its own date.
+4. Check Landed on that epic's Project screen: only beads landed within the
+   last day are listed; an older landing has left the list but is still
+   folded into the epic's `closed_count`.
+
 ## Resolution
 
 Record on mw-tfne4.7 (or the epic mw-tfne4) whether Parts 1-3 ran as
 described, the bead id and both txids (question and reply) used, and
-anything that blocked any part.
+anything that blocked any part. Record on mw-hy6f4 whether Part 4 ran as
+described, the bead ids used, and anything that blocked it.

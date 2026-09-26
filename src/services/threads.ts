@@ -71,6 +71,13 @@ export function threadKey(thread: ThreadRef | undefined): string | undefined {
   return 'bead' in thread ? `bead:${thread.bead}` : `topic:${thread.topic}`;
 }
 
+/** The Thread screen's own href for a bead or topic ref — a Discuss control on
+ * an epic row (Projects screen) or a story row (Project screen) links straight
+ * here with its own bead id. */
+export function threadHref(ref: ThreadRef): string {
+  return `?screen=thread&thread=${encodeURIComponent(threadKey(ref)!)}`;
+}
+
 /** The inverse of `threadKey` — decodes a stored `thread` index value back into
  * its `ThreadRef`, or `undefined` for the general thread. */
 export function parseThreadKey(key: string | undefined): ThreadRef | undefined {

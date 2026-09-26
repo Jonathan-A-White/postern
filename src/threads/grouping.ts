@@ -15,11 +15,13 @@ export interface ThreadSummary {
   unreadCount: number;
 }
 
-/** A bead thread's title: the matching id's title from the snapshot's needs_you,
+/** A bead thread's title: the epic's own title when the bead id names an epic
+ * directly, otherwise the matching id's title from the snapshot's needs_you,
  * landed or working lists (wherever the bead currently sits), or the bead id
  * itself when the snapshot doesn't know it. */
 function titleForBead(beadId: string, snapshot: Snapshot | undefined): string {
   for (const epic of snapshot?.epics ?? []) {
+    if (epic.id === beadId) return epic.title;
     const item = epic.needs_you.find((candidate) => candidate.id === beadId) ??
       epic.landed.find((candidate) => candidate.id === beadId) ??
       epic.working.find((candidate) => candidate.id === beadId);

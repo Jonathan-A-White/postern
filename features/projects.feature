@@ -30,6 +30,18 @@ Feature: The Projects and Project screens
     When the Projects screen is opened and unlocked
     Then the Projects screen shows "No snapshot published yet" and no decoder error
 
+  Scenario: mw-f758y.21.5 AC-1: a Discuss control on an epic row opens that epic's thread
+    Given the snapshot has one epic
+    And the Projects screen is opened and unlocked
+    When the epic row's Discuss control is used
+    Then the thread screen for that epic is shown, titled with the epic's own title
+
+  Scenario: mw-f758y.21.5 AC-2: a Discuss control on a story row opens that bead's thread
+    Given the snapshot has one epic with one needs-you question
+    And the Project screen is opened and unlocked
+    When the question row's Discuss control is used
+    Then the thread screen for that bead is shown, titled with the question's title
+
   Scenario: mw-tfne4.18 AC2: a dismissed fingerprint prompt on the projects screen says "Unlock cancelled"
     Given the Projects screen is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed
     When "Unlock with your fingerprint" is tapped

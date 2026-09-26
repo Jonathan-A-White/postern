@@ -2,6 +2,7 @@
 // "Projects screen" paragraph): title, priority, the three group counts, the
 // snapshot's age; ordered by priority with any epic holding a question first.
 import { formatAge } from '../services/age';
+import { threadHref } from '../services/threads';
 import { sortEpics } from './grouping';
 import { useSnapshotScreen } from './useSnapshotScreen';
 import { VaultGate } from './VaultGate';
@@ -60,13 +61,16 @@ export function ProjectsScreen() {
           {snapshotState.snapshot && (
             <ul className="flex flex-col gap-2">
               {sortEpics(snapshotState.snapshot.epics).map((epic) => (
-                <li data-testid="epic-row" key={epic.id}>
-                  <a className="block rounded bg-slate-800 p-3" href={`?screen=project&epic=${epic.id}`}>
+                <li data-testid="epic-row" key={epic.id} className="flex items-stretch gap-2">
+                  <a className="block flex-1 rounded bg-slate-800 p-3" href={`?screen=project&epic=${epic.id}`}>
                     <p className="font-semibold">{epic.title}</p>
                     <p className="text-xs text-slate-400">
                       {epic.priority} · Needs you {epic.needs_you.length} · Landed {epic.landed.length} · Working{' '}
                       {epic.working.length}
                     </p>
+                  </a>
+                  <a className="shrink-0 self-center rounded bg-slate-700 px-3 py-1 text-sm" href={threadHref({ bead: epic.id })}>
+                    Discuss
                   </a>
                 </li>
               ))}

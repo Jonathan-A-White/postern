@@ -139,14 +139,14 @@ test('the project view demo: a fake snapshot and question, answered and broadcas
   await expect(epicRow).toContainText('Needs you 1');
 
   // Project screen: the question is listed under Needs you.
-  await epicRow.getByRole('link').click();
+  await epicRow.getByRole('link').first().click();
   await unlock();
   await expect(page.getByRole('heading', { name: 'The demo epic' })).toBeVisible();
   const needsYouRow = page.getByTestId('needs-you-row');
   await expect(needsYouRow).toContainText(QUESTION_TEXT);
 
   // Bead / Question screen: the question, its recommendation, its options and Play.
-  await needsYouRow.getByRole('link').click();
+  await needsYouRow.getByRole('link').first().click();
   await unlock();
   await expect(page.getByText(QUESTION_TEXT).first()).toBeVisible();
   await expect(page.getByText(`Recommended: ${RECOMMENDED}`)).toBeVisible();

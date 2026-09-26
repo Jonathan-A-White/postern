@@ -3,6 +3,7 @@
 // (newest first), Working (in-progress then ready by priority). One row per
 // bead: title, state badge, age; tap opens the bead screen.
 import { formatAge } from '../services/age';
+import { threadHref } from '../services/threads';
 import { sortLanded, sortNeedsYou, sortWorking } from './grouping';
 import { useSnapshotScreen } from './useSnapshotScreen';
 import { VaultGate } from './VaultGate';
@@ -73,13 +74,16 @@ export function ProjectScreen({ epicId }: ProjectScreenProps) {
                 {sortNeedsYou(epic.needs_you).length === 0 && <p className="text-sm text-slate-400">Nothing needs you.</p>}
                 <ul className="flex flex-col gap-2">
                   {sortNeedsYou(epic.needs_you).map((item) => (
-                    <li data-testid="needs-you-row" key={item.id}>
+                    <li data-testid="needs-you-row" key={item.id} className="flex items-stretch gap-2">
                       <a
-                        className="block rounded bg-slate-800 p-3"
+                        className="block flex-1 rounded bg-slate-800 p-3"
                         href={`?screen=bead&epic=${epicId}&kind=needs_you&bead=${item.id}`}
                       >
                         <p className="font-semibold">{item.title}</p>
                         <p className="text-xs text-slate-400">Needs you · {formatAge(item.asked_at)}</p>
+                      </a>
+                      <a className="shrink-0 self-center rounded bg-slate-700 px-3 py-1 text-sm" href={threadHref({ bead: item.id })}>
+                        Discuss
                       </a>
                     </li>
                   ))}
@@ -91,13 +95,16 @@ export function ProjectScreen({ epicId }: ProjectScreenProps) {
                 {sortLanded(epic.landed).length === 0 && <p className="text-sm text-slate-400">Nothing landed.</p>}
                 <ul className="flex flex-col gap-2">
                   {sortLanded(epic.landed).map((item) => (
-                    <li data-testid="landed-row" key={item.id}>
+                    <li data-testid="landed-row" key={item.id} className="flex items-stretch gap-2">
                       <a
-                        className="block rounded bg-slate-800 p-3"
+                        className="block flex-1 rounded bg-slate-800 p-3"
                         href={`?screen=bead&epic=${epicId}&kind=landed&bead=${item.id}`}
                       >
                         <p className="font-semibold">{item.title}</p>
                         <p className="text-xs text-slate-400">Landed · {formatAge(item.landed_at)}</p>
+                      </a>
+                      <a className="shrink-0 self-center rounded bg-slate-700 px-3 py-1 text-sm" href={threadHref({ bead: item.id })}>
+                        Discuss
                       </a>
                     </li>
                   ))}
@@ -109,15 +116,18 @@ export function ProjectScreen({ epicId }: ProjectScreenProps) {
                 {sortWorking(epic.working).length === 0 && <p className="text-sm text-slate-400">Nothing working.</p>}
                 <ul className="flex flex-col gap-2">
                   {sortWorking(epic.working).map((item) => (
-                    <li data-testid="working-row" key={item.id}>
+                    <li data-testid="working-row" key={item.id} className="flex items-stretch gap-2">
                       <a
-                        className="block rounded bg-slate-800 p-3"
+                        className="block flex-1 rounded bg-slate-800 p-3"
                         href={`?screen=bead&epic=${epicId}&kind=working&bead=${item.id}`}
                       >
                         <p className="font-semibold">{item.title}</p>
                         <p className="text-xs text-slate-400">
                           {item.status} · {formatAge(item.updated_at)}
                         </p>
+                      </a>
+                      <a className="shrink-0 self-center rounded bg-slate-700 px-3 py-1 text-sm" href={threadHref({ bead: item.id })}>
+                        Discuss
                       </a>
                     </li>
                   ))}

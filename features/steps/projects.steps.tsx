@@ -260,7 +260,7 @@ describeFeature(feature, ({ Scenario }) => {
 
       And('the Needs you questions are listed oldest first', async () => {
         const rows = await screen.findAllByTestId('needs-you-row');
-        expect(rows.map((row) => within(row).getByRole('link').textContent)).toEqual([
+        expect(rows.map((row) => within(row).getAllByRole('link')[0].textContent)).toEqual([
           expect.stringContaining('Older question'),
           expect.stringContaining('Newer question'),
         ]);
@@ -268,7 +268,7 @@ describeFeature(feature, ({ Scenario }) => {
 
       And('the Landed items are listed newest first', async () => {
         const rows = await screen.findAllByTestId('landed-row');
-        expect(rows.map((row) => within(row).getByRole('link').textContent)).toEqual([
+        expect(rows.map((row) => within(row).getAllByRole('link')[0].textContent)).toEqual([
           expect.stringContaining('Newer landing'),
           expect.stringContaining('Older landing'),
         ]);
@@ -276,7 +276,7 @@ describeFeature(feature, ({ Scenario }) => {
 
       And('the Working stories are listed in-progress first, then ready by priority', async () => {
         const rows = await screen.findAllByTestId('working-row');
-        expect(rows.map((row) => within(row).getByRole('link').textContent)).toEqual([
+        expect(rows.map((row) => within(row).getAllByRole('link')[0].textContent)).toEqual([
           expect.stringContaining('In-progress story'),
           expect.stringContaining('Ready story'),
         ]);
@@ -403,6 +403,108 @@ describeFeature(feature, ({ Scenario }) => {
     Then('the Projects screen shows "No snapshot published yet" and no decoder error', async () => {
       const alert = await screen.findByRole('alert');
       expect(alert.textContent).toBe('No snapshot published yet.');
+    });
+  });
+
+  Scenario("mw-f758y.21.5 AC-1: a Discuss control on an epic row opens that epic's thread", ({ Given, And, When, Then }) => {
+    let mnemonic: string;
+
+    Given('the snapshot has one epic', async () => {
+      await freshScreen();
+      const him = await saveVaultForHim();
+      mnemonic = him.mnemonic;
+      const snapshot: Snapshot = {
+        written_at: new Date().toISOString(),
+        epics: [
+          {
+            id: 'mw-gamma',
+            title: 'Gamma project',
+            priority: 'P1',
+            status: 'in-progress',
+            needs_you: [],
+            landed: [],
+            working: [],
+            closed_count: 0,
+          },
+        ],
+      };
+      vi.stubGlobal('fetch', snapshotFetchMock(encryptSnapshot(snapshot, him.publicKeyHex)));
+    });
+
+    And('the Projects screen is opened and unlocked', async () => {
+      render(<ProjectsScreen />);
+      await unlockScreen(mnemonic);
+      await screen.findByText('Gamma project');
+    });
+
+    When("the epic row's Discuss control is used", async () => {
+      const row = await screen.findByTestId('epic-row');
+      const link = within(row).getByRole('link', { name: 'Discuss' });
+      const href = link.getAttribute('href');
+      if (!href) throw new Error('the Discuss control has no href');
+      cleanup();
+      window.history.pushState({}, '', href);
+      render(<App />);
+    });
+
+    Then("the thread screen for that epic is shown, titled with the epic's own title", async () => {
+      expect(await screen.findByRole('heading', { name: 'Gamma project' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '?screen=threads');
+    });
+  });
+
+  Scenario("mw-f758y.21.5 AC-2: a Discuss control on a story row opens that bead's thread", ({ Given, And, When, Then }) => {
+    let mnemonic: string;
+
+    Given('the snapshot has one epic with one needs-you question', async () => {
+      await freshScreen();
+      const him = await saveVaultForHim();
+      mnemonic = him.mnemonic;
+      const snapshot: Snapshot = {
+        written_at: new Date().toISOString(),
+        epics: [
+          {
+            id: 'mw-beta',
+            title: 'Beta project',
+            priority: 'P2',
+            status: 'in-progress',
+            needs_you: [
+              {
+                id: 'mw-beta.1',
+                title: 'Ship now or wait?',
+                asked_at: '2026-09-24T08:00:00Z',
+                recommended: 'ship',
+                options: ['ship', 'wait'],
+              },
+            ],
+            landed: [],
+            working: [],
+            closed_count: 0,
+          },
+        ],
+      };
+      vi.stubGlobal('fetch', snapshotFetchMock(encryptSnapshot(snapshot, him.publicKeyHex)));
+    });
+
+    And('the Project screen is opened and unlocked', async () => {
+      render(<ProjectScreen epicId="mw-beta" />);
+      await unlockScreen(mnemonic);
+      await screen.findByText('Ship now or wait?');
+    });
+
+    When("the question row's Discuss control is used", async () => {
+      const row = await screen.findByTestId('needs-you-row');
+      const link = within(row).getByRole('link', { name: 'Discuss' });
+      const href = link.getAttribute('href');
+      if (!href) throw new Error('the Discuss control has no href');
+      cleanup();
+      window.history.pushState({}, '', href);
+      render(<App />);
+    });
+
+    Then("the thread screen for that bead is shown, titled with the question's title", async () => {
+      expect(await screen.findByRole('heading', { name: 'Ship now or wait?' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '?screen=threads');
     });
   });
 

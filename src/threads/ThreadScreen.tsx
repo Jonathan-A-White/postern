@@ -11,6 +11,7 @@ import { sendTextMessage } from '../services/send';
 import { decodeThreadedMessage, encodeThreadedMessage, threadKey, type ThreadRef } from '../services/threads';
 import { useSnapshotScreen } from '../projects/useSnapshotScreen';
 import { VaultGate } from '../projects/VaultGate';
+import { Markdown } from '../markdown';
 import { titleForThread } from './grouping';
 
 export interface ThreadScreenProps {
@@ -23,24 +24,34 @@ type SendState =
   | { name: 'sent'; txid: string }
   | { name: 'error'; message: string };
 
-/** A thread message's body text: a decision-needed question's own text, a
- * reply's own answer, or a threaded (or plain) message's text — never the raw
- * JSON any of those three shapes decrypt to. */
-function messageText(row: MessageRow): string {
+interface DisplayMessage {
+  text: string;
+  /** Markdown formatting is only for a received `message`-class row whose
+   * plaintext is a threaded (or plain) message body — every other shape
+   * (a sent message, a decision-needed question, a reply, an alarm) renders
+   * as plain text, unchanged from before Markdown existed. */
+  markdown: boolean;
+}
+
+/** A thread message's body: a decision-needed question's own text, a reply's
+ * own answer, or a threaded (or plain) message's text — never the raw JSON
+ * any of those three shapes decrypt to. */
+function displayMessage(row: MessageRow): DisplayMessage {
   if (row.plaintext === undefined) {
-    if (row.direction === 'sent') return 'Sent message.';
-    if (row.decryptFailed) return 'Unreadable message.';
-    return 'Locked';
+    if (row.direction === 'sent') return { text: 'Sent message.', markdown: false };
+    if (row.decryptFailed) return { text: 'Unreadable message.', markdown: false };
+    return { text: 'Locked', markdown: false };
   }
   if (row.class === 'decision-needed') {
     const question = decodeQuestion(row.plaintext);
-    if (question) return question.q;
+    if (question) return { text: question.q, markdown: false };
   }
   if (row.class === 'message') {
     const reply = decodeReply(row.plaintext);
-    if (reply) return reply.answer;
+    if (reply) return { text: reply.answer, markdown: false };
   }
-  return decodeThreadedMessage(row.plaintext).text;
+  const text = decodeThreadedMessage(row.plaintext).text;
+  return { text, markdown: row.class === 'message' && row.direction !== 'sent' };
 }
 
 export function ThreadScreen({ threadRef }: ThreadScreenProps) {
@@ -117,11 +128,14 @@ export function ThreadScreen({ threadRef }: ThreadScreenProps) {
         <div className="flex w-full max-w-md flex-col gap-3">
           {threadMessages.length === 0 && <p>No messages yet.</p>}
           <ul className="flex flex-col gap-2">
-            {threadMessages.map((row) => (
-              <li key={row.id} data-testid="thread-message" className="rounded bg-slate-800 p-3">
-                {messageText(row)}
-              </li>
-            ))}
+            {threadMessages.map((row) => {
+              const { text, markdown } = displayMessage(row);
+              return (
+                <li key={row.id} data-testid="thread-message" className="rounded bg-slate-800 p-3">
+                  {markdown ? <Markdown text={text} /> : text}
+                </li>
+              );
+            })}
           </ul>
 
           {mayorPublicKey && (

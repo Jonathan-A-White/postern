@@ -23,3 +23,8 @@ Feature: Threads: list, open, reply and new topic (mw-f758y.21.3)
     Given the Threads screen is opened and unlocked
     When "New topic" is used to open a topic named "launch plan"
     Then the thread screen for "launch plan" is shown, with no messages yet and a reply box
+
+  Scenario: AC-5 (mw-hy6f4.1): a message with a heading and a list renders formatted
+    Given a bead thread has a message from the Mayor with a heading and a bulleted list
+    When the Threads screen is opened, unlocked and that thread's row is opened
+    Then the thread shows the heading and the list formatted, not as literal markdown

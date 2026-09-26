@@ -339,6 +339,38 @@ describeFeature(feature, ({ Scenario }) => {
       expect(screen.getByLabelText('Reply')).toBeInTheDocument();
     });
   });
+
+  Scenario('AC-5 (mw-hy6f4.1): a message with a heading and a list renders formatted', ({ Given, When, Then }) => {
+    let mnemonic: string;
+
+    Given('a bead thread has a message from the Mayor with a heading and a bulleted list', async () => {
+      await freshScreen();
+      const him = await saveVaultForHim();
+      mnemonic = him.mnemonic;
+      vi.stubGlobal(
+        'fetch',
+        installCombinedFetchMock({
+          messageRecords: [
+            threadedMessageRecord('## Plan\n\n- first step\n- second step', { bead: BEAD_ID }, 100, him.publicKeyHex),
+          ],
+        }),
+      );
+    });
+
+    When("the Threads screen is opened, unlocked and that thread's row is opened", async () => {
+      window.history.pushState({}, '', '?screen=threads');
+      render(<App />);
+      await unlockScreen(mnemonic);
+      await openThreadRow(new RegExp(BEAD_ID.replace('.', '\\.')));
+    });
+
+    Then('the thread shows the heading and the list formatted, not as literal markdown', async () => {
+      const row = await screen.findByTestId('thread-message');
+      expect(within(row).getByRole('heading', { level: 2, name: 'Plan' })).toBeInTheDocument();
+      expect(within(row).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['first step', 'second step']);
+      expect(within(row).queryByText(/^## Plan/)).not.toBeInTheDocument();
+    });
+  });
 });
 
 afterAll(() => {

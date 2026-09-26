@@ -49,6 +49,12 @@ Feature: Composing and sending an encrypted message
     When the inbox is opened and unlocked
     Then the message is shown as unreadable in the inbox
 
+  Scenario: mw-tfne4.26: a slow decrypt tail from a previous inbox does not corrupt the next one's message
+    Given an inbox was unlocked with one message and its decrypt tail is still resolving
+    And a new scenario clears the tables and unlocks a second inbox with its own message
+    When the second inbox's decrypt tail is given a chance to catch up
+    Then the second message is shown decrypted, not marked unreadable
+
   Scenario: mw-tfne4.15 AC1: the Mayor's public key wraps instead of overflowing the screen
     Given the compose screen is opened with an unlocked key and a recipient set
     Then the Mayor's public key is rendered in an element that wraps long text

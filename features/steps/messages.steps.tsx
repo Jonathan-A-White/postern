@@ -21,6 +21,7 @@ import {
   wrapKey,
 } from '../../src/services/vault';
 import { decryptMessage, encryptMessage, setMayorPublicKey, type MessageClass, type MessagePayload } from '../../src/services/messages';
+import * as inboxService from '../../src/services/inbox';
 import { installMockAuthenticator, removeMockAuthenticator } from '../../tests/support/webauthn-mock';
 import { lock } from '../../src/services/keySession';
 
@@ -28,9 +29,21 @@ const MAYOR_KEY = PrivateKey.fromHex('11'.repeat(32));
 const SENDER_KEY = PrivateKey.fromHex('22'.repeat(32));
 const EAVESDROPPER_KEY = PrivateKey.fromHex('33'.repeat(32));
 
+// unlockInbox() only waits for the Lock button to paint, which happens before
+// handleUnlockWithPhrase's tail (await initialSync -> decryptPendingMessages ->
+// refreshMessages) resolves. cleanup() unmounts the component but cannot cancel
+// that tail, so a slow one can still be running when the next scenario's
+// freshCompose() clears and repopulates the tables it reads from — decrypting
+// the new scenario's row with the old key and marking it unreadable for good,
+// since decryptFailed is sticky (mw-tfne4.26). Spying on decryptPendingMessages
+// lets freshCompose() drain any such call before clearing the tables.
+const decryptPendingMessagesSpy = vi.spyOn(inboxService, 'decryptPendingMessages');
+
 async function freshCompose(): Promise<void> {
   cleanup();
   removeMockAuthenticator();
+  await Promise.allSettled(decryptPendingMessagesSpy.mock.results.map((result) => (result.type === 'return' ? result.value : Promise.resolve())));
+  decryptPendingMessagesSpy.mockClear();
   await db.vault.clear();
   await db.settings.clear();
   await db.messages.clear();
@@ -108,9 +121,10 @@ async function privateKeyHexFromMnemonic(mnemonic: string): Promise<string> {
 async function unlockInbox(mnemonic: string): Promise<void> {
   await userEvent.type(await screen.findByLabelText('Recovery phrase'), mnemonic);
   await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
-  // Waits for the unlock's async tail (setKey included) to fully settle before
-  // the step returns — otherwise it can still be in flight when the next
-  // scenario's freshCompose() calls lock(), leaking this key into it.
+  // The Lock button paints as soon as setKey/setScreen run, which is before
+  // the rest of the unlock handler's tail (decryptPendingMessages, then
+  // refreshMessages) resolves — freshCompose() is what actually waits out
+  // that tail before the next scenario touches the tables (mw-tfne4.26).
   await screen.findByRole('button', { name: 'Lock' });
 }
 
@@ -423,6 +437,63 @@ describeFeature(feature, ({ Scenario }) => {
 
       Then('the message is shown as unreadable in the inbox', async () => {
         expect(await screen.findByText('Unreadable message.')).toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario(
+    "mw-tfne4.26: a slow decrypt tail from a previous inbox does not corrupt the next one's message",
+    ({ Given, And, When, Then }) => {
+      let mnemonic2: string;
+
+      Given('an inbox was unlocked with one message and its decrypt tail is still resolving', async () => {
+        await freshCompose();
+        const him1 = await saveVaultForHim();
+        const payload1 = encryptMessage({
+          text: 'leaked tail catch',
+          class: 'message',
+          senderPrivateKeyHex: SENDER_KEY.toHex(),
+          recipientPublicKeyHex: him1.publicKeyHex,
+        });
+        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload: payload1 }]));
+
+        // Simulates the real leak: this decryptPendingMessages call is still
+        // in flight when unlockInbox() below returns (it only waits for the
+        // Lock button). The delay's exact size doesn't matter once freshCompose
+        // drains it — it only needs to still be pending when the next step's
+        // freshCompose() runs.
+        const realDecryptPendingMessages = inboxService.decryptPendingMessages;
+        decryptPendingMessagesSpy.mockImplementationOnce(async (key: Uint8Array) => {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          return realDecryptPendingMessages(key);
+        });
+
+        render(<Inbox />);
+        await unlockInbox(him1.mnemonic);
+      });
+
+      And('a new scenario clears the tables and unlocks a second inbox with its own message', async () => {
+        await freshCompose();
+        const him2 = await saveVaultForHim();
+        mnemonic2 = him2.mnemonic;
+        const payload2 = encryptMessage({
+          text: 'new scenario catch',
+          class: 'message',
+          senderPrivateKeyHex: SENDER_KEY.toHex(),
+          recipientPublicKeyHex: him2.publicKeyHex,
+        });
+        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload: payload2 }]));
+      });
+
+      When("the second inbox's decrypt tail is given a chance to catch up", async () => {
+        render(<Inbox />);
+        await screen.findByText('Locked');
+        await unlockInbox(mnemonic2);
+      });
+
+      Then('the second message is shown decrypted, not marked unreadable', async () => {
+        expect(await screen.findByText('new scenario catch')).toBeInTheDocument();
+        expect(screen.queryByText('Unreadable message.')).not.toBeInTheDocument();
       });
     },
   );

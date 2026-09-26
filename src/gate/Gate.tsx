@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { vaultRepo, messagesRepo } from '../data/repositories';
 import { addressForPublicKey, checkLicence, getCachedLicenceStatus, getMintPending } from '../services/licence';
+import { getKey } from '../services/keySession';
 import { subscribeToPush } from '../services/push';
 import { LicenceExplainer } from '../licence';
 
@@ -56,7 +57,7 @@ export function Gate() {
   async function handleNotifyMe(publicKeyHex: string) {
     setNotifyState({ name: 'subscribing' });
     try {
-      await subscribeToPush({ publicKeyHex });
+      await subscribeToPush({ publicKeyHex, unlockedKey: getKey() ?? undefined });
       setNotifyState({ name: 'subscribed' });
     } catch (err) {
       setNotifyState({ name: 'error', message: (err as Error).message });

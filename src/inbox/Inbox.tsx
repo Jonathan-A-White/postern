@@ -59,7 +59,9 @@ export function Inbox() {
       })
       .then((vault) =>
         vault
-          ? syncMessages({ publicKeyHex: vault.publicKeyHex }).catch((err) => setSyncError((err as Error).message))
+          ? syncMessages({ publicKeyHex: vault.publicKeyHex, unlockedKey: cachedKey ?? undefined }).catch((err) =>
+              setSyncError((err as Error).message),
+            )
           : undefined,
       )
       .then(() => (cachedKey ? decryptPendingMessages(cachedKey) : undefined))
@@ -83,7 +85,11 @@ export function Inbox() {
     function resync() {
       void vaultRepo
         .get()
-        .then((vault) => (vault ? syncMessages({ publicKeyHex: vault.publicKeyHex }).catch(() => undefined) : undefined))
+        .then((vault) =>
+          vault
+            ? syncMessages({ publicKeyHex: vault.publicKeyHex, unlockedKey: getKey() ?? undefined }).catch(() => undefined)
+            : undefined,
+        )
         .then(() => refreshMessages());
     }
 
@@ -111,6 +117,10 @@ export function Inbox() {
       setScreen({ name: 'ready', key });
       await initialSyncRef.current;
       await decryptPendingMessages(key);
+      setSyncError(null);
+      await syncMessages({ publicKeyHex: vault.publicKeyHex, unlockedKey: key }).catch((err) =>
+        setSyncError((err as Error).message),
+      );
       await refreshMessages();
     } catch (err) {
       setUnlockError(describeUnlockError(err));
@@ -133,6 +143,10 @@ export function Inbox() {
       setScreen({ name: 'ready', key });
       await initialSyncRef.current;
       await decryptPendingMessages(key);
+      setSyncError(null);
+      await syncMessages({ publicKeyHex: vault.publicKeyHex, unlockedKey: key }).catch((err) =>
+        setSyncError((err as Error).message),
+      );
       await refreshMessages();
     } catch {
       setUnlockError('That recovery phrase did not unlock the key.');

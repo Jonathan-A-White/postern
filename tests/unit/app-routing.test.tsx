@@ -14,6 +14,16 @@ import { vaultRepo } from '../../src/data/repositories';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { getKey, setKey, lock } from '../../src/services/keySession';
 import type { Snapshot } from '../../src/services/questions';
+import { FakeChainProvider } from '../support/fake-chain-provider';
+
+// A licence check with no transactions added resolves to "not held" without
+// touching the network, so the Gate settles on the no-licence screen deterministically.
+let fakeProvider = new FakeChainProvider();
+
+vi.mock('spell-forge-bsv', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('spell-forge-bsv')>();
+  return { ...actual, createChainProvider: () => fakeProvider };
+});
 
 const MAYOR_KEY = PrivateKey.fromHex('66'.repeat(32));
 
@@ -76,6 +86,7 @@ describe('App routing between screens (mw-tfne4.28)', () => {
     window.history.pushState({}, '', '/');
     await db.vault.clear();
     await db.snapshot.clear();
+    fakeProvider = new FakeChainProvider();
   });
 
   it('AC1: clicking a ?screen= link changes the URL without a page load and keeps the shared key session, across two hops', async () => {
@@ -115,5 +126,53 @@ describe('App routing between screens (mw-tfne4.28)', () => {
     await waitFor(() => expect(window.location.search).toBe('?screen=projects'));
     expect(await screen.findByRole('link', { name: /Alpha project/ })).toBeInTheDocument();
     expect(getKey()).toEqual(masterKey);
+  });
+
+  it('AC1 (mw-tfne4.29): clicking a Back-to-home link (href="/") renders the home screen without a page load, and the shared key survives to the next screen opened from there', async () => {
+    const masterKey = await unlockedProjectsScreen();
+    const beforeUnload = vi.fn();
+    window.addEventListener('beforeunload', beforeUnload);
+
+    const backLink = await screen.findByRole('link', { name: 'Back' });
+    const clickDefaultRan = fireEvent.click(backLink);
+
+    expect(clickDefaultRan).toBe(false); // the anchor's default navigation was prevented
+    expect(window.location.pathname).toBe('/');
+    expect(window.location.search).toBe('');
+    expect(getKey()).toEqual(masterKey); // still shared: no page load reset the module session
+    expect(beforeUnload).not.toHaveBeenCalled();
+    expect(await screen.findByText('Postern')).toBeInTheDocument();
+
+    const keyScreenLink = await screen.findByRole('link', { name: 'Mint a licence' }, { timeout: 3000 });
+    fireEvent.click(keyScreenLink);
+
+    expect(await screen.findByText('Key unlocked')).toBeInTheDocument();
+    expect(screen.queryByText('The key is locked.')).not.toBeInTheDocument();
+  });
+
+  it('AC2 (mw-tfne4.29): a plain click on an external link, and a modifier or new-tab click on a home link, are left alone', () => {
+    document.body.innerHTML = '';
+    window.history.pushState({}, '', '/?screen=projects');
+
+    const externalLink = document.createElement('a');
+    externalLink.href = 'https://example.com/';
+    document.body.appendChild(externalLink);
+    expect(fireEvent.click(externalLink)).toBe(true); // not prevented
+    expect(window.location.search).toBe('?screen=projects');
+
+    const homeLink = document.createElement('a');
+    homeLink.setAttribute('href', '/');
+    document.body.appendChild(homeLink);
+
+    expect(fireEvent.click(homeLink, { ctrlKey: true })).toBe(true);
+    expect(window.location.search).toBe('?screen=projects');
+
+    const newTabHomeLink = document.createElement('a');
+    newTabHomeLink.setAttribute('href', '/');
+    newTabHomeLink.setAttribute('target', '_blank');
+    document.body.appendChild(newTabHomeLink);
+
+    expect(fireEvent.click(newTabHomeLink)).toBe(true);
+    expect(window.location.search).toBe('?screen=projects');
   });
 });

@@ -177,6 +177,43 @@ describeFeature(feature, ({ Scenario }) => {
       });
     },
   );
+
+  Scenario(
+    'AC3 (mw-tfne4.29): tapping the Projects screen\'s own "Back" link to the home screen keeps the shared unlock',
+    ({ Given, And, When, Then }) => {
+      Given('a PRF-wrapped vault exists with one project and one landed item', async () => {
+        await freshScreen();
+        installMockAuthenticator({ prfSupported: true });
+        const { publicKeyHex } = await savePrfVault();
+        await setMayorPublicKey(MAYOR_KEY.toPublicKey().toString());
+        const address = addressForPublicKey(publicKeyHex);
+        fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(chainConfig.collectionId, address));
+        vi.stubGlobal('fetch', snapshotFetchMock(encryptSnapshot(SNAPSHOT, publicKeyHex)));
+      });
+
+      And('the Projects screen is opened and unlocked with a fingerprint', async () => {
+        window.history.pushState({}, '', '/?screen=projects');
+        render(<App />);
+        await userEvent.click(await screen.findByRole('button', { name: 'Unlock with your fingerprint' }));
+        await screen.findByText('Alpha project');
+      });
+
+      When('the "Back" link is tapped to return to the home screen', async () => {
+        await userEvent.click(screen.getByRole('link', { name: 'Back' }));
+        await waitFor(() => expect(window.location.search).toBe(''));
+      });
+
+      And('"Send a message" is opened', async () => {
+        await userEvent.click(await screen.findByRole('link', { name: 'Send a message' }));
+      });
+
+      Then('the Send screen shows no fingerprint prompt', async () => {
+        expect(await screen.findByText("Mayor's public key:", { exact: false })).toBeInTheDocument();
+        expect(screen.queryByText('The key is locked.')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Unlock with your fingerprint' })).not.toBeInTheDocument();
+      });
+    },
+  );
 });
 
 afterAll(() => {

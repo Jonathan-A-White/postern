@@ -58,16 +58,23 @@ func buildP2PKHScript() []byte {
 }
 
 // buildRawTx builds a minimal serialized transaction with one dummy input
-// and the given output scripts (each carrying 0 satoshis, which is fine —
-// nothing here inspects value).
+// (an empty scriptSig) and the given output scripts (each carrying 0
+// satoshis, which is fine — nothing here inspects value).
 func buildRawTx(outputScripts [][]byte) string {
+	return buildRawTxWithScriptSig(nil, outputScripts)
+}
+
+// buildRawTxWithScriptSig is buildRawTx, but the one input's scriptSig is
+// scriptSig instead of empty.
+func buildRawTxWithScriptSig(scriptSig []byte, outputScripts [][]byte) string {
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.LittleEndian, uint32(1)) // version
 
 	writeVarInt(&buf, 1)                               // one input
 	buf.Write(bytes.Repeat([]byte{0x11}, 32))          // prev txid
 	binary.Write(&buf, binary.LittleEndian, uint32(0)) // prev index
-	writeVarInt(&buf, 0)                               // empty scriptSig
+	writeVarInt(&buf, uint64(len(scriptSig)))
+	buf.Write(scriptSig)
 	binary.Write(&buf, binary.LittleEndian, uint32(0xffffffff))
 
 	writeVarInt(&buf, uint64(len(outputScripts)))
@@ -257,5 +264,74 @@ func TestDecodeTypedScriptNotARecord(t *testing.T) {
 func TestDecodeTypedScriptInvalidHex(t *testing.T) {
 	if _, ok := DecodeTypedScript("zz"); ok {
 		t.Fatal("DecodeTypedScript returned ok=true for invalid hex")
+	}
+}
+
+// buildP2PKHScriptSig builds a standard <sig> <pubkey> unlocking script (the
+// signature isn't cryptographically valid, but the shape is what
+// ExtractSignerPublicKey inspects).
+func buildP2PKHScriptSig(pubKey []byte) []byte {
+	sig := bytes.Repeat([]byte{0x30}, 71) // a plausible DER signature length
+	var script []byte
+	script = append(script, pushData(sig)...)
+	script = append(script, pushData(pubKey)...)
+	return script
+}
+
+func TestExtractSignerPublicKeyCompressedKey(t *testing.T) {
+	pubKey := append([]byte{0x02}, bytes.Repeat([]byte{0xcd}, 32)...)
+	rawTx := buildRawTxWithScriptSig(buildP2PKHScriptSig(pubKey), [][]byte{buildP2PKHScript()})
+
+	signer, ok := ExtractSignerPublicKey(rawTx)
+	if !ok {
+		t.Fatal("ExtractSignerPublicKey returned ok=false for a valid P2PKH scriptSig")
+	}
+	if signer != hex.EncodeToString(pubKey) {
+		t.Fatalf("signer = %q, want %q", signer, hex.EncodeToString(pubKey))
+	}
+}
+
+func TestExtractSignerPublicKeyUncompressedKey(t *testing.T) {
+	pubKey := append([]byte{0x04}, bytes.Repeat([]byte{0xab}, 64)...)
+	rawTx := buildRawTxWithScriptSig(buildP2PKHScriptSig(pubKey), [][]byte{buildP2PKHScript()})
+
+	signer, ok := ExtractSignerPublicKey(rawTx)
+	if !ok {
+		t.Fatal("ExtractSignerPublicKey returned ok=false for a valid uncompressed-key scriptSig")
+	}
+	if signer != hex.EncodeToString(pubKey) {
+		t.Fatalf("signer = %q, want %q", signer, hex.EncodeToString(pubKey))
+	}
+}
+
+func TestExtractSignerPublicKeyEmptyScriptSig(t *testing.T) {
+	rawTx := buildRawTx([][]byte{buildP2PKHScript()})
+
+	if _, ok := ExtractSignerPublicKey(rawTx); ok {
+		t.Fatal("ExtractSignerPublicKey returned ok=true for an empty scriptSig")
+	}
+}
+
+func TestExtractSignerPublicKeyWrongPushCount(t *testing.T) {
+	scriptSig := pushData(bytes.Repeat([]byte{0x30}, 10)) // just one push, no pubkey
+	rawTx := buildRawTxWithScriptSig(scriptSig, [][]byte{buildP2PKHScript()})
+
+	if _, ok := ExtractSignerPublicKey(rawTx); ok {
+		t.Fatal("ExtractSignerPublicKey returned ok=true for a scriptSig with only one push")
+	}
+}
+
+func TestExtractSignerPublicKeyBadKeyLength(t *testing.T) {
+	scriptSig := buildP2PKHScriptSig(bytes.Repeat([]byte{0xcd}, 20)) // not 33 or 65 bytes
+	rawTx := buildRawTxWithScriptSig(scriptSig, [][]byte{buildP2PKHScript()})
+
+	if _, ok := ExtractSignerPublicKey(rawTx); ok {
+		t.Fatal("ExtractSignerPublicKey returned ok=true for a push that isn't pubkey-shaped")
+	}
+}
+
+func TestExtractSignerPublicKeyInvalidHex(t *testing.T) {
+	if _, ok := ExtractSignerPublicKey("not-hex"); ok {
+		t.Fatal("ExtractSignerPublicKey returned ok=true for invalid hex")
 	}
 }

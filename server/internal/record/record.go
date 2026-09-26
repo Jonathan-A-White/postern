@@ -239,6 +239,54 @@ func ParseTransactionOutputs(rawTxHex string) ([]Output, error) {
 	return outputs, nil
 }
 
+// ExtractSignerPublicKey returns the hex-encoded public key from the raw
+// transaction's first input's scriptSig — the second push of the standard
+// P2PKH unlocking script <sig> <pubkey> — reporting ok=false if the
+// transaction has no inputs, or that input's scriptSig isn't shaped that
+// way (not exactly two pushes, or the second push isn't a compressed (33
+// byte) or uncompressed (65 byte) SEC public key).
+func ExtractSignerPublicKey(rawTxHex string) (string, bool) {
+	raw, err := hex.DecodeString(rawTxHex)
+	if err != nil {
+		return "", false
+	}
+
+	r := &byteReader{data: raw}
+
+	if _, err := r.readUint32(); err != nil { // version
+		return "", false
+	}
+
+	inputCount, err := r.readVarInt()
+	if err != nil || inputCount == 0 {
+		return "", false
+	}
+
+	if err := r.skip(32 + 4); err != nil { // prev txid + prev index
+		return "", false
+	}
+	scriptSigLen, err := r.readVarInt()
+	if err != nil {
+		return "", false
+	}
+	scriptSig, err := r.read(int(scriptSigLen))
+	if err != nil {
+		return "", false
+	}
+
+	pushes, ok := parsePushDataSequence(scriptSig)
+	if !ok || len(pushes) != 2 {
+		return "", false
+	}
+
+	pubKey := pushes[1]
+	if len(pubKey) != 33 && len(pubKey) != 65 {
+		return "", false
+	}
+
+	return hex.EncodeToString(pubKey), true
+}
+
 // byteReader is a minimal forward-only cursor over a raw transaction's
 // bytes, with the CompactSize varint decoding transactions use throughout.
 type byteReader struct {

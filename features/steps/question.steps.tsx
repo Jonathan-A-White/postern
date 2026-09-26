@@ -114,6 +114,12 @@ function needsYouSnapshot(): Snapshot {
 function installCombinedFetchMock(options: FetchMockOptions) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const urlStr = String(input);
+    if (urlStr.endsWith('/challenge')) {
+      return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     if (urlStr.includes('/messages')) {
       const url = new URL(urlStr, 'http://localhost');
       const since = Number(url.searchParams.get('since') ?? '0');

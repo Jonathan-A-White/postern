@@ -22,6 +22,23 @@ Feature: Composing and sending an encrypted message
     Then the compose screen shows the backend's error
     And the compose screen does not show a transaction id
 
+  Scenario: mw-f758y.22.2 AC1: sending signs a fresh challenge on every call
+    Given the compose screen is opened with an unlocked key and a recipient set
+    And the backend has spendable coins and accepts the broadcast
+    When a message is typed and sent
+    Then the utxos and broadcast calls both carried a valid signed proof of this phone's key
+
+  Scenario: mw-f758y.22.2 AC2: a 401 while sending shows "Licence required"
+    Given the compose screen is opened with an unlocked key and a recipient set
+    And the backend answers every proved call with 401
+    When a message is typed and sent
+    Then the compose screen shows "Licence required"
+
+  Scenario: mw-f758y.22.2 AC3: a 401 while syncing shows "Licence required" instead of a fetch error
+    Given the backend answers every messages call with 401
+    When the inbox is opened
+    Then the inbox shows "Offline — showing stored messages (Licence required)"
+
   Scenario: AC-5: a record addressed to him is shown decrypted
     Given the backend has one message record addressed to him
     When the inbox is opened and unlocked

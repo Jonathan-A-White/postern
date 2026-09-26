@@ -4,11 +4,11 @@
 // stubbed, the same fetch-stub approach the story calls for instead of msw, since
 // this rig has no msw dependency.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { PrivateKey, Utils } from '@bsv/sdk';
+import { PrivateKey, PublicKey, Signature, Utils } from '@bsv/sdk';
 import { Compose } from '../../src/compose';
 import { Inbox } from '../../src/inbox';
 import { db } from '../../src/data/db';
@@ -81,6 +81,12 @@ interface FixtureRecord {
 function messagesFetchMock(records: FixtureRecord[]) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input), 'http://localhost');
+    if (url.pathname.endsWith('/challenge')) {
+      return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     if (!url.pathname.endsWith('/messages')) throw new Error(`unexpected fetch: ${url}`);
     const since = Number(url.searchParams.get('since') ?? '0');
     const matching = records.filter((record) => record.seq > since);
@@ -212,6 +218,12 @@ describeFeature(feature, ({ Scenario }) => {
         'fetch',
         vi.fn(async (input: RequestInfo | URL) => {
           const url = String(input);
+          if (url.endsWith('/challenge')) {
+            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
           if (url.includes('/utxos/')) {
             return new Response(
               JSON.stringify({ utxos: [{ txid: 'a'.repeat(64), vout: 0, satoshis: 10_000, height: 100 }] }),
@@ -250,6 +262,12 @@ describeFeature(feature, ({ Scenario }) => {
         'fetch',
         vi.fn(async (input: RequestInfo | URL) => {
           const url = String(input);
+          if (url.endsWith('/challenge')) {
+            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
           if (url.includes('/utxos/')) {
             return new Response(
               JSON.stringify({ utxos: [{ txid: 'a'.repeat(64), vout: 0, satoshis: 10_000, height: 100 }] }),
@@ -280,6 +298,122 @@ describeFeature(feature, ({ Scenario }) => {
 
     And('the compose screen does not show a transaction id', () => {
       expect(screen.queryByText(/^Sent\. Transaction id:/)).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-f758y.22.2 AC1: sending signs a fresh challenge on every call', ({ Given, And, When, Then }) => {
+    let authHeaders: string[];
+
+    Given('the compose screen is opened with an unlocked key and a recipient set', async () => {
+      await freshCompose();
+      await openComposeUnlockedWithRecipient();
+    });
+
+    And('the backend has spendable coins and accepts the broadcast', () => {
+      authHeaders = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith('/challenge')) {
+            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+          const auth = new Headers(init?.headers).get('Authorization');
+          if (auth) authHeaders.push(auth);
+          if (url.includes('/utxos/')) {
+            return new Response(
+              JSON.stringify({ utxos: [{ txid: 'a'.repeat(64), vout: 0, satoshis: 10_000, height: 100 }] }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            );
+          }
+          if (url.endsWith('/broadcast')) {
+            return new Response(JSON.stringify({ txid: 'b'.repeat(64) }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+          throw new Error(`unexpected fetch: ${url}`);
+        }),
+      );
+    });
+
+    When('a message is typed and sent', async () => {
+      await userEvent.type(screen.getByLabelText('Message'), 'meet at the usual place');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    });
+
+    Then("the utxos and broadcast calls both carried a valid signed proof of this phone's key", async () => {
+      await screen.findByText(`Sent. Transaction id: ${'b'.repeat(64)}`);
+      expect(authHeaders).toHaveLength(2);
+      for (const header of authHeaders) {
+        const match = header.match(/^Postern ([0-9a-f]+):([0-9a-f]+):([0-9a-f]+)$/);
+        expect(match).not.toBeNull();
+        const [, pubkeyHex, nonceHex, sigHex] = match!;
+        expect(PublicKey.fromString(pubkeyHex).verify(nonceHex, Signature.fromDER(sigHex, 'hex'))).toBe(true);
+      }
+    });
+  });
+
+  Scenario('mw-f758y.22.2 AC2: a 401 while sending shows "Licence required"', ({ Given, And, When, Then }) => {
+    Given('the compose screen is opened with an unlocked key and a recipient set', async () => {
+      await freshCompose();
+      await openComposeUnlockedWithRecipient();
+    });
+
+    And('the backend answers every proved call with 401', () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.endsWith('/challenge')) {
+            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+          return new Response(JSON.stringify({ error: 'no licence held' }), { status: 401 });
+        }),
+      );
+    });
+
+    When('a message is typed and sent', async () => {
+      await userEvent.type(screen.getByLabelText('Message'), 'meet at the usual place');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    });
+
+    Then('the compose screen shows "Licence required"', async () => {
+      expect(await screen.findByText('Licence required')).toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-f758y.22.2 AC3: a 401 while syncing shows "Licence required" instead of a fetch error', ({ Given, When, Then }) => {
+    Given('the backend answers every messages call with 401', async () => {
+      await freshCompose();
+      await saveVaultForHim();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.endsWith('/challenge')) {
+            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+          return new Response(JSON.stringify({ error: 'no licence held' }), { status: 401 });
+        }),
+      );
+    });
+
+    When('the inbox is opened', async () => {
+      render(<Inbox />);
+    });
+
+    Then('the inbox shows "Offline — showing stored messages (Licence required)"', async () => {
+      expect(await screen.findByText('Offline — showing stored messages (Licence required)')).toBeInTheDocument();
     });
   });
 
@@ -367,7 +501,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
 
     Then("the second sync asks the backend for records since the first sync's cursor", () => {
-      const calls = fetchMock.mock.calls.map(([url]) => String(url));
+      const calls = fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/messages'));
       expect(calls[0]).toBe('/api/messages?since=0');
       expect(calls[1]).toBe('/api/messages?since=7');
     });
@@ -700,8 +834,10 @@ describeFeature(feature, ({ Scenario }) => {
       });
 
       Then('the stored message\'s thread is "bead:mw-xyz12.3"', async () => {
-        const rows = await messagesRepo.getAll();
-        expect(rows[0]?.thread).toBe('bead:mw-xyz12.3');
+        await waitFor(async () => {
+          const rows = await messagesRepo.getAll();
+          expect(rows[0]?.thread).toBe('bead:mw-xyz12.3');
+        });
       });
     },
   );
@@ -736,8 +872,10 @@ describeFeature(feature, ({ Scenario }) => {
       });
 
       Then('the stored message\'s thread is "bead:mw-xyz12.3"', async () => {
-        const rows = await messagesRepo.getAll();
-        expect(rows[0]?.thread).toBe('bead:mw-xyz12.3');
+        await waitFor(async () => {
+          const rows = await messagesRepo.getAll();
+          expect(rows[0]?.thread).toBe('bead:mw-xyz12.3');
+        });
       });
     },
   );
@@ -766,8 +904,11 @@ describeFeature(feature, ({ Scenario }) => {
       });
 
       Then("the stored message's thread is the general thread", async () => {
-        const rows = await messagesRepo.getAll();
-        expect(rows[0]?.thread).toBeUndefined();
+        await waitFor(async () => {
+          const rows = await messagesRepo.getAll();
+          expect(rows).toHaveLength(1);
+          expect(rows[0]?.thread).toBeUndefined();
+        });
       });
     },
   );

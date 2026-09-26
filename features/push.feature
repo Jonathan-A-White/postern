@@ -26,3 +26,14 @@ Feature: Classified push notifications
     Given notification permission will be denied
     When this phone subscribes to push
     Then no subscription is posted
+
+  Scenario: mw-f758y.22.2 AC1: subscribing with an unlocked key signs the challenge on every call
+    Given notification permission will be granted and a key is unlocked
+    When this phone subscribes to push
+    Then both calls carried a signed proof of the unlocked key
+
+  Scenario: mw-f758y.22.2 AC2: a 401 while subscribing shows "Licence required"
+    Given notification permission will be granted and a key is unlocked
+    And the backend answers every proved call with 401
+    When this phone subscribes to push
+    Then subscribing fails with "Licence required"

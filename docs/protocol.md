@@ -349,3 +349,59 @@ The decrypted plaintext is this JSON shape exactly (Mayor's reading of
   app through the shared Markdown component (`mw-hy6f4.4`). A snapshot from
   before this addition carries neither field; the app renders such an item
   exactly as it always has.
+
+## 8. Attachments
+
+`mw-dxy1c`: one image per message, phone to Mayor only. The image bytes are
+encrypted exactly as a message body is — the same BRC-78 `EncryptedMessage`
+envelope §2 describes, from the sender's key to the recipient's public key —
+and the resulting ciphertext is uploaded whole to the backend, so the
+backend never sees plaintext image bytes.
+
+### Upload
+
+The ciphertext is the body of `POST /api/blobs` (`docs/api.md`, the same
+`Authorization: Postern <pubkey>:<nonce>:<sig>` proof every endpoint but
+`GET /api/challenge` requires):
+
+- A body over 8 MiB plus 256 bytes of BRC-78 envelope overhead is refused
+  `413`.
+- `201 application/json` — a body not already stored:
+
+  ```json
+  { "hash": "<sha256 hex of the body as received>", "size": <bytes> }
+  ```
+
+- `200 application/json` — the same shape, for a repeat upload of bytes
+  already stored (the existing blob is kept, not duplicated).
+
+The backend keeps the body under `$POSTERN_DATA/blobs/<hash>` for 30 days
+from upload, then deletes it. `GET /api/blobs/{hash}` (same auth) streams it
+back as `application/octet-stream`; `404` once the hash is unknown or the
+30 days have passed.
+
+### The plaintext's attachment field
+
+The message plaintext (what `ct` in §1's envelope encrypts) gains an
+optional field beside `text` and `thread`:
+
+```json
+{
+  "text": "<optional caption>",
+  "attachment": {
+    "hash": "<sha256 hex, matching POST /api/blobs's response>",
+    "size": <ciphertext bytes>,
+    "mime": "image/png|image/jpeg|image/webp"
+  }
+}
+```
+
+- `attachment` — absent for a message with no image. A message with an
+  `attachment` and an empty (or absent) `text` is valid — a caption is
+  optional, not required.
+- `hash` / `size` — the same `hash` and `size` `POST /api/blobs` answered
+  for this attachment's ciphertext, so a reader can fetch it with
+  `GET /api/blobs/{hash}` and verify what it downloads before decrypting it.
+- `mime` — the original image's content type, informational (the ciphertext
+  itself carries no type information); one of `image/png`, `image/jpeg`, or
+  `image/webp`.

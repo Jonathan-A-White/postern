@@ -205,6 +205,34 @@ triggers a push to it.
 - `400` — the body isn't valid JSON, or `pubkey`/`subscription.endpoint` is
   missing.
 
+## POST /api/blobs
+
+Uploads an encrypted attachment (`docs/protocol.md` §8): the request body is
+the ciphertext as-is, addressed by its own sha256.
+
+- Request body: raw bytes, at most 8 MiB plus 256 bytes of BRC-78 envelope
+  overhead.
+- `201 application/json` — a body not already stored:
+
+  ```json
+  { "hash": "3af1...", "size": 483920 }
+  ```
+
+- `200 application/json` — the same shape, for a repeat upload of bytes
+  already stored; the existing blob is kept, not duplicated.
+- `413` — the body exceeds the size cap.
+
+The stored body is kept under `POSTERN_DATA/blobs/<hash>` for 30 days from
+upload, then deleted.
+
+## GET /api/blobs/{hash}
+
+Streams back a previously uploaded attachment.
+
+- `200 application/octet-stream` — the body as uploaded.
+- `404` — `hash` isn't 64 lowercase hex characters, or names no blob
+  currently on disk (never uploaded, or its 30 days have passed).
+
 ## The push notifier
 
 Wired into the poller (`server/internal/poller`): every record it newly
@@ -237,7 +265,7 @@ instead and nothing is written to disk. Subscriptions are persisted in
 | `POSTERN_NETWORK` | Network label (informational; doesn't affect request URLs) | `testnet` |
 | `POSTERN_ANCHOR` | The anchor address the poller watches | *(required, no default)* |
 | `POSTERN_WOC_BASE` | WhatsOnChain API base URL | `https://api.whatsonchain.com/v1/bsv/test` |
-| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`) and push state | `./data` |
+| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`), push state, and attachment blobs (`blobs/`) | `./data` |
 | `POSTERN_VAPID_PUBLIC_KEY` | VAPID public key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
 | `POSTERN_VAPID_PRIVATE_KEY` | VAPID private key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
 | `POSTERN_PUSH_SUBSCRIBER` | The VAPID contact (an https URL or `mailto:` email) sent to push services | `https://postern.allmymind.org` |

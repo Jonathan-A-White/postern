@@ -24,6 +24,14 @@ Feature: The Question screen
     Then the broadcast message decrypts to the reply {"bead":"mw-epic.1","answer":"let's ship at 5pm"}
     And the Project screen no longer lists that bead under Needs you
 
+  Scenario: mw-f758y.21.5 AC-3: a free-text answer from the Question screen appears in that bead's thread
+    Given a decision-needed message carrying a §6 question is in the inbox
+    And the same bead is listed under Needs you in the snapshot
+    And the backend has spendable coins and accepts the broadcast
+    And the inbox is opened, unlocked and the question message is tapped
+    When free text "let's ship at 5pm" is typed and sent
+    Then opening that bead's thread shows "let's ship at 5pm"
+
   Scenario: AC-4: a plain decision-needed text with no §6 body shows as an ordinary message
     Given a decision-needed message with plain text is in the inbox
     When the inbox is opened and unlocked

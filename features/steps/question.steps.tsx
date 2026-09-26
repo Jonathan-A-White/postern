@@ -333,6 +333,71 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
+  Scenario(
+    "mw-f758y.21.5 AC-3: a free-text answer from the Question screen appears in that bead's thread",
+    ({ Given, And, When, Then }) => {
+      let mnemonic: string;
+      let hisPublicKeyHex: string;
+      let fetchOptions: FetchMockOptions;
+      let fetchMock: ReturnType<typeof installCombinedFetchMock>;
+
+      Given('a decision-needed message carrying a §6 question is in the inbox', async () => {
+        await freshScreen();
+        const him = await saveVaultForHim();
+        mnemonic = him.mnemonic;
+        hisPublicKeyHex = him.publicKeyHex;
+        await setMayorPublicKey(MAYOR_KEY.toPublicKey().toString());
+        const bodyText = encodeQuestion({ bead: BEAD_ID, q: QUESTION_TEXT, rec: RECOMMENDED, options: OPTIONS });
+        fetchOptions = { messageRecords: [decisionNeededRecord(bodyText, him.publicKeyHex)] };
+        fetchMock = installCombinedFetchMock(fetchOptions);
+        vi.stubGlobal('fetch', fetchMock);
+      });
+
+      And('the same bead is listed under Needs you in the snapshot', () => {
+        fetchOptions.snapshotBase64 = encryptSnapshot(needsYouSnapshot(), hisPublicKeyHex);
+      });
+
+      And('the backend has spendable coins and accepts the broadcast', () => {
+        fetchOptions.utxoSatoshis = 10_000;
+      });
+
+      And('the inbox is opened, unlocked and the question message is tapped', async () => {
+        window.history.pushState({}, '', '?screen=inbox');
+        render(<App />);
+        await unlockScreen(mnemonic);
+        const row = await screen.findByRole('button', { name: new RegExp(BEAD_ID.replace('.', '\\.')) });
+        await userEvent.click(row);
+        await screen.findByLabelText('Your own answer');
+      });
+
+      When('free text "let\'s ship at 5pm" is typed and sent', async () => {
+        await userEvent.type(screen.getByLabelText('Your own answer'), "let's ship at 5pm");
+        await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+        await screen.findByText(/^Sent\. Transaction id:/);
+      });
+
+      Then("opening that bead's thread shows \"let's ship at 5pm\"", async () => {
+        const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/broadcast'));
+        if (!call) throw new Error('no /broadcast call was made');
+        const init = call[1] as RequestInit;
+        const body = JSON.parse(String(init.body)) as { rawtx: string };
+        const tx = Transaction.fromHex(body.rawtx);
+        const decoded = decodeRecordScript(tx.outputs[0].lockingScript);
+        if (!decoded) throw new Error('no record script found in the broadcast tx');
+        const payload = JSON.parse(Utils.toUTF8(decoded.payloadBytes)) as MessagePayload;
+        fetchOptions.messageRecords = [
+          ...(fetchOptions.messageRecords ?? []),
+          { seq: 2, txid: '2'.padStart(64, '0'), vout: 0, payload },
+        ];
+
+        cleanup();
+        window.history.pushState({}, '', `?screen=thread&thread=${encodeURIComponent(`bead:${BEAD_ID}`)}`);
+        render(<App />);
+        expect(await screen.findByText("let's ship at 5pm")).toBeInTheDocument();
+      });
+    },
+  );
+
   Scenario('AC-4: a plain decision-needed text with no §6 body shows as an ordinary message', ({ Given, When, Then, And }) => {
     let mnemonic: string;
     const plainText = 'The gate is open, ready when you are.';

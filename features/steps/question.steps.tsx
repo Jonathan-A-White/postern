@@ -426,9 +426,11 @@ describeFeature(feature, ({ Scenario }) => {
     });
 
     And('tapping it does not open the Question screen', async () => {
-      await userEvent.click(screen.getByRole('button', { name: new RegExp('The gate is open') }));
+      // mw-tfne4.31: a decision-needed row with no decodable §6 body is now a
+      // link to its thread (the general thread, absent one), not a dead end.
+      await userEvent.click(screen.getByRole('link', { name: new RegExp('The gate is open') }));
       expect(screen.queryByLabelText('Your own answer')).not.toBeInTheDocument();
-      expect(screen.getByText(plainText)).toBeInTheDocument();
+      expect(await screen.findByText(plainText)).toBeInTheDocument();
     });
   });
 

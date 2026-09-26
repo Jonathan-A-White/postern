@@ -29,6 +29,13 @@ test('the Threads screen lists a topic thread and its message', async ({ page })
     recipientPublicKeyHex: publicKeyHex,
   });
 
+  // Every authenticated /api call signs a fresh nonce from GET /api/challenge first
+  // (src/services/apiAuth.ts, since mw-f758y.22.2); without this stub the challenge
+  // request falls through to the preview server's index.html and syncMessages fails
+  // silently, leaving the thread list empty.
+  await page.route('**/api/challenge', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ nonce: 'a'.repeat(64) }) }),
+  );
   await page.route('**/api/messages**', (route) =>
     route.fulfill({
       status: 200,

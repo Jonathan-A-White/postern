@@ -114,7 +114,7 @@ test('Discuss controls on the epic row and the story row open that bead\'s threa
   await unlock();
   const epicRow = page.getByTestId('epic-row');
   await expect(epicRow).toContainText(EPIC_TITLE);
-  await epicRow.getByRole('link', { name: 'Discuss' }).click();
+  await epicRow.getByRole('link', { name: 'Discuss', exact: true }).click();
   await unlock();
   await expect(page.getByRole('heading', { name: EPIC_TITLE })).toBeVisible();
   await expect(page.getByText('No messages yet.')).toBeVisible();
@@ -124,7 +124,7 @@ test('Discuss controls on the epic row and the story row open that bead\'s threa
   await unlock();
   const needsYouRow = page.getByTestId('needs-you-row');
   await expect(needsYouRow).toContainText(QUESTION_TEXT);
-  await needsYouRow.getByRole('link', { name: 'Discuss' }).click();
+  await needsYouRow.getByRole('link', { name: 'Discuss', exact: true }).click();
   await unlock();
   await expect(page.getByRole('heading', { name: QUESTION_TEXT })).toBeVisible();
   await expect(page.getByText('No messages yet.')).toBeVisible();

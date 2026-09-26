@@ -1,0 +1,11 @@
+{
+  "name": "postern-mint-licence",
+  "private": true,
+  "type": "module",
+  "description": "Standalone deps for scripts/mint-licence.mjs (mw-f758y.22.5) — installable on a host without the PWA's own node_modules.",
+  "dependencies": {
+    "@bsv/sdk": "^2.2.0",
+    "esbuild": "^0.28.0",
+    "spell-forge-bsv": "https://github.com/Jonathan-A-White/spell-forge/releases/download/bsv-v0.1.0/spell-forge-bsv-0.1.0.tgz"
+  }
+}

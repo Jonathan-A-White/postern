@@ -127,7 +127,7 @@ export function ThreadScreen({ threadRef }: ThreadScreenProps) {
       {vaultState.name === 'ready' && (
         <div className="flex w-full max-w-md flex-col gap-3">
           {threadMessages.length === 0 && <p>No messages yet.</p>}
-          <ul className="flex flex-col gap-2">
+          <ul className="message-list flex flex-col gap-2">
             {threadMessages.map((row) => {
               const { text, markdown } = displayMessage(row);
               return (

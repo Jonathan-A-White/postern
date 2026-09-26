@@ -181,3 +181,81 @@ func TestDecodeScriptInvalidHex(t *testing.T) {
 		t.Fatal("DecodeScript returned ok=true for invalid hex")
 	}
 }
+
+// buildTypedRecordScript builds OP_FALSE OP_RETURN <'nftgate'> <0x02> <recordType>
+// <manifest> <payload>, the format spell-forge-bsv's encodeTypedRecordScript writes.
+func buildTypedRecordScript(recordType string, manifest []byte, payload []byte) []byte {
+	var script []byte
+	script = append(script, 0x00, 0x6a) // OP_FALSE OP_RETURN
+	script = append(script, pushData([]byte("nftgate"))...)
+	script = append(script, pushData([]byte{VersionTyped})...)
+	script = append(script, pushData([]byte(recordType))...)
+	if manifest != nil {
+		script = append(script, pushData(manifest)...)
+	}
+	script = append(script, pushData(payload)...)
+	return script
+}
+
+func TestDecodeTypedScriptMintRecordWithManifest(t *testing.T) {
+	payload := []byte(`{"collection":"spellforge-leaderboard-testnet","holder":"mzzz"}`)
+	script := buildTypedRecordScript("M", []byte{0x00}, payload)
+
+	decoded, ok := DecodeTypedScript(hex.EncodeToString(script))
+	if !ok {
+		t.Fatal("DecodeTypedScript returned ok=false for a valid type-M record")
+	}
+	if decoded.Version != VersionTyped {
+		t.Fatalf("Version = %d, want %d", decoded.Version, VersionTyped)
+	}
+	if decoded.RecordType != "M" {
+		t.Fatalf("RecordType = %q, want M", decoded.RecordType)
+	}
+	if string(decoded.PayloadBytes) != string(payload) {
+		t.Fatalf("PayloadBytes = %s, want %s", decoded.PayloadBytes, payload)
+	}
+}
+
+func TestDecodeTypedScriptTransferRecordWithoutManifest(t *testing.T) {
+	payload := []byte(`{"origin":"abc:0","to":"mzzz"}`)
+	script := buildTypedRecordScript("TR", nil, payload)
+
+	decoded, ok := DecodeTypedScript(hex.EncodeToString(script))
+	if !ok {
+		t.Fatal("DecodeTypedScript returned ok=false for a valid type-TR record with no manifest push")
+	}
+	if decoded.RecordType != "TR" {
+		t.Fatalf("RecordType = %q, want TR", decoded.RecordType)
+	}
+	if string(decoded.PayloadBytes) != string(payload) {
+		t.Fatalf("PayloadBytes = %s, want %s", decoded.PayloadBytes, payload)
+	}
+}
+
+func TestDecodeTypedScriptUnknownRecordType(t *testing.T) {
+	script := buildTypedRecordScript("X", []byte{0x00}, []byte(`{}`))
+
+	if _, ok := DecodeTypedScript(hex.EncodeToString(script)); ok {
+		t.Fatal("DecodeTypedScript returned ok=true for an unrecognized record type")
+	}
+}
+
+func TestDecodeTypedScriptRejectsPlaintextVersion(t *testing.T) {
+	script := buildRecordScript(1, []byte(`{"kind":"msg"}`))
+
+	if _, ok := DecodeTypedScript(hex.EncodeToString(script)); ok {
+		t.Fatal("DecodeTypedScript returned ok=true for a version-1 (plaintext) record")
+	}
+}
+
+func TestDecodeTypedScriptNotARecord(t *testing.T) {
+	if _, ok := DecodeTypedScript(hex.EncodeToString(buildP2PKHScript())); ok {
+		t.Fatal("DecodeTypedScript returned ok=true for a plain P2PKH script")
+	}
+}
+
+func TestDecodeTypedScriptInvalidHex(t *testing.T) {
+	if _, ok := DecodeTypedScript("zz"); ok {
+		t.Fatal("DecodeTypedScript returned ok=true for invalid hex")
+	}
+}

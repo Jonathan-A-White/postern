@@ -4,13 +4,23 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/api"
+	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/config"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/poller"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
+)
+
+// nonceTTL is how long a GET /api/challenge nonce may be used before it
+// expires unconsumed. licenceCacheTTL is how long a key's licence check is
+// cached before the chain is walked again.
+const (
+	nonceTTL        = 2 * time.Minute
+	licenceCacheTTL = 5 * time.Minute
 )
 
 func main() {
@@ -42,7 +52,9 @@ func main() {
 	defer close(stop)
 	go p.Run(stop)
 
-	handler := api.NewHandler(store, client, vapidKeys.PublicKey, pushStore)
+	nonces := auth.NewNonceStore(nonceTTL)
+	licenceChecker := auth.NewCachedChecker(client, licenceCacheTTL)
+	handler := api.NewHandler(store, client, vapidKeys.PublicKey, pushStore, nonces, licenceChecker)
 
 	log.Printf("postern server listening on %s (network=%s, anchor=%s, woc=%s)", cfg.Addr, cfg.Network, cfg.Anchor, cfg.WocBase)
 	if err := http.ListenAndServe(cfg.Addr, handler); err != nil {

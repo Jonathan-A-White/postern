@@ -119,6 +119,60 @@ func parsePushDataSequence(data []byte) ([][]byte, bool) {
 	return pushes, true
 }
 
+// VersionTyped is the License app's typed record format (spec §3.8): OP_FALSE
+// OP_RETURN <'nftgate'> <0x02> <record type> [<value manifest>] <payload>.
+// Only the record types findLicence needs to read are recognised.
+const VersionTyped = 0x02
+
+var typedRecordTypes = map[string]bool{"M": true, "W": true, "TR": true}
+
+// TypedDecoded is a decoded typed (version 0x02) record: its record type
+// ('M', 'W', or 'TR') and opaque payload bytes.
+type TypedDecoded struct {
+	Version      byte
+	RecordType   string
+	PayloadBytes []byte
+}
+
+// DecodeTypedScript parses a locking script (as hex) as a version-0x02
+// nftgate record: OP_FALSE OP_RETURN <'nftgate'> <0x02> <record type>
+// <payload>, with an optional value-manifest push between the record type
+// and the payload (spell-forge-bsv's encodeTypedRecordScript writes 5 pushes
+// once a manifest exists, 4 before it did; both are accepted, and the
+// payload is always the last push). It reports ok=false for anything else,
+// including a version-1 (plaintext) record.
+func DecodeTypedScript(scriptHex string) (*TypedDecoded, bool) {
+	scriptBytes, err := hex.DecodeString(scriptHex)
+	if err != nil {
+		return nil, false
+	}
+
+	if len(scriptBytes) < 2 || scriptBytes[0] != opFalse || scriptBytes[1] != opReturn {
+		return nil, false
+	}
+
+	pushes, ok := parsePushDataSequence(scriptBytes[2:])
+	if !ok || (len(pushes) != 4 && len(pushes) != 5) {
+		return nil, false
+	}
+
+	protocol, versionBytes, typeBytes := pushes[0], pushes[1], pushes[2]
+	if !bytes.Equal(protocol, protocolID) {
+		return nil, false
+	}
+	if len(versionBytes) != 1 || versionBytes[0] != VersionTyped {
+		return nil, false
+	}
+
+	recordType := string(typeBytes)
+	if !typedRecordTypes[recordType] {
+		return nil, false
+	}
+
+	payloadBytes := pushes[len(pushes)-1]
+	return &TypedDecoded{Version: versionBytes[0], RecordType: recordType, PayloadBytes: payloadBytes}, true
+}
+
 // Output is one output of a parsed transaction: its index and locking
 // script (as hex, ready to feed back into DecodeScript).
 type Output struct {

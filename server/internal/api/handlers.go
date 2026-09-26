@@ -9,7 +9,9 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
@@ -30,17 +32,89 @@ const (
 
 // NewHandler builds the full /api/* surface (plus /healthz) backed by store
 // and client. vapidPublicKey is handed to GET /api/push/vapid-public-key;
-// pushStore backs POST /api/push/subscribe.
-func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store) http.Handler {
+// pushStore backs POST /api/push/subscribe. Every /api endpoint except
+// GET /api/challenge requires a signed, licensed proof (requireLicence),
+// checked against nonces and checker.
+func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store, nonces *auth.NonceStore, checker auth.LicenceChecker) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
-	mux.HandleFunc("GET /api/messages", handleMessages(store))
-	mux.HandleFunc("POST /api/broadcast", handleBroadcast(client))
-	mux.HandleFunc("GET /api/utxos/{address}", handleUtxos(client))
-	mux.HandleFunc("GET /api/balance/{address}", handleBalance(client))
-	mux.HandleFunc("GET /api/push/vapid-public-key", handleVAPIDPublicKey(vapidPublicKey))
-	mux.HandleFunc("POST /api/push/subscribe", handlePushSubscribe(pushStore))
+	mux.HandleFunc("GET /api/challenge", handleChallenge(nonces))
+	mux.HandleFunc("GET /api/messages", requireLicence(nonces, checker, handleMessages(store)))
+	mux.HandleFunc("POST /api/broadcast", requireLicence(nonces, checker, handleBroadcast(client)))
+	mux.HandleFunc("GET /api/utxos/{address}", requireLicence(nonces, checker, handleUtxos(client)))
+	mux.HandleFunc("GET /api/balance/{address}", requireLicence(nonces, checker, handleBalance(client)))
+	mux.HandleFunc("GET /api/push/vapid-public-key", requireLicence(nonces, checker, handleVAPIDPublicKey(vapidPublicKey)))
+	mux.HandleFunc("POST /api/push/subscribe", requireLicence(nonces, checker, handlePushSubscribe(pushStore)))
 	return mux
+}
+
+// authScheme is the Authorization header's scheme token: "Postern
+// <pubkeyHex>:<nonceHex>:<sigHex>", where sigHex is a DER-encoded ECDSA
+// signature by the compressed secp256k1 key pubkeyHex over the nonce
+// (docs/api.md).
+const authScheme = "Postern "
+
+// parseAuthorization splits a "Postern <pubkeyHex>:<nonceHex>:<sigHex>"
+// Authorization header into its three parts, reporting ok=false for
+// anything else, including any empty part.
+func parseAuthorization(header string) (pubKeyHex, nonce, sigHex string, ok bool) {
+	if !strings.HasPrefix(header, authScheme) {
+		return "", "", "", false
+	}
+	parts := strings.Split(strings.TrimPrefix(header, authScheme), ":")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
+}
+
+// requireLicence wraps next so it only runs once the request's Authorization
+// header proves a signed, licensed key: the header must carry a nonce this
+// nonces store issued and hasn't already consumed, a valid signature over
+// that nonce by the named public key, and that key must hold a licence per
+// checker. Anything short of that is a 401; a failure to check the licence
+// itself (a chain read failing) is a 502, like this backend's other
+// provider-proxy failures.
+func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		pubKeyHex, nonce, sigHex, ok := parseAuthorization(r.Header.Get("Authorization"))
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "missing or malformed Authorization header")
+			return
+		}
+		if !nonces.Consume(nonce) {
+			writeError(w, http.StatusUnauthorized, "nonce is missing, expired, or already used")
+			return
+		}
+		valid, err := auth.VerifySignature(pubKeyHex, nonce, sigHex)
+		if err != nil || !valid {
+			writeError(w, http.StatusUnauthorized, "signature does not verify")
+			return
+		}
+		held, err := checker.Held(pubKeyHex)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "checking licence: "+err.Error())
+			return
+		}
+		if !held {
+			writeError(w, http.StatusUnauthorized, "no licence held")
+			return
+		}
+		next(w, r)
+	}
+}
+
+func handleChallenge(nonces *auth.NonceStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		nonce, err := nonces.Issue()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			Nonce string `json:"nonce"`
+		}{Nonce: nonce})
+	}
 }
 
 func handleHealthz(w http.ResponseWriter, r *http.Request) {

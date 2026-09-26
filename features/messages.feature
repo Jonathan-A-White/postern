@@ -81,3 +81,18 @@ Feature: Composing and sending an encrypted message
     Then the error says "Unlock cancelled. Tap Unlock to try again."
     And the raw browser sentence and the w3.org link never appear
     And "Unlock with your fingerprint" is still offered
+
+  Scenario: mw-f758y.21.1 AC1: a message naming a bead thread is stored under that thread
+    Given the backend has one message record addressed to him naming a bead thread
+    When the inbox is opened and unlocked
+    Then the stored message's thread is "bead:mw-xyz12.3"
+
+  Scenario: mw-f758y.21.1 AC2: a decision-needed message is stored under its own bead as its thread
+    Given the backend has one decision-needed message record addressed to him
+    When the inbox is opened and unlocked
+    Then the stored message's thread is "bead:mw-xyz12.3"
+
+  Scenario: mw-f758y.21.1 AC3: a message with no thread is stored under the general thread
+    Given the backend has one message record addressed to him with no thread
+    When the inbox is opened and unlocked
+    Then the stored message's thread is the general thread

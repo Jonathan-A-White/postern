@@ -23,6 +23,8 @@ import {
 import { decryptMessage, encryptMessage, setMayorPublicKey, type MessageClass, type MessagePayload } from '../../src/services/messages';
 import { installMockAuthenticator, removeMockAuthenticator } from '../../tests/support/webauthn-mock';
 import { lock } from '../../src/services/keySession';
+import { encodeQuestion } from '../../src/services/questions';
+import { encodeThreadedMessage } from '../../src/services/threads';
 
 const MAYOR_KEY = PrivateKey.fromHex('11'.repeat(32));
 const SENDER_KEY = PrivateKey.fromHex('22'.repeat(32));
@@ -598,6 +600,103 @@ describeFeature(feature, ({ Scenario }) => {
 
       And('"Unlock with your fingerprint" is still offered', () => {
         expect(screen.getByRole('button', { name: 'Unlock with your fingerprint' })).toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario(
+    'mw-f758y.21.1 AC1: a message naming a bead thread is stored under that thread',
+    ({ Given, When, Then }) => {
+      let mnemonic: string;
+
+      Given('the backend has one message record addressed to him naming a bead thread', async () => {
+        await freshCompose();
+        const him = await saveVaultForHim();
+        mnemonic = him.mnemonic;
+        const plaintext = encodeThreadedMessage({ thread: { bead: 'mw-xyz12.3' }, text: 'meet at the usual place' });
+        const payload = encryptMessage({
+          text: plaintext,
+          class: 'message',
+          senderPrivateKeyHex: SENDER_KEY.toHex(),
+          recipientPublicKeyHex: him.publicKeyHex,
+        });
+        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
+      });
+
+      When('the inbox is opened and unlocked', async () => {
+        render(<Inbox />);
+        await unlockInbox(mnemonic);
+      });
+
+      Then('the stored message\'s thread is "bead:mw-xyz12.3"', async () => {
+        const rows = await messagesRepo.getAll();
+        expect(rows[0]?.thread).toBe('bead:mw-xyz12.3');
+      });
+    },
+  );
+
+  Scenario(
+    "mw-f758y.21.1 AC2: a decision-needed message is stored under its own bead as its thread",
+    ({ Given, When, Then }) => {
+      let mnemonic: string;
+
+      Given('the backend has one decision-needed message record addressed to him', async () => {
+        await freshCompose();
+        const him = await saveVaultForHim();
+        mnemonic = him.mnemonic;
+        const plaintext = encodeQuestion({
+          bead: 'mw-xyz12.3',
+          q: 'Ship the walking skeleton now, or wait for WireGuard?',
+          rec: 'ship',
+          options: ['ship', 'wait'],
+        });
+        const payload = encryptMessage({
+          text: plaintext,
+          class: 'decision-needed',
+          senderPrivateKeyHex: SENDER_KEY.toHex(),
+          recipientPublicKeyHex: him.publicKeyHex,
+        });
+        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
+      });
+
+      When('the inbox is opened and unlocked', async () => {
+        render(<Inbox />);
+        await unlockInbox(mnemonic);
+      });
+
+      Then('the stored message\'s thread is "bead:mw-xyz12.3"', async () => {
+        const rows = await messagesRepo.getAll();
+        expect(rows[0]?.thread).toBe('bead:mw-xyz12.3');
+      });
+    },
+  );
+
+  Scenario(
+    'mw-f758y.21.1 AC3: a message with no thread is stored under the general thread',
+    ({ Given, When, Then }) => {
+      let mnemonic: string;
+
+      Given('the backend has one message record addressed to him with no thread', async () => {
+        await freshCompose();
+        const him = await saveVaultForHim();
+        mnemonic = him.mnemonic;
+        const payload = encryptMessage({
+          text: 'meet at the usual place',
+          class: 'message',
+          senderPrivateKeyHex: SENDER_KEY.toHex(),
+          recipientPublicKeyHex: him.publicKeyHex,
+        });
+        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
+      });
+
+      When('the inbox is opened and unlocked', async () => {
+        render(<Inbox />);
+        await unlockInbox(mnemonic);
+      });
+
+      Then("the stored message's thread is the general thread", async () => {
+        const rows = await messagesRepo.getAll();
+        expect(rows[0]?.thread).toBeUndefined();
       });
     },
   );

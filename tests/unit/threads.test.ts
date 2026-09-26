@@ -27,6 +27,28 @@ describe('threads: encode/decode round trips', () => {
     expect(decodeThreadedMessage(encoded)).toEqual({ text: 'no thread here' });
   });
 
+  it('round-trips a message with an attachment but no thread (mw-dxy1c.2)', () => {
+    const body: ThreadedBody = {
+      text: 'look at this',
+      attachment: { hash: 'a'.repeat(64), size: 12345, mime: 'image/png' },
+    };
+    expect(decodeThreadedMessage(encodeThreadedMessage(body))).toEqual(body);
+  });
+
+  it('round-trips a message with both a thread and an attachment (mw-dxy1c.2)', () => {
+    const body: ThreadedBody = {
+      thread: { bead: 'mw-xyz12.3' },
+      text: 'the screenshot',
+      attachment: { hash: 'b'.repeat(64), size: 999, mime: 'image/jpeg' },
+    };
+    expect(decodeThreadedMessage(encodeThreadedMessage(body))).toEqual(body);
+  });
+
+  it('an attachment with an empty caption is valid (mw-dxy1c.2)', () => {
+    const body: ThreadedBody = { text: '', attachment: { hash: 'c'.repeat(64), size: 1, mime: 'image/webp' } };
+    expect(decodeThreadedMessage(encodeThreadedMessage(body))).toEqual(body);
+  });
+
   it('treats plain text as the general thread', () => {
     expect(decodeThreadedMessage('hello')).toEqual({ text: 'hello' });
   });

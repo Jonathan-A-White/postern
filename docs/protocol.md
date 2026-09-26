@@ -42,6 +42,9 @@ JSON shape that only postern understands:
   the UTF-8 bytes of the plaintext message body; nothing else is wrapped in the
   ciphertext (the class tag, timestamp, and both public keys already travel in the
   clear in the fields above).
+- `thread` — never a field of this clear envelope. Every message's plaintext (what
+  `ct` encrypts) MAY itself name the thread it belongs to, `{"bead": "mw-xyz12.3"}`
+  or `{"topic": "<name>"}`; absent, it's the general thread. See §6.
 
 This payload is UTF-8 JSON, `JSON.stringify`'d and pushed as the one opaque payload
 push of the record script — exactly what `encodeRecordScript` from `spell-forge-bsv`
@@ -204,6 +207,38 @@ field is plain text, exactly as today — an old message, or any `message` /
 as a question or a reply. `src/services/questions.ts`'s `isStructured` makes that
 check; `decodeQuestion` and `decodeReply` return `undefined` for anything that
 fails it.
+
+### Threads
+
+Independently of `class`, any message's decrypted plaintext MAY instead be this
+JSON shape, naming the thread it belongs to (`mw-f758y.21`, one thread per bead
+automatically plus named topics he opens):
+
+```json
+{ "thread": { "bead": "mw-xyz12.3" }, "text": "<the message text>" }
+```
+
+or
+
+```json
+{ "thread": { "topic": "<name>" }, "text": "<the message text>" }
+```
+
+- `thread` — optional. `{"bead": "<id>"}` names the automatic thread that bead
+  already has; `{"topic": "<name>"}` names a topic he opened. Absent — or the
+  plaintext isn't this JSON shape at all, just bare text — means the general
+  thread, exactly as every message reads today.
+- `text` — the message body: exactly what an unthreaded plaintext already carries
+  as its whole value, just wrapped alongside the thread it belongs to.
+
+A `decision-needed` message, and its reply, never carry this shape: the `bead`
+field each already has (above) names its thread directly — that bead IS its
+thread, so a second `thread` field would only duplicate it. `src/services/threads.ts`'s
+`threadOf(class, plaintext)` returns the thread any decrypted message belongs to
+across every class: the question or reply's own `bead` for `decision-needed` and
+its reply, this `thread` field (if present) for anything else, or `undefined` for
+the general thread. `encodeThreadedMessage` / `decodeThreadedMessage` there
+build and read the `{ thread, text }` shape above.
 
 ### Question and reply vectors
 

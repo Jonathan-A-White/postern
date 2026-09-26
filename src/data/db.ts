@@ -69,6 +69,19 @@ export interface AnswerRow {
   ts: number;
 }
 
+// One row per broadcast this phone made, kept until its spent outpoints drop off
+// WhatsOnChain's unspent list (or 24h passes): mw-1589l.28, WhatsOnChain keeps listing
+// a spent output for a while after the mempool transaction that spent it, so the next
+// send must know to exclude it (and, since the list may omit the new change output for
+// the same reason, know to spend that instead).
+export interface PendingSpendRow {
+  txid: string;
+  /** `${txid}:${vout}` outpoints this transaction spent. */
+  outpoints: string[];
+  createdAt: Date;
+  changeOutpoint?: { txid: string; vout: number; satoshis: number };
+}
+
 export interface VaultRow {
   id: string;
   mode: 'prf' | 'phrase';
@@ -90,6 +103,7 @@ class PosternDB extends Dexie {
   messages!: Table<MessageRow, string>;
   snapshot!: Table<SnapshotRow, string>;
   answers!: Table<AnswerRow, string>;
+  pendingSpends!: Table<PendingSpendRow, string>;
 
   constructor() {
     super('PosternDB');
@@ -130,6 +144,15 @@ class PosternDB extends Dexie {
       messages: 'id, seq, ts, read, thread',
       snapshot: 'id',
       answers: 'bead',
+    });
+
+    this.version(7).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read, thread',
+      snapshot: 'id',
+      answers: 'bead',
+      pendingSpends: 'txid',
     });
   }
 }

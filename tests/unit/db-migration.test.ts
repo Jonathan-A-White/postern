@@ -150,3 +150,50 @@ describe('PosternDB migration to v6 (message thread)', () => {
     expect(threaded.map((row) => row.id)).toEqual(['b'.repeat(64) + ':0']);
   });
 });
+
+describe('PosternDB migration to v7 (pendingSpends)', () => {
+  it('adding the pendingSpends table does not lose an existing answers row', async () => {
+    db.close();
+    await Dexie.delete('PosternDB');
+
+    // Simulates a phone that already has a v6 database (no pendingSpends table) —
+    // the schema this app shipped with before this story.
+    const legacy = new Dexie('PosternDB');
+    legacy.version(1).stores({ settings: 'key' });
+    legacy.version(2).stores({ settings: 'key', vault: 'id' });
+    legacy.version(3).stores({ settings: 'key', vault: 'id', messages: 'id, seq, ts, read' });
+    legacy.version(4).stores({ settings: 'key', vault: 'id', messages: 'id, seq, ts, read', snapshot: 'id' });
+    legacy
+      .version(5)
+      .stores({ settings: 'key', vault: 'id', messages: 'id, seq, ts, read', snapshot: 'id', answers: 'bead' });
+    legacy.version(6).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read, thread',
+      snapshot: 'id',
+      answers: 'bead',
+    });
+    await legacy.open();
+    await legacy.table('answers').put({
+      bead: 'mw-xyz12.3',
+      answer: 'yes',
+      txid: 'a'.repeat(64),
+      ts: 1758700800,
+    });
+    legacy.close();
+
+    await db.open();
+
+    const answer = await db.answers.get('mw-xyz12.3');
+    expect(answer?.answer).toBe('yes');
+    expect(await db.pendingSpends.count()).toBe(0);
+
+    await db.pendingSpends.put({
+      txid: 'b'.repeat(64),
+      outpoints: ['a'.repeat(64) + ':0'],
+      createdAt: new Date('2026-09-26T18:40:00Z'),
+    });
+    const pending = await db.pendingSpends.get('b'.repeat(64));
+    expect(pending?.outpoints).toEqual(['a'.repeat(64) + ':0']);
+  });
+});

@@ -3,3 +3,4 @@ export { vaultRepo } from './vault-repo';
 export { messagesRepo } from './messages-repo';
 export { snapshotRepo } from './snapshot-repo';
 export { answersRepo } from './answers-repo';
+export { pendingSpendsRepo } from './pending-spends-repo';

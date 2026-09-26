@@ -63,4 +63,13 @@ describe('src/index.css', () => {
     expect(listBody).toContain('list-');
     expect(listBody).toContain('pl-');
   });
+
+  it('gives a message list bottom padding that clears the home-indicator safe area (mw-tfne4.31)', () => {
+    const css = readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf-8');
+    const rule = css.match(/\.message-list\s*\{([^}]*)\}/);
+    expect(rule).not.toBeNull();
+    const body = rule?.[1] ?? '';
+    expect(body).toContain('padding-bottom');
+    expect(body).toContain('env(safe-area-inset-bottom)');
+  });
 });

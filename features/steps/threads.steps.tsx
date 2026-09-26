@@ -43,6 +43,11 @@ interface FetchMockOptions {
   utxoSatoshis?: number;
 }
 
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
+  return Utils.toHex(Array.from(new Uint8Array(digest)));
+}
+
 async function freshScreen(): Promise<void> {
   cleanup();
   await db.vault.clear();
@@ -116,6 +121,7 @@ function beadTitleSnapshot(): Snapshot {
 }
 
 function installCombinedFetchMock(options: FetchMockOptions) {
+  options.messageRecords = options.messageRecords ?? [];
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const urlStr = String(input);
     if (urlStr.endsWith('/challenge')) {
@@ -145,10 +151,32 @@ function installCombinedFetchMock(options: FetchMockOptions) {
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
     }
+    if (urlStr.endsWith('/blobs') && init?.method === 'POST') {
+      const uploadedBody = new Uint8Array(init.body as Uint8Array);
+      const hash = await sha256Hex(uploadedBody);
+      return new Response(JSON.stringify({ hash, size: uploadedBody.length }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     if (urlStr.endsWith('/broadcast')) {
       const body = JSON.parse(String(init?.body)) as { rawtx: string };
       const tx = Transaction.fromHex(body.rawtx);
-      return new Response(JSON.stringify({ txid: tx.id('hex') }), {
+      const txid = tx.id('hex');
+      // Feed a sent record straight back into /messages, the same record a
+      // real backend would eventually index — so a refresh right after send
+      // (ThreadScreen.tsx's refreshMessages) sees its own just-sent message.
+      const decoded = decodeRecordScript(tx.outputs[0].lockingScript);
+      if (decoded) {
+        seqCounter += 1;
+        options.messageRecords!.push({
+          seq: seqCounter,
+          txid,
+          vout: 0,
+          payload: JSON.parse(Utils.toUTF8(decoded.payloadBytes)),
+        });
+      }
+      return new Response(JSON.stringify({ txid }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -371,6 +399,45 @@ describeFeature(feature, ({ Scenario }) => {
       expect(within(row).queryByText(/^## Plan/)).not.toBeInTheDocument();
     });
   });
+
+  Scenario(
+    'AC-6 (mw-dxy1c.2): attaching a screenshot with a caption sends an image message',
+    ({ Given, When, Then }) => {
+      Given(
+        'a bead thread is open and unlocked, the backend has spendable coins and accepts uploads and broadcasts',
+        async () => {
+          await freshScreen();
+          const him = await saveVaultForHim();
+          await setMayorPublicKey(MAYOR_KEY.toPublicKey().toString());
+          vi.stubGlobal(
+            'fetch',
+            installCombinedFetchMock({
+              messageRecords: [threadedMessageRecord('meet at the usual place', { bead: BEAD_ID }, 100, him.publicKeyHex)],
+              utxoSatoshis: 10_000,
+            }),
+          );
+          window.history.pushState({}, '', '?screen=threads');
+          render(<App />);
+          await unlockScreen(him.mnemonic);
+          await openThreadRow(new RegExp(BEAD_ID.replace('.', '\\.')));
+          await screen.findByText('meet at the usual place');
+        },
+      );
+
+      When('a screenshot is attached with a caption and sent', async () => {
+        const bytes = new Uint8Array(200 * 1024).fill(7);
+        const file = new File([bytes], 'screenshot.png', { type: 'image/png' });
+        await userEvent.upload(screen.getByLabelText('Attach image'), file);
+        await userEvent.type(screen.getByLabelText('Reply'), 'look at this');
+        await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      });
+
+      Then('the thread shows the sent image marker and size', async () => {
+        await screen.findByText(/^Sent\. Transaction id:/);
+        expect(await screen.findByText(/Image, \d+ KB/)).toBeInTheDocument();
+      });
+    },
+  );
 });
 
 afterAll(() => {

@@ -4,7 +4,7 @@
 // seeded straight into Dexie (already "decrypted") rather than going through
 // the encrypt/decrypt/sync machinery threads.steps.tsx exercises.
 import { render, screen, within } from '@testing-library/react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PrivateKey } from '@bsv/sdk';
 import { ThreadScreen } from '../../src/threads/ThreadScreen';
 import { db } from '../../src/data/db';
@@ -92,5 +92,49 @@ describe('ThreadScreen: message rendering (AC3)', () => {
 
     expect(within(decisionRow).getByText('Ship **now**?')).toBeInTheDocument();
     expect(within(decisionRow).queryByRole('heading', { name: 'now' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ThreadScreen: opening a thread marks it read (mw-tfne4.36 AC1)', () => {
+  it("marks the open thread's received rows read, leaving another thread's rows untouched", async () => {
+    await messagesRepo.put({
+      id: 'a'.repeat(64) + ':0',
+      txid: 'a'.repeat(64),
+      vout: 0,
+      seq: 1,
+      class: 'message',
+      to: 'to',
+      from: 'from',
+      ts: 100,
+      ciphertext: 'unused',
+      plaintext: 'meet at the usual place',
+      direction: 'received',
+      read: false,
+      thread: `bead:${BEAD_ID}`,
+    });
+    await messagesRepo.put({
+      id: 'b'.repeat(64) + ':0',
+      txid: 'b'.repeat(64),
+      vout: 0,
+      seq: 2,
+      class: 'message',
+      to: 'to',
+      from: 'from',
+      ts: 200,
+      ciphertext: 'unused',
+      plaintext: 'ready when you are',
+      direction: 'received',
+      read: false,
+      thread: 'topic:launch plan',
+    });
+
+    render(<ThreadScreen threadRef={{ bead: BEAD_ID }} />);
+
+    await screen.findByText('meet at the usual place');
+
+    await vi.waitFor(async () => {
+      expect((await messagesRepo.get('a'.repeat(64) + ':0'))?.read).toBe(true);
+    });
+    expect((await messagesRepo.get('b'.repeat(64) + ':0'))?.read).toBe(false);
   });
 });

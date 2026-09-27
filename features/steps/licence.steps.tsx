@@ -9,7 +9,7 @@
 // (confirmed by hand while building this story) — so every scenario here fakes the built
 // transaction's hex and drives outcomes through the fake provider's broadcast instead.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -93,7 +93,8 @@ describeFeature(feature, ({ Scenario }) => {
     });
 
     Then('the "Mint my licence (testnet)" button is disabled', async () => {
-      expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
+      await screen.findByText(/Balance: \d+ sats/);
+      expect(screen.getByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
     });
   });
 
@@ -259,7 +260,9 @@ describeFeature(feature, ({ Scenario }) => {
     });
 
     Then('the "Mint my licence (testnet)" button is enabled', async () => {
-      expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeEnabled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Mint my licence (testnet)' })).toBeEnabled();
+      });
     });
   });
 
@@ -287,7 +290,8 @@ describeFeature(feature, ({ Scenario }) => {
       });
 
       Then('the "Mint my licence (testnet)" button is disabled', async () => {
-        expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
+        await screen.findByText(/Balance: \d+ sats/);
+        expect(screen.getByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
       });
     },
   );
@@ -312,7 +316,9 @@ describeFeature(feature, ({ Scenario }) => {
     });
 
     Then('the "Mint my licence (testnet)" button is enabled', async () => {
-      expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeEnabled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Mint my licence (testnet)' })).toBeEnabled();
+      });
     });
   });
 

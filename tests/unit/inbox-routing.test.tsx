@@ -3,7 +3,7 @@
 // `?screen=` link click is a route change, not a page load, renders the Thread
 // screen with that message listed and the reply control present, and the shared
 // key session (mw-tfne4.23) is never reset.
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { PrivateKey } from '@bsv/sdk';
 import { App } from '../../src/App';
@@ -87,5 +87,49 @@ describe('following an Inbox row link opens its thread with the key still unlock
 
     expect(await screen.findByTestId('thread-message')).toHaveTextContent('meet at the usual place');
     expect(screen.getByLabelText('Reply')).toBeInTheDocument();
+  });
+
+  it('tapping an unread row still marks it read and opens its thread (mw-tfne4.35 AC2)', async () => {
+    await vaultRepo.save({
+      mode: 'phrase',
+      ciphertext: new Uint8Array([1]).buffer,
+      iv: new Uint8Array(12),
+      salt: new Uint8Array(16),
+      prfFallbackReason: 'webauthn-unavailable',
+      publicKeyHex: TEST_KEY.toPublicKey().toString(),
+    });
+    const messageId = 'a'.repeat(64) + ':0';
+    await messagesRepo.put({
+      id: messageId,
+      txid: 'a'.repeat(64),
+      vout: 0,
+      seq: 1,
+      class: 'message',
+      to: 'to',
+      from: 'from',
+      ts: 100,
+      ciphertext: 'unused',
+      plaintext: 'meet at the usual place',
+      direction: 'received',
+      read: false,
+      thread: `bead:${BEAD_ID}`,
+    });
+    await setMayorPublicKey(MAYOR_KEY.toPublicKey().toString());
+    vi.stubGlobal('fetch', fetchStub());
+
+    const masterKey = new Uint8Array(32).fill(7);
+    setKey(masterKey);
+    window.history.pushState({}, '', '?screen=inbox');
+    render(<App />);
+
+    const link = await screen.findByRole('link', { name: /meet at the usual place/ });
+    expect(within(link).getByTestId('unread-marker')).toBeInTheDocument();
+    fireEvent.click(link);
+
+    expect(window.location.search).toBe(`?screen=thread&thread=${encodeURIComponent(`bead:${BEAD_ID}`)}`);
+    expect(await screen.findByTestId('thread-message')).toHaveTextContent('meet at the usual place');
+
+    const stored = await messagesRepo.get(messageId);
+    expect(stored?.read).toBe(true);
   });
 });

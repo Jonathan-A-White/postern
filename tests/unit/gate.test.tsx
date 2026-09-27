@@ -5,7 +5,7 @@ import { PrivateKey } from '@bsv/sdk';
 import { chainConfig } from 'spell-forge-bsv';
 import { Gate } from '../../src/gate';
 import { db } from '../../src/data/db';
-import { vaultRepo } from '../../src/data/repositories';
+import { vaultRepo, messagesRepo } from '../../src/data/repositories';
 import { addressForPublicKey, checkLicence, setMintPending } from '../../src/services/licence';
 import { lock, setKey } from '../../src/services/keySession';
 import { createMnemonic, deriveAesKeyFromPrf, deriveMasterKey, publicKeyHexFromMasterKey, wrapKey } from '../../src/services/vault';
@@ -32,6 +32,7 @@ beforeEach(async () => {
   fakeProvider = new FakeChainProvider();
   await db.vault.clear();
   await db.settings.clear();
+  await db.messages.clear();
 });
 
 async function saveTestVault(): Promise<void> {
@@ -181,6 +182,36 @@ describe('Gate', () => {
       await screen.findByText('Your licence mint is broadcast; the chain can take a minute to show it'),
     ).toBeInTheDocument();
     expect(screen.queryByText('No licence found')).not.toBeInTheDocument();
+  });
+
+  it('shows the unread count on the Inbox link and it drops once the message is read (mw-tfne4.35 AC2)', async () => {
+    await saveLicensedPrfVault();
+    const messageId = 'a'.repeat(64) + ':0';
+    await messagesRepo.put({
+      id: messageId,
+      txid: 'a'.repeat(64),
+      vout: 0,
+      seq: 1,
+      class: 'message',
+      to: 'to',
+      from: 'from',
+      ts: 100,
+      ciphertext: 'unused',
+      plaintext: 'hello',
+      direction: 'received',
+      read: false,
+    });
+
+    const { unmount } = render(<Gate />);
+    await screen.findByText('Licensed');
+    expect(screen.getByTestId('unread-count')).toHaveTextContent('(1)');
+    unmount();
+
+    await messagesRepo.markRead(messageId);
+
+    render(<Gate />);
+    await screen.findByText('Licensed');
+    expect(screen.queryByTestId('unread-count')).not.toBeInTheDocument();
   });
 });
 

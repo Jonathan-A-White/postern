@@ -265,30 +265,36 @@ export function Inbox() {
         <ul className="message-list flex w-full max-w-md flex-col gap-2">
           {messages.map((row) => {
             const href = inboxRowHref(row);
+            const unread = row.direction === 'received' && !row.read;
+            const rowClassName = `w-full flex-1 rounded bg-slate-800 p-3 text-left${
+              unread ? ' border-l-4 border-sky-400 bg-slate-700' : ''
+            }`;
             const rowContent = (
               <>
                 <p className="text-xs text-slate-400">
                   {row.class} · {new Date(row.ts * 1000).toISOString()}
-                  {row.direction === 'received' && !row.read ? ' · unread' : ''}
                 </p>
-                <p>{messageBodyText(row)}</p>
+                <p className={unread ? 'font-bold' : undefined}>
+                  {unread && (
+                    <span
+                      data-testid="unread-marker"
+                      className="mr-2 rounded bg-sky-500 px-1.5 py-0.5 text-xs font-normal text-white"
+                    >
+                      New
+                    </span>
+                  )}
+                  {messageBodyText(row)}
+                </p>
               </>
             );
             return (
               <li key={row.id} className="flex items-center gap-2">
                 {href ? (
-                  <a
-                    className="w-full flex-1 rounded bg-slate-800 p-3 text-left"
-                    href={href}
-                    onClick={() => void handleOpenMessage(row)}
-                  >
+                  <a className={rowClassName} href={href} onClick={() => void handleOpenMessage(row)}>
                     {rowContent}
                   </a>
                 ) : (
-                  <button
-                    className="w-full flex-1 rounded bg-slate-800 p-3 text-left"
-                    onClick={() => void handleOpenMessage(row)}
-                  >
+                  <button className={rowClassName} onClick={() => void handleOpenMessage(row)}>
                     {rowContent}
                   </button>
                 )}

@@ -2,7 +2,7 @@
 // opens the place he can reply: threadHref for a row whose thread names a bead or
 // topic, the general thread for a plain message, and (unchanged) the inline
 // Question screen for a decision-needed row whose plaintext decodes to one.
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PrivateKey } from '@bsv/sdk';
 import { Inbox } from '../../src/inbox';
@@ -154,5 +154,76 @@ describe('Inbox rows link to their thread (mw-tfne4.31 AC1)', () => {
     fireEvent.click(button);
 
     expect(await screen.findByText('Recommended: ship')).toBeInTheDocument();
+  });
+});
+
+describe('Inbox marks unread rows visibly (mw-tfne4.35 AC1)', () => {
+  it('an unread received row carries the unread marker and a distinct row style', async () => {
+    await messagesRepo.put({
+      id: 'e'.repeat(64) + ':0',
+      txid: 'e'.repeat(64),
+      vout: 0,
+      seq: 5,
+      class: 'message',
+      to: 'to',
+      from: 'from',
+      ts: 500,
+      ciphertext: 'unused',
+      plaintext: 'a fresh message',
+      direction: 'received',
+      read: false,
+    });
+
+    render(<Inbox />);
+
+    const link = await screen.findByRole('link', { name: /a fresh message/ });
+    expect(within(link).getByTestId('unread-marker')).toBeInTheDocument();
+    expect(link).toHaveClass('border-l-4');
+  });
+
+  it('a read received row carries no unread marker and no distinct row style', async () => {
+    await messagesRepo.put({
+      id: 'f'.repeat(64) + ':0',
+      txid: 'f'.repeat(64),
+      vout: 0,
+      seq: 6,
+      class: 'message',
+      to: 'to',
+      from: 'from',
+      ts: 600,
+      ciphertext: 'unused',
+      plaintext: 'an old message',
+      direction: 'received',
+      read: true,
+    });
+
+    render(<Inbox />);
+
+    const link = await screen.findByRole('link', { name: /an old message/ });
+    expect(within(link).queryByTestId('unread-marker')).not.toBeInTheDocument();
+    expect(link).not.toHaveClass('border-l-4');
+  });
+
+  it('a sent row carries no unread marker regardless of its read flag', async () => {
+    await messagesRepo.put({
+      id: 'a'.repeat(64) + ':1',
+      txid: 'a'.repeat(64),
+      vout: 1,
+      seq: 7,
+      class: 'message',
+      to: 'to',
+      from: 'from',
+      ts: 700,
+      ciphertext: 'unused',
+      plaintext: 'my own outgoing message',
+      direction: 'sent',
+      read: false,
+    });
+
+    render(<Inbox />);
+
+    const link = await screen.findByRole('link', { name: /my own outgoing message/ });
+    expect(within(link).queryByTestId('unread-marker')).not.toBeInTheDocument();
+    expect(link).not.toHaveClass('border-l-4');
   });
 });

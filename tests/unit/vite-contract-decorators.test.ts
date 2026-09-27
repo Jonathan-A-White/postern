@@ -135,5 +135,5 @@ describe('vite.config.ts decorator settings for spell-forge-bsv contract classes
     expect(built.licenseLockingScriptHex).toMatch(/^[0-9a-f]+$/);
     expect(built.licenseLockingScriptHex.startsWith(expectedLicensePrefix)).toBe(true);
     expect(built.licenseLockingScriptHex.length).toBeGreaterThan(expectedLicensePrefix.length);
-  }, 30_000);
+  }, 60_000);
 });

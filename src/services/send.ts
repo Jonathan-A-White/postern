@@ -69,7 +69,20 @@ export async function sendTextMessage(params: SendMessageParams): Promise<string
   // spending, and spend the change it produced even when the list omits that too.
   const now = new Date();
   const pendingEntries = await pendingSpendsRepo.getAll();
-  const { remaining, dropped } = reconcilePendingSpends(pendingEntries, rawUtxos, now);
+  // A chained pending entry's own spent outpoint is an earlier entry's change output,
+  // which the backend may not list at all until the earlier send confirms: reconcile
+  // would otherwise read that silence as "caught up, drop it" and forget the chained
+  // entry after a single send, letting its input be spent again once the backend
+  // finally lists it (mw-tfne4.33). Feed it every pending entry's change outpoint too,
+  // so a chained entry stays until it truly expires or is confirmed spent-and-gone.
+  const chainedChangeOutpoints = pendingEntries
+    .map((entry) => entry.changeOutpoint)
+    .filter((outpoint): outpoint is NonNullable<typeof outpoint> => outpoint != null);
+  const { remaining, dropped } = reconcilePendingSpends(
+    pendingEntries,
+    [...rawUtxos, ...chainedChangeOutpoints],
+    now,
+  );
   if (dropped.length > 0) {
     await pendingSpendsRepo.removeMany(dropped);
   }
@@ -80,15 +93,23 @@ export async function sendTextMessage(params: SendMessageParams): Promise<string
   const pendingSpends = pendingEntries.filter((entry) => remainingTxids.has(entry.txid));
   const { utxos: unspentUtxos } = filterUtxosExcludingPending(rawUtxos, pendingSpends);
   const excludedOutpoints = new Set(pendingSpends.flatMap((entry) => entry.outpoints));
-  const knownOutpoints = new Set(unspentUtxos.map(outpointKey));
-  const utxos = [...unspentUtxos];
+  const candidateUtxos = [...unspentUtxos];
   for (const entry of pendingSpends) {
     const change = entry.changeOutpoint;
-    if (!change) continue;
-    const key = outpointKey(change);
-    if (excludedOutpoints.has(key) || knownOutpoints.has(key)) continue;
-    utxos.push({ txid: change.txid, vout: change.vout, satoshis: change.satoshis });
-    knownOutpoints.add(key);
+    if (!change || excludedOutpoints.has(outpointKey(change))) continue;
+    candidateUtxos.push({ txid: change.txid, vout: change.vout, satoshis: change.satoshis });
+  }
+  // The backend can list the same outpoint twice, or list a pending entry's change
+  // outpoint that the entry above already contributed — de-duplicate by one canonical
+  // outpoint key once, rather than building the transaction with the same input twice
+  // (mw-tfne4.33).
+  const seenOutpoints = new Set<string>();
+  const utxos: Utxo[] = [];
+  for (const utxo of candidateUtxos) {
+    const key = outpointKey(utxo);
+    if (seenOutpoints.has(key)) continue;
+    seenOutpoints.add(key);
+    utxos.push(utxo);
   }
 
   const eligibleUtxos = selectFeeUtxos(utxos, { exclude: [] });

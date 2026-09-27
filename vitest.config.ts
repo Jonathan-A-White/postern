@@ -19,5 +19,10 @@ export default defineConfig({
       'features/steps/**/*.steps.ts',
       'features/steps/**/*.steps.tsx',
     ],
+    // A handful of files run a real vite build (tests/unit/vite-*.test.ts,
+    // pwa-precache.test.ts); running every worker at once on a shared host lets
+    // those pile up and blow their own timeouts (mw-tfne4.33's landing failure).
+    // Capping workers trades a little wall time for not timing out under load.
+    maxWorkers: 4,
   },
 });

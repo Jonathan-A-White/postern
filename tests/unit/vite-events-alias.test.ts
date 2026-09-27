@@ -66,5 +66,5 @@ describe('vite.config.ts events alias for spell-forge-bsv', () => {
     const message = (await built.probe) ?? '';
 
     expect(message).not.toContain('Class extends value');
-  }, 20_000);
+  }, 60_000);
 });

@@ -70,6 +70,16 @@ export function QuestionScreen({ question, unlockedKey, recipientPublicKeyHex, o
         ))}
       </ul>
 
+      {sendState.name === 'sending' && <p>Sending…</p>}
+      {sendState.name === 'sent' && (
+        <p className="break-all font-mono">Sent. Transaction id: {sendState.txid}</p>
+      )}
+      {sendState.name === 'error' && (
+        <p role="alert" className="text-red-400">
+          {sendState.message}
+        </p>
+      )}
+
       <label htmlFor="question-reply-text">Your own answer</label>
       <textarea id="question-reply-text" value={text} onChange={(e) => setText(e.target.value)} />
       <button
@@ -80,14 +90,6 @@ export function QuestionScreen({ question, unlockedKey, recipientPublicKeyHex, o
       >
         Send
       </button>
-
-      {sendState.name === 'sending' && <p>Sending…</p>}
-      {sendState.name === 'sent' && <p>Sent. Transaction id: {sendState.txid}</p>}
-      {sendState.name === 'error' && (
-        <p role="alert" className="text-red-400">
-          {sendState.message}
-        </p>
-      )}
     </div>
   );
 }

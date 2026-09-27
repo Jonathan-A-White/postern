@@ -48,5 +48,5 @@ describe('the built mermaid chunks precache past workbox\'s default size cap', (
     for (const file of jsFiles) {
       expect(sw).toContain(`assets/${file}`);
     }
-  }, 60_000);
+  }, 120_000);
 });

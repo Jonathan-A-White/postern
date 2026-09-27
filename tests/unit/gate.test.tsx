@@ -213,6 +213,51 @@ describe('Gate', () => {
     await screen.findByText('Licensed');
     expect(screen.queryByTestId('unread-count')).not.toBeInTheDocument();
   });
+
+  it("does not count a thread's messages once that thread has been marked read (mw-tfne4.36 AC2)", async () => {
+    await saveLicensedPrfVault();
+    await messagesRepo.put({
+      id: 'a'.repeat(64) + ':0',
+      txid: 'a'.repeat(64),
+      vout: 0,
+      seq: 1,
+      class: 'message',
+      to: 'to',
+      from: 'from',
+      ts: 100,
+      ciphertext: 'unused',
+      plaintext: 'meet at the usual place',
+      direction: 'received',
+      read: false,
+      thread: 'bead:mw-gate-thread.1',
+    });
+    await messagesRepo.put({
+      id: 'b'.repeat(64) + ':0',
+      txid: 'b'.repeat(64),
+      vout: 0,
+      seq: 2,
+      class: 'message',
+      to: 'to',
+      from: 'from',
+      ts: 200,
+      ciphertext: 'unused',
+      plaintext: 'ready when you are',
+      direction: 'received',
+      read: false,
+      thread: 'topic:launch plan',
+    });
+
+    const { unmount } = render(<Gate />);
+    await screen.findByText('Licensed');
+    expect(screen.getByTestId('unread-count')).toHaveTextContent('(2)');
+    unmount();
+
+    await messagesRepo.markThreadRead('bead:mw-gate-thread.1');
+
+    render(<Gate />);
+    await screen.findByText('Licensed');
+    expect(screen.getByTestId('unread-count')).toHaveTextContent('(1)');
+  });
 });
 
 describe('Notify me', () => {

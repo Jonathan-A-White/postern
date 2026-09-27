@@ -54,4 +54,28 @@ describe('messagesRepo', () => {
     await messagesRepo.put(row({ id: 'sent:0', txid: 'sent', direction: 'sent', read: false }));
     expect(await messagesRepo.countUnread()).toBe(1);
   });
+
+  it("marks a thread's unread received rows read, leaving other threads and sent rows untouched (mw-tfne4.36)", async () => {
+    await messagesRepo.put(row({ id: 'a:0', txid: 'a', thread: 'bead:x', read: false }));
+    await messagesRepo.put(row({ id: 'b:0', txid: 'b', thread: 'bead:x', direction: 'sent', read: false }));
+    await messagesRepo.put(row({ id: 'c:0', txid: 'c', thread: 'topic:y', read: false }));
+    await messagesRepo.put(row({ id: 'd:0', txid: 'd', thread: undefined, read: false }));
+
+    await messagesRepo.markThreadRead('bead:x');
+
+    expect((await messagesRepo.get('a:0'))?.read).toBe(true);
+    expect((await messagesRepo.get('b:0'))?.read).toBe(false);
+    expect((await messagesRepo.get('c:0'))?.read).toBe(false);
+    expect((await messagesRepo.get('d:0'))?.read).toBe(false);
+  });
+
+  it('marks the general thread (no key) read without touching a named thread', async () => {
+    await messagesRepo.put(row({ id: 'e:0', txid: 'e', thread: undefined, read: false }));
+    await messagesRepo.put(row({ id: 'f:0', txid: 'f', thread: 'bead:x', read: false }));
+
+    await messagesRepo.markThreadRead(undefined);
+
+    expect((await messagesRepo.get('e:0'))?.read).toBe(true);
+    expect((await messagesRepo.get('f:0'))?.read).toBe(false);
+  });
 });

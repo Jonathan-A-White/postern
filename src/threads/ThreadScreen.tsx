@@ -99,12 +99,16 @@ export function ThreadScreen({ threadRef }: ThreadScreenProps) {
     return messagesRepo.getAll();
   }
 
+  const key = threadKey(threadRef);
+
   useEffect(() => {
     if (vaultState.name !== 'ready') return;
-    void fetchMessages(vaultState.key).then(setMessages);
-  }, [vaultState]);
+    void fetchMessages(vaultState.key)
+      .then(() => messagesRepo.markThreadRead(key))
+      .then(() => messagesRepo.getAll())
+      .then(setMessages);
+  }, [vaultState, key]);
 
-  const key = threadKey(threadRef);
   const threadMessages = messages.filter((row) => row.thread === key).sort((a, b) => a.ts - b.ts);
   const title = titleForThread(threadRef, snapshotState.snapshot);
 

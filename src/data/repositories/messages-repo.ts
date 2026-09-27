@@ -17,6 +17,12 @@ export const messagesRepo = {
     await db.messages.update(id, { read: true });
   },
 
+  async markThreadRead(key: string | undefined): Promise<void> {
+    await db.messages
+      .filter((row) => row.direction === 'received' && !row.read && row.thread === key)
+      .modify({ read: true });
+  },
+
   async countUnread(): Promise<number> {
     return db.messages.filter((row) => row.direction === 'received' && !row.read).count();
   },

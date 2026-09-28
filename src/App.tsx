@@ -19,6 +19,8 @@ import { TalkScreen } from './cockpit/TalkScreen';
 import { SearchScreen } from './cockpit/SearchScreen';
 import { MeScreen } from './cockpit/MeScreen';
 import { ShareScreen } from './cockpit/ShareScreen';
+import { NoticeScreen } from './cockpit/NoticeScreen';
+import { AlarmScreen } from './cockpit/AlarmScreen';
 import { ToastHost } from './ui/toast';
 import type { Route } from './nav/route';
 
@@ -36,6 +38,10 @@ function Place({ route }: { route: Route }) {
       return <MeScreen />;
     case 'share':
       return <ShareScreen id={route.id} />;
+    case 'notice':
+      return <NoticeScreen key={route.tx} tx={route.tx} cls={route.cls} />;
+    case 'alarm':
+      return <AlarmScreen title={route.title} body={route.body} ts={route.ts} />;
     default:
       return <NeedsScreen />;
   }

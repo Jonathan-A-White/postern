@@ -8,6 +8,7 @@ import { createMnemonic, deriveMasterKey, deriveAesKeyFromPhrase, wrapKey, publi
 import { sealDocument } from '../../src/services/documents';
 import { MAYOR, fixtureDetail, fixtureRecords, fixtureView } from '../support/cockpit-fixture';
 import { shot } from './shot';
+import { notificationSpecForClass } from '../../src/push/classOptions';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -139,4 +140,33 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
   await page.goto('/?v=me');
   await expect(page.getByRole('heading', { name: 'Me' })).toBeVisible();
   await shot(page, 'cockpit-me');
+});
+
+// mw-f758y.25: what a tap on a push notification opens. The URLs are the ones
+// src/push/classOptions.ts puts in the notification's data for the fixture's
+// decision-needed record and for a watchdog alarm (a push with no record).
+test('a tapped push opens the bead thread it is about, and a watchdog alarm opens the alarm', async ({ page }) => {
+  const mnemonic = createMnemonic();
+  const governorKeyBytes = await deriveMasterKey(mnemonic);
+  const governor = PrivateKey.fromHex(Buffer.from(governorKeyBytes).toString('hex'));
+  await stubBackend(page, governor);
+  await seedVault(page, mnemonic);
+  const question = fixtureRecords(governor)[2];
+  const messageTap = notificationSpecForClass('decision-needed', question.txid).options.data.url;
+  const alarmTap = notificationSpecForClass('alarm', '', undefined, { title: 'desktop unreachable', body: 'no answer for 10 min since 09:12Z', ts: Math.floor(Date.now() / 1000) - 600 }).options.data.url;
+
+  await page.goto('/');
+  await page.getByLabel('Recovery phrase').fill(mnemonic);
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible();
+
+  await page.goto(messageTap);
+  await expect(page).toHaveURL(/v=talk&t=bead%3Amw-2rbm\.10/);
+  await expect(page.getByText('Where should the BSV library live?').first()).toBeVisible();
+  await shot(page, 'tap-message-thread');
+
+  await page.goto(alarmTap);
+  await expect(page.getByRole('heading', { name: 'desktop unreachable' })).toBeVisible();
+  await expect(page.getByText('no answer for 10 min since 09:12Z')).toBeVisible();
+  await shot(page, 'tap-alarm');
 });

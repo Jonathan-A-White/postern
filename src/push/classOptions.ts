@@ -7,6 +7,7 @@
 // (for its unit tests and its settings screen) and by src/sw.ts's push
 // handler, so the two never drift apart.
 import type { MessageClass } from '../data/db';
+import { formatRoute } from '../nav/route';
 
 export interface NotificationOptions {
   vibrate?: number[];
@@ -15,7 +16,7 @@ export interface NotificationOptions {
   requireInteraction?: boolean;
   silent?: boolean;
   body?: string;
-  data: { txid: string; url?: string };
+  data: { txid: string; class: MessageClass; url: string };
 }
 
 export interface NotificationSpec {
@@ -68,8 +69,9 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettingsMap = {
  * the notification with txid so a click can name what to open. `settings`
  * (the class's stored switches, or its decided defaults) governs sound,
  * vibrate and requireInteraction; tag and renotify stay fixed per class. */
-/** plans/0021: where a tap on each class's notification lands — the queue for
- * anything that needs him, Talk for a plain message. */
+/** plans/0021: where a tap on each class's notification lands when nothing more
+ * specific is known — the queue for anything that needs him, Talk for a plain
+ * message. Also where the notice screen gives up to (src/cockpit/NoticeScreen.tsx). */
 export const CLASS_URLS: Record<MessageClass, string> = {
   'decision-needed': '/?v=needs',
   landing: '/?v=needs',
@@ -81,6 +83,19 @@ export interface NotificationText {
   /** docs/api.md's optional push `title`, which replaces the class's own. */
   title?: string;
   body?: string;
+  /** The push's own unix-seconds timestamp. */
+  ts?: number;
+}
+
+/** mw-f758y.25: where a tap on this push lands. A push about a record names
+ * only its txid (never its plaintext), so it lands on the notice screen, which
+ * finds the message and moves to its thread once the app can decrypt it; a push
+ * with no record behind it is the watchdog's alarm, which carries what it said
+ * and lands on the alarm itself. */
+function tapUrl(messageClass: MessageClass, txid: string, text: NotificationText): string {
+  if (txid) return `/${formatRoute({ view: 'notice', tx: txid, cls: messageClass })}`;
+  if (messageClass === 'alarm') return `/${formatRoute({ view: 'alarm', title: text.title, body: text.body, ts: text.ts })}`;
+  return CLASS_URLS[messageClass] ?? '/';
 }
 
 export function notificationSpecForClass(
@@ -90,7 +105,7 @@ export function notificationSpecForClass(
   text: NotificationText = {},
 ): NotificationSpec {
   const title = text.title || TITLES[messageClass];
-  const data = { txid, url: CLASS_URLS[messageClass] ?? '/' };
+  const data = { txid, class: messageClass, url: tapUrl(messageClass, txid, text) };
   const silent = settings.quiet || !settings.sound;
   const vibrate = !settings.quiet && settings.vibrate ? VIBRATE_PATTERNS[messageClass] : undefined;
   const requireInteraction = settings.stayUntilDismissed;

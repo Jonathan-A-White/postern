@@ -189,6 +189,21 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
+  Scenario('mw-f758y.23: the map\'s list shows the newest activity first, not the oldest ids', ({ Given, When, Then }) => {
+    Given('the factory is live and his key is unlocked', liveAndUnlocked);
+    When('the epic "mw-f758y.30" is opened as a list', async () => {
+      await openAt('?v=map&focus=mw-f758y.30&lens=list');
+    });
+    Then('its work is listed newest activity first', async () => {
+      const list = await screen.findByTestId('bead-list');
+      const rows = () => within(list).getAllByRole('listitem').map((row) => row.textContent ?? '');
+      await waitFor(() => expect(rows()).toHaveLength(5));
+      // active 3, 6, 95 (closed), 120 and 120 minutes ago (the last two tie, so board order: priority then title)
+      const titles = ['GET /api/events streams', 'mw postern view writes', 'POST /api/messages takes', 'The cockpit reads', 'GET /api/beads/{id}'];
+      titles.forEach((title, i) => expect(rows()[i]).toContain(title));
+    });
+  });
+
   Scenario("plans/0021 AC-6 (decisions 9, 10): a bead's page holds its detail and its whole conversation", ({ Given, When, Then, And }) => {
     Given('the factory is live and his key is unlocked', liveAndUnlocked);
     When('the bead "mw-f758y.30.2" is opened', async () => {

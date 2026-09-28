@@ -65,3 +65,8 @@ Feature: The Governor's cockpit (plans/0021)
     And "Approve and run" is tapped on the step "linger" and confirmed
     Then a run action for step "linger" of "mw-f758y.8" is delivered, signed by his key over that exact step
     And a step that already ran shows its outcome instead of the buttons
+
+  Scenario: mw-f758y.23: the map's list shows the newest activity first, not the oldest ids
+    Given the factory is live and his key is unlocked
+    When the epic "mw-f758y.30" is opened as a list
+    Then its work is listed newest activity first

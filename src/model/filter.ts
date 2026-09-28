@@ -45,6 +45,21 @@ export function matchesFilter(bead: ViewBead, index: ViewIndex, filter: BeadFilt
   return matchesText(bead, filter.text);
 }
 
+/** When a bead last did anything: the latest of its updated, started and closed
+ * stamps (ISO, so they compare as text). Empty when it has none. */
+export function lastActivity(bead: ViewBead): string {
+  return [bead.updated, bead.started, bead.closed].reduce((latest, stamp) => (stamp > latest ? stamp : latest), '');
+}
+
+/** A copy of `beads` with the most recently active first; beads with the same
+ * activity keep the order they came in. */
+export function newestFirst(beads: ViewBead[]): ViewBead[] {
+  return beads
+    .map((bead) => ({ bead, at: lastActivity(bead) }))
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+    .map((entry) => entry.bead);
+}
+
 /** The values each facet can take in this view, for the filter chips to offer. */
 export function facets(index: ViewIndex): { rigs: string[]; hosts: string[]; types: string[] } {
   const rigs = new Set<string>();

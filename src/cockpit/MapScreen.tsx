@@ -13,7 +13,7 @@ import { FilterBar } from './FilterBar';
 import { loadSavedFilters } from './savedFilters';
 import { useViewIndex, useWide } from './hooks';
 import { ancestors, BUCKETS, bucketOf, epicStats, isEpic, isMap, topLevel, type Bucket, type ViewIndex } from '../model/tree';
-import { EMPTY_FILTER, facets, isEmptyFilter, matchesFilter, type BeadFilter } from '../model/filter';
+import { EMPTY_FILTER, facets, isEmptyFilter, matchesFilter, newestFirst, type BeadFilter } from '../model/filter';
 import type { ViewBead } from '../model/view';
 import { beadHref, formatRoute, type MapLens } from '../nav/route';
 import { navigate } from '../router';
@@ -95,7 +95,7 @@ function FactoryLevel({ index, filter, setFilter }: { index: ViewIndex; filter: 
   const { rigs, hosts } = useMemo(() => facets(index), [index]);
   const tops = useMemo(() => topLevel(index), [index]);
   const matches = useMemo(
-    () => (isEmptyFilter(filter) ? [] : index.view.beads.filter((bead) => !isEpic(bead, index) && matchesFilter(bead, index, filter)).slice(0, 300)),
+    () => (isEmptyFilter(filter) ? [] : newestFirst(index.view.beads.filter((bead) => !isEpic(bead, index) && matchesFilter(bead, index, filter))).slice(0, 300)),
     [index, filter],
   );
   const maps = tops.filter(isMap);
@@ -215,7 +215,7 @@ function EpicLevel({ epic, index, lens, filter, setFilter }: { epic: ViewBead; i
         ) : lens === 'graph' ? (
           <Graph beads={work} index={index} />
         ) : lens === 'list' ? (
-          <List beads={work} index={index} />
+          <List beads={newestFirst(work)} index={index} />
         ) : (
           <Board beads={work} index={index} />
         )}

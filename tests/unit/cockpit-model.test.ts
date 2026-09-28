@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { decodeBeadDetail, decodeView, viewFromSnapshot } from '../../src/model/view';
 import { ancestors, bucketOf, descendants, epicStats, factoryStats, indexView, isMap, topLevel } from '../../src/model/tree';
 import { layoutGraph } from '../../src/model/graph';
-import { EMPTY_FILTER, facets, matchesFilter } from '../../src/model/filter';
+import { EMPTY_FILTER, facets, matchesFilter, newestFirst } from '../../src/model/filter';
 import { unsettledNeeds } from '../../src/model/needs';
 import { fixtureView } from '../support/cockpit-fixture';
 import type { Snapshot } from '../../src/services/questions';
@@ -148,6 +148,26 @@ describe('filters', () => {
 
   it('offers the rigs and hosts the view holds', () => {
     expect(facets(index)).toMatchObject({ rigs: ['argus', 'millwright', 'postern', 'spell-forge'], hosts: ['desktop', 'laptop'] });
+  });
+});
+
+describe('newestFirst', () => {
+  const at = (id: string, fields: { updated?: string; closed?: string; started?: string }) => ({ ...indexView(fixtureView(NOW)).byId.get('mw-f758y.30.2')!, id, updated: '', closed: '', started: '', ...fields });
+
+  it('puts the latest activity first, counting updated, started and closed', () => {
+    const beads = [
+      at('old', { updated: '2026-09-25T10:00:00Z' }),
+      at('none', {}),
+      at('closed-late', { updated: '2026-09-26T10:00:00Z', closed: '2026-09-28T10:00:00Z' }),
+      at('new', { updated: '2026-09-27T10:00:00Z' }),
+    ];
+    expect(newestFirst(beads).map((bead) => bead.id)).toEqual(['closed-late', 'new', 'old', 'none']);
+  });
+
+  it('keeps the snapshot order between beads with the same activity and leaves its input alone', () => {
+    const beads = [at('a', { updated: '2026-09-27T10:00:00Z' }), at('b', { updated: '2026-09-27T10:00:00Z' })];
+    expect(newestFirst(beads).map((bead) => bead.id)).toEqual(['a', 'b']);
+    expect(beads.map((bead) => bead.id)).toEqual(['a', 'b']);
   });
 });
 

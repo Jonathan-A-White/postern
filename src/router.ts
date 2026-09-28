@@ -1,16 +1,10 @@
-// src/router.ts — mw-tfne4.28: every screen link is authored as a bare
-// `?screen=...` query string (src/App.tsx picks the screen from the URL), and
-// until now a click on one was a full page load. That reset services/keySession.ts's
-// module-level shared key (mw-tfne4.23) on every single move between screens, so
-// the 15-minute shared unlock never actually carried anywhere. Intercepting a
-// same-origin `?screen=` link into history.pushState keeps the same page (and the
-// same module instance) across a screen change; a link elsewhere, or opened in a
-// new tab, is untouched.
-//
-// mw-tfne4.29: every screen's own "Back" link points at the bare root ('/'),
-// which App.tsx also renders with no page load (an empty search shows the
-// Gate) — so that link is routed the same way as a `?screen=` link.
+// src/router.ts — moves between the cockpit's places without a page load. Every
+// in-app link is a bare query string (`?v=…`, src/nav/route.ts; older `?screen=`
+// links too) or the root; a plain click on one becomes history.pushState, so
+// the unlocked key (src/services/keySession.ts) and the live connection
+// (src/services/live.ts) carry across. Back and Forward re-render the same way.
 import { useSyncExternalStore } from 'react';
+import { formatRoute, parseRoute, type Route } from './nav/route';
 
 const listeners = new Set<() => void>();
 
@@ -27,11 +21,31 @@ function getSnapshot(): string {
   return window.location.search;
 }
 
-/** The current screen's query string, live across both a `?screen=` link
- * (handleScreenLinkClick) and the browser's Back/Forward (popstate) — App
- * re-renders the screen the URL now names, no page load either way. */
+/** The current query string, live across in-app links and Back/Forward. */
 export function useScreenSearch(): string {
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+export function useRoute(): Route {
+  return parseRoute(useScreenSearch());
+}
+
+export function navigate(route: Route | string, options: { replace?: boolean } = {}): void {
+  const target = typeof route === 'string' ? route : formatRoute(route);
+  if (options.replace) window.history.replaceState(window.history.state, '', target);
+  else window.history.pushState({ app: true }, '', target);
+  emitChange();
+}
+
+/** Back within the app when the current entry was reached by an in-app move;
+ * otherwise (opened from a notification or a bookmark) up to `fallback`. */
+export function goBack(fallback: Route): void {
+  const state = window.history.state as { app?: boolean } | null;
+  if (state?.app) {
+    window.history.back();
+    return;
+  }
+  navigate(fallback, { replace: true });
 }
 
 function isPlainLeftClick(event: MouseEvent): boolean {
@@ -39,7 +53,7 @@ function isPlainLeftClick(event: MouseEvent): boolean {
 }
 
 function isRoutableHref(href: string): boolean {
-  return href.startsWith('?screen=') || href === '/' || href.startsWith('/?');
+  return href.startsWith('?') || href === '/' || href.startsWith('/?');
 }
 
 function handleScreenLinkClick(event: MouseEvent): void {
@@ -50,11 +64,11 @@ function handleScreenLinkClick(event: MouseEvent): void {
   if (!anchor) return;
   if (anchor.target && anchor.target !== '_self') return;
 
-  const href = anchor.getAttribute('href');
-  if (!href || !isRoutableHref(href)) return;
+  const hrefValue = anchor.getAttribute('href');
+  if (!hrefValue || !isRoutableHref(hrefValue)) return;
 
   event.preventDefault();
-  window.history.pushState(null, '', href);
+  window.history.pushState({ app: true }, '', hrefValue);
   emitChange();
 }
 

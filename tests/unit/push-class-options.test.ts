@@ -31,9 +31,15 @@ describe('notificationSpecForClass', () => {
     expect(spec.options.renotify).toBeFalsy();
   });
 
-  it('carries the txid through as notification data, for the click handler', () => {
-    const spec = notificationSpecForClass('message', 'tx-abc');
-    expect(spec.options.data).toEqual({ txid: 'tx-abc' });
+  it('carries the txid and where a tap lands as notification data, for the click handler (plans/0021)', () => {
+    expect(notificationSpecForClass('message', 'tx-abc').options.data).toEqual({ txid: 'tx-abc', url: '/?v=talk' });
+    expect(notificationSpecForClass('decision-needed', 'tx-abc').options.data).toEqual({ txid: 'tx-abc', url: '/?v=needs' });
+  });
+
+  it("uses the push's own title and body when the backend sends them (docs/api.md)", () => {
+    const spec = notificationSpecForClass('alarm', '', undefined, { title: 'desktop unreachable', body: 'since 09:12Z' });
+    expect(spec.title).toBe('desktop unreachable');
+    expect(spec.options.body).toBe('since 09:12Z');
   });
 
   it('titles each class', () => {

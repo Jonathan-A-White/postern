@@ -23,6 +23,11 @@ export interface ThreadedBody {
   thread?: ThreadRef;
   text: string;
   attachment?: Attachment;
+  /** docs/protocol.md §14: the txid of the message this one answers or annotates. */
+  re?: string;
+  /** docs/protocol.md §14: "transcript" marks the text as what the Mayor's host
+   * heard in the voice note `re` names. */
+  role?: string;
 }
 
 function isThreadRef(value: unknown): value is ThreadRef {
@@ -49,6 +54,8 @@ export function encodeThreadedMessage(body: ThreadedBody): string {
     ...(body.thread !== undefined ? { thread: body.thread } : {}),
     text: body.text,
     ...(body.attachment !== undefined ? { attachment: body.attachment } : {}),
+    ...(body.re !== undefined ? { re: body.re } : {}),
+    ...(body.role !== undefined ? { role: body.role } : {}),
   });
 }
 
@@ -74,6 +81,8 @@ export function decodeThreadedMessage(text: string): ThreadedBody {
     text: candidate.text,
     ...(hasThread ? { thread: candidate.thread as ThreadRef } : {}),
     ...(hasAttachment ? { attachment: candidate.attachment as Attachment } : {}),
+    ...(typeof candidate.re === 'string' ? { re: candidate.re } : {}),
+    ...(typeof candidate.role === 'string' ? { role: candidate.role } : {}),
   };
 }
 

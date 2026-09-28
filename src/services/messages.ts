@@ -123,6 +123,31 @@ export function decryptMessageAsSender(payload: MessagePayload, senderPrivateKey
   return Utils.toUTF8(plaintextBytes);
 }
 
+/** The same sender-side derivation as decryptMessageAsSender, over raw BRC-78
+ * bytes rather than an envelope's base64 `ct`: an attachment this phone uploaded
+ * (docs/protocol.md §8) is read back with the key that sent it. */
+export function decryptBytesAsSender(ciphertext: number[], senderPrivateKeyHex: string): number[] {
+  const payload: MessagePayload = { v: 1, kind: 'msg', class: 'message', to: '', from: '', ts: 0, ct: Utils.toBase64(ciphertext) };
+  return Utils.toArray(decryptMessageAsSenderToBase64(payload, senderPrivateKeyHex), 'base64');
+}
+
+function decryptMessageAsSenderToBase64(payload: MessagePayload, senderPrivateKeyHex: string): string {
+  const sender = PrivateKey.fromHex(senderPrivateKeyHex);
+  const reader = new Utils.Reader(Utils.toArray(payload.ct, 'base64'));
+  const version = Utils.toHex(reader.read(4));
+  if (version !== BRC78_VERSION) throw new Error(`Message version mismatch: expected ${BRC78_VERSION}, received ${version}`);
+  const headerSenderHex = Utils.toHex(reader.read(33));
+  const recipient = PublicKey.fromString(Utils.toHex(reader.read(33)));
+  if (headerSenderHex !== sender.toPublicKey().toString()) throw new Error('This key is not the sender this was encrypted by.');
+  const keyID = Utils.toBase64(reader.read(32));
+  const encrypted = reader.read(reader.bin.length - reader.pos);
+  const invoiceNumber = `2-message encryption-${keyID}`;
+  const signingPriv = sender.deriveChild(recipient, invoiceNumber);
+  const recipientPub = recipient.deriveChild(sender, invoiceNumber);
+  const symmetricKey = new SymmetricKey(signingPriv.deriveSharedSecret(recipientPub).encode(true).slice(1));
+  return Utils.toBase64(symmetricKey.decrypt(encrypted) as number[]);
+}
+
 /** Decrypts the raw BRC-78 ciphertext GET /snapshot returns (docs/protocol.md §7):
  * base64 text on its own, not wrapped in a `{v, kind, ...}` envelope like a message,
  * since there is exactly one recipient and one purpose. */

@@ -14,6 +14,27 @@ import type { Attachment } from './threads';
  * app enforces before any upload is attempted). */
 export const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
+/** docs/protocol.md §14: every type an attachment may carry, both ways. */
+export const ATTACHMENT_MIMES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'audio/webm',
+  'audio/ogg',
+  'audio/mp4',
+  'audio/mpeg',
+  'application/pdf',
+  'text/plain',
+] as const;
+
+/** A file's type as §14 names it: parameters such as `;codecs=opus` dropped, and
+ * undefined for a type Postern does not carry. */
+export function attachmentMime(type: string): string | undefined {
+  const base = type.split(';')[0].trim().toLowerCase();
+  if (base === 'image/jpg') return 'image/jpeg';
+  return (ATTACHMENT_MIMES as readonly string[]).includes(base) ? base : undefined;
+}
+
 export interface UploadAttachmentParams {
   bytes: Uint8Array;
   mime: string;

@@ -82,6 +82,47 @@ export interface PendingSpendRow {
   changeOutpoint?: { txid: string; vout: number; satoshis: number };
 }
 
+/** plans/0021: the live view (docs/protocol.md §11) as last decrypted — one row,
+ * id 'current', so the cockpit opens on the last good copy while offline. `source`
+ * says whether it came from the live endpoint or was converted from an old
+ * backend's §7 snapshot. */
+export interface ViewRow {
+  id: string;
+  plaintext: string;
+  written_at: string;
+  etag?: string;
+  source: 'live' | 'snapshot';
+  fetchedAt: number;
+}
+
+/** plans/0021: one bead's full detail (docs/protocol.md §12), decrypted, kept for
+ * offline reading and for search over descriptions and comments. */
+export interface BeadDetailRow {
+  id: string;
+  plaintext: string;
+  fetchedAt: number;
+}
+
+/** plans/0021 decision 14: the once-a-day unlock. The master key, wrapped with a
+ * non-extractable AES-GCM key this device generated, and when it lapses. The
+ * device key cannot be read out of IndexedDB, only used by this origin. */
+export interface SessionRow {
+  id: string;
+  deviceKey: CryptoKey;
+  iv: Uint8Array;
+  ciphertext: ArrayBuffer;
+  expiresAt: number;
+}
+
+/** plans/0021 decision 12: files shared into Postern from Android's share sheet,
+ * parked by the service worker until he picks the thread they go to. */
+export interface ShareRow {
+  id: string;
+  createdAt: number;
+  text?: string;
+  files: { name: string; type: string; bytes: ArrayBuffer }[];
+}
+
 export interface VaultRow {
   id: string;
   mode: 'prf' | 'phrase';
@@ -104,6 +145,10 @@ class PosternDB extends Dexie {
   snapshot!: Table<SnapshotRow, string>;
   answers!: Table<AnswerRow, string>;
   pendingSpends!: Table<PendingSpendRow, string>;
+  view!: Table<ViewRow, string>;
+  beadDetails!: Table<BeadDetailRow, string>;
+  session!: Table<SessionRow, string>;
+  shares!: Table<ShareRow, string>;
 
   constructor() {
     super('PosternDB');
@@ -153,6 +198,20 @@ class PosternDB extends Dexie {
       snapshot: 'id',
       answers: 'bead',
       pendingSpends: 'txid',
+    });
+
+    // plans/0021: the cockpit's live view, bead details, daily unlock and share inbox.
+    this.version(8).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read, thread',
+      snapshot: 'id',
+      answers: 'bead',
+      pendingSpends: 'txid',
+      view: 'id',
+      beadDetails: 'id, fetchedAt',
+      session: 'id',
+      shares: 'id, createdAt',
     });
   }
 }

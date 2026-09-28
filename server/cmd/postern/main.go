@@ -29,6 +29,10 @@ const (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "watchdog" {
+		os.Exit(runWatchdog(os.Getenv, log.Printf))
+	}
+
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
 		log.Fatalf("loading config: %v", err)

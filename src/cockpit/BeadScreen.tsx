@@ -11,7 +11,8 @@ import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
 import { NeedCard } from './NeedCard';
-import { useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { useAnswers, useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { actionRemembered } from './remembered';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
@@ -70,15 +71,17 @@ function PathGrid({ path, attempts }: { path?: BeadPath; attempts: number }) {
 
 function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail; index?: ViewIndex }) {
   const { busy, run } = useSend();
+  const answers = useAnswers();
   const status = detail?.status ?? bead?.status ?? '';
   const id = detail?.id ?? bead?.id ?? '';
   const priority = detail?.priority ?? bead?.priority ?? 2;
   const claimed = !!(detail?.assignee ?? bead?.assignee);
   const epic = bead && index ? isEpic(bead, index) : detail?.type === 'epic';
+  const sent = (action: string) => actionRemembered(answers, id, action, index?.view.written_at);
   const verify = index?.needsByBead.get(id)?.some((need) => need.kind === 'verify');
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Actions">
-      {status === 'deferred' && (
+      {status === 'deferred' && !sent('release') && (
         <Button size="sm" variant="primary" icon="release" busy={busy} onClick={() => void run(() => sendAction({ action: 'release', bead: id }), `Released ${id}`)}>
           Release
         </Button>
@@ -89,7 +92,7 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
           Open on the map
         </a>
       )}
-      {status === 'open' && !claimed && !epic && (
+      {status === 'open' && !claimed && !epic && !sent('hold') && (
         <Button size="sm" icon="hold" busy={busy} onClick={() => void run(() => sendAction({ action: 'hold', bead: id }), `Held ${id}`)}>
           Hold
         </Button>

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,14 +20,13 @@ import (
 // the poller calls it once per stored record and never for a skipped tx.
 type fakeNotifier struct {
 	mu       sync.Mutex
-	notified []string // txid:payload
+	notified []string // seq:txid:payload
 }
 
-func (f *fakeNotifier) NotifyRecord(txid string, payload json.RawMessage) error {
+func (f *fakeNotifier) RecordIndexed(rec index.Record) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.notified = append(f.notified, txid+":"+string(payload))
-	return nil
+	f.notified = append(f.notified, fmt.Sprintf("%d:%s:%s", rec.Seq, rec.TxID, rec.Payload))
 }
 
 func (f *fakeNotifier) calls() []string {
@@ -213,11 +212,11 @@ func TestPollOnceNotifiesOncePerStoredRecord(t *testing.T) {
 	if len(calls) != 2 {
 		t.Fatalf("calls = %v, want 2 (one per stored record)", calls)
 	}
-	if calls[0] != `tx1:{"kind":"msg","to":"aaa"}` {
-		t.Fatalf("calls[0] = %q, want the tx1 record", calls[0])
+	if calls[0] != `1:tx1:{"kind":"msg","to":"aaa"}` {
+		t.Fatalf("calls[0] = %q, want the stored tx1 record, seq 1", calls[0])
 	}
-	if calls[1] != `tx2:{"kind":"msg","to":"bbb"}` {
-		t.Fatalf("calls[1] = %q, want the tx2 record", calls[1])
+	if calls[1] != `2:tx2:{"kind":"msg","to":"bbb"}` {
+		t.Fatalf("calls[1] = %q, want the stored tx2 record, seq 2", calls[1])
 	}
 
 	// A second poll must not re-notify: both txs are already seen.

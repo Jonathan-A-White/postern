@@ -11,6 +11,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/config"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/poller"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
@@ -59,7 +60,7 @@ func main() {
 		log.Printf("sweeping blob store: %v", err)
 	}
 
-	p := poller.New(client, store, cfg.Anchor, poller.WithNotifier(sender))
+	p := poller.New(client, store, cfg.Anchor, poller.WithNotifier(notify.Fanout{sender}))
 	stop := make(chan struct{})
 	defer close(stop)
 	go p.Run(stop)

@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/index"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
@@ -168,5 +170,49 @@ func TestNotifyRecordDropsGoneSubscription(t *testing.T) {
 
 	if len(store.ByPublicKey("recipient-key")) != 0 {
 		t.Fatalf("subscription should have been dropped after a 410, got %+v", store.ByPublicKey("recipient-key"))
+	}
+}
+
+func TestRecordIndexedPushesAStoredRecordWithoutBlocking(t *testing.T) {
+	fake := newFakePushEndpoint()
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		fake.handler()(w, r)
+	}))
+	defer server.Close()
+
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	if err := store.Add(Subscription{
+		PublicKeyHex: "recipient-key",
+		Endpoint:     server.URL + "/sub1",
+		Keys:         webpush.Keys{P256dh: testP256dh, Auth: testAuth},
+	}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	sender := NewSender(testKeys(t), "https://postern.allmymind.org", store)
+
+	payload := json.RawMessage(`{"kind":"msg","class":"message","to":"recipient-key","ts":1}`)
+	returned := make(chan struct{})
+	go func() {
+		sender.RecordIndexed(index.Record{Seq: 1, TxID: "direct:ab", Payload: payload})
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RecordIndexed waited on the push service")
+	}
+
+	close(release)
+	deadline := time.Now().Add(2 * time.Second)
+	for fake.requestCount() != 1 {
+		if time.Now().After(deadline) {
+			t.Fatalf("requestCount = %d, want 1 push for the record", fake.requestCount())
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }

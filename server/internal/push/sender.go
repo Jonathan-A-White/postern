@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 
+	"github.com/Jonathan-A-White/postern/server/internal/index"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
@@ -48,6 +50,18 @@ type pushBody struct {
 	Class string `json:"class"`
 	TxID  string `json:"txid"`
 	Ts    int64  `json:"ts"`
+}
+
+// RecordIndexed pushes a newly indexed record (NotifyRecord) in its own
+// goroutine, so a slow push service never holds up the poller or a direct
+// delivery's response; a failure is logged. It makes *Sender a
+// notify.Notifier.
+func (s *Sender) RecordIndexed(rec index.Record) {
+	go func() {
+		if err := s.NotifyRecord(rec.TxID, rec.Payload); err != nil {
+			log.Printf("push for record %d (%s): %v", rec.Seq, rec.TxID, err)
+		}
+	}()
 }
 
 // NotifyRecord sends a push, tagged with the payload's class, to every

@@ -51,12 +51,24 @@ and a deploy of this branch. Each step says what you should see.
    topic by its latest message, unread counts on the right.
 6. The speaker icon beside any Mayor message (or in a thread's header) reads it aloud.
 
-## 5. Search (decision 13)
+## 5. Steps for your hands (decision 21, protocol §17)
+
+1. After runbook step 7b, the Mayor adds a harmless step: `mw hands add <a hitl bead>
+   --id whoami --host desktop --as root -- 'id -u'`. Within half a minute it is a
+   **Your hands** card: the host, **as root** in red, the exact command, the way back.
+2. Tap **Approve and run**, then **Confirm and run**. Your fingerprint is asked for
+   again. The card says *approved, running…*; seconds later it shows **ran just now**
+   and the bead's thread has the outcome: exit 0 and `0` in the output.
+3. Ask the Mayor to change the step's text with `--replace` after you have seen it,
+   then approve the old card before the view refreshes: the host refuses it ("the step
+   changed since you approved it") and says so in the thread. Nothing ran.
+
+## 6. Search (decision 13)
 
 1. **Search** "ping" (or any word): beads, descriptions and comments of beads you have
    opened, and messages, each group separately; tap a result to go there.
 
-## 6. When the desktop is down (decision 2)
+## 7. When the desktop is down (decision 2)
 
 1. Stop the backend on the desktop for four minutes: the phone gets **desktop
    unreachable**. Start it: **desktop is back**. The app's status pill says Offline and

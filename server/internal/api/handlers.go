@@ -17,6 +17,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
+	"github.com/Jonathan-A-White/postern/server/internal/view"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
@@ -42,6 +43,7 @@ type options struct {
 	notifier notify.Notifier
 	mayorKey string
 	network  string
+	view     *view.File
 }
 
 // Option configures NewHandler's v2 endpoints.
@@ -57,6 +59,12 @@ func WithNotifier(n notify.Notifier) Option {
 // the Mayor's public key (POSTERN_MAYOR_KEY, "" if unset) and the network.
 func WithIdentity(mayorKey, network string) Option {
 	return func(o *options) { o.mayorKey, o.network = mayorKey, network }
+}
+
+// WithView sets the view file GET /api/view serves (POSTERN_VIEW_FILE).
+// Without it, GET /api/view answers 404.
+func WithView(v *view.File) Option {
+	return func(o *options) { o.view = v }
 }
 
 // NewHandler builds the full /api/* surface (plus /healthz) backed by store
@@ -80,6 +88,7 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 	mux.HandleFunc("GET /api/messages", requireLicence(nonces, checker, handleMessages(store)))
 	mux.HandleFunc("POST /api/messages", requireLicence(nonces, checker, handleDirectMessage(store, o.notifier)))
 	mux.HandleFunc("GET /api/me", requireLicence(nonces, checker, handleMe(o.mayorKey, o.network)))
+	mux.HandleFunc("GET /api/view", requireLicence(nonces, checker, handleView(o.view)))
 	mux.HandleFunc("POST /api/broadcast", requireLicence(nonces, checker, handleBroadcast(client)))
 	mux.HandleFunc("GET /api/utxos/{address}", requireLicence(nonces, checker, handleUtxos(client)))
 	mux.HandleFunc("GET /api/balance/{address}", requireLicence(nonces, checker, handleBalance(client)))

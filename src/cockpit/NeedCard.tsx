@@ -12,6 +12,7 @@ import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { speak } from '../services/speech';
 import type { Need } from '../model/view';
 import { orderedOptions } from '../model/needs';
+import { HandsSteps } from './HandsSteps';
 
 export interface NeedCardProps {
   need: Need;
@@ -33,7 +34,8 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
   const [reply, setReply] = useState('');
   const [expanded, setExpanded] = useState(false);
 
-  const options = orderedOptions(need);
+  const hasSteps = need.kind === 'hands' && need.steps.length > 0;
+  const options = hasSteps ? [] : orderedOptions(need);
   const thread = need.bead ? { bead: need.bead } : undefined;
 
   async function choose(option: string) {
@@ -104,6 +106,8 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
           )}
         </div>
       )}
+
+      {hasSteps && <HandsSteps bead={need.bead} steps={need.steps} />}
 
       {options.length > 0 && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Answers">

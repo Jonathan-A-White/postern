@@ -98,6 +98,12 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
   await expect(page.getByText('Unread from the Mayor')).toBeVisible();
   await shot(page, 'cockpit-needs');
 
+  const hands = page.locator('article[aria-label^="Your hands:"]');
+  await hands.getByRole('listitem', { name: 'Step linger' }).getByRole('button', { name: 'Approve and run' }).click();
+  await hands.scrollIntoViewIfNeeded();
+  await hands.screenshot({ path: 'test-results/shots/cockpit-hands.png' });
+  await hands.getByRole('button', { name: 'Cancel' }).click();
+
   await page.getByRole('button', { name: 'New repo bsv-kit (recommended)' }).click();
   await expect.poll(() => posted.length).toBe(1);
 

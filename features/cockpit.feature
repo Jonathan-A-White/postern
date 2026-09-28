@@ -58,3 +58,10 @@ Feature: The Governor's cockpit (plans/0021)
     And an image was shared into Postern from another app
     When the Share screen is opened and "Factory" is chosen
     Then the Factory thread opens with the image waiting in its composer
+
+  Scenario: plans/0021 AC-11 (his hands, 2026-09-28): a step for his hands is approved from the queue and delivered signed
+    Given the factory is live and his key is unlocked
+    When the cockpit opens
+    And "Approve and run" is tapped on the step "linger" and confirmed
+    Then a run action for step "linger" of "mw-f758y.8" is delivered, signed by his key over that exact step
+    And a step that already ran shows its outcome instead of the buttons

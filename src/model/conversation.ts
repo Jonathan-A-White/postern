@@ -12,9 +12,14 @@ import type { BeadComment } from './view';
 export type Speaker = 'you' | 'mayor' | 'builder' | 'other';
 
 export interface GovernorAction {
-  action: 'release' | 'hold' | 'priority' | 'verified' | string;
+  action: 'release' | 'hold' | 'priority' | 'verified' | 'run' | string;
   bead: string;
   priority?: number;
+  /** docs/protocol.md §17: the hands step a `run` approves, its hash, when and his signature. */
+  step?: string;
+  sha256?: string;
+  approved_at?: number;
+  sig?: string;
 }
 
 export type ItemKind = 'text' | 'question' | 'answer' | 'action' | 'attachment' | 'comment';
@@ -54,6 +59,7 @@ export function decodeAction(text: string): GovernorAction | undefined {
     action: candidate.action,
     bead: candidate.bead,
     ...(typeof candidate.priority === 'number' ? { priority: candidate.priority } : {}),
+    ...(typeof candidate.step === 'string' ? { step: candidate.step } : {}),
   };
 }
 
@@ -67,6 +73,8 @@ export function describeAction(action: GovernorAction): string {
       return `Set ${action.bead} to P${action.priority ?? '?'}`;
     case 'verified':
       return `Marked ${action.bead} verified`;
+    case 'run':
+      return `Approved step ${action.step ?? '?'} of ${action.bead} to run`;
     default:
       return `${action.action} ${action.bead}`;
   }

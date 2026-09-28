@@ -9,6 +9,8 @@ import { getKey } from '../services/keySession';
 import { attachmentMime, MAX_ATTACHMENT_BYTES, uploadAttachment } from '../services/attachments';
 import { answersRepo } from '../data/repositories';
 import type { GovernorAction } from '../model/conversation';
+import type { HandsStep } from '../model/hands';
+import { buildApproval, stepUp } from '../services/hands';
 import type { ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
 
@@ -32,6 +34,15 @@ export async function sendAction(action: GovernorAction): Promise<Delivered> {
   const delivered = await deliverAction(action, options());
   await answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid });
   return delivered;
+}
+
+/** docs/protocol.md §17: a fresh fingerprint, then his signed approval of one
+ * hands step, delivered like any action. Not remembered as an answer: the need
+ * stays in the queue until every step has run. */
+export async function approveHandsStep(bead: string, step: HandsStep): Promise<Delivered> {
+  const opts = options();
+  await stepUp();
+  return deliverAction(await buildApproval(bead, step, opts.key), opts);
 }
 
 export interface OutgoingFile {

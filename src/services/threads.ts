@@ -74,7 +74,10 @@ export function decodeThreadedMessage(text: string): ThreadedBody {
   if (typeof candidate.text !== 'string') return { text };
   const hasThread = candidate.thread !== undefined;
   const hasAttachment = candidate.attachment !== undefined;
-  if (!hasThread && !hasAttachment) return { text };
+  // docs/protocol.md §14: a transcript on the general thread carries only text,
+  // `re` and `role` — still this shape, never plain text.
+  const annotates = typeof candidate.re === 'string' || typeof candidate.role === 'string';
+  if (!hasThread && !hasAttachment && !annotates) return { text };
   if (hasThread && !isThreadRef(candidate.thread)) return { text };
   if (hasAttachment && !isAttachment(candidate.attachment)) return { text };
   return {

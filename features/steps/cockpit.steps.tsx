@@ -8,7 +8,7 @@ import { render, screen, cleanup, within, waitFor, configure } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { LockingScript, PrivateKey, Utils } from '@bsv/sdk';
+import { LockingScript, PrivateKey, PublicKey, Signature, Utils } from '@bsv/sdk';
 import { decodeRecordScript } from 'spell-forge-bsv';
 import { App } from '../../src/App';
 import { db } from '../../src/data/db';
@@ -18,6 +18,7 @@ import { stopLive } from '../../src/services/live';
 import { decryptMessage, type MessagePayload } from '../../src/services/messages';
 import { sealDocument } from '../../src/services/documents';
 import { MAYOR, fixtureDetail, fixtureRecords, fixtureView } from '../../tests/support/cockpit-fixture';
+import { approvalMessage, stepSha256 } from '../../src/model/hands';
 
 // The whole app syncs messages, the view and a bead's detail before a scenario's
 // words appear; on a loaded host that can take longer than the 1 s default.
@@ -249,6 +250,33 @@ describeFeature(feature, ({ Scenario }) => {
     Then('it opens on the queue without asking to unlock', async () => {
       expect(await screen.findByRole('heading', { name: 'Needs you' })).toBeInTheDocument();
       expect(screen.queryByLabelText('Recovery phrase')).toBeNull();
+    });
+  });
+
+  Scenario('plans/0021 AC-11 (his hands, 2026-09-28): a step for his hands is approved from the queue and delivered signed', ({ Given, When, And, Then }) => {
+    Given('the factory is live and his key is unlocked', liveAndUnlocked);
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    And('"Approve and run" is tapped on the step "linger" and confirmed', async () => {
+      const step = await screen.findByRole('listitem', { name: 'Step linger' });
+      await userEvent.click(within(step).getByRole('button', { name: 'Approve and run' }));
+      await userEvent.click(within(step).getByRole('button', { name: 'Confirm and run' }));
+    });
+    Then('a run action for step "linger" of "mw-f758y.8" is delivered, signed by his key over that exact step', async () => {
+      await waitFor(() => expect(delivered).toHaveLength(1));
+      const action = JSON.parse(delivered[0]) as { action: string; bead: string; step: string; sha256: string; approved_at: number; sig: string };
+      expect(action).toMatchObject({ action: 'run', bead: 'mw-f758y.8', step: 'linger' });
+      const expected = await stepSha256('mw-f758y.8', { id: 'linger', host: 'desktop', as: 'root', run: 'loginctl enable-linger jwhite', way_back: 'loginctl disable-linger jwhite' });
+      expect(action.sha256).toBe(expected);
+      expect(Math.abs(action.approved_at - Date.now() / 1000)).toBeLessThan(60);
+      expect(PublicKey.fromString(HIM_PUB).verify(approvalMessage(action.sha256, action.approved_at), Signature.fromDER(action.sig, 'hex'))).toBe(true);
+    });
+    And('a step that already ran shows its outcome instead of the buttons', async () => {
+      const ran = await screen.findByRole('listitem', { name: 'Step nginx' });
+      expect(ran).toHaveTextContent('ran');
+      expect(within(ran).queryByRole('button', { name: 'Approve and run' })).toBeNull();
     });
   });
 

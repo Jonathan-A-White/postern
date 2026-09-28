@@ -570,7 +570,7 @@ parent chain up to the root, so the app can draw any level of the tree:
 | `approve` | a live epic has stories held (`deferred`) for his word: `bead` is the epic, `text` says how many | `["Release"]` |
 | `verify` | a story closed in the last 24 hours with no `VERIFIED` comment | `["Verified"]` |
 | `demo` | an open bead labelled `demo` | `[]` |
-| `hands` | an open bead labelled `hitl`: a step only his hands can do | `[]` |
+| `hands` | an open bead labelled `hitl`: a step only his hands can do; its `steps` (§17) can be approved and run from the app | `[]` |
 | `alarm` | a story that used up its attempts, or a host whose last sync is over 20 minutes old (`bead` empty) | `[]` |
 
 `blocks` — how many unfinished beads wait on `bead`, directly or through others.
@@ -627,6 +627,7 @@ and the Mayor is told afterwards. An action is an ordinary message (§1, class
 | `hold` | — | holds an open, unclaimed story |
 | `priority` | `"priority": 0..4` | sets the bead's priority |
 | `verified` | — | comments `VERIFIED by the Governor via postern (<txid>)` on the story |
+| `run` | `step`, `sha256`, `approved_at`, `sig` | runs a hands step he approved (§17) |
 
 An answer to a question stays §6's reply, and a comment on a bead stays §6's
 threaded message with a bead thread; all three kinds are applied the moment they
@@ -692,3 +693,82 @@ holds a licence when the chain carries a type-M record for it that is:
   the library's `{"to": "<address>"}` or the older `{"origin", "to"}`; either way
   it is tied to the licence by the outpoint its transaction spends, never by the
   payload alone.
+
+## 17. Steps for his hands, approved and run from Postern
+
+The Governor, 2026-09-28: "I should be able to approve and execute 'my hands' work from
+postern." A step only his hands could take — a `sudo` line, a unit to enable, a
+file to move between hosts — is written by the Mayor as a **hands step** on a
+`hitl` bead, shown to him exactly as it will run, and run by the factory's host
+only once he approves it with his key. Nothing else can run it: not the Mayor, not
+the backend, not anyone holding the host's own account.
+
+### The step
+
+The Mayor adds a step with `mw hands add <bead> --id <id> --host <host> --as user|root
+[--way-back '<commands>'] -- '<commands>'`. It is kept on the bead (a note, `hands.<bead>`,
+holding every step of that bead) and commented there for the record. The view (§11)
+carries a `hands` need's steps:
+
+```json
+{ "kind": "hands", "bead": "mw-f758y.8", "…": "…",
+  "steps": [
+    { "id": "linger", "host": "desktop", "as": "root",
+      "run": "loginctl enable-linger jwhite", "way_back": "loginctl disable-linger jwhite",
+      "sha256": "<hex of sha256(canonical)>",
+      "ran": { "at": "2026-09-28T12:03:00Z", "exit": 0, "host": "desktop" } }
+  ] }
+```
+
+`ran` is absent until the step has run. The **canonical bytes** of a step, what its
+`sha256` is over and what his approval binds, are the UTF-8 of:
+
+```
+hands/v1\n
+<len>:<bead>\n
+<len>:<id>\n
+<len>:<host>\n
+<len>:<as>\n
+<len>:<run>\n
+<len>:<way_back>\n
+```
+
+where each `<len>` is the decimal byte length of the field that follows its colon.
+The app recomputes the hash from the fields it shows and refuses to approve a step
+whose text does not hash to the `sha256` it was given.
+
+### The approval
+
+Approving is a §13 action, delivered like any other:
+
+```json
+{ "action": "run", "bead": "mw-f758y.8", "step": "linger",
+  "sha256": "<the step's sha256>", "approved_at": 1790000000, "sig": "<DER hex>" }
+```
+
+`sig` is his key's ECDSA signature over the SHA-256 of the UTF-8 string
+`hands-approve/v1\n<sha256>\n<approved_at>\n` — the same signing the backend's
+challenge uses (`@bsv/sdk` `PrivateKey.sign`, `docs/api.md`). The app asks for his
+fingerprint again (a fresh passkey assertion) before it signs, however long ago the
+day's unlock was.
+
+### Running it
+
+On the factory's host, `mw postern inbox --apply` takes a `run` action only from the
+Governor, and only when the step on the bead still hashes to the approved `sha256`,
+the approval is under 15 minutes old, and that approval has not run before. Then:
+
+- `as: user` — runs as the host's own user, `sh -c`, with a 10-minute limit;
+- `as: root` — hands the step and the approval to `mw-hands-root` through
+  `sudo -n`. That small root-owned program (installed once, by his hands, with a
+  sudoers line naming only it) checks the signature itself against his public key
+  in `/etc/mw-hands/governor.pub`, the hash, the age and that the approval is
+  unused, and only then runs the step as root. The host's own account cannot run
+  anything as root without his signature.
+- a step for another host runs there over the `ssh` prefix `mw`'s config names for it
+  (`[hands_hosts]`), the same checks and the same helper on the far side.
+
+The outcome — exit code and the last 4000 characters of output — is commented on
+the bead (`RAN step <id> on <host> as <as>, exit <n> …`), sent back to him in the
+bead's thread, and mailed to the Mayor. A refused approval is answered the same
+way with why.

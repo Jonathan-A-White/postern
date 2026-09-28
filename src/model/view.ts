@@ -3,6 +3,7 @@
 // an old backend's §7 snapshot into the same shape so the cockpit has one model
 // whichever backend it is talking to.
 import type { Snapshot } from '../services/questions';
+import { decodeHandsSteps, type HandsStep } from './hands';
 
 export type NeedKind = 'question' | 'approve' | 'verify' | 'demo' | 'hands' | 'alarm';
 
@@ -49,6 +50,8 @@ export interface Need {
   recommended: string;
   options: string[];
   blocks: number;
+  /** docs/protocol.md §17: a `hands` need's steps he can approve and run from here. */
+  steps: HandsStep[];
 }
 
 export interface HostState {
@@ -182,6 +185,7 @@ function decodeNeed(value: unknown): Need | undefined {
     recommended: str(raw.recommended),
     options: strings(raw.options),
     blocks: num(raw.blocks),
+    steps: decodeHandsSteps(raw.steps),
   };
 }
 
@@ -340,6 +344,7 @@ export function viewFromSnapshot(snapshot: Snapshot): View {
         recommended: '',
         options: ['Verified'],
         blocks: 0,
+        steps: [],
       });
     }
     for (const item of epic.needs_you) {
@@ -361,6 +366,7 @@ export function viewFromSnapshot(snapshot: Snapshot): View {
         recommended: item.recommended,
         options: item.options,
         blocks: 0,
+        steps: [],
       });
     }
   }

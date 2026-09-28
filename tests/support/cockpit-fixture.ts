@@ -4,7 +4,9 @@
 // the Governor's hands and a stale host, plus a conversation that exercises every
 // kind of message (a question, a threaded note, a voice note and its transcript,
 // an answer and an action he sent).
+import { createHash } from 'node:crypto';
 import { PrivateKey, Utils } from '@bsv/sdk';
+import { canonicalStep, type HandsStep } from '../../src/model/hands';
 import { encryptMessage, type MessagePayload } from '../../src/services/messages';
 import { encodeQuestion, encodeReply } from '../../src/services/questions';
 import { encodeThreadedMessage } from '../../src/services/threads';
@@ -48,6 +50,11 @@ const path = (rig: string, host = 'desktop', model = 'sonnet', formula = 'tdd-fe
   harness: 'claude',
 });
 
+/** A hands step as the Mayor's host would put it in the view: hashed per §17. */
+export function handsStep(bead: string, step: Omit<HandsStep, 'sha256'>): HandsStep {
+  return { ...step, sha256: createHash('sha256').update(canonicalStep(bead, step), 'utf8').digest('hex') };
+}
+
 export function fixtureView(now: number = Date.now()): View {
   const t = (m: number) => iso(now, m);
   const beads: ViewBead[] = [
@@ -90,11 +97,34 @@ export function fixtureView(now: number = Date.now()): View {
       recommended: 'New repo bsv-kit',
       options: ['New repo bsv-kit', 'Workspace in spell-forge'],
       blocks: 3,
+      steps: [],
     },
-    { kind: 'approve', bead: 'mw-f758y.31', epic: 'mw-f758y', title: 'Cockpit screens', since: t(30), text: '3 stories held for your word.', recommended: 'Release', options: ['Release'], blocks: 3 },
-    { kind: 'hands', bead: 'mw-f758y.8', epic: 'mw-f758y', title: 'Run the sudo lines for the desktop move', since: t(50), text: '```\nsudo loginctl enable-linger jwhite\nsudo apt install -y ffmpeg mosh\n```', recommended: '', options: [], blocks: 1 },
-    { kind: 'verify', bead: 'mw-gq6.130', epic: 'mw-gq6', title: 'Beads sync modes: remote, backup, shared', since: t(130), text: '', recommended: '', options: ['Verified'], blocks: 0 },
-    { kind: 'alarm', bead: 'mw-gq6.133', epic: 'mw-gq6', title: 'Doctor: beads server reachable used all 3 attempts', since: t(80), text: 'Refused three times on the same feature test; the Mayor has not looked yet.', recommended: '', options: [], blocks: 0 },
+    { kind: 'approve', bead: 'mw-f758y.31', epic: 'mw-f758y', title: 'Cockpit screens', since: t(30), text: '3 stories held for your word.', recommended: 'Release', options: ['Release'], blocks: 3, steps: [] },
+    {
+      kind: 'hands',
+      bead: 'mw-f758y.8',
+      epic: 'mw-f758y',
+      title: 'Run the sudo lines for the desktop move',
+      since: t(50),
+      text: 'Three steps the Mayor cannot take: user units without a login, the voice and mosh packages, and nginx pointed at the desktop.',
+      recommended: '',
+      options: [],
+      blocks: 1,
+      steps: [
+        handsStep('mw-f758y.8', { id: 'linger', host: 'desktop', as: 'root', run: 'loginctl enable-linger jwhite', way_back: 'loginctl disable-linger jwhite' }),
+        handsStep('mw-f758y.8', { id: 'packages', host: 'desktop', as: 'root', run: 'apt-get install -y ffmpeg mosh', way_back: 'apt-get remove -y ffmpeg mosh' }),
+        handsStep('mw-f758y.8', {
+          id: 'nginx',
+          host: 'vps',
+          as: 'root',
+          run: 'nginx -t && systemctl reload nginx',
+          way_back: 'cp /etc/nginx/sites-available/postern.prev /etc/nginx/sites-available/postern && systemctl reload nginx',
+          ran: { at: t(20), exit: 0, host: 'vps' },
+        }),
+      ],
+    },
+    { kind: 'verify', bead: 'mw-gq6.130', epic: 'mw-gq6', title: 'Beads sync modes: remote, backup, shared', since: t(130), text: '', recommended: '', options: ['Verified'], blocks: 0, steps: [] },
+    { kind: 'alarm', bead: 'mw-gq6.133', epic: 'mw-gq6', title: 'Doctor: beads server reachable used all 3 attempts', since: t(80), text: 'Refused three times on the same feature test; the Mayor has not looked yet.', recommended: '', options: [], blocks: 0, steps: [] },
   ];
 
   return {

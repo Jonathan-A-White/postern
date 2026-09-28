@@ -41,6 +41,14 @@ describeFeature(feature, ({ Scenario }) => {
       expect(fixture.transaction.rawtxHex).toMatch(/^[0-9a-f]+$/);
       expect(fixture.transaction.txid).toMatch(/^[0-9a-f]{64}$/);
     });
+
+    And("the fixture names a hands step's canonical bytes, hash and signed approval", () => {
+      expect(fixture.hands.canonical.startsWith('hands/v1\n')).toBe(true);
+      expect(fixture.hands.sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(fixture.hands.approvalMessage).toBe(`hands-approve/v1\n${fixture.hands.sha256}\n${fixture.hands.approvedAt}\n`);
+      expect(fixture.hands.sigDerHex).toMatch(/^30[0-9a-f]+$/);
+      expect(fixture.hands.governorPublicKeyHex).toBe(fixture.inputs.senderPublicKeyHex);
+    });
   });
 
   Scenario('AC-2: the committed fixture matches a fresh run byte-for-byte', ({ Given, When, Then }) => {

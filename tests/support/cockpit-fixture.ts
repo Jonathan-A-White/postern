@@ -192,7 +192,7 @@ function hex64(seed: number): string {
 }
 
 /** The conversation, as the backend's GET /api/messages would return it. */
-export function fixtureRecords(governorKey: PrivateKey, now: number = Date.now()): FixtureRecord[] {
+export function fixtureRecords(governorKey: PrivateKey, now: number = Date.now(), voice?: { hash: string; size: number; mime: string }): FixtureRecord[] {
   const governorPub = governorKey.toPublicKey().toString();
   const mayorPub = MAYOR.toPublicKey().toString();
   const ts = (m: number) => Math.floor((now - m * 60_000) / 1000);
@@ -210,13 +210,13 @@ export function fixtureRecords(governorKey: PrivateKey, now: number = Date.now()
     payload: { ...encryptMessage({ text, class: 'message', senderPrivateKeyHex: governorKey.toHex(), recipientPublicKeyHex: mayorPub }), ts: ts(minutes) },
   });
 
-  const voice = fromGovernor(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: '', attachment: { hash: 'ab'.repeat(32), size: 48213, mime: 'audio/webm' } }), 15);
+  const voiceNote = fromGovernor(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: '', attachment: voice ?? { hash: 'ab'.repeat(32), size: 48213, mime: 'audio/webm' } }), 15);
   return [
     fromMayor('Good morning. Overnight **4 stories landed** and one was sent back (a flaky test; attempt 2 is green). Three things need you — the library question first.', 25),
     fromGovernor('Thanks. Keep the laptop at cap 0 today, I am on the train.', 21),
     fromMayor(encodeQuestion({ bead: 'mw-2rbm.10', q: 'Where should the BSV library live?', rec: 'New repo bsv-kit', options: ['New repo bsv-kit', 'Workspace in spell-forge'] }), 18, 'decision-needed'),
-    voice,
-    fromMayor(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: 'Make the ping interval 25 seconds so the train Wi-Fi proxy never idles the stream out.', re: voice.txid, role: 'transcript' }), 14),
+    voiceNote,
+    fromMayor(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: 'Make the ping interval 25 seconds so the train Wi-Fi proxy never idles the stream out.', re: voiceNote.txid, role: 'transcript' }), 14),
     fromGovernor(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: 'The tile looks off', attachment: { hash: 'cd'.repeat(32), size: 90211, mime: 'image/jpeg' } }), 12),
     fromMayor(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: 'Done — 25 s it is. The Builder has it on the bead; it lands in about ten minutes.' }), 13),
     fromGovernor(encodeReply({ bead: 'mw-gq6.120', answer: 'Yes' }), 300),

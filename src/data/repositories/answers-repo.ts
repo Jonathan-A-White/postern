@@ -11,6 +11,10 @@ export const answersRepo = {
     await db.answers.put({ ...row, ts: Math.floor(Date.now() / 1000) });
   },
 
+  async getAll(): Promise<AnswerRow[]> {
+    return db.answers.toArray();
+  },
+
   /** Every bead id already answered — Needs you filters these out at once,
    * rather than waiting for the snapshot's next tick to catch up. */
   async answeredBeadIds(): Promise<Set<string>> {

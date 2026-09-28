@@ -65,3 +65,30 @@ func TestLoadOrGenerateVAPIDKeysPrefersEnv(t *testing.T) {
 		t.Fatalf("expected no file written when keys came from env, stat err = %v", err)
 	}
 }
+
+func TestLoadVAPIDKeysReadsWithoutGenerating(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := LoadVAPIDKeys(dir, "", ""); err == nil {
+		t.Fatal("LoadVAPIDKeys with no key file = nil error, want an error (it must never generate)")
+	}
+	if _, err := os.Stat(filepath.Join(dir, vapidFileName)); !os.IsNotExist(err) {
+		t.Fatalf("LoadVAPIDKeys wrote %s", vapidFileName)
+	}
+
+	generated, err := LoadOrGenerateVAPIDKeys(dir, "", "")
+	if err != nil {
+		t.Fatalf("LoadOrGenerateVAPIDKeys: %v", err)
+	}
+	loaded, err := LoadVAPIDKeys(dir, "", "")
+	if err != nil {
+		t.Fatalf("LoadVAPIDKeys: %v", err)
+	}
+	if loaded != generated {
+		t.Fatalf("loaded %+v, want the generated %+v", loaded, generated)
+	}
+
+	fromEnv, err := LoadVAPIDKeys(t.TempDir(), "pub", "priv")
+	if err != nil || fromEnv.PublicKey != "pub" || fromEnv.PrivateKey != "priv" {
+		t.Fatalf("LoadVAPIDKeys from env = %+v, %v", fromEnv, err)
+	}
+}

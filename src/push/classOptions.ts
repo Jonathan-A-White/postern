@@ -14,7 +14,8 @@ export interface NotificationOptions {
   renotify?: boolean;
   requireInteraction?: boolean;
   silent?: boolean;
-  data: { txid: string };
+  body?: string;
+  data: { txid: string; url?: string };
 }
 
 export interface NotificationSpec {
@@ -67,17 +68,33 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettingsMap = {
  * the notification with txid so a click can name what to open. `settings`
  * (the class's stored switches, or its decided defaults) governs sound,
  * vibrate and requireInteraction; tag and renotify stay fixed per class. */
+/** plans/0021: where a tap on each class's notification lands — the queue for
+ * anything that needs him, Talk for a plain message. */
+export const CLASS_URLS: Record<MessageClass, string> = {
+  'decision-needed': '/?v=needs',
+  landing: '/?v=needs',
+  alarm: '/?v=needs',
+  message: '/?v=talk',
+};
+
+export interface NotificationText {
+  /** docs/api.md's optional push `title`, which replaces the class's own. */
+  title?: string;
+  body?: string;
+}
+
 export function notificationSpecForClass(
   messageClass: MessageClass,
   txid: string,
   settings: ClassNotificationSettings = DEFAULT_NOTIFICATION_SETTINGS[messageClass],
+  text: NotificationText = {},
 ): NotificationSpec {
-  const title = TITLES[messageClass];
-  const data = { txid };
+  const title = text.title || TITLES[messageClass];
+  const data = { txid, url: CLASS_URLS[messageClass] ?? '/' };
   const silent = settings.quiet || !settings.sound;
   const vibrate = !settings.quiet && settings.vibrate ? VIBRATE_PATTERNS[messageClass] : undefined;
   const requireInteraction = settings.stayUntilDismissed;
-  const options: NotificationOptions = { data, silent, requireInteraction, ...(vibrate && { vibrate }) };
+  const options: NotificationOptions = { data, silent, requireInteraction, ...(vibrate && { vibrate }), ...(text.body && { body: text.body }) };
 
   switch (messageClass) {
     case 'landing':

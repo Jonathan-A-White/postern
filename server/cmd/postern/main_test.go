@@ -10,6 +10,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/api"
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
+	"github.com/Jonathan-A-White/postern/server/internal/config"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
@@ -57,5 +58,46 @@ func TestHealthz(t *testing.T) {
 
 	if string(body) != "ok" {
 		t.Fatalf("body = %q, want %q", string(body), "ok")
+	}
+}
+
+func TestAppServesTheV2RoutesBehindTheLicenceProof(t *testing.T) {
+	cfg, err := config.Load(func(key string) string {
+		return map[string]string{
+			"POSTERN_ANCHOR":     "mt6vaAWeFxu2qC6pPs7bsqTNvv87dCwMW5",
+			"POSTERN_DATA":       t.TempDir(),
+			"POSTERN_WOC_BASE":   "http://unused.invalid",
+			"POSTERN_ON_MESSAGE": "true",
+			"POSTERN_BEAD_CMD":   "mw postern bead",
+			"POSTERN_VIEW_FILE":  "/nonexistent/postern-view.txt",
+		}[key]
+	})
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	app, err := newApp(cfg)
+	if err != nil {
+		t.Fatalf("newApp: %v", err)
+	}
+	defer app.close()
+	server := httptest.NewServer(app.handler)
+	defer server.Close()
+
+	for _, route := range []struct{ method, path string }{
+		{http.MethodPost, "/api/messages"},
+		{http.MethodGet, "/api/events"},
+		{http.MethodGet, "/api/view"},
+		{http.MethodGet, "/api/beads/mw-abc"},
+		{http.MethodGet, "/api/me"},
+	} {
+		req, _ := http.NewRequest(route.method, server.URL+route.path, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", route.method, route.path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("%s %s = %d, want 401 (routed, and behind the licence proof)", route.method, route.path, resp.StatusCode)
+		}
 	}
 }

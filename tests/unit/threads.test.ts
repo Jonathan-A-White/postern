@@ -102,3 +102,10 @@ describe('threadOf: docs/protocol.md §6', () => {
     expect(threadOf('message', undefined)).toBeUndefined();
   });
 });
+
+describe('decodeThreadedMessage and §14 annotations (plans/0021)', () => {
+  it('reads a general-thread transcript ({text, re, role}, no thread) as its text, never as JSON', () => {
+    const body = decodeThreadedMessage(JSON.stringify({ text: 'heard this', re: 'direct:abc', role: 'transcript' }));
+    expect(body).toEqual({ text: 'heard this', re: 'direct:abc', role: 'transcript' });
+  });
+});

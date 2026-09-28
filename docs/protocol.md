@@ -405,3 +405,388 @@ optional field beside `text` and `thread`:
 - `mime` — the original image's content type, informational (the ciphertext
   itself carries no type information); one of `image/png`, `image/jpeg`, or
   `image/webp`.
+
+## 9. Direct delivery (the live channel)
+
+The Governor's 2026-09-28 overhaul (vault `plans/0021-cockpit-plan.md`, decision 5):
+BSV keeps identity and the licence gate; the conversation itself stops riding on
+chain. A message is still exactly §1's record script — the same envelope, the same
+BRC-78 ciphertext, the same `OP_FALSE OP_RETURN 'nftgate' 0x01 <payload>` bytes —
+but instead of wrapping it in a transaction and broadcasting it, the sender posts
+the script straight to the backend, which indexes it beside the chain's records.
+Nothing about a message's privacy changes (the backend never holds a key that can
+read `ct`); what changes is that delivery takes one HTTP round trip instead of a
+funded transaction, a WhatsOnChain round trip and a 5-second poll.
+
+`POST /api/messages`, authenticated like every endpoint (`docs/api.md`):
+
+```json
+{ "scriptHex": "<hex of the §1 record script>" }
+```
+
+The backend:
+
+1. decodes the script as an `nftgate` version-1 record and parses its payload as
+   §1's envelope — `v` 1, `kind` `"msg"`, a known `class`, 66-hex `to` and `from`,
+   numeric `ts`, string `ct` — refusing anything else `400`;
+2. refuses `403` unless `from` is the very key whose challenge signature
+   authenticated the request (so a direct record's sender is proven, not claimed);
+3. names the record `direct:<sha256 hex of the script bytes>` — its `txid` from
+   here on, everywhere a txid appears (`GET /api/messages`, bead comments, the
+   app's rows). The prefix is how any reader tells a direct record from a
+   transaction: a real txid is 64 hex characters and never contains `:`;
+4. stores it in the same index as on-chain records, with `vout` 0, `height` 0,
+   `signer` = the authenticated key, and `chain` = `sha256(prevChain || id)` hex
+   over every direct record in order (`prevChain` is the previous direct
+   record's `chain`, or 64 zeros for the first; `id` is the UTF-8 bytes of the
+   `direct:` name). `chain` is what a later anchoring job commits on chain for
+   tamper evidence (decision 5's optional fingerprint); it is informational until
+   then;
+5. answers `201 {"txid": "direct:…", "seq": <n>}`, or `200` with the same shape
+   when those exact script bytes are already stored (a retry is harmless);
+6. then does everything the poller does for a newly indexed record: a web push to
+   the recipient's subscriptions, a `message` event on §10's stream, and the
+   on-message hook (`POSTERN_ON_MESSAGE`, `docs/api.md`).
+
+A body over 256 KiB is refused `413`. The chain channel (§4) keeps working
+unchanged: a reader must accept both kinds of record, in `seq` order.
+
+## 10. The event stream
+
+`GET /api/events`, authenticated, answers `text/event-stream` (with
+`Cache-Control: no-store` and `X-Accel-Buffering: no`) and stays open:
+
+```
+event: hello
+data: {"head": 42, "view": "<the current view's ETag, or empty>"}
+
+event: message
+data: {"seq": 43}
+
+event: view
+data: {"etag": "<the new view's ETag>"}
+
+: ping
+```
+
+- `hello` — sent once on connect: the index head and the current view's ETag, so
+  a client that reconnects knows at once whether it missed anything.
+- `message` — a record was indexed (either channel); `seq` is its sequence number.
+  The client pages `GET /api/messages?since=` from its own cursor.
+- `view` — the view file (§11) changed.
+- `: ping` — a comment line every 25 seconds, so a proxy never idles the stream out.
+
+The app reads it with `fetch` (not `EventSource`, which cannot send the
+`Authorization` header) and reconnects with a back-off from 1 to 30 seconds;
+after any reconnect it syncs messages and revalidates the view.
+
+## 11. The live view
+
+The live replacement for §7's snapshot, decision 6. `mw postern view` builds it on
+the host that holds the beads database, whenever the beads change (at most every
+`MW_MAIL_VIEW_EVERY` seconds, default 30), encrypts it to the Governor's key and
+writes it atomically to `postern_view_path`; the backend serves that file:
+
+`GET /api/view`, authenticated:
+
+- `200 text/plain` — the file's bytes: `base64(EncryptedMessage.encrypt(gzip(utf8(JSON)), mayorKey, governorKey))`,
+  with `ETag: "<sha256 hex of the file's bytes>"` and `Cache-Control: no-store`;
+- `304` — the request's `If-None-Match` names the current ETag;
+- `404` — no view has been written yet.
+
+The plaintext bytes are gzip (RFC 1952) of the UTF-8 JSON below. A reader checks
+for the gzip magic `1f 8b` and inflates; anything else it reads as UTF-8 JSON as
+it stands. The BRC-78 header's sender key must equal the Mayor's pinned key (§15).
+
+```json
+{
+  "v": 2,
+  "written_at": "2026-09-28T12:00:00Z",
+  "host": "desktop",
+  "hosts": [{ "name": "desktop", "last_sync": "2026-09-28T11:59:10Z" }],
+  "needs": [
+    {
+      "kind": "question",
+      "bead": "mw-abc.3",
+      "epic": "mw-abc",
+      "title": "Which storage engine?",
+      "since": "2026-09-28T10:00:00Z",
+      "text": "<markdown>",
+      "recommended": "A",
+      "options": ["A", "B"],
+      "blocks": 4
+    }
+  ],
+  "beads": [
+    {
+      "id": "mw-abc.3",
+      "title": "Pick the storage engine",
+      "type": "task",
+      "status": "open",
+      "priority": 1,
+      "parent": "mw-abc",
+      "labels": ["hitl"],
+      "assignee": "",
+      "waits": ["mw-abc.2"],
+      "created": "2026-09-27T09:00:00Z",
+      "updated": "2026-09-28T10:00:00Z",
+      "started": "",
+      "closed": "",
+      "path": { "rig": "postern", "branch": "main", "host": "desktop", "model": "sonnet", "effort": "high", "formula": "tdd-feature", "harness": "claude" },
+      "attempts": 0,
+      "summary": "<the description's first 280 runes>",
+      "comments": 3,
+      "done_earlier": 0
+    }
+  ]
+}
+```
+
+`beads` — every live epic (open or in progress), every bead under one at any depth
+(child epics included, each with its own children), and every live bead's
+parent chain up to the root, so the app can draw any level of the tree:
+
+- a closed bead is included only if it closed within the last 7 days; an epic's
+  `done_earlier` counts its direct children that closed before that (so progress
+  = closed children in `beads` + `done_earlier` over all children);
+- `status` is the tracker's own word: `open`, `in_progress`, `deferred` (held),
+  `closed`; `type` likewise (`epic`, `task`, `bug`, `feature`, `chore`, …); a map
+  is an epic labelled `wayfinder:map`;
+- `waits` — the ids of the unfinished beads this one waits on (so an open bead
+  with an empty `waits` is on the frontier);
+- `path` — the story's merged Path (the epic's defaults overlaid with its own);
+  fields the tracker does not know are empty strings; absent on an epic with no
+  defaults;
+- times are RFC 3339 UTC, or `""` when unknown;
+- `summary` — plain text; the full description, acceptance and every comment come
+  from §12.
+
+`needs` — everything waiting on the Governor, one entry each, most blocking first
+(then oldest):
+
+| `kind` | when | `options` |
+| --- | --- | --- |
+| `question` | a decision-needed question asked over the postern is still open on `bead` | the question's own |
+| `approve` | a live epic has stories held (`deferred`) for his word: `bead` is the epic, `text` says how many | `["Release"]` |
+| `verify` | a story closed in the last 24 hours with no `VERIFIED` comment | `["Verified"]` |
+| `demo` | an open bead labelled `demo` | `[]` |
+| `hands` | an open bead labelled `hitl`: a step only his hands can do; its `steps` (§17) can be approved and run from the app | `[]` |
+| `alarm` | a story that used up its attempts, or a host whose last sync is over 20 minutes old (`bead` empty) | `[]` |
+
+`blocks` — how many unfinished beads wait on `bead`, directly or through others.
+
+## 12. Bead detail
+
+`GET /api/beads/{id}`, authenticated. The backend runs `POSTERN_BEAD_CMD` (on the
+factory's host, `mw postern bead`) with the id appended and answers its output:
+
+- `200 text/plain` — the same encoding as §11's view, of the JSON below;
+- `400` — an id that is not `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`;
+- `404` — the command exited 3 (no such bead);
+- `501` — no `POSTERN_BEAD_CMD` is configured;
+- `502` — anything else, or no answer within 30 seconds.
+
+```json
+{
+  "v": 2,
+  "id": "mw-abc.3",
+  "title": "Pick the storage engine",
+  "type": "task",
+  "status": "open",
+  "priority": 1,
+  "parent": "mw-abc",
+  "labels": [],
+  "assignee": "",
+  "waits": ["mw-abc.2"],
+  "blocks": ["mw-abc.4"],
+  "children": [],
+  "created": "…", "updated": "…", "started": "", "closed": "",
+  "path": { "rig": "postern", "branch": "main", "host": "desktop", "model": "sonnet", "effort": "high", "formula": "tdd-feature", "harness": "claude" },
+  "attempts": 0,
+  "description": "<markdown>",
+  "acceptance": "<markdown>",
+  "comments": [{ "at": "…", "author": "root", "text": "<markdown>" }]
+}
+```
+
+`comments` are every comment, oldest first, each cut at 16000 runes with a marker.
+
+## 13. The Governor's actions
+
+Decision 7: a tap that needs no thinking goes straight to beads as the Governor,
+and the Mayor is told afterwards. An action is an ordinary message (§1, class
+`message`, Governor to Mayor, delivered by §9) whose plaintext is:
+
+```json
+{ "action": "release", "bead": "mw-abc" }
+```
+
+| `action` | extra field | what the Mayor's host does, at zero tokens |
+| --- | --- | --- |
+| `release` | — | releases a held story, or every held story of an epic |
+| `hold` | — | holds an open, unclaimed story |
+| `priority` | `"priority": 0..4` | sets the bead's priority |
+| `verified` | — | comments `VERIFIED by the Governor via postern (<txid>)` on the story |
+| `run` | `step`, `sha256`, `approved_at`, `sig` | runs a hands step he approved (§17) |
+
+An answer to a question stays §6's reply, and a comment on a bead stays §6's
+threaded message with a bead thread; all three kinds are applied the moment they
+arrive (the backend's on-message hook runs `mw postern inbox --apply`), each at
+most once per txid, only when the verified sender is the Governor. Each applied
+action is commented on its bead (`RELEASED by the Governor via postern, txid …`)
+and mailed to the Mayor. An action the host does not know is left for the Mayor
+to read as text.
+
+## 14. Voice notes, files and transcripts
+
+§8's attachment `mime` widens to `image/png`, `image/jpeg`, `image/webp`,
+`audio/webm`, `audio/ogg`, `audio/mp4`, `audio/mpeg`, `application/pdf` and
+`text/plain`; the 8 MiB cap is unchanged (about half an hour of Opus voice).
+Attachments now travel both ways: the Mayor may attach a file to a message to the
+Governor exactly as the app does (`mw postern send --attach <file>`). Several
+files are several messages, the caption on the last.
+
+§6's threaded body gains two optional fields:
+
+```json
+{ "thread": { "bead": "mw-abc.3" }, "text": "<transcript>", "re": "direct:…", "role": "transcript" }
+```
+
+- `re` — the txid of the message this one answers or annotates;
+- `role` — `"transcript"` marks the text as what the Mayor's host heard in the
+  voice note `re` names.
+
+A voice note is a threaded message whose attachment is audio (its `text` may be
+empty). The Mayor's host transcribes it on arrival (`postern_transcribe_cmd`,
+decision 11: on the desktop, never a third party), records the transcript on the
+bead as the Governor's words, and sends it back as a `role: "transcript"` message
+in the same thread, so he sees exactly what was heard under the note he sent.
+
+## 15. Who is who: `GET /api/me`
+
+`GET /api/me`, authenticated, answers who the caller is and who the Mayor is:
+
+```json
+{ "pubkey": "<the caller's key>", "mayor": "<POSTERN_MAYOR_KEY, or empty>", "network": "testnet", "features": ["direct", "events", "view", "beads", "me"] }
+```
+
+The app pins `mayor` the first time it sees it (trust on first use) and asks the
+Governor before accepting a different one; it never needs the key pasted by hand
+again. A `401` from this call means the key holds no licence (§16), which is how
+the app decides to offer the licence screen: it no longer walks the chain itself
+on every start.
+
+## 16. The licence, v2
+
+Decision 14: Postern is the Governor's alone, through a licence he issues. A key
+holds a licence when the chain carries a type-M record for it that is:
+
+- in one of the backend's collections (`POSTERN_COLLECTIONS`, default
+  `postern,spellforge-leaderboard-testnet`: the second only until every licence is
+  re-minted into Postern's own collection);
+- **issued**: at least one input of the mint transaction is unlocked by the
+  issuer's key (`POSTERN_ISSUER_KEY`: a P2PKH scriptSig whose public-key push is
+  that key). A self-minted record by anyone else no longer counts; with no issuer
+  configured the backend logs a warning and keeps the old rule;
+- **not transferred away**: no later transaction spends the licence's token
+  outpoint with a type-TR record naming someone else. A TR record's payload may be
+  the library's `{"to": "<address>"}` or the older `{"origin", "to"}`; either way
+  it is tied to the licence by the outpoint its transaction spends, never by the
+  payload alone.
+
+## 17. Steps for his hands, approved and run from Postern
+
+The Governor, 2026-09-28: "I should be able to approve and execute 'my hands' work from
+postern." A step only his hands could take — a `sudo` line, a unit to enable, a
+file to move between hosts — is written by the Mayor as a **hands step** on a
+`hitl` bead, shown to him exactly as it will run, and run by the factory's host
+only once he approves it with his key. Nothing else can run it: not the Mayor, not
+the backend, not anyone holding the host's own account.
+
+### The step
+
+The Mayor adds a step with `mw hands add <bead> --id <id> --host <host> --as user|root
+[--way-back '<commands>'] -- '<commands>'`. It is kept on the bead (a note, `hands.<bead>`,
+holding every step of that bead) and commented there for the record. The view (§11)
+carries a `hands` need's steps:
+
+```json
+{ "kind": "hands", "bead": "mw-f758y.8", "…": "…",
+  "steps": [
+    { "id": "linger", "host": "desktop", "as": "root",
+      "run": "loginctl enable-linger jwhite", "way_back": "loginctl disable-linger jwhite",
+      "sha256": "<hex of sha256(canonical)>",
+      "ran": { "at": "2026-09-28T12:03:00Z", "exit": 0, "host": "desktop" } }
+  ] }
+```
+
+`ran` is absent until the step has run. The **canonical bytes** of a step, what its
+`sha256` is over and what his approval binds, are the UTF-8 of:
+
+```
+hands/v1\n
+<len>:<bead>\n
+<len>:<id>\n
+<len>:<host>\n
+<len>:<as>\n
+<len>:<run>\n
+<len>:<way_back>\n
+```
+
+where each `<len>` is the decimal byte length of the field that follows its colon.
+The app recomputes the hash from the fields it shows and refuses to approve a step
+whose text does not hash to the `sha256` it was given.
+
+### The approval
+
+Approving is a §13 action, delivered like any other:
+
+```json
+{ "action": "run", "bead": "mw-f758y.8", "step": "linger",
+  "sha256": "<the step's sha256>", "approved_at": 1790000000, "sig": "<DER hex>" }
+```
+
+`sig` is his key's ECDSA signature over the SHA-256 of the UTF-8 string
+`hands-approve/v1\n<sha256>\n<approved_at>\n` — the same signing the backend's
+challenge uses (`@bsv/sdk` `PrivateKey.sign`, `docs/api.md`). The app asks for his
+fingerprint again (a fresh passkey assertion) before it signs, however long ago the
+day's unlock was.
+
+### Running it
+
+On the factory's host, `mw postern inbox --apply` takes a `run` action only from the
+Governor, and only when the step on the bead still hashes to the approved `sha256`,
+the approval is under 15 minutes old, and that approval has not run before. Then:
+
+- `as: user` — runs as the host's own user, `sh -c`, with a 10-minute limit;
+- `as: root` — hands the step and the approval to `mw-hands-root` through
+  `sudo -n`. That small root-owned program (installed once, by his hands, with a
+  sudoers line naming only it) checks the signature itself against his public key
+  in `/etc/mw-hands/governor.pub`, that the step is for this host
+  (`/etc/mw-hands/host`, so an approval cannot be replayed on another host), the
+  hash, the age and that the approval is unused, and only then runs the step as
+  root. The host's own account cannot run anything as root without his signature.
+- a step for another host runs there over the `ssh` prefix `mw`'s config names for it
+  (`[hands_hosts]`), the same checks and the same helper on the far side. A prefix
+  must log in as a **non-root** user: over a root login a user step would be a root
+  step no helper checked, so `mw` refuses it.
+
+The backend's on-message hook allows 25 minutes a run, longer than `mw`'s 12-minute
+lock wait plus a step's 10: a step is never killed after its approval is spent.
+
+### Nothing else his key signs can be an approval
+
+His key also signs the backend's login challenge (`docs/api.md`). The app signs a
+challenge only when it is plain lowercase hex (what the backend issues), so a
+backend can never get `hands-approve/v1\n…` signed in its place without him.
+
+### Fingerprints
+
+Wherever a key must be checked by eye — the installer before it trusts his key, the
+Me screen, a changed Mayor key — it is shown as the first 16 hex digits of the
+SHA-256 of the key's hex text, in groups of four (`15f6 7a1c 42f4 8fe6`).
+
+The outcome — exit code and the last 4000 characters of output — is commented on
+the bead (`RAN step <id> on <host> as <as>, exit <n> …`), sent back to him in the
+bead's thread, and mailed to the Mayor. A refused approval is answered the same
+way with why.

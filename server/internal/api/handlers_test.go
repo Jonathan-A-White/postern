@@ -122,7 +122,13 @@ func authorizedRequest(t *testing.T, server *httptest.Server) http.Header {
 	if err != nil {
 		t.Fatalf("btcec.NewPrivateKey: %v", err)
 	}
+	return authorizedAs(t, server, privKey)
+}
 
+// authorizedAs is authorizedRequest, signed by privKey rather than a fresh
+// key, for tests that need to know which key the request authenticates as.
+func authorizedAs(t *testing.T, server *httptest.Server, privKey *btcec.PrivateKey) http.Header {
+	t.Helper()
 	resp, err := http.Get(server.URL + "/api/challenge")
 	if err != nil {
 		t.Fatalf("GET /api/challenge: %v", err)

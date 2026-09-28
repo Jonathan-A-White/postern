@@ -58,3 +58,27 @@ export async function subscribeToPush(params: SubscribeToPushParams): Promise<vo
   );
   if (!subscribeResponse.ok) throw new Error(`Could not register for push (${subscribeResponse.status}).`);
 }
+
+const SUBSCRIBED_SETTING = 'push-subscribed-at';
+
+/** Whether this browser already holds a push subscription (plans/0021: the old
+ * "Notify me" button looked active again after every reload). */
+export async function isPushSubscribed(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator) || typeof Notification === 'undefined') return false;
+  if (Notification.permission !== 'granted') return false;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    return (await registration?.pushManager.getSubscription()) != null;
+  } catch {
+    return false;
+  }
+}
+
+export async function rememberPushSubscribed(): Promise<void> {
+  const { settingsRepo } = await import('../data/repositories');
+  await settingsRepo.set(SUBSCRIBED_SETTING, Date.now());
+}
+
+export function pushSupported(): boolean {
+  return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && typeof Notification !== 'undefined';
+}

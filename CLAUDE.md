@@ -41,23 +41,42 @@ npm run test:e2e     # playwright, against `npm run preview`
 
 ## Layout
 
+The app is one cockpit (vault `plans/0021-cockpit-plan.md`): one shell, five places
+(Needs you, Map, Talk, Search, Me), every place a `?v=` URL.
+
 ```
 src/
-├── gate/               # The locked gate screen (the only screen so far)
+├── App.tsx              # the door (set up / unlock once a day), then Shell + the place the route names
+├── router.ts            # ?v= links as pushState; useRoute, navigate, goBack
+├── nav/route.ts         # every place as a URL (old ?screen= links still land)
+├── cockpit/             # the screens: Shell, NeedsScreen, MapScreen (board/graph/list), BeadScreen,
+│                        #   TalkScreen, SearchScreen, MeScreen, ShareScreen, Gate; Composer, Conversation;
+│                        #   hooks.ts (Dexie live queries) and send.ts (what a tap delivers)
+├── model/               # pure: the live view (§11/§12) and snapshot fallback, the tree and its
+│                        #   columns, graph layout, filters, search, conversations, needs, threads
+├── services/            # protocol and I/O: deliver (§9), live (§10 stream + polling), view (§11),
+│                        #   beads (§12), me (§15, pinned Mayor), documents (seal/open), keySession +
+│                        #   session (daily unlock), blobs, recorder, messages/threads/questions (§1–§8)
+├── ui/                  # design system: Icon set, primitives (Button, Chip, Card…), tokens, toasts
+├── key/                 # KeyVault: create, restore, passkey, licence mint
 ├── data/
-│   ├── db.ts           # Dexie database schema (v1), one store: settings
+│   ├── db.ts           # Dexie schema (v8): settings, vault, messages, view, beadDetails, session, shares…
 │   └── repositories/   # Repository pattern; barrel index.ts
-pwa-manifest.ts          # The PWA manifest object, shared by vite.config.ts and its unit test
+├── sw.ts                # push per class, tap lands in place, share_target parking
+└── index.css            # Tailwind 4 + the design tokens (dark default, light by the phone's setting)
+pwa-manifest.ts          # The PWA manifest object (incl. share_target), shared by vite.config.ts and its unit test
 features/
-├── *.feature            # Gherkin scenarios, one behaviour per scenario
+├── *.feature            # Gherkin scenarios, one behaviour per scenario (cockpit.feature: plans/0021)
 └── steps/                # Step definitions (@amiceli/vitest-cucumber), *.steps.ts(x)
 tests/
 ├── setup.ts            # fake-indexeddb + jest-dom, loaded by vitest.config.ts
+├── support/            # cockpit-fixture.ts (a believable factory), chain and WebAuthn doubles
 ├── unit/                # vitest, jsdom
-└── e2e/                 # playwright, against a built + previewed dist/
+└── e2e/                 # playwright, against a built + previewed dist/ (cockpit.spec.ts tours every place)
 server/
 ├── go.mod              # module github.com/Jonathan-A-White/postern/server
-└── cmd/postern/         # main.go: GET /healthz -> 200 "ok" on POSTERN_ADDR (default 127.0.0.1:8787)
+├── cmd/postern/         # the backend (docs/api.md) and `postern watchdog`
+└── internal/            # api, auth, licence (v2), index (+ direct records), events, view, beads, hook, push, watchdog…
 ```
 
 ## Conventions

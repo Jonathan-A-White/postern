@@ -6,6 +6,7 @@ Feature: Exporting protocol test vectors for millwright's Go port
     And the fixture names the encryptMessage output
     And the fixture names the record script hex
     And the fixture names the signed transaction's raw hex and txid
+    And the fixture names a hands step's canonical bytes, hash and signed approval
 
   Scenario: AC-2: the committed fixture matches a fresh run byte-for-byte
     Given the committed fixture file

@@ -1,5 +1,7 @@
 # Demo: a screenshot from the phone to the Mayor
 
+> **Historical (plans/0021, 2026-09-28).** The screens this walks through were replaced by the cockpit; the demo to run now is [`docs/demo-cockpit.md`](demo-cockpit.md). Kept as the record of what was demonstrated then.
+
 The demo for `mw-dxy1c`, the epic that lets the Governor attach one image, with
 an optional caption, to a thread reply (phone to Mayor only — the reverse
 direction is out of scope).

@@ -180,11 +180,25 @@ type Output struct {
 	ScriptHex string
 }
 
-// ParseTransactionOutputs deserializes a raw legacy-format transaction (as
-// hex) far enough to recover every output's index and locking script. It
-// does not need input or witness data, so it doesn't validate or interpret
-// them beyond skipping past them.
-func ParseTransactionOutputs(rawTxHex string) ([]Output, error) {
+// Input is one input of a parsed transaction: the outpoint it spends (the
+// txid in display order, as a txid is written everywhere outside the
+// transaction's own bytes) and its unlocking script.
+type Input struct {
+	PrevTxID  string
+	PrevVout  int
+	ScriptSig []byte
+}
+
+// Transaction is a raw transaction parsed far enough to see what it spends,
+// how each input is unlocked, and every output's locking script.
+type Transaction struct {
+	Inputs  []Input
+	Outputs []Output
+}
+
+// ParseTransaction deserializes a raw legacy-format transaction (as hex)
+// into its inputs and outputs. Output values and the lock time are skipped.
+func ParseTransaction(rawTxHex string) (*Transaction, error) {
 	raw, err := hex.DecodeString(rawTxHex)
 	if err != nil {
 		return nil, fmt.Errorf("decoding tx hex: %w", err)
@@ -200,27 +214,19 @@ func ParseTransactionOutputs(rawTxHex string) ([]Output, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading input count: %w", err)
 	}
+	tx := &Transaction{}
 	for n := uint64(0); n < inputCount; n++ {
-		if err := r.skip(32 + 4); err != nil { // prev txid + prev index
+		input, err := r.readInput()
+		if err != nil {
 			return nil, fmt.Errorf("reading input %d: %w", n, err)
 		}
-		scriptSigLen, err := r.readVarInt()
-		if err != nil {
-			return nil, fmt.Errorf("reading input %d scriptSig length: %w", n, err)
-		}
-		if err := r.skip(int(scriptSigLen)); err != nil {
-			return nil, fmt.Errorf("reading input %d scriptSig: %w", n, err)
-		}
-		if err := r.skip(4); err != nil { // sequence
-			return nil, fmt.Errorf("reading input %d sequence: %w", n, err)
-		}
+		tx.Inputs = append(tx.Inputs, input)
 	}
 
 	outputCount, err := r.readVarInt()
 	if err != nil {
 		return nil, fmt.Errorf("reading output count: %w", err)
 	}
-	outputs := make([]Output, 0, outputCount)
 	for n := uint64(0); n < outputCount; n++ {
 		if err := r.skip(8); err != nil { // value
 			return nil, fmt.Errorf("reading output %d value: %w", n, err)
@@ -233,18 +239,30 @@ func ParseTransactionOutputs(rawTxHex string) ([]Output, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading output %d script: %w", n, err)
 		}
-		outputs = append(outputs, Output{Vout: int(n), ScriptHex: hex.EncodeToString(script)})
+		tx.Outputs = append(tx.Outputs, Output{Vout: int(n), ScriptHex: hex.EncodeToString(script)})
 	}
 
-	return outputs, nil
+	if err := r.skip(4); err != nil { // lock time
+		return nil, fmt.Errorf("reading lock time: %w", err)
+	}
+	return tx, nil
+}
+
+// ParseTransactionOutputs deserializes a raw legacy-format transaction (as
+// hex) and returns every output's index and locking script.
+func ParseTransactionOutputs(rawTxHex string) ([]Output, error) {
+	tx, err := ParseTransaction(rawTxHex)
+	if err != nil {
+		return nil, err
+	}
+	return tx.Outputs, nil
 }
 
 // ExtractSignerPublicKey returns the hex-encoded public key from the raw
 // transaction's first input's scriptSig — the second push of the standard
 // P2PKH unlocking script <sig> <pubkey> — reporting ok=false if the
 // transaction has no inputs, or that input's scriptSig isn't shaped that
-// way (not exactly two pushes, or the second push isn't a compressed (33
-// byte) or uncompressed (65 byte) SEC public key).
+// way (see P2PKHPublicKey).
 func ExtractSignerPublicKey(rawTxHex string) (string, bool) {
 	raw, err := hex.DecodeString(rawTxHex)
 	if err != nil {
@@ -262,18 +280,18 @@ func ExtractSignerPublicKey(rawTxHex string) (string, bool) {
 		return "", false
 	}
 
-	if err := r.skip(32 + 4); err != nil { // prev txid + prev index
-		return "", false
-	}
-	scriptSigLen, err := r.readVarInt()
+	input, err := r.readInput()
 	if err != nil {
 		return "", false
 	}
-	scriptSig, err := r.read(int(scriptSigLen))
-	if err != nil {
-		return "", false
-	}
+	return P2PKHPublicKey(input.ScriptSig)
+}
 
+// P2PKHPublicKey returns the hex-encoded public key a standard P2PKH
+// unlocking script <sig> <pubkey> pushes, reporting ok=false unless
+// scriptSig is exactly two pushes and the second is a compressed (33 byte)
+// or uncompressed (65 byte) SEC public key. The signature is not verified.
+func P2PKHPublicKey(scriptSig []byte) (string, bool) {
 	pushes, ok := parsePushDataSequence(scriptSig)
 	if !ok || len(pushes) != 2 {
 		return "", false
@@ -306,6 +324,36 @@ func (r *byteReader) read(n int) ([]byte, error) {
 func (r *byteReader) skip(n int) error {
 	_, err := r.read(n)
 	return err
+}
+
+// readInput reads one transaction input: the spent outpoint (its txid
+// byte-reversed back into display order), the scriptSig and the sequence.
+func (r *byteReader) readInput() (Input, error) {
+	prev, err := r.read(32)
+	if err != nil {
+		return Input{}, err
+	}
+	prevVout, err := r.readUint32()
+	if err != nil {
+		return Input{}, err
+	}
+	scriptSigLen, err := r.readVarInt()
+	if err != nil {
+		return Input{}, err
+	}
+	scriptSig, err := r.read(int(scriptSigLen))
+	if err != nil {
+		return Input{}, err
+	}
+	if err := r.skip(4); err != nil { // sequence
+		return Input{}, err
+	}
+
+	txid := make([]byte, len(prev))
+	for i := range prev {
+		txid[i] = prev[len(prev)-1-i]
+	}
+	return Input{PrevTxID: hex.EncodeToString(txid), PrevVout: int(prevVout), ScriptSig: scriptSig}, nil
 }
 
 func (r *byteReader) readUint32() (uint32, error) {

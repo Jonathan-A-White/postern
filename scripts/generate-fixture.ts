@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { P2PKH, PrivateKey, SatoshisPerKilobyte, Transaction, Utils } from '@bsv/sdk';
 import { chainConfig, encodeRecordScript } from 'spell-forge-bsv';
 import { ANCHOR_ADDRESS, encryptMessage, type MessagePayload } from '../src/services/messages.ts';
+import { approvalMessage, canonicalStep } from '../src/model/hands.ts';
 
 export const FIXTURE_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../docs/fixtures/protocol-vectors.json');
 
@@ -24,6 +25,12 @@ const MESSAGE_CLASS: MessagePayload['class'] = 'message';
 const MESSAGE_TS = 1758800000;
 const FAKE_UTXO = { txid: 'f'.repeat(64), vout: 0, satoshis: 100_000 };
 const ANCHOR_OUTPUT_SATOSHIS = 1;
+// docs/protocol.md §17: one hands step and the Governor's approval of it (the
+// sender key stands in for his), with a multi-byte character so a byte-length
+// slip on either side shows.
+const HANDS_BEAD = 'mw-f758y.8';
+const HANDS_STEP = { id: 'linger', host: 'desktop', as: 'root', run: 'loginctl enable-linger jwhite && echo "ünïcode ok"', way_back: 'loginctl disable-linger jwhite' };
+const HANDS_APPROVED_AT = 1790000000;
 
 export interface ProtocolFixture {
   inputs: {
@@ -39,6 +46,16 @@ export interface ProtocolFixture {
   encryptMessage: MessagePayload;
   recordScriptHex: string;
   transaction: { rawtxHex: string; txid: string };
+  hands: {
+    bead: string;
+    step: typeof HANDS_STEP;
+    canonical: string;
+    sha256: string;
+    approvedAt: number;
+    approvalMessage: string;
+    governorPublicKeyHex: string;
+    sigDerHex: string;
+  };
 }
 
 /**
@@ -115,6 +132,25 @@ export async function buildFixture(): Promise<ProtocolFixture> {
     encryptMessage: payload,
     recordScriptHex: recordScript.toHex(),
     transaction: { rawtxHex: transaction.toHex(), txid: transaction.id('hex') },
+    hands: handsVector(sender),
+  };
+}
+
+/** docs/protocol.md §17: @bsv/sdk signs deterministically (RFC 6979), so the
+ * approval's signature is as fixed as its inputs. */
+function handsVector(governor: PrivateKey): ProtocolFixture['hands'] {
+  const canonical = canonicalStep(HANDS_BEAD, HANDS_STEP);
+  const sha256 = createHash('sha256').update(canonical, 'utf8').digest('hex');
+  const message = approvalMessage(sha256, HANDS_APPROVED_AT);
+  return {
+    bead: HANDS_BEAD,
+    step: HANDS_STEP,
+    canonical,
+    sha256,
+    approvedAt: HANDS_APPROVED_AT,
+    approvalMessage: message,
+    governorPublicKeyHex: governor.toPublicKey().toString(),
+    sigDerHex: governor.sign(message).toDER('hex') as string,
   };
 }
 

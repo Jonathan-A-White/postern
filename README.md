@@ -1,6 +1,13 @@
 # postern
 
-Postern is a licence-gated, offline-first PWA that serves as the private, secure channel between the Governor and the Mayor: a BSV-backed gate that only opens for a holder of a valid licence token. It is built as a Vite + React + TypeScript app with a Dexie (IndexedDB) data layer, served at https://postern.allmymind.org, with a small Go backend under `server/`. Map: mw-f758y.
+Postern is the Governor's cockpit for his software factory: one place to see what needs
+him, the whole wayfinder map at any zoom, and every conversation with the Mayor — by
+text, voice, screenshots and files, pinned to the factory, a map, an epic, a story or a
+single comment. It is an offline-first PWA (Vite, React, TypeScript, Dexie), served at
+https://postern.allmymind.org, with a small Go backend under `server/` that runs beside
+the factory on the desktop. BSV gives it identity and a licence gate; messages travel
+end-to-end encrypted over a live connection (docs/protocol.md §9–§16). Plan:
+vault `plans/0021-cockpit-plan.md`; demo: `docs/demo-cockpit.md`. Map: mw-f758y.
 
 ## Screenshots
 

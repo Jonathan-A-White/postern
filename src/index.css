@@ -1,11 +1,95 @@
 @import "tailwindcss";
 
+/* The cockpit's design tokens (plans/0021, decision 9). Every colour the app uses
+ * is one of these, so dark and light stay one system: the utilities read
+ * `bg-surface`, `text-muted`, `border-line`, `text-needs` and so on. Dark is the
+ * default (a train at night); light follows the phone's own setting. */
+@theme inline {
+  --color-canvas: var(--pc-canvas);
+  --color-surface: var(--pc-surface);
+  --color-raised: var(--pc-raised);
+  --color-sunken: var(--pc-sunken);
+  --color-line: var(--pc-line);
+  --color-line-strong: var(--pc-line-strong);
+  --color-fg: var(--pc-fg);
+  --color-muted: var(--pc-muted);
+  --color-faint: var(--pc-faint);
+  --color-accent: var(--pc-accent);
+  --color-accent-fg: var(--pc-accent-fg);
+  --color-needs: var(--pc-needs);
+  --color-working: var(--pc-working);
+  --color-ready: var(--pc-ready);
+  --color-blocked: var(--pc-blocked);
+  --color-held: var(--pc-held);
+  --color-done: var(--pc-done);
+  --color-danger: var(--pc-danger);
+  --color-mine: var(--pc-mine);
+  --color-theirs: var(--pc-theirs);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
+  --pc-canvas: #0a0e17;
+  --pc-surface: #111725;
+  --pc-raised: #182033;
+  --pc-sunken: #0d1220;
+  --pc-line: #232c40;
+  --pc-line-strong: #33405c;
+  --pc-fg: #e7ebf3;
+  --pc-muted: #9aa5ba;
+  --pc-faint: #677188;
+  --pc-accent: #f2b544;
+  --pc-accent-fg: #1a1204;
+  --pc-needs: #f2b544;
+  --pc-working: #2fd0b5;
+  --pc-ready: #6aa8ff;
+  --pc-blocked: #f4727f;
+  --pc-held: #b294f7;
+  --pc-done: #3f9a67;
+  --pc-danger: #f4727f;
+  --pc-mine: #1f3354;
+  --pc-theirs: #182033;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --pc-canvas: #f3f5f9;
+    --pc-surface: #ffffff;
+    --pc-raised: #f7f8fb;
+    --pc-sunken: #eceff5;
+    --pc-line: #dde2ec;
+    --pc-line-strong: #c3cad8;
+    --pc-fg: #111827;
+    --pc-muted: #525c70;
+    --pc-faint: #7c8599;
+    --pc-accent: #b7790f;
+    --pc-accent-fg: #ffffff;
+    --pc-needs: #b7790f;
+    --pc-working: #0f8f7c;
+    --pc-ready: #2563d9;
+    --pc-blocked: #d23c4e;
+    --pc-held: #7c5ad6;
+    --pc-done: #2f7d51;
+    --pc-danger: #d23c4e;
+    --pc-mine: #dbe7fb;
+    --pc-theirs: #ffffff;
+  }
+}
+
 html,
 body {
-  @apply bg-slate-900;
+  background: var(--pc-canvas);
+  color: var(--pc-fg);
+  font-family: var(--font-sans);
   height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {
@@ -14,16 +98,84 @@ html {
 
 #root {
   height: 100dvh;
-  overflow-y: auto;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--pc-accent) 35%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--pc-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
 }
 
 .message-list {
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
 
-input,
-textarea {
-  @apply border border-slate-600 bg-slate-800 text-slate-100 px-3 py-2 rounded text-base;
+/* In the base layer, so a screen's own utilities (pl-9 beside an icon, a
+ * borderless select) always win over this default field style. */
+@layer base {
+  input,
+  textarea,
+  select {
+    @apply rounded-lg border border-line bg-sunken px-3 py-2 text-base text-fg placeholder:text-faint;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    @apply border-line-strong outline-none;
+  }
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pc-line-strong) transparent;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes pc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-live {
+  animation: pc-pulse 2.4s ease-in-out infinite;
+}
+
+.markdown {
+  @apply text-[15px] leading-relaxed break-words;
 }
 
 .markdown h1,
@@ -34,6 +186,18 @@ textarea {
 
 .markdown p {
   @apply my-2;
+}
+
+.markdown p:first-child {
+  @apply mt-0;
+}
+
+.markdown p:last-child {
+  @apply mb-0;
+}
+
+.markdown a {
+  @apply text-ready underline underline-offset-2;
 }
 
 .markdown ul,
@@ -49,19 +213,27 @@ textarea {
   @apply my-1;
 }
 
+.markdown blockquote {
+  @apply my-2 border-l-2 border-line-strong pl-3 text-muted;
+}
+
 .markdown table {
-  @apply my-2 border-collapse;
+  @apply my-2 block overflow-x-auto border-collapse;
 }
 
 .markdown th,
 .markdown td {
-  @apply border border-slate-600 px-2 py-1;
+  @apply border border-line px-2 py-1;
 }
 
 .markdown pre {
-  @apply my-2 overflow-x-auto rounded bg-slate-950 p-2;
+  @apply my-2 overflow-x-auto rounded-lg bg-sunken p-3;
 }
 
 .markdown code {
-  @apply text-sm;
+  @apply font-mono text-[13px];
+}
+
+.markdown :not(pre) > code {
+  @apply rounded bg-sunken px-1 py-0.5;
 }

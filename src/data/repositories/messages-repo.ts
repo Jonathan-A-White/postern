@@ -5,6 +5,19 @@ export const messagesRepo = {
     return db.messages.orderBy('ts').reverse().toArray();
   },
 
+  /** Every message, oldest first — the order a conversation reads in. */
+  async getAllOldestFirst(): Promise<MessageRow[]> {
+    return db.messages.orderBy('ts').toArray();
+  },
+
+  /** One thread's messages, oldest first; undefined is the general thread. */
+  async inThread(key: string | undefined): Promise<MessageRow[]> {
+    return db.messages
+      .orderBy('ts')
+      .filter((row) => (key === undefined ? row.thread === undefined : row.thread === key))
+      .toArray();
+  },
+
   async get(id: string): Promise<MessageRow | undefined> {
     return db.messages.get(id);
   },

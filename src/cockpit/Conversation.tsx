@@ -11,6 +11,7 @@ import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
 import { speak } from '../services/speech';
 import { useUnlockedKey } from './hooks';
+import { VoicePlayer } from './VoicePlayer';
 import { sendAnswer, useSend } from './send';
 import type { Attachment } from '../services/threads';
 
@@ -63,7 +64,7 @@ function AttachmentView({ attachment, direction }: { attachment: Attachment; dir
     );
   }
   if (attachment.mime.startsWith('audio/')) {
-    return url ? <audio controls src={url} className="h-10 w-64 max-w-full" preload="metadata" /> : <div className="h-10 w-64 animate-pulse rounded-full bg-sunken" />;
+    return url ? <VoicePlayer src={url} /> : <div className="h-10 w-64 animate-pulse rounded-full bg-sunken" />;
   }
   return (
     <button type="button" onClick={() => void open()} className="inline-flex items-center gap-2 rounded-xl border border-line bg-sunken px-3 py-2 text-sm hover:border-line-strong">

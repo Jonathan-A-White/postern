@@ -216,3 +216,58 @@ func TestRecordIndexedPushesAStoredRecordWithoutBlocking(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+func TestPayloadCarriesTitleAndBodyOnlyWhenSet(t *testing.T) {
+	record, err := json.Marshal(Payload{Class: "message", TxID: "direct:ab", Ts: 1758700000})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if string(record) != `{"class":"message","txid":"direct:ab","ts":1758700000}` {
+		t.Fatalf("record payload = %s, want exactly {class, txid, ts}", record)
+	}
+
+	alarm, err := json.Marshal(Payload{Class: "alarm", Ts: 1758700000, Title: "desktop unreachable", Body: "since 12:03Z"})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if string(alarm) != `{"class":"alarm","ts":1758700000,"title":"desktop unreachable","body":"since 12:03Z"}` {
+		t.Fatalf("alarm payload = %s", alarm)
+	}
+}
+
+func TestBroadcastPushesToEverySubscription(t *testing.T) {
+	fake := newFakePushEndpoint()
+	fake.goneFor["/gone"] = true
+	server := httptest.NewServer(fake.handler())
+	defer server.Close()
+
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	for _, sub := range []Subscription{
+		{PublicKeyHex: "governor-phone", Endpoint: server.URL + "/phone"},
+		{PublicKeyHex: "governor-laptop", Endpoint: server.URL + "/laptop"},
+		{PublicKeyHex: "governor-old", Endpoint: server.URL + "/gone"},
+	} {
+		sub.Keys = webpush.Keys{P256dh: testP256dh, Auth: testAuth}
+		if err := store.Add(sub); err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+	}
+	sender := NewSender(testKeys(t), "https://postern.allmymind.org", store)
+
+	delivered, err := sender.Broadcast(Payload{Class: "alarm", Title: "desktop unreachable", Body: "since 12:03Z", Ts: 1})
+	if err != nil {
+		t.Fatalf("Broadcast: %v", err)
+	}
+	if delivered != 2 {
+		t.Fatalf("delivered = %d, want 2 (the gone subscription isn't delivered to)", delivered)
+	}
+	if fake.requestCount() != 3 {
+		t.Fatalf("requestCount = %d, want one push per subscription", fake.requestCount())
+	}
+	if len(store.All()) != 2 {
+		t.Fatalf("subscriptions = %+v, want the gone one dropped", store.All())
+	}
+}

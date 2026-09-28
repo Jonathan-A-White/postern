@@ -94,6 +94,13 @@ func (s *Store) ByPublicKey(pubkeyHex string) []Subscription {
 	return matches
 }
 
+// All returns every stored subscription.
+func (s *Store) All() []Subscription {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Subscription(nil), s.subs...)
+}
+
 // save persists the current subscription list. Callers must hold s.mu.
 func (s *Store) save() error {
 	data, err := json.Marshal(s.subs)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"strings"
 	"testing"
 )
 
@@ -333,5 +334,85 @@ func TestExtractSignerPublicKeyBadKeyLength(t *testing.T) {
 func TestExtractSignerPublicKeyInvalidHex(t *testing.T) {
 	if _, ok := ExtractSignerPublicKey("not-hex"); ok {
 		t.Fatal("ExtractSignerPublicKey returned ok=true for invalid hex")
+	}
+}
+
+// buildRawTxWithInputs builds a serialized transaction whose inputs spend
+// the given outpoints (txid in display order, as a txid is written
+// everywhere but inside the transaction) with the given scriptSigs.
+func buildRawTxWithInputs(inputs []testInput, outputScripts [][]byte) string {
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, uint32(1))
+
+	writeVarInt(&buf, uint64(len(inputs)))
+	for _, in := range inputs {
+		prev, err := hex.DecodeString(in.prevTxID)
+		if err != nil {
+			panic(err)
+		}
+		for i, j := 0, len(prev)-1; i < j; i, j = i+1, j-1 {
+			prev[i], prev[j] = prev[j], prev[i]
+		}
+		buf.Write(prev)
+		binary.Write(&buf, binary.LittleEndian, in.prevVout)
+		writeVarInt(&buf, uint64(len(in.scriptSig)))
+		buf.Write(in.scriptSig)
+		binary.Write(&buf, binary.LittleEndian, uint32(0xffffffff))
+	}
+
+	writeVarInt(&buf, uint64(len(outputScripts)))
+	for _, script := range outputScripts {
+		binary.Write(&buf, binary.LittleEndian, uint64(0))
+		writeVarInt(&buf, uint64(len(script)))
+		buf.Write(script)
+	}
+	binary.Write(&buf, binary.LittleEndian, uint32(0))
+	return hex.EncodeToString(buf.Bytes())
+}
+
+type testInput struct {
+	prevTxID  string
+	prevVout  uint32
+	scriptSig []byte
+}
+
+func TestParseTransactionReadsInputsAndOutputs(t *testing.T) {
+	pubKey := append([]byte{0x03}, bytes.Repeat([]byte{0xcd}, 32)...)
+	prevA := "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+	prevB := strings.Repeat("ab", 32)
+	record := buildRecordScript(1, []byte(`{"kind":"msg"}`))
+	rawTx := buildRawTxWithInputs([]testInput{
+		{prevTxID: prevA, prevVout: 0, scriptSig: []byte{0x01, 0x51}},
+		{prevTxID: prevB, prevVout: 3, scriptSig: buildP2PKHScriptSig(pubKey)},
+	}, [][]byte{record, buildP2PKHScript()})
+
+	tx, err := ParseTransaction(rawTx)
+	if err != nil {
+		t.Fatalf("ParseTransaction: %v", err)
+	}
+	if len(tx.Inputs) != 2 {
+		t.Fatalf("len(Inputs) = %d, want 2", len(tx.Inputs))
+	}
+	if tx.Inputs[0].PrevTxID != prevA || tx.Inputs[0].PrevVout != 0 {
+		t.Fatalf("Inputs[0] spends %s:%d, want %s:0", tx.Inputs[0].PrevTxID, tx.Inputs[0].PrevVout, prevA)
+	}
+	if tx.Inputs[1].PrevTxID != prevB || tx.Inputs[1].PrevVout != 3 {
+		t.Fatalf("Inputs[1] spends %s:%d, want %s:3", tx.Inputs[1].PrevTxID, tx.Inputs[1].PrevVout, prevB)
+	}
+	if got, ok := P2PKHPublicKey(tx.Inputs[1].ScriptSig); !ok || got != hex.EncodeToString(pubKey) {
+		t.Fatalf("P2PKHPublicKey(Inputs[1]) = %q, %v, want the pushed key", got, ok)
+	}
+	if _, ok := P2PKHPublicKey(tx.Inputs[0].ScriptSig); ok {
+		t.Fatal("P2PKHPublicKey accepted a one-push scriptSig")
+	}
+	if len(tx.Outputs) != 2 || tx.Outputs[0].ScriptHex != hex.EncodeToString(record) {
+		t.Fatalf("Outputs = %+v, want the record then the P2PKH", tx.Outputs)
+	}
+}
+
+func TestParseTransactionRejectsTruncatedHex(t *testing.T) {
+	rawTx := buildRawTx([][]byte{buildP2PKHScript()})
+	if _, err := ParseTransaction(rawTx[:len(rawTx)-20]); err == nil {
+		t.Fatal("ParseTransaction accepted a truncated transaction")
 	}
 }

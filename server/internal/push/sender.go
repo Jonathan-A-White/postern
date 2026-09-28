@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 
+	"github.com/Jonathan-A-White/postern/server/internal/index"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
@@ -42,12 +44,29 @@ type addressedPayload struct {
 	Ts    int64  `json:"ts"`
 }
 
-// pushBody is what's sent as the push message itself — no plaintext, ever;
-// the app decrypts the actual record content itself once it opens the app.
-type pushBody struct {
+// Payload is what's sent as the push message itself. For a record it is
+// {class, txid, ts} — no plaintext, ever; the app decrypts the record's
+// content itself once it opens. Title and Body are set only by a push that
+// has no record behind it (the watchdog's alarms); the service worker shows
+// them when present.
+type Payload struct {
 	Class string `json:"class"`
-	TxID  string `json:"txid"`
+	TxID  string `json:"txid,omitempty"`
 	Ts    int64  `json:"ts"`
+	Title string `json:"title,omitempty"`
+	Body  string `json:"body,omitempty"`
+}
+
+// RecordIndexed pushes a newly indexed record (NotifyRecord) in its own
+// goroutine, so a slow push service never holds up the poller or a direct
+// delivery's response; a failure is logged. It makes *Sender a
+// notify.Notifier.
+func (s *Sender) RecordIndexed(rec index.Record) {
+	go func() {
+		if err := s.NotifyRecord(rec.TxID, rec.Payload); err != nil {
+			log.Printf("push for record %d (%s): %v", rec.Seq, rec.TxID, err)
+		}
+	}()
 }
 
 // NotifyRecord sends a push, tagged with the payload's class, to every
@@ -74,7 +93,7 @@ func (s *Sender) NotifyRecord(txid string, payload json.RawMessage) error {
 		return nil
 	}
 
-	body, err := json.Marshal(pushBody{Class: addressed.Class, TxID: txid, Ts: addressed.Ts})
+	body, err := json.Marshal(Payload{Class: addressed.Class, TxID: txid, Ts: addressed.Ts})
 	if err != nil {
 		return fmt.Errorf("marshaling push payload: %w", err)
 	}
@@ -88,10 +107,39 @@ func (s *Sender) NotifyRecord(txid string, payload json.RawMessage) error {
 	return errors.Join(errs...)
 }
 
+// Broadcast pushes payload to every stored subscription, whoever it is
+// registered for, and reports how many push services accepted it. A
+// subscription whose service answers 410 is dropped, as NotifyRecord does.
+func (s *Sender) Broadcast(payload Payload) (delivered int, err error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("marshaling push payload: %w", err)
+	}
+
+	var errs []error
+	for _, sub := range s.store.All() {
+		ok, err := s.deliver(sub, body)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if ok {
+			delivered++
+		}
+	}
+	return delivered, errors.Join(errs...)
+}
+
 // send pushes body to sub's endpoint, dropping sub from the store if the
 // push service reports it gone (410) — the standard signal that the browser
 // unsubscribed or the installation was uninstalled.
 func (s *Sender) send(sub Subscription, body []byte) error {
+	_, err := s.deliver(sub, body)
+	return err
+}
+
+// deliver is send, also reporting whether the push service accepted the
+// push (a 2xx).
+func (s *Sender) deliver(sub Subscription, body []byte) (bool, error) {
 	resp, err := webpush.SendNotificationWithContext(context.Background(), body, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys:     sub.Keys,
@@ -104,15 +152,15 @@ func (s *Sender) send(sub Subscription, body []byte) error {
 		VAPIDPrivateKey: s.keys.PrivateKey,
 	})
 	if err != nil {
-		return fmt.Errorf("sending push to %s: %w", sub.Endpoint, err)
+		return false, fmt.Errorf("sending push to %s: %w", sub.Endpoint, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusGone {
-		return s.store.Remove(sub.Endpoint)
+		return false, s.store.Remove(sub.Endpoint)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("push endpoint %s said %d", sub.Endpoint, resp.StatusCode)
+		return false, fmt.Errorf("push endpoint %s said %d", sub.Endpoint, resp.StatusCode)
 	}
-	return nil
+	return true, nil
 }

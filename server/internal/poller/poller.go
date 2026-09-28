@@ -4,25 +4,17 @@
 package poller
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
 
 // DefaultInterval is how often Run polls the anchor address.
 const DefaultInterval = 5 * time.Second
-
-// Notifier is told about every record the poller newly stores, so it can
-// push to any subscription addressed by that record's payload. A record
-// with no payload, or a payload NotifyRecord doesn't recognise as addressed,
-// is its business to ignore, not the poller's.
-type Notifier interface {
-	NotifyRecord(txid string, payload json.RawMessage) error
-}
 
 // Poller polls one anchor address via client and stores what it finds in
 // store.
@@ -31,14 +23,16 @@ type Poller struct {
 	store    *index.Store
 	anchor   string
 	interval time.Duration
-	notifier Notifier
+	notifier notify.Notifier
 }
 
 // Option configures a Poller constructed by New.
 type Option func(*Poller)
 
-// WithNotifier tells the Poller to notify n of every record it newly stores.
-func WithNotifier(n Notifier) Option {
+// WithNotifier tells the Poller to notify n of every record it newly stores
+// (the same notify.Notifier direct delivery tells). A record n doesn't care
+// about — no payload, not addressed — is n's business to ignore.
+func WithNotifier(n notify.Notifier) Option {
 	return func(p *Poller) { p.notifier = n }
 }
 
@@ -109,7 +103,7 @@ func (p *Poller) processTx(txid string, height int) error {
 		}
 
 		found = true
-		if _, err := p.store.Append(index.Record{
+		stored, err := p.store.Append(index.Record{
 			TxID:      txid,
 			Vout:      output.Vout,
 			ScriptHex: output.ScriptHex,
@@ -117,12 +111,13 @@ func (p *Poller) processTx(txid string, height int) error {
 			FirstSeen: time.Now().UTC(),
 			Payload:   decoded.Payload,
 			Signer:    signer,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("storing record: %w", err)
 		}
 
 		if p.notifier != nil {
-			_ = p.notifier.NotifyRecord(txid, decoded.Payload) //nolint:errcheck // a push failure shouldn't block indexing; nothing to do with the error here but try again on the next matching record
+			p.notifier.RecordIndexed(stored)
 		}
 	}
 

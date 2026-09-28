@@ -23,6 +23,7 @@ type checkerEntry struct {
 // bounded time so every proved request doesn't re-walk the chain.
 type CachedChecker struct {
 	reader licence.Reader
+	rule   licence.Rule
 	ttl    time.Duration
 	now    func() time.Time
 
@@ -40,6 +41,12 @@ func WithCheckerClock(now func() time.Time) CachedCheckerOption {
 	return func(c *CachedChecker) { c.now = now }
 }
 
+// WithRule sets the licence rule the checker applies (collections, issuer).
+// Without it, licence.Rule's zero value: the default collections, no issuer.
+func WithRule(rule licence.Rule) CachedCheckerOption {
+	return func(c *CachedChecker) { c.rule = rule }
+}
+
 // NewCachedChecker builds a CachedChecker backed by reader, caching each
 // key's answer for ttl.
 func NewCachedChecker(reader licence.Reader, ttl time.Duration, opts ...CachedCheckerOption) *CachedChecker {
@@ -55,8 +62,9 @@ func NewCachedChecker(reader licence.Reader, ttl time.Duration, opts ...CachedCh
 	return c
 }
 
-// Held reports whether pubKeyHex holds a licence (licence.Held, applied to
-// the testnet address that key derives), reusing a cached answer under ttl.
+// Held reports whether pubKeyHex holds a licence (licence.Held under the
+// checker's rule, applied to the testnet address that key derives), reusing
+// a cached answer under ttl.
 func (c *CachedChecker) Held(pubKeyHex string) (bool, error) {
 	c.mu.Lock()
 	entry, ok := c.cache[pubKeyHex]
@@ -69,7 +77,7 @@ func (c *CachedChecker) Held(pubKeyHex string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	held, err := licence.Held(c.reader, address)
+	held, err := licence.Held(c.reader, address, c.rule)
 	if err != nil {
 		return false, err
 	}

@@ -152,6 +152,29 @@ function txidsIn(text: string): string[] {
   return [...text.matchAll(TXID_IN_TEXT)].map((match) => match[1].toLowerCase());
 }
 
+// `mw postern inbox` records the Governor's message on the bead it names as
+// 'The Governor by postern <RFC3339 ts>: <text>', ending ' [image: <desktop path>]'
+// (or audio / file) for an attachment. It names no txid; the message's own ts is
+// the only thing it shares with the message.
+const GOVERNOR_BY_POSTERN = /^The Governor by postern (\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)): ?([\s\S]*)$/;
+const DESKTOP_ATTACHMENT_TAG = /\s*\[(image|audio|file): [^\]]*\]\s*$/;
+
+interface RecordedMessage {
+  /** Seconds since the epoch: the message's own `ts`. */
+  ts: number;
+  text: string;
+}
+
+function recordedMessage(comment: string): RecordedMessage | undefined {
+  const match = GOVERNOR_BY_POSTERN.exec(comment);
+  if (!match) return undefined;
+  const ms = Date.parse(match[1]);
+  if (Number.isNaN(ms)) return undefined;
+  const tag = DESKTOP_ATTACHMENT_TAG.exec(match[2]);
+  const text = match[2].replace(DESKTOP_ATTACHMENT_TAG, '');
+  return { ts: Math.floor(ms / 1000), text: tag ? `${text} (${tag[1]})`.trim() : text };
+}
+
 export function speakerOfComment(author: string): { speaker: Speaker; label: string } {
   const who = author.trim().toLowerCase();
   if (who === 'root' || who === 'mayor' || who.startsWith('mayor@')) return { speaker: 'mayor', label: 'Mayor' };
@@ -181,9 +204,14 @@ export function mergeConversation(rows: MessageRow[], comments: BeadComment[] = 
   }
 
   const known = new Set(rows.map((row) => row.txid.toLowerCase()));
+  const sentAt = new Set(rows.map((row) => row.ts));
   comments.forEach((comment, index) => {
     if (txidsIn(comment.text).some((txid) => known.has(txid))) return;
-    const { speaker, label } = speakerOfComment(comment.author);
+    // His message recorded by the hook: shown once, as the message itself (its
+    // picture, not the desktop path); if the message is not here, as his words.
+    const recorded = recordedMessage(comment.text);
+    if (recorded && sentAt.has(recorded.ts)) return;
+    const { speaker, label } = recorded ? { speaker: 'you' as const, label: 'You' } : speakerOfComment(comment.author);
     const at = Date.parse(comment.at);
     items.push({
       id: `comment:${index}:${comment.at}`,
@@ -191,7 +219,7 @@ export function mergeConversation(rows: MessageRow[], comments: BeadComment[] = 
       speaker,
       speakerLabel: label,
       kind: 'comment',
-      text: comment.text,
+      text: recorded ? recorded.text : comment.text,
       source: 'comment',
     });
   });

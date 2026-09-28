@@ -37,6 +37,12 @@ Feature: The Governor's cockpit (plans/0021)
     Then its acceptance criteria, its path and a Builder's comment are shown
     And the voice note shows what was heard in it
 
+  Scenario: mw-f758y.24: an image he attached shows once, as his message, never as a desktop path
+    Given the factory is live and his key is unlocked
+    When the bead "mw-f758y.30.2" is opened
+    Then the image he attached is shown once, with his words
+    And no desktop path is shown
+
   Scenario: plans/0021 AC-7 (decision 10): what he says on a bead's page goes to that bead's thread
     Given the factory is live and his key is unlocked
     When the bead "mw-f758y.30.2" is opened

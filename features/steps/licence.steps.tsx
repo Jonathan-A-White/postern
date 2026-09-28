@@ -15,7 +15,6 @@ import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { chainConfig } from 'spell-forge-bsv';
 import { KeyVault } from '../../src/key';
-import { Gate } from '../../src/gate';
 import { db } from '../../src/data/db';
 import { addressForPublicKey, checkLicence, getCachedLicenceStatus } from '../../src/services/licence';
 import { mintCostSatoshis } from '../../src/services/mint';
@@ -131,9 +130,9 @@ describeFeature(feature, ({ Scenario }) => {
       });
 
       And('the gate opens on the next check', async () => {
-        cleanup();
-        render(<Gate />);
-        expect(await screen.findByText('Licensed')).toBeInTheDocument();
+        const publicKeyHex = publicKeyHexFromMasterKey(await deriveMasterKey(FUNDED_MNEMONIC));
+        const status = await checkLicence(publicKeyHex, fakeProvider);
+        expect(status.held).toBe(true);
       });
     },
   );

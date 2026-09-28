@@ -7,8 +7,21 @@ export const pwaManifest: Partial<ManifestOptions> = {
   display: 'standalone',
   start_url: '/',
   scope: '/',
-  background_color: '#0F172A',
-  theme_color: '#0F172A',
+  background_color: '#0a0e17',
+  theme_color: '#0a0e17',
+  // plans/0021 decision 12: Postern in Android's share sheet. src/sw.ts parks
+  // what arrives and opens the Share screen to place it in a thread.
+  share_target: {
+    action: '/share-target',
+    method: 'POST',
+    enctype: 'multipart/form-data',
+    params: {
+      title: 'title',
+      text: 'text',
+      url: 'url',
+      files: [{ name: 'files', accept: ['image/*', 'audio/*', 'application/pdf', 'text/plain'] }],
+    },
+  },
   icons: [
     {
       src: '/icon.svg',

@@ -1,0 +1,60 @@
+Feature: The Governor's cockpit (plans/0021)
+
+  Scenario: plans/0021 AC-1 (decision 8): the queue shows every kind of need, most blocking first, the recommendation first
+    Given the factory is live and his key is unlocked
+    When the cockpit opens
+    Then the first need is the question "Where should the BSV library live?" with "New repo bsv-kit (recommended)" as its first answer
+    And the queue also holds an approval, a step for his hands, a landing to verify and an alarm
+
+  Scenario: plans/0021 AC-2 (decisions 7, 8): tapping the recommendation answers the question and it leaves the queue
+    Given the factory is live and his key is unlocked
+    When the cockpit opens
+    And "New repo bsv-kit (recommended)" is tapped
+    Then a reply naming "mw-2rbm.10" with the answer "New repo bsv-kit" is delivered directly to the Mayor
+    And the question leaves the queue
+
+  Scenario: plans/0021 AC-3 (decision 7): releasing held work is one tap
+    Given the factory is live and his key is unlocked
+    When the cockpit opens
+    And "Release" is tapped on the approval
+    Then a release action for "mw-f758y.31" is delivered directly to the Mayor
+
+  Scenario: plans/0021 AC-4 (decision 10): unread words from the Mayor read as words, not JSON
+    Given the factory is live and his key is unlocked
+    When the cockpit opens
+    Then "Unread from the Mayor" shows the question as "Where should the BSV library live?"
+
+  Scenario: plans/0021 AC-5 (decision 9): the map zooms from the factory to an epic's board
+    Given the factory is live and his key is unlocked
+    When the map is opened
+    Then the two maps are listed before the epics
+    When the epic "mw-f758y.30" is opened as a board
+    Then its work sits in the columns Working, Ready and Blocked
+
+  Scenario: plans/0021 AC-6 (decisions 9, 10): a bead's page holds its detail and its whole conversation
+    Given the factory is live and his key is unlocked
+    When the bead "mw-f758y.30.2" is opened
+    Then its acceptance criteria, its path and a Builder's comment are shown
+    And the voice note shows what was heard in it
+
+  Scenario: plans/0021 AC-7 (decision 10): what he says on a bead's page goes to that bead's thread
+    Given the factory is live and his key is unlocked
+    When the bead "mw-f758y.30.2" is opened
+    And "use 20 seconds instead" is sent from its composer
+    Then a message in the thread of "mw-f758y.30.2" saying "use 20 seconds instead" is delivered directly
+
+  Scenario: plans/0021 AC-8 (decision 13): one search finds beads and messages
+    Given the factory is live and his key is unlocked
+    When "ping" is searched
+    Then beads and messages that mention it are listed in their own groups
+
+  Scenario: plans/0021 AC-9 (decision 14): one unlock lasts the day, across a relaunch
+    Given the factory is live and his key was unlocked earlier today
+    When the app relaunches
+    Then it opens on the queue without asking to unlock
+
+  Scenario: plans/0021 AC-10 (decision 12): a file shared from another app goes to the thread he picks
+    Given the factory is live and his key is unlocked
+    And an image was shared into Postern from another app
+    When the Share screen is opened and "Factory" is chosen
+    Then the Factory thread opens with the image waiting in its composer

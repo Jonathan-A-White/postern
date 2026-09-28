@@ -8,7 +8,7 @@ export function LicenceExplainer() {
   const cost = mintCostSatoshis().toLocaleString('en-US');
 
   return (
-    <details className="max-w-sm text-left text-sm text-slate-400">
+    <details className="max-w-sm text-left text-sm text-muted">
       <summary className="cursor-pointer underline">What is a licence?</summary>
       <div className="mt-2 flex flex-col gap-2">
         <p>

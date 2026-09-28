@@ -1,921 +1,298 @@
-// features/steps/messages.steps.tsx — runs features/messages.feature under vitest
-// via @amiceli/vitest-cucumber. AC-1/AC-2 exercise src/services/messages.ts directly
-// (the envelope logic); AC-3/AC-4 render the Compose screen with global fetch
-// stubbed, the same fetch-stub approach the story calls for instead of msw, since
-// this rig has no msw dependency.
-import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { afterAll, expect, vi } from 'vitest';
+// features/steps/messages.steps.tsx — runs features/messages.feature: the §1
+// envelope and its BRC-78 encryption, direct delivery (plans/0021, §9) with the
+// funded-transaction fallback for an old backend, and syncing what the backend
+// holds into the phone's store under the right thread.
+import { expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { PrivateKey, PublicKey, Signature, Utils } from '@bsv/sdk';
-import { Compose } from '../../src/compose';
-import { Inbox } from '../../src/inbox';
+import { LockingScript, PrivateKey, Transaction, Utils } from '@bsv/sdk';
+import { decodeRecordScript } from 'spell-forge-bsv';
 import { db } from '../../src/data/db';
-import { vaultRepo, messagesRepo } from '../../src/data/repositories';
-import {
-  createMnemonic,
-  deriveAesKeyFromPhrase,
-  deriveMasterKey,
-  publicKeyHexFromMasterKey,
-  wrapKey,
-} from '../../src/services/vault';
-import { decryptMessage, encryptMessage, setMayorPublicKey, type MessageClass, type MessagePayload } from '../../src/services/messages';
-import * as inboxService from '../../src/services/inbox';
-import { installMockAuthenticator, removeMockAuthenticator } from '../../tests/support/webauthn-mock';
-import { lock } from '../../src/services/keySession';
+import { messagesRepo } from '../../src/data/repositories';
+import { decryptMessage, encryptMessage, type MessagePayload } from '../../src/services/messages';
+import { deliver, deliverThreaded } from '../../src/services/deliver';
+import { syncMessages } from '../../src/services/inbox';
 import { encodeQuestion } from '../../src/services/questions';
-import { encodeThreadedMessage } from '../../src/services/threads';
+import { encodeThreadedMessage, threadKey } from '../../src/services/threads';
 
-const MAYOR_KEY = PrivateKey.fromHex('11'.repeat(32));
-const SENDER_KEY = PrivateKey.fromHex('22'.repeat(32));
-const EAVESDROPPER_KEY = PrivateKey.fromHex('33'.repeat(32));
+const MAYOR = PrivateKey.fromHex('11'.repeat(32));
+const HIM = PrivateKey.fromHex('22'.repeat(32));
+const SOMEONE = PrivateKey.fromHex('33'.repeat(32));
+const HIM_KEY = new Uint8Array(Utils.toArray(HIM.toHex(), 'hex'));
+const MAYOR_PUB = MAYOR.toPublicKey().toString();
+const HIM_PUB = HIM.toPublicKey().toString();
 
-// unlockInbox() only waits for the Lock button to paint, which happens before
-// handleUnlockWithPhrase's tail (await initialSync -> decryptPendingMessages ->
-// refreshMessages) resolves. cleanup() unmounts the component but cannot cancel
-// that tail, so a slow one can still be running when the next scenario's
-// freshCompose() clears and repopulates the tables it reads from — decrypting
-// the new scenario's row with the old key and marking it unreadable for good,
-// since decryptFailed is sticky (mw-tfne4.26). Spying on decryptPendingMessages
-// lets freshCompose() drain any such call before clearing the tables.
-const decryptPendingMessagesSpy = vi.spyOn(inboxService, 'decryptPendingMessages');
-
-async function freshCompose(): Promise<void> {
-  cleanup();
-  removeMockAuthenticator();
-  await Promise.allSettled(decryptPendingMessagesSpy.mock.results.map((result) => (result.type === 'return' ? result.value : Promise.resolve())));
-  decryptPendingMessagesSpy.mockClear();
-  await db.vault.clear();
-  await db.settings.clear();
-  await db.messages.clear();
-  lock();
-  vi.unstubAllGlobals();
+interface Captured {
+  posts: { scriptHex: string; auth: string }[];
+  broadcasts: string[];
+  sinces: number[];
 }
 
-/** Saves a PRF-mode vault whose fingerprint prompt is mocked to reject with a
- * dismissed/timed-out NotAllowedError: the unwrap never runs, so the wrapped
- * key material itself doesn't need to be genuine. */
-async function savePrfVaultWithDismissedPrompt(): Promise<void> {
-  installMockAuthenticator({ prfSupported: true, prfGetResult: 'not-allowed' });
-  const key = await deriveMasterKey(createMnemonic());
-  await vaultRepo.save({
-    mode: 'prf',
-    ciphertext: new ArrayBuffer(16),
-    iv: new Uint8Array(12),
-    credentialId: crypto.getRandomValues(new Uint8Array(16)).buffer,
-    publicKeyHex: publicKeyHexFromMasterKey(key),
-  });
+let captured: Captured;
+let payload: MessagePayload;
+let records: { seq: number; txid: string; vout: number; payload: unknown }[];
+let syncError: unknown;
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-interface FixtureRecord {
-  seq: number;
-  txid: string;
-  vout: number;
-  payload: unknown;
-}
-
-/** A GET /api/messages?since=<n> (docs/api.md) double: returns only fixture
- * records with seq greater than the requested `since`, and a `next` that names
- * the latest seq known — the same cursor contract the real backend keeps. */
-function messagesFetchMock(records: FixtureRecord[]) {
-  return vi.fn(async (input: RequestInfo | URL) => {
+function backend(options: { direct: boolean; everything401?: boolean }) {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), 'http://localhost');
-    if (url.pathname.endsWith('/challenge')) {
-      return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    if (options.everything401 && !url.pathname.endsWith('/challenge')) return json({ error: 'no licence held' }, 401);
+    if (url.pathname.endsWith('/challenge')) return json({ nonce: crypto.randomUUID().replace(/-/g, '') });
+    if (url.pathname.endsWith('/messages') && init?.method === 'POST') {
+      if (!options.direct) return new Response('404 page not found', { status: 404 });
+      const body = JSON.parse(String(init.body)) as { scriptHex: string };
+      captured.posts.push({ scriptHex: body.scriptHex, auth: new Headers(init.headers).get('Authorization') ?? '' });
+      return json({ txid: `direct:${'d'.repeat(64)}`, seq: 9 }, 201);
     }
-    if (!url.pathname.endsWith('/messages')) throw new Error(`unexpected fetch: ${url}`);
-    const since = Number(url.searchParams.get('since') ?? '0');
-    const matching = records.filter((record) => record.seq > since);
-    const seqs = records.map((record) => record.seq);
-    const next = seqs.length > 0 ? Math.max(...seqs) : since;
-    return new Response(JSON.stringify({ records: matching, next }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    if (url.pathname.endsWith('/messages')) {
+      const since = Number(url.searchParams.get('since') ?? '0');
+      captured.sinces.push(since);
+      const next = records.length ? Math.max(...records.map((r) => r.seq)) : since;
+      return json({ records: records.filter((r) => r.seq > since), next });
+    }
+    if (url.pathname.includes('/utxos/')) return json({ utxos: [{ txid: 'a'.repeat(64), vout: 0, satoshis: 50_000, height: 1 }] });
+    if (url.pathname.endsWith('/broadcast')) {
+      const body = JSON.parse(String(init?.body)) as { rawtx: string };
+      captured.broadcasts.push(body.rawtx);
+      return json({ txid: Transaction.fromHex(body.rawtx).id('hex') });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
   });
 }
 
-/** Saves a real phrase-wrapped vault for "him" and returns its mnemonic and
- * public key, so a fixture message can be addressed to it. */
-async function saveVaultForHim(): Promise<{ mnemonic: string; publicKeyHex: string }> {
-  const mnemonic = createMnemonic();
-  const key = await deriveMasterKey(mnemonic);
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const aesKey = await deriveAesKeyFromPhrase(mnemonic, salt);
-  const wrapped = await wrapKey(key, aesKey);
-  const publicKeyHex = publicKeyHexFromMasterKey(key);
-  await vaultRepo.save({
-    mode: 'phrase',
-    ciphertext: wrapped.ciphertext,
-    iv: wrapped.iv,
-    salt,
-    prfFallbackReason: 'webauthn-unavailable',
-    publicKeyHex,
-  });
-  return { mnemonic, publicKeyHex };
+async function fresh(): Promise<void> {
+  vi.unstubAllGlobals();
+  await db.messages.clear();
+  await db.settings.clear();
+  await db.pendingSpends.clear();
+  captured = { posts: [], broadcasts: [], sinces: [] };
+  records = [];
+  syncError = undefined;
 }
 
-/** His own private key, hex, from the mnemonic saveVaultForHim generated — needed
- * to build a fixture message encrypted as if sent from his own phone. */
-async function privateKeyHexFromMnemonic(mnemonic: string): Promise<string> {
-  const key = await deriveMasterKey(mnemonic);
-  return Utils.toHex(Array.from(key));
+function payloadOfScript(scriptHex: string): MessagePayload {
+  const decoded = decodeRecordScript(LockingScript.fromHex(scriptHex));
+  expect(decoded).not.toBeNull();
+  return JSON.parse(Utils.toUTF8(Array.from(decoded!.payloadBytes))) as MessagePayload;
 }
 
-async function unlockInbox(mnemonic: string): Promise<void> {
-  await userEvent.type(await screen.findByLabelText('Recovery phrase'), mnemonic);
-  await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
-  // The Lock button paints as soon as setKey/setScreen run, which is before
-  // the rest of the unlock handler's tail (decryptPendingMessages, then
-  // refreshMessages) resolves — freshCompose() is what actually waits out
-  // that tail before the next scenario touches the tables (mw-tfne4.26).
-  await screen.findByRole('button', { name: 'Lock' });
+const options = () => ({ key: HIM_KEY, mayorKey: MAYOR_PUB, direct: true });
+
+function fromMayor(text: string, to = HIM_PUB, cls: MessagePayload['class'] = 'message'): MessagePayload {
+  return encryptMessage({ text, class: cls, senderPrivateKeyHex: MAYOR.toHex(), recipientPublicKeyHex: to });
 }
 
-/** Saves a real phrase-wrapped vault (genuine wrapping, unlockable through the UI
- * with the returned mnemonic) and sets the Mayor's public key as the recipient. */
-async function openComposeUnlockedWithRecipient(): Promise<void> {
-  const mnemonic = createMnemonic();
-  const key = await deriveMasterKey(mnemonic);
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const aesKey = await deriveAesKeyFromPhrase(mnemonic, salt);
-  const wrapped = await wrapKey(key, aesKey);
-  await vaultRepo.save({
-    mode: 'phrase',
-    ciphertext: wrapped.ciphertext,
-    iv: wrapped.iv,
-    salt,
-    prfFallbackReason: 'webauthn-unavailable',
-    publicKeyHex: publicKeyHexFromMasterKey(key),
-  });
-  await setMayorPublicKey(MAYOR_KEY.toPublicKey().toString());
-
-  render(<Compose />);
-  await userEvent.type(await screen.findByLabelText('Recovery phrase'), mnemonic);
-  await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
-  await screen.findByLabelText('Message');
+async function syncAsHim(): Promise<void> {
+  try {
+    await syncMessages({ publicKeyHex: HIM_PUB, unlockedKey: HIM_KEY });
+  } catch (err) {
+    syncError = err;
+  }
 }
 
 const feature = await loadFeature('features/messages.feature');
 
 describeFeature(feature, ({ Scenario }) => {
-  Scenario("AC-1: a text is encrypted so only the recipient key decrypts it", ({ Given, Then, And }) => {
-    let payload: MessagePayload;
-
-    Given("a message is encrypted for the Mayor's public key", async () => {
-      await freshCompose();
-      payload = encryptMessage({
-        text: 'the gate is open',
-        class: 'message',
-        senderPrivateKeyHex: SENDER_KEY.toHex(),
-        recipientPublicKeyHex: MAYOR_KEY.toPublicKey().toString(),
-      });
+  Scenario('AC-1: a text is encrypted so only the recipient key decrypts it', ({ Given, Then, And }) => {
+    Given('a message "ship it" encrypted from his key to the Mayor', async () => {
+      await fresh();
+      payload = encryptMessage({ text: 'ship it', class: 'message', senderPrivateKeyHex: HIM.toHex(), recipientPublicKeyHex: MAYOR_PUB });
     });
-
-    Then("the Mayor's private key decrypts it to the original text", () => {
-      expect(decryptMessage(payload, MAYOR_KEY.toHex())).toBe('the gate is open');
+    Then('the Mayor\'s key decrypts it to "ship it"', () => {
+      expect(decryptMessage(payload, MAYOR.toHex())).toBe('ship it');
     });
-
-    And('a different private key fails to decrypt it', () => {
-      expect(() => decryptMessage(payload, EAVESDROPPER_KEY.toHex())).toThrow();
+    And('another key cannot decrypt it', () => {
+      expect(() => decryptMessage(payload, SOMEONE.toHex())).toThrow();
     });
   });
 
   Scenario('AC-2: the class tag is readable without the key', ({ Given, Then }) => {
-    let payload: MessagePayload;
-
-    Given('a message of class "alarm" is encrypted for the Mayor\'s public key', async () => {
-      await freshCompose();
-      payload = encryptMessage({
-        text: 'evacuate the north tower',
-        class: 'alarm' as MessageClass,
-        senderPrivateKeyHex: SENDER_KEY.toHex(),
-        recipientPublicKeyHex: MAYOR_KEY.toPublicKey().toString(),
-      });
+    Given('a "decision-needed" message encrypted from his key to the Mayor', async () => {
+      await fresh();
+      payload = encryptMessage({ text: '{}', class: 'decision-needed', senderPrivateKeyHex: HIM.toHex(), recipientPublicKeyHex: MAYOR_PUB });
     });
-
-    Then('the class tag "alarm" is readable from the payload without decrypting it', () => {
-      // Simulates a chain reader with no private key: parse the JSON straight off
-      // the wire and read `class` without ever calling decryptMessage.
-      const wireForm = JSON.parse(JSON.stringify(payload)) as MessagePayload;
-      expect(wireForm.class).toBe('alarm');
-      expect(wireForm.ct).not.toContain('evacuate');
+    Then('its class reads "decision-needed" without any key', () => {
+      expect(JSON.parse(JSON.stringify(payload)).class).toBe('decision-needed');
     });
   });
 
-  Scenario('AC-3: a successful send shows the txid', ({ Given, And, When, Then }) => {
-    Given('the compose screen is opened with an unlocked key and a recipient set', async () => {
-      await freshCompose();
-      await openComposeUnlockedWithRecipient();
+  Scenario('plans/0021 AC-D1: a message is delivered directly as its record script, from his own key', ({ Given, When, Then, And }) => {
+    Given('a backend that takes direct delivery', async () => {
+      await fresh();
+      vi.stubGlobal('fetch', backend({ direct: true }));
     });
-
-    And('the backend has spendable coins and accepts the broadcast', () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async (input: RequestInfo | URL) => {
-          const url = String(input);
-          if (url.endsWith('/challenge')) {
-            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-          if (url.includes('/utxos/')) {
-            return new Response(
-              JSON.stringify({ utxos: [{ txid: 'a'.repeat(64), vout: 0, satoshis: 10_000, height: 100 }] }),
-              { status: 200, headers: { 'Content-Type': 'application/json' } },
-            );
-          }
-          if (url.endsWith('/broadcast')) {
-            return new Response(JSON.stringify({ txid: 'b'.repeat(64) }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-          throw new Error(`unexpected fetch: ${url}`);
-        }),
-      );
+    When('he sends "morning" to the Mayor', async () => {
+      await deliver('morning', 'message', options());
     });
-
-    When('a message is typed and sent', async () => {
-      await userEvent.type(screen.getByLabelText('Message'), 'meet at the usual place');
-      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    Then('one POST to /api/messages carries a record script whose payload is from his key to the Mayor', () => {
+      expect(captured.posts).toHaveLength(1);
+      const sent = payloadOfScript(captured.posts[0].scriptHex);
+      expect(sent.from).toBe(HIM_PUB);
+      expect(sent.to).toBe(MAYOR_PUB);
+      expect(decryptMessage(sent, MAYOR.toHex())).toBe('morning');
     });
-
-    Then('the compose screen shows the transaction id', async () => {
-      expect(await screen.findByText(`Sent. Transaction id: ${'b'.repeat(64)}`)).toBeInTheDocument();
+    And('no transaction is built or broadcast', () => {
+      expect(captured.broadcasts).toHaveLength(0);
     });
   });
 
-  Scenario('AC-4: an API error is shown and nothing is marked sent', ({ Given, And, When, Then }) => {
-    Given('the compose screen is opened with an unlocked key and a recipient set', async () => {
-      await freshCompose();
-      await openComposeUnlockedWithRecipient();
+  Scenario('plans/0021 AC-D2: an old backend without direct delivery gets a funded transaction instead', ({ Given, When, Then }) => {
+    Given('a backend that answers 404 to POST /api/messages but has coins for him', async () => {
+      await fresh();
+      vi.stubGlobal('fetch', backend({ direct: false }));
     });
-
-    And('the backend refuses to broadcast the transaction', () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async (input: RequestInfo | URL) => {
-          const url = String(input);
-          if (url.endsWith('/challenge')) {
-            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-          if (url.includes('/utxos/')) {
-            return new Response(
-              JSON.stringify({ utxos: [{ txid: 'a'.repeat(64), vout: 0, satoshis: 10_000, height: 100 }] }),
-              { status: 200, headers: { 'Content-Type': 'application/json' } },
-            );
-          }
-          if (url.endsWith('/broadcast')) {
-            return new Response(
-              JSON.stringify({ error: 'WhatsOnChain said 400: tx rejected: bad-txns-inputs-missingorspent' }),
-              { status: 502, headers: { 'Content-Type': 'application/json' } },
-            );
-          }
-          throw new Error(`unexpected fetch: ${url}`);
-        }),
-      );
+    When('he sends "morning" to the Mayor', async () => {
+      await deliver('morning', 'message', options());
     });
-
-    When('a message is typed and sent', async () => {
-      await userEvent.type(screen.getByLabelText('Message'), 'meet at the usual place');
-      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-    });
-
-    Then("the compose screen shows the backend's error", async () => {
-      expect(
-        await screen.findByText('WhatsOnChain said 400: tx rejected: bad-txns-inputs-missingorspent'),
-      ).toBeInTheDocument();
-    });
-
-    And('the compose screen does not show a transaction id', () => {
-      expect(screen.queryByText(/^Sent\. Transaction id:/)).not.toBeInTheDocument();
+    Then('the message is broadcast as a transaction', () => {
+      expect(captured.broadcasts).toHaveLength(1);
+      const tx = Transaction.fromHex(captured.broadcasts[0]);
+      const sent = payloadOfScript(tx.outputs[0].lockingScript.toHex());
+      expect(decryptMessage(sent, MAYOR.toHex())).toBe('morning');
     });
   });
 
-  Scenario('mw-f758y.22.2 AC1: sending signs a fresh challenge on every call', ({ Given, And, When, Then }) => {
-    let authHeaders: string[];
-
-    Given('the compose screen is opened with an unlocked key and a recipient set', async () => {
-      await freshCompose();
-      await openComposeUnlockedWithRecipient();
+  Scenario('plans/0021 AC-D3: what he sends is in its thread at once, before any sync', ({ Given, When, Then }) => {
+    Given('a backend that takes direct delivery', async () => {
+      await fresh();
+      vi.stubGlobal('fetch', backend({ direct: true }));
     });
-
-    And('the backend has spendable coins and accepts the broadcast', () => {
-      authHeaders = [];
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-          const url = String(input);
-          if (url.endsWith('/challenge')) {
-            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-          const auth = new Headers(init?.headers).get('Authorization');
-          if (auth) authHeaders.push(auth);
-          if (url.includes('/utxos/')) {
-            return new Response(
-              JSON.stringify({ utxos: [{ txid: 'a'.repeat(64), vout: 0, satoshis: 10_000, height: 100 }] }),
-              { status: 200, headers: { 'Content-Type': 'application/json' } },
-            );
-          }
-          if (url.endsWith('/broadcast')) {
-            return new Response(JSON.stringify({ txid: 'b'.repeat(64) }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-          throw new Error(`unexpected fetch: ${url}`);
-        }),
-      );
+    When('he sends "about the stream" in the thread of bead "mw-f758y.30.2"', async () => {
+      await deliverThreaded({ thread: { bead: 'mw-f758y.30.2' }, text: 'about the stream' }, options());
     });
-
-    When('a message is typed and sent', async () => {
-      await userEvent.type(screen.getByLabelText('Message'), 'meet at the usual place');
-      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-    });
-
-    Then("the utxos and broadcast calls both carried a valid signed proof of this phone's key", async () => {
-      await screen.findByText(`Sent. Transaction id: ${'b'.repeat(64)}`);
-      expect(authHeaders).toHaveLength(2);
-      for (const header of authHeaders) {
-        const match = header.match(/^Postern ([0-9a-f]+):([0-9a-f]+):([0-9a-f]+)$/);
-        expect(match).not.toBeNull();
-        const [, pubkeyHex, nonceHex, sigHex] = match!;
-        expect(PublicKey.fromString(pubkeyHex).verify(nonceHex, Signature.fromDER(sigHex, 'hex'))).toBe(true);
-      }
+    Then('a sent row with his own words is stored under thread "bead:mw-f758y.30.2"', async () => {
+      const rows = await messagesRepo.getAll();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].direction).toBe('sent');
+      expect(rows[0].thread).toBe('bead:mw-f758y.30.2');
+      expect(rows[0].plaintext).toBe(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: 'about the stream' }));
     });
   });
 
-  Scenario('mw-f758y.22.2 AC2: a 401 while sending shows "Licence required"', ({ Given, And, When, Then }) => {
-    Given('the compose screen is opened with an unlocked key and a recipient set', async () => {
-      await freshCompose();
-      await openComposeUnlockedWithRecipient();
+  Scenario('mw-f758y.22.2 AC1: every call signs a fresh challenge', ({ Given, When, Then }) => {
+    Given('a backend that takes direct delivery', async () => {
+      await fresh();
+      vi.stubGlobal('fetch', backend({ direct: true }));
     });
-
-    And('the backend answers every proved call with 401', () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async (input: RequestInfo | URL) => {
-          const url = String(input);
-          if (url.endsWith('/challenge')) {
-            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-          return new Response(JSON.stringify({ error: 'no licence held' }), { status: 401 });
-        }),
-      );
+    When('he sends "one" and then "two" to the Mayor', async () => {
+      await deliver('one', 'message', options());
+      await deliver('two', 'message', options());
     });
-
-    When('a message is typed and sent', async () => {
-      await userEvent.type(screen.getByLabelText('Message'), 'meet at the usual place');
-      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-    });
-
-    Then('the compose screen shows "Licence required"', async () => {
-      expect(await screen.findByText('Licence required')).toBeInTheDocument();
+    Then('each POST carried its own freshly signed challenge', () => {
+      expect(captured.posts).toHaveLength(2);
+      const nonces = captured.posts.map((post) => post.auth.split(':')[1]);
+      expect(captured.posts.every((post) => post.auth.startsWith(`Postern ${HIM_PUB}:`))).toBe(true);
+      expect(new Set(nonces).size).toBe(2);
     });
   });
 
-  Scenario('mw-f758y.22.2 AC3: a 401 while syncing shows "Licence required" instead of a fetch error', ({ Given, When, Then }) => {
-    Given('the backend answers every messages call with 401', async () => {
-      await freshCompose();
-      await saveVaultForHim();
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async (input: RequestInfo | URL) => {
-          const url = String(input);
-          if (url.endsWith('/challenge')) {
-            return new Response(JSON.stringify({ nonce: 'a'.repeat(64) }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-          return new Response(JSON.stringify({ error: 'no licence held' }), { status: 401 });
-        }),
-      );
+  Scenario('AC-5: a record addressed to him is stored decrypted', ({ Given, When, Then }) => {
+    Given('the backend holds a message from the Mayor to him saying "hello"', async () => {
+      await fresh();
+      records = [{ seq: 1, txid: `direct:${'1'.repeat(64)}`, vout: 0, payload: fromMayor('hello') }];
+      vi.stubGlobal('fetch', backend({ direct: true }));
     });
-
-    When('the inbox is opened', async () => {
-      render(<Inbox />);
-    });
-
-    Then('the inbox shows "Offline — showing stored messages (Licence required)"', async () => {
-      expect(await screen.findByText('Offline — showing stored messages (Licence required)')).toBeInTheDocument();
+    When('the messages are synced with his key unlocked', syncAsHim);
+    Then('a received row reads "hello"', async () => {
+      const rows = await messagesRepo.getAll();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].direction).toBe('received');
+      expect(rows[0].plaintext).toBe('hello');
     });
   });
 
-  Scenario('AC-5: a record addressed to him is shown decrypted', ({ Given, When, Then }) => {
-    let mnemonic: string;
-
-    Given('the backend has one message record addressed to him', async () => {
-      await freshCompose();
-      const him = await saveVaultForHim();
-      mnemonic = him.mnemonic;
-      const payload = encryptMessage({
-        text: 'meet at the usual place',
-        class: 'message',
-        senderPrivateKeyHex: SENDER_KEY.toHex(),
-        recipientPublicKeyHex: him.publicKeyHex,
-      });
-      vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
+  Scenario('AC-6: a record addressed to someone else is not stored', ({ Given, When, Then }) => {
+    Given('the backend holds a message from the Mayor to someone else', async () => {
+      await fresh();
+      records = [{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload: fromMayor('not yours', SOMEONE.toPublicKey().toString()) }];
+      vi.stubGlobal('fetch', backend({ direct: true }));
     });
-
-    When('the inbox is opened and unlocked', async () => {
-      render(<Inbox />);
-      await unlockInbox(mnemonic);
-    });
-
-    Then('the message is shown decrypted in the inbox', async () => {
-      expect(await screen.findByText('meet at the usual place')).toBeInTheDocument();
+    When('the messages are synced with his key unlocked', syncAsHim);
+    Then('no row is stored', async () => {
+      expect(await messagesRepo.getAll()).toHaveLength(0);
     });
   });
 
-  Scenario('AC-6: a record addressed to someone else is not shown', ({ Given, When, Then }) => {
-    let mnemonic: string;
-
-    Given('the backend has one message record addressed to someone else', async () => {
-      await freshCompose();
-      const him = await saveVaultForHim();
-      mnemonic = him.mnemonic;
-      const payload = encryptMessage({
-        text: 'not for him',
-        class: 'message',
-        senderPrivateKeyHex: SENDER_KEY.toHex(),
-        recipientPublicKeyHex: EAVESDROPPER_KEY.toPublicKey().toString(),
-      });
-      vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
+  Scenario('AC-7: the cursor advances so a second sync fetches nothing new', ({ Given, When, And, Then }) => {
+    Given('the backend holds a message from the Mayor to him saying "hello"', async () => {
+      await fresh();
+      records = [{ seq: 4, txid: 'b'.repeat(64), vout: 0, payload: fromMayor('hello') }];
+      vi.stubGlobal('fetch', backend({ direct: true }));
     });
-
-    When('the inbox is opened and unlocked', async () => {
-      render(<Inbox />);
-      await unlockInbox(mnemonic);
-    });
-
-    Then('no message is shown in the inbox', async () => {
-      expect(await screen.findByText('No messages yet.')).toBeInTheDocument();
-      expect(screen.queryByText('not for him')).not.toBeInTheDocument();
+    When('the messages are synced with his key unlocked', syncAsHim);
+    And('the messages are synced again', syncAsHim);
+    Then("the second sync asked only for records after the first one's head", () => {
+      expect(captured.sinces).toEqual([0, 4]);
     });
   });
 
-  Scenario('AC-7: the cursor advances so a second sync fetches nothing new', ({ Given, And, When, Then }) => {
-    let mnemonic: string;
-    let fetchMock: ReturnType<typeof messagesFetchMock>;
-
-    Given('the backend has one message record addressed to him', async () => {
-      await freshCompose();
-      const him = await saveVaultForHim();
-      mnemonic = him.mnemonic;
-      const payload = encryptMessage({
-        text: 'first sync catch',
-        class: 'message',
-        senderPrivateKeyHex: SENDER_KEY.toHex(),
-        recipientPublicKeyHex: him.publicKeyHex,
-      });
-      fetchMock = messagesFetchMock([{ seq: 7, txid: 'a'.repeat(64), vout: 0, payload }]);
-      vi.stubGlobal('fetch', fetchMock);
+  Scenario('AC-9: a record that fails to decrypt is kept, marked unreadable', ({ Given, When, Then }) => {
+    Given('the backend holds a message addressed to him that his key cannot decrypt', async () => {
+      await fresh();
+      const garbled = { ...fromMayor('x'), ct: Utils.toBase64(Array.from({ length: 120 }, (_, i) => i)) };
+      records = [{ seq: 1, txid: 'c'.repeat(64), vout: 0, payload: garbled }];
+      vi.stubGlobal('fetch', backend({ direct: true }));
     });
-
-    And('the inbox has already synced once', async () => {
-      render(<Inbox />);
-      await unlockInbox(mnemonic);
-      await screen.findByText('first sync catch');
-    });
-
-    When('the inbox is opened again', async () => {
-      cleanup();
-      render(<Inbox />);
-      await screen.findByText('first sync catch');
-    });
-
-    Then("the second sync asks the backend for records since the first sync's cursor", () => {
-      const calls = fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/messages'));
-      expect(calls[0]).toBe('/api/messages?since=0');
-      expect(calls[1]).toBe('/api/messages?since=7');
-    });
-
-    And('the message is still shown only once', () => {
-      expect(screen.getAllByText('first sync catch')).toHaveLength(1);
+    When('the messages are synced with his key unlocked', syncAsHim);
+    Then('the row is kept and marked as failing to decrypt', async () => {
+      const rows = await messagesRepo.getAll();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].decryptFailed).toBe(true);
     });
   });
 
-  Scenario('AC-8: offline shows the stored messages', ({ Given, When, Then }) => {
-    Given('the inbox has already synced and decrypted one message', async () => {
-      await freshCompose();
-      const him = await saveVaultForHim();
-      const payload = encryptMessage({
-        text: 'stored while online',
-        class: 'message',
-        senderPrivateKeyHex: SENDER_KEY.toHex(),
-        recipientPublicKeyHex: him.publicKeyHex,
-      });
-      vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
-
-      render(<Inbox />);
-      await unlockInbox(him.mnemonic);
-      await screen.findByText('stored while online');
+  Scenario('mw-1589l.27 AC2: a message he sent is stored with his own words', ({ Given, When, Then }) => {
+    Given('the backend holds a message he sent to the Mayor saying "on my way"', async () => {
+      await fresh();
+      const sent = encryptMessage({ text: 'on my way', class: 'message', senderPrivateKeyHex: HIM.toHex(), recipientPublicKeyHex: MAYOR_PUB });
+      records = [{ seq: 1, txid: 'e'.repeat(64), vout: 0, payload: sent }];
+      vi.stubGlobal('fetch', backend({ direct: true }));
     });
-
-    When('the inbox is opened while the backend is unreachable', async () => {
-      cleanup();
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async () => {
-          throw new Error('the network is unreachable');
-        }),
-      );
-      render(<Inbox />);
-    });
-
-    Then('the previously stored message is still shown in the inbox', async () => {
-      expect(await screen.findByText('stored while online')).toBeInTheDocument();
+    When('the messages are synced with his key unlocked', syncAsHim);
+    Then('a sent row reads "on my way"', async () => {
+      const rows = await messagesRepo.getAll();
+      expect(rows[0].direction).toBe('sent');
+      expect(rows[0].plaintext).toBe('on my way');
     });
   });
 
-  Scenario(
-    'AC-9: a record that fails to decrypt is shown as unreadable, not dropped',
-    ({ Given, When, Then }) => {
-      let mnemonic: string;
-
-      Given('the backend has one message record addressed to him that his key cannot decrypt', async () => {
-        await freshCompose();
-        const him = await saveVaultForHim();
-        mnemonic = him.mnemonic;
-
-        // Encrypted for the eavesdropper, not him, then its `to` field is forged
-        // to name his public key — his real key cannot decrypt this ciphertext.
-        const payload = encryptMessage({
-          text: 'not really for him',
-          class: 'message',
-          senderPrivateKeyHex: SENDER_KEY.toHex(),
-          recipientPublicKeyHex: EAVESDROPPER_KEY.toPublicKey().toString(),
-        });
-        const forged = { ...payload, to: him.publicKeyHex };
-        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload: forged }]));
-      });
-
-      When('the inbox is opened and unlocked', async () => {
-        render(<Inbox />);
-        await unlockInbox(mnemonic);
-      });
-
-      Then('the message is shown as unreadable in the inbox', async () => {
-        expect(await screen.findByText('Unreadable message.')).toBeInTheDocument();
-      });
-    },
-  );
-
-  Scenario(
-    "mw-tfne4.26: a slow decrypt tail from a previous inbox does not corrupt the next one's message",
-    ({ Given, And, When, Then }) => {
-      let mnemonic2: string;
-
-      Given('an inbox was unlocked with one message and its decrypt tail is still resolving', async () => {
-        await freshCompose();
-        const him1 = await saveVaultForHim();
-        const payload1 = encryptMessage({
-          text: 'leaked tail catch',
-          class: 'message',
-          senderPrivateKeyHex: SENDER_KEY.toHex(),
-          recipientPublicKeyHex: him1.publicKeyHex,
-        });
-        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload: payload1 }]));
-
-        // Simulates the real leak: this decryptPendingMessages call is still
-        // in flight when unlockInbox() below returns (it only waits for the
-        // Lock button). The delay's exact size doesn't matter once freshCompose
-        // drains it — it only needs to still be pending when the next step's
-        // freshCompose() runs.
-        const realDecryptPendingMessages = inboxService.decryptPendingMessages;
-        decryptPendingMessagesSpy.mockImplementationOnce(async (key: Uint8Array) => {
-          await new Promise((resolve) => setTimeout(resolve, 400));
-          return realDecryptPendingMessages(key);
-        });
-
-        render(<Inbox />);
-        await unlockInbox(him1.mnemonic);
-      });
-
-      And('a new scenario clears the tables and unlocks a second inbox with its own message', async () => {
-        await freshCompose();
-        const him2 = await saveVaultForHim();
-        mnemonic2 = him2.mnemonic;
-        const payload2 = encryptMessage({
-          text: 'new scenario catch',
-          class: 'message',
-          senderPrivateKeyHex: SENDER_KEY.toHex(),
-          recipientPublicKeyHex: him2.publicKeyHex,
-        });
-        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload: payload2 }]));
-      });
-
-      When("the second inbox's decrypt tail is given a chance to catch up", async () => {
-        render(<Inbox />);
-        await screen.findByText('Locked');
-        await unlockInbox(mnemonic2);
-      });
-
-      Then('the second message is shown decrypted, not marked unreadable', async () => {
-        expect(await screen.findByText('new scenario catch')).toBeInTheDocument();
-        expect(screen.queryByText('Unreadable message.')).not.toBeInTheDocument();
-      });
-    },
-  );
-
-  Scenario(
-    'mw-1589l.27 AC2: a message he sent is shown with his own words, not "Sent message."',
-    ({ Given, When, Then }) => {
-      let mnemonic: string;
-
-      Given('the backend has one message record he sent to the Mayor', async () => {
-        await freshCompose();
-        const him = await saveVaultForHim();
-        mnemonic = him.mnemonic;
-        const payload = encryptMessage({
-          text: 'on my way, be there by six',
-          class: 'message',
-          senderPrivateKeyHex: await privateKeyHexFromMnemonic(mnemonic),
-          recipientPublicKeyHex: MAYOR_KEY.toPublicKey().toString(),
-        });
-        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
-      });
-
-      When('the inbox is opened and unlocked', async () => {
-        render(<Inbox />);
-        await unlockInbox(mnemonic);
-      });
-
-      Then('the sent message is shown with his words in the inbox', async () => {
-        expect(await screen.findByText('on my way, be there by six')).toBeInTheDocument();
-      });
-    },
-  );
-
-  Scenario(
-    'mw-1589l.27 AC3: a sent row stored before this change is decrypted on the next sync',
-    ({ Given, When, Then }) => {
-      let mnemonic: string;
-
-      Given('a sent message row was already stored without plaintext', async () => {
-        await freshCompose();
-        const him = await saveVaultForHim();
-        mnemonic = him.mnemonic;
-        const payload = encryptMessage({
-          text: 'already on the chain before this shipped',
-          class: 'message',
-          senderPrivateKeyHex: await privateKeyHexFromMnemonic(mnemonic),
-          recipientPublicKeyHex: MAYOR_KEY.toPublicKey().toString(),
-        });
-        // Simulates a row synced before this feature existed: stored with the
-        // ciphertext, no plaintext, direction already known to be sent.
-        await messagesRepo.put({
-          id: `${'a'.repeat(64)}:0`,
-          txid: 'a'.repeat(64),
-          vout: 0,
-          seq: 1,
-          class: payload.class,
-          to: payload.to,
-          from: payload.from,
-          ts: payload.ts,
-          ciphertext: payload.ct,
-          direction: 'sent',
-          read: false,
-        });
-        vi.stubGlobal('fetch', messagesFetchMock([]));
-      });
-
-      When('the inbox is opened and unlocked', async () => {
-        render(<Inbox />);
-        await unlockInbox(mnemonic);
-      });
-
-      Then('the sent message is shown with his words in the inbox', async () => {
-        expect(await screen.findByText('already on the chain before this shipped')).toBeInTheDocument();
-      });
-    },
-  );
-
-  Scenario(
-    'mw-1589l.27 AC3: a sent record his key cannot read as sender still shows "Sent message."',
-    ({ Given, When, Then }) => {
-      let mnemonic: string;
-
-      Given('the backend has one sent message record his key cannot read as sender', async () => {
-        await freshCompose();
-        const him = await saveVaultForHim();
-        mnemonic = him.mnemonic;
-        // Encrypted by someone else, to the Mayor, then forged to claim he sent it —
-        // his key cannot recompute this ciphertext's symmetric key as sender.
-        const payload = encryptMessage({
-          text: 'not really from him',
-          class: 'message',
-          senderPrivateKeyHex: SENDER_KEY.toHex(),
-          recipientPublicKeyHex: MAYOR_KEY.toPublicKey().toString(),
-        });
-        const forged = { ...payload, from: him.publicKeyHex };
-        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload: forged }]));
-      });
-
-      When('the inbox is opened and unlocked', async () => {
-        render(<Inbox />);
-        await unlockInbox(mnemonic);
-      });
-
-      Then('the message is shown as "Sent message." in the inbox', async () => {
-        expect(await screen.findByText('Sent message.')).toBeInTheDocument();
-      });
-    },
-  );
-
-  Scenario("mw-tfne4.15 AC1: the Mayor's public key wraps instead of overflowing the screen", ({ Given, Then }) => {
-    Given('the compose screen is opened with an unlocked key and a recipient set', async () => {
-      await freshCompose();
-      await openComposeUnlockedWithRecipient();
+  Scenario('mw-f758y.21.1 AC1: a message naming a bead thread is stored under that thread', ({ Given, When, Then }) => {
+    Given('the backend holds a message from the Mayor in the thread of bead "mw-xyz.3"', async () => {
+      await fresh();
+      records = [{ seq: 1, txid: 'f'.repeat(64), vout: 0, payload: fromMayor(encodeThreadedMessage({ thread: { bead: 'mw-xyz.3' }, text: 'on it' })) }];
+      vi.stubGlobal('fetch', backend({ direct: true }));
     });
-
-    Then("the Mayor's public key is rendered in an element that wraps long text", () => {
-      const keyElement = screen.getByText(MAYOR_KEY.toPublicKey().toString());
-      expect(keyElement.className).toContain('break-all');
+    When('the messages are synced with his key unlocked', syncAsHim);
+    Then('the row is stored under thread "bead:mw-xyz.3"', async () => {
+      expect((await messagesRepo.getAll())[0].thread).toBe(threadKey({ bead: 'mw-xyz.3' }));
     });
   });
 
-  Scenario(
-    'mw-tfne4.18 AC2: a dismissed fingerprint prompt on the inbox screen says "Unlock cancelled"',
-    ({ Given, When, Then, And }) => {
-      Given('the inbox is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed', async () => {
-        await freshCompose();
-        await savePrfVaultWithDismissedPrompt();
-        render(<Inbox />);
-        await screen.findByRole('button', { name: 'Unlock with your fingerprint' });
-      });
+  Scenario('mw-f758y.21.1 AC2: a decision-needed message is stored under its own bead as its thread', ({ Given, When, Then }) => {
+    Given('the backend holds a question from the Mayor about bead "mw-xyz.4"', async () => {
+      await fresh();
+      const question = fromMayor(encodeQuestion({ bead: 'mw-xyz.4', q: 'A or B?', rec: 'A', options: ['A', 'B'] }), HIM_PUB, 'decision-needed');
+      records = [{ seq: 1, txid: '9'.repeat(64), vout: 0, payload: question }];
+      vi.stubGlobal('fetch', backend({ direct: true }));
+    });
+    When('the messages are synced with his key unlocked', syncAsHim);
+    Then('the row is stored under thread "bead:mw-xyz.4"', async () => {
+      expect((await messagesRepo.getAll())[0].thread).toBe('bead:mw-xyz.4');
+    });
+  });
 
-      When('"Unlock with your fingerprint" is tapped', async () => {
-        await userEvent.click(screen.getByRole('button', { name: 'Unlock with your fingerprint' }));
-      });
-
-      Then('the error says "Unlock cancelled. Tap Unlock to try again."', async () => {
-        expect(await screen.findByRole('alert')).toHaveTextContent('Unlock cancelled. Tap Unlock to try again.');
-      });
-
-      And('the raw browser sentence and the w3.org link never appear', () => {
-        expect(screen.queryByText(/timed out or was not allowed/i)).not.toBeInTheDocument();
-        expect(screen.queryByText(/w3\.org/i)).not.toBeInTheDocument();
-      });
-
-      And('"Unlock with your fingerprint" is still offered', () => {
-        expect(screen.getByRole('button', { name: 'Unlock with your fingerprint' })).toBeInTheDocument();
-      });
-    },
-  );
-
-  Scenario(
-    'mw-tfne4.18 AC2: a dismissed fingerprint prompt on the send screen says "Unlock cancelled"',
-    ({ Given, When, Then, And }) => {
-      Given('the compose screen is opened with a PRF-wrapped vault and the fingerprint prompt will be dismissed', async () => {
-        await freshCompose();
-        await savePrfVaultWithDismissedPrompt();
-        render(<Compose />);
-        await screen.findByRole('button', { name: 'Unlock with your fingerprint' });
-      });
-
-      When('"Unlock with your fingerprint" is tapped', async () => {
-        await userEvent.click(screen.getByRole('button', { name: 'Unlock with your fingerprint' }));
-      });
-
-      Then('the error says "Unlock cancelled. Tap Unlock to try again."', async () => {
-        expect(await screen.findByRole('alert')).toHaveTextContent('Unlock cancelled. Tap Unlock to try again.');
-      });
-
-      And('the raw browser sentence and the w3.org link never appear', () => {
-        expect(screen.queryByText(/timed out or was not allowed/i)).not.toBeInTheDocument();
-        expect(screen.queryByText(/w3\.org/i)).not.toBeInTheDocument();
-      });
-
-      And('"Unlock with your fingerprint" is still offered', () => {
-        expect(screen.getByRole('button', { name: 'Unlock with your fingerprint' })).toBeInTheDocument();
-      });
-    },
-  );
-
-  Scenario(
-    'mw-f758y.21.1 AC1: a message naming a bead thread is stored under that thread',
-    ({ Given, When, Then }) => {
-      let mnemonic: string;
-
-      Given('the backend has one message record addressed to him naming a bead thread', async () => {
-        await freshCompose();
-        const him = await saveVaultForHim();
-        mnemonic = him.mnemonic;
-        const plaintext = encodeThreadedMessage({ thread: { bead: 'mw-xyz12.3' }, text: 'meet at the usual place' });
-        const payload = encryptMessage({
-          text: plaintext,
-          class: 'message',
-          senderPrivateKeyHex: SENDER_KEY.toHex(),
-          recipientPublicKeyHex: him.publicKeyHex,
-        });
-        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
-      });
-
-      When('the inbox is opened and unlocked', async () => {
-        render(<Inbox />);
-        await unlockInbox(mnemonic);
-      });
-
-      Then('the stored message\'s thread is "bead:mw-xyz12.3"', async () => {
-        await waitFor(async () => {
-          const rows = await messagesRepo.getAll();
-          expect(rows[0]?.thread).toBe('bead:mw-xyz12.3');
-        });
-      });
-    },
-  );
-
-  Scenario(
-    "mw-f758y.21.1 AC2: a decision-needed message is stored under its own bead as its thread",
-    ({ Given, When, Then }) => {
-      let mnemonic: string;
-
-      Given('the backend has one decision-needed message record addressed to him', async () => {
-        await freshCompose();
-        const him = await saveVaultForHim();
-        mnemonic = him.mnemonic;
-        const plaintext = encodeQuestion({
-          bead: 'mw-xyz12.3',
-          q: 'Ship the walking skeleton now, or wait for WireGuard?',
-          rec: 'ship',
-          options: ['ship', 'wait'],
-        });
-        const payload = encryptMessage({
-          text: plaintext,
-          class: 'decision-needed',
-          senderPrivateKeyHex: SENDER_KEY.toHex(),
-          recipientPublicKeyHex: him.publicKeyHex,
-        });
-        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
-      });
-
-      When('the inbox is opened and unlocked', async () => {
-        render(<Inbox />);
-        await unlockInbox(mnemonic);
-      });
-
-      Then('the stored message\'s thread is "bead:mw-xyz12.3"', async () => {
-        await waitFor(async () => {
-          const rows = await messagesRepo.getAll();
-          expect(rows[0]?.thread).toBe('bead:mw-xyz12.3');
-        });
-      });
-    },
-  );
-
-  Scenario(
-    'mw-f758y.21.1 AC3: a message with no thread is stored under the general thread',
-    ({ Given, When, Then }) => {
-      let mnemonic: string;
-
-      Given('the backend has one message record addressed to him with no thread', async () => {
-        await freshCompose();
-        const him = await saveVaultForHim();
-        mnemonic = him.mnemonic;
-        const payload = encryptMessage({
-          text: 'meet at the usual place',
-          class: 'message',
-          senderPrivateKeyHex: SENDER_KEY.toHex(),
-          recipientPublicKeyHex: him.publicKeyHex,
-        });
-        vi.stubGlobal('fetch', messagesFetchMock([{ seq: 1, txid: 'a'.repeat(64), vout: 0, payload }]));
-      });
-
-      When('the inbox is opened and unlocked', async () => {
-        render(<Inbox />);
-        await unlockInbox(mnemonic);
-      });
-
-      Then("the stored message's thread is the general thread", async () => {
-        await waitFor(async () => {
-          const rows = await messagesRepo.getAll();
-          expect(rows).toHaveLength(1);
-          expect(rows[0]?.thread).toBeUndefined();
-        });
-      });
-    },
-  );
-});
-
-afterAll(() => {
-  cleanup();
-  removeMockAuthenticator();
-  vi.unstubAllGlobals();
+  Scenario('mw-f758y.22.2 AC3: a 401 while syncing is "Licence required"', ({ Given, When, Then }) => {
+    Given('a backend that answers 401 to every call', async () => {
+      await fresh();
+      vi.stubGlobal('fetch', backend({ direct: true, everything401: true }));
+    });
+    When('the messages are synced with his key unlocked', syncAsHim);
+    Then('the sync fails with "Licence required"', () => {
+      expect(syncError).toBeInstanceOf(Error);
+      expect((syncError as Error).message).toBe('Licence required');
+    });
+  });
 });

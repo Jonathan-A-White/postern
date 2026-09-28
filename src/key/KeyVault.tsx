@@ -290,11 +290,11 @@ export function KeyVault() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-900 p-6 text-slate-200">
+    <main className="flex w-full max-w-md flex-col gap-4 px-5 py-8 text-fg">
       <h1 className="text-2xl font-semibold">The key vault</h1>
 
       {error && (
-        <p role="alert" className="text-red-400">
+        <p role="alert" className="text-danger">
           {error}
         </p>
       )}
@@ -303,17 +303,17 @@ export function KeyVault() {
 
       {screen.name === 'empty' && (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted">
             Fingerprint unlock on this device: {isWebAuthnAvailable() ? 'available' : 'not available'}
           </p>
           <button
-            className="rounded bg-slate-700 px-4 py-2"
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong"
             onClick={() => void handleGenerate()}
           >
             Generate a new key
           </button>
           <button
-            className="rounded bg-slate-700 px-4 py-2"
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong"
             onClick={() => setScreen({ name: 'restore' })}
           >
             Restore from a phrase
@@ -324,7 +324,7 @@ export function KeyVault() {
       {screen.name === 'reveal' && (
         <div className="flex flex-col gap-2">
           <p>Write down these 12 words. This is the only time they will be shown.</p>
-          <p data-testid="mnemonic-words" className="select-all rounded bg-slate-800 p-3 font-mono">
+          <p data-testid="mnemonic-words" className="select-all rounded-xl border border-line bg-sunken p-3 font-mono text-[14px] leading-relaxed">
             {screen.mnemonic.split(' ').map((word, i, words) => (
               <Fragment key={i}>
                 <span data-testid="mnemonic-word">{word}</span>
@@ -333,14 +333,14 @@ export function KeyVault() {
             ))}
           </p>
           <button
-            className="rounded bg-slate-700 px-4 py-2"
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong"
             onClick={() => void handleCopyWords(screen.mnemonic)}
           >
             {copyStatus === 'copied' ? 'Copied' : 'Copy the twelve words'}
           </button>
           {copyStatus === 'unavailable' && <p>Copy is not available here: select the words by hand</p>}
           <button
-            className="rounded bg-slate-700 px-4 py-2"
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong"
             onClick={() => void handleConfirmWritten(screen.mnemonic, screen.key)}
           >
             I&apos;ve written it down
@@ -356,7 +356,7 @@ export function KeyVault() {
             value={phraseInput}
             onChange={(e) => setPhraseInput(e.target.value)}
           />
-          <button className="rounded bg-slate-700 px-4 py-2" onClick={() => void handleRestore()}>
+          <button className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong" onClick={() => void handleRestore()}>
             Restore
           </button>
         </div>
@@ -366,7 +366,7 @@ export function KeyVault() {
         <div className="flex flex-col gap-2">
           <p>The key is locked.</p>
           <button
-            className="rounded bg-slate-700 px-4 py-2"
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong"
             onClick={() => void handleUnlockWithFingerprint(screen.vault)}
           >
             Unlock with your fingerprint
@@ -388,7 +388,7 @@ export function KeyVault() {
             onChange={(e) => setPhraseInput(e.target.value)}
           />
           <button
-            className="rounded bg-slate-700 px-4 py-2"
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong"
             onClick={() => void handleUnlockWithPhrase(screen.vault)}
           >
             Unlock
@@ -399,7 +399,7 @@ export function KeyVault() {
       {screen.name === 'unlocked' && (
         <div className="flex flex-col gap-2">
           <p>Key unlocked</p>
-          <button className="self-start rounded bg-slate-700 px-3 py-1 text-sm" onClick={() => void handleLock()}>
+          <button className="inline-flex h-8 items-center self-start rounded-lg border border-line bg-raised px-3 text-sm" onClick={() => void handleLock()}>
             Lock
           </button>
           {screen.prfFallbackReason && (
@@ -407,14 +407,14 @@ export function KeyVault() {
           )}
           <p>Key fingerprint: {toHex(screen.key.slice(0, 4))}</p>
 
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted">
             Testnet address:{' '}
             <span data-testid="testnet-address" className="break-all font-mono">
               {addressForPublicKey(publicKeyHexFromMasterKey(screen.key))}
             </span>
           </p>
           <button
-            className="rounded bg-slate-700 px-4 py-2"
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong"
             onClick={() => void handleCopyAddress(addressForPublicKey(publicKeyHexFromMasterKey(screen.key)))}
           >
             {addressCopyStatus === 'copied' ? 'Copied' : 'Copy address'}
@@ -435,7 +435,7 @@ export function KeyVault() {
                   .
                 </p>
               )}
-              <button className="rounded bg-slate-700 px-4 py-2" onClick={handleRefreshBalance}>
+              <button className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong" onClick={handleRefreshBalance}>
                 Refresh balance
               </button>
             </>
@@ -444,7 +444,7 @@ export function KeyVault() {
           {balanceState.name === 'error' && (
             <>
               <p>Balance unavailable (WhatsOnChain): {balanceState.message}</p>
-              <button className="rounded bg-slate-700 px-4 py-2" onClick={handleRefreshBalance}>
+              <button className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong" onClick={handleRefreshBalance}>
                 Retry
               </button>
             </>
@@ -463,7 +463,7 @@ export function KeyVault() {
           ) : (
             <>
               <button
-                className="rounded bg-slate-700 px-4 py-2 disabled:opacity-50"
+                className="inline-flex h-11 items-center justify-center rounded-xl bg-accent px-4 font-semibold text-accent-fg disabled:opacity-45"
                 disabled={
                   balanceState.name !== 'loaded' ||
                   balanceState.satoshis < mintCostSatoshis() ||

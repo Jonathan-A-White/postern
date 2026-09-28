@@ -7,7 +7,7 @@ import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { NotificationSettingsScreen } from '../../src/settings';
+import { MeScreen } from '../../src/cockpit/MeScreen';
 import { db } from '../../src/data/db';
 import { settingsRepo } from '../../src/data/repositories';
 import { notificationSpecForClass } from '../../src/push/classOptions';
@@ -26,7 +26,7 @@ async function freshScreen(): Promise<void> {
 }
 
 async function renderScreen(): Promise<void> {
-  render(<NotificationSettingsScreen />);
+  render(<MeScreen />);
   await screen.findByTestId('notification-row-message');
 }
 

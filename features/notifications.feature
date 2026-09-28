@@ -1,4 +1,4 @@
-Feature: Per-class notification settings
+Feature: Per-class notification settings (on the Me screen since plans/0021)
 
   Scenario: AC-1: the settings screen preloads the decided defaults for every class
     Given the notification settings screen is opened for the first time

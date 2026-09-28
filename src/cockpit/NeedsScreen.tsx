@@ -1,0 +1,168 @@
+// src/cockpit/NeedsScreen.tsx — where the cockpit opens (plans/0021 decision 8):
+// the factory's pulse, then everything waiting on the Governor in one queue,
+// most blocking first, then anything new from the Mayor he has not read. This
+// replaces the old Inbox and Projects' "Needs you" (decision 10).
+import { useEffect, useMemo, useState } from 'react';
+import { Banner, Button, EmptyState, IconButton, SectionTitle, Spinner, TimeAgo } from '../ui';
+import { Screen } from './Shell';
+import { FactoryPulse } from './FactoryPulse';
+import { NeedCard } from './NeedCard';
+import { useAnswers, useMessages, useUnlockedKey, useViewIndex } from './hooks';
+import type { MessageRow } from '../data/db';
+import { refreshNow, useLive } from '../services/live';
+import { acceptOfferedMayorKey, fingerprint } from '../services/me';
+import { isPushSubscribed, pushSupported, rememberPushSubscribed, subscribeToPush } from '../services/push';
+import { publicKeyHexFromMasterKey } from '../services/vault';
+import { formatRoute, threadHrefFor } from '../nav/route';
+import { previewText } from '../model/conversation';
+import { unsettledNeeds } from '../model/needs';
+import type { ViewIndex } from '../model/tree';
+import { toast } from '../ui/toastStore';
+
+function UnreadThreads({ index }: { index?: ViewIndex }) {
+  const messages = useMessages();
+  const threads = useMemo(() => {
+    const latest = new Map<string, { row: MessageRow; count: number }>();
+    for (const row of messages) {
+      if (row.direction !== 'received' || row.read) continue;
+      const key = row.thread ?? 'general';
+      const entry = latest.get(key);
+      latest.set(key, { row: !entry || row.ts > entry.row.ts ? row : entry.row, count: (entry?.count ?? 0) + 1 });
+    }
+    return [...latest.entries()].sort((a, b) => b[1].row.ts - a[1].row.ts);
+  }, [messages]);
+  if (threads.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-2" aria-label="Unread from the Mayor">
+      <SectionTitle>Unread from the Mayor</SectionTitle>
+      <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+        {threads.map(([key, { row, count }]) => {
+          const bead = key.startsWith('bead:') ? key.slice(5) : undefined;
+          const title = bead ? (index?.byId.get(bead)?.title ?? bead) : key.startsWith('topic:') ? key.slice(6) : 'Factory';
+          return (
+            <li key={key}>
+              <a href={threadHrefFor(key)} className="flex items-start gap-3 px-4 py-3 hover:bg-raised">
+                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className="truncate text-[14.5px] font-semibold">{title}</span>
+                    <TimeAgo at={row.ts} className="ml-auto shrink-0 text-[12px] text-faint" />
+                  </span>
+                  <span className="line-clamp-2 text-[13.5px] text-muted">{previewText(row)}</span>
+                </span>
+                {count > 1 && <span className="mt-0.5 rounded-full bg-raised px-2 text-[11px] text-muted">{count}</span>}
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function NotifyPrompt() {
+  const key = useUnlockedKey();
+  const [state, setState] = useState<'unknown' | 'on' | 'off' | 'busy'>('unknown');
+  useEffect(() => {
+    void isPushSubscribed().then((on) => setState(on ? 'on' : 'off'));
+  }, []);
+  if (!pushSupported() || state !== 'off' || !key) return null;
+  async function enable() {
+    if (!key) return;
+    setState('busy');
+    try {
+      await subscribeToPush({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key });
+      await rememberPushSubscribed();
+      setState('on');
+      toast('Notifications are on');
+    } catch (err) {
+      setState('off');
+      toast(err instanceof Error ? err.message : String(err), 'error');
+    }
+  }
+  return (
+    <Banner tone="ready" icon="bell" action={<Button size="sm" variant="primary" busy={false} onClick={() => void enable()}>Turn on</Button>}>
+      Get a notification the moment the Mayor needs you.
+    </Banner>
+  );
+}
+
+export function NeedsScreen() {
+  const view = useViewIndex();
+  const live = useLive();
+  const answers = useAnswers();
+  const [refreshing, setRefreshing] = useState(false);
+  const index = view?.index;
+  const needs = useMemo(() => (index ? unsettledNeeds(index.view.needs, answers) : []), [index, answers]);
+
+  async function refresh() {
+    setRefreshing(true);
+    await refreshNow();
+    setRefreshing(false);
+  }
+
+  return (
+    <Screen
+      title="Needs you"
+      subtitle={index ? <span>View <TimeAgo at={index.view.written_at} /></span> : undefined}
+      actions={<IconButton icon="refresh" label="Refresh" onClick={() => void refresh()} disabled={refreshing} />}
+    >
+      <div className="flex flex-col gap-5">
+        {live.status === 'unlicensed' && (
+          <Banner tone="blocked" icon="lock" action={<a className="text-sm font-semibold underline" href={formatRoute({ view: 'key' })}>Open key</a>}>
+            This key holds no Postern licence yet.
+          </Banner>
+        )}
+        {live.offeredMayorKey && (
+          <Banner
+            tone="needs"
+            icon="key"
+            action={
+              <Button size="sm" onClick={() => void acceptOfferedMayorKey().then(() => refreshNow())}>
+                Trust it
+              </Button>
+            }
+          >
+            The backend names a different Mayor key: {fingerprint(live.offeredMayorKey)}. Messages still go to the one you trusted.
+          </Banner>
+        )}
+        <NotifyPrompt />
+
+        {index && <FactoryPulse index={index} />}
+
+        {view === undefined && (
+          <div className="flex justify-center py-16 text-muted">
+            <Spinner size={22} />
+          </div>
+        )}
+
+        {view === null && (
+          <EmptyState icon="map" title="No view of the factory yet">
+            {live.status === 'connecting' ? 'Connecting to the desktop…' : 'It arrives once the backend answers. Pull to refresh or check Me for the connection.'}
+          </EmptyState>
+        )}
+
+        {index && (
+          <section className="flex flex-col gap-3" aria-label="Waiting on you">
+            <SectionTitle>{needs.length ? `Waiting on you · ${needs.length}` : 'Waiting on you'}</SectionTitle>
+            {needs.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-line">
+                <EmptyState icon="check" title="Nothing needs you">
+                  The factory is working on its own. You will get a notification when the Mayor needs a decision.
+                </EmptyState>
+              </div>
+            ) : (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {needs.map((need) => (
+                  <NeedCard key={`${need.kind}:${need.bead}:${need.since}`} need={need} epicTitle={index.byId.get(need.epic)?.title} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        <UnreadThreads index={index} />
+      </div>
+    </Screen>
+  );
+}

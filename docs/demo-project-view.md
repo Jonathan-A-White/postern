@@ -1,5 +1,7 @@
 # Demo: the project view, on your phone
 
+> **Historical (plans/0021, 2026-09-28).** The screens this walks through were replaced by the cockpit; the demo to run now is [`docs/demo-cockpit.md`](demo-cockpit.md). Kept as the record of what was demonstrated then.
+
 This proves a question sent from the VPS reaches your phone under Needs you,
 that tapping an option (or typing a reply) sends it back over postern, and
 that his answer lands on the bead as his word — on testnet, end to end.

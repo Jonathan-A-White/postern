@@ -1,5 +1,7 @@
 # Demo: one message each way, on testnet, through the laptop's backend
 
+> **Historical (plans/0021, 2026-09-28).** The screens this walks through were replaced by the cockpit; the demo to run now is [`docs/demo-cockpit.md`](demo-cockpit.md). Kept as the record of what was demonstrated then.
+
 This proves the whole skeleton at once: your phone holds a licensed key, a
 message you send reaches the Mayor on the VPS, and a classified reply he
 sends back reaches your phone with a push.

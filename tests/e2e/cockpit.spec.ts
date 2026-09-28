@@ -7,6 +7,7 @@ import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot } from './shot';
+import { fixtureRecords } from '../support/cockpit-fixture';
 import { notificationSpecForClass } from '../../src/push/classOptions';
 
 test.use({ serviceWorkers: 'block' });

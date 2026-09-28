@@ -171,6 +171,7 @@ export function fixtureDetail(id: string, now: number = Date.now()): BeadDetail 
     acceptance: rich ? '- `hello` arrives first with the index head and the view ETag\n- a direct message produces a `message` event within a second\n- a changed view file produces a `view` event\n- `: ping` every 25 s' : '',
     comments: rich
       ? [
+          { at: t(12), author: 'root', text: `The Governor by postern ${new Date(Math.floor((now - 12 * 60_000) / 1000) * 1000).toISOString().replace('.000Z', 'Z')}: The tile looks off [image: /home/jwhite/.local/state/mw/postern/inbox/direct-3f22cda7ec41e68a062450299dfeb854879431a9f834c933bec20b09894f3d4f.jpg]` },
           { at: t(200), author: 'root', text: 'Filed from plan 0021: the Governor wants messages within a second.' },
           { at: t(22), author: 'mw@desktop', text: 'Claimed. Starting with a hub that never blocks the poller on a slow client.' },
           { at: t(9), author: 'mw@desktop', text: 'Hub and handler done, 14 tests. Working on the view watcher.' },
@@ -216,6 +217,7 @@ export function fixtureRecords(governorKey: PrivateKey, now: number = Date.now()
     fromMayor(encodeQuestion({ bead: 'mw-2rbm.10', q: 'Where should the BSV library live?', rec: 'New repo bsv-kit', options: ['New repo bsv-kit', 'Workspace in spell-forge'] }), 18, 'decision-needed'),
     voice,
     fromMayor(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: 'Make the ping interval 25 seconds so the train Wi-Fi proxy never idles the stream out.', re: voice.txid, role: 'transcript' }), 14),
+    fromGovernor(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: 'The tile looks off', attachment: { hash: 'cd'.repeat(32), size: 90211, mime: 'image/jpeg' } }), 12),
     fromMayor(encodeThreadedMessage({ thread: { bead: 'mw-f758y.30.2' }, text: 'Done — 25 s it is. The Builder has it on the bead; it lands in about ten minutes.' }), 13),
     fromGovernor(encodeReply({ bead: 'mw-gq6.120', answer: 'Yes' }), 300),
     fromMayor(encodeThreadedMessage({ thread: { topic: 'desktop move' }, text: 'The runbook is in `hosts/desktop-move.md`. Step 2 needs you: two sudo lines, on the bead.' }), 48),

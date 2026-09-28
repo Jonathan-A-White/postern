@@ -61,6 +61,41 @@ describe('mergeConversation', () => {
     expect(items[2]).toMatchObject({ speaker: 'mayor', unread: true });
   });
 
+  // mw-f758y.24: `mw postern inbox` records the Governor's message on the bead as
+  // 'The Governor by postern <RFC3339 ts>: <text> [image: <desktop path>]', with no txid.
+  describe("the hook's comment recording his message", () => {
+    const ts = 1_760_000_300;
+    const stamp = new Date(ts * 1000).toISOString().replace('.000Z', 'Z');
+    const path = '/home/jwhite/.local/state/mw/postern/inbox/direct-3f22.jpg';
+    const image = () =>
+      row(encodeThreadedMessage({ thread: { bead: 'b' }, text: 'the tiles', attachment: { hash: 'h', size: 9, mime: 'image/jpeg' } }), { direction: 'sent', ts });
+
+    it('is left out when the message itself is in the thread, so the picture shows and its desktop path does not', () => {
+      const comment = { at: new Date((ts + 30) * 1000).toISOString(), author: 'root', text: `The Governor by postern ${stamp}: the tiles [image: ${path}]` };
+      const items = mergeConversation([image()], [comment]);
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ speaker: 'you', kind: 'attachment', attachment: { mime: 'image/jpeg' } });
+      expect(JSON.stringify(items)).not.toContain('/home/jwhite');
+    });
+
+    it('is his words without the desktop path when the message is not on this phone', () => {
+      const comment = { at: new Date((ts + 30) * 1000).toISOString(), author: 'root', text: `The Governor by postern ${stamp}: the tiles [image: ${path}]` };
+      const items = mergeConversation([], [comment]);
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ speaker: 'you', kind: 'comment', text: 'the tiles (image)' });
+      expect(items[0].text).not.toContain('/home/jwhite');
+    });
+
+    it('leaves a comment about some other time, or by someone else, alone', () => {
+      const other = `The Governor by postern ${new Date((ts + 500) * 1000).toISOString().replace('.000Z', 'Z')}: later`;
+      const items = mergeConversation([image()], [
+        { at: new Date((ts + 500) * 1000).toISOString(), author: 'root', text: other },
+        { at: new Date((ts + 600) * 1000).toISOString(), author: 'root', text: 'Mentions [image: /tmp/x.jpg] in passing' },
+      ]);
+      expect(items.map((item) => item.text)).toEqual(['the tiles', 'later', 'Mentions [image: /tmp/x.jpg] in passing']);
+    });
+  });
+
   it('names who wrote a comment', () => {
     expect(speakerOfComment('root').speaker).toBe('mayor');
     expect(speakerOfComment('mw@laptop')).toEqual({ speaker: 'builder', label: 'Builder · laptop' });

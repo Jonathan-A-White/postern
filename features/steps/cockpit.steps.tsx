@@ -219,6 +219,22 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
+  Scenario('mw-f758y.24: an image he attached shows once, as his message, never as a desktop path', ({ Given, When, Then, And }) => {
+    Given('the factory is live and his key is unlocked', liveAndUnlocked);
+    When('the bead "mw-f758y.30.2" is opened', async () => {
+      await openAt('?v=bead&id=mw-f758y.30.2');
+    });
+    Then('the image he attached is shown once, with his words', async () => {
+      await screen.findByText('Hub and handler done, 14 tests. Working on the view watcher.');
+      await screen.findByText('The tile looks off');
+      expect(screen.getAllByText('The tile looks off')).toHaveLength(1);
+    });
+    And('no desktop path is shown', () => {
+      expect(screen.queryByText(/\/home\/jwhite/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/\[image:/)).not.toBeInTheDocument();
+    });
+  });
+
   Scenario("plans/0021 AC-7 (decision 10): what he says on a bead's page goes to that bead's thread", ({ Given, When, And, Then }) => {
     Given('the factory is live and his key is unlocked', liveAndUnlocked);
     When('the bead "mw-f758y.30.2" is opened', async () => {

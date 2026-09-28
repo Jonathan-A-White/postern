@@ -16,6 +16,9 @@ export interface ApiFetchOptions {
   fetchImpl?: typeof fetch;
 }
 
+/** What the backend's GET /api/challenge issues: plain hex (docs/api.md). */
+export const NONCE_SHAPE = /^[0-9a-f]{32,128}$/;
+
 async function signedAuthorizationHeader(
   unlockedKey: Uint8Array,
   apiBase: string,
@@ -24,7 +27,12 @@ async function signedAuthorizationHeader(
   const privateKey = PrivateKey.fromHex(Utils.toHex(Array.from(unlockedKey)));
   const challengeResponse = await fetchImpl(`${apiBase}/challenge`);
   if (!challengeResponse.ok) throw new Error('Licence required');
-  const { nonce } = (await challengeResponse.json()) as { nonce: string };
+  const { nonce } = (await challengeResponse.json()) as { nonce: unknown };
+  // The same key signs a hands step's approval (docs/protocol.md §17). A
+  // backend that could get anything signed as a "nonce" could get an approval
+  // signed without asking him, so only a plain hex nonce — what the backend
+  // issues — is ever signed.
+  if (typeof nonce !== 'string' || !NONCE_SHAPE.test(nonce)) throw new Error('The backend sent a challenge that is not a nonce; nothing was signed.');
   const signature = privateKey.sign(nonce).toDER('hex') as string;
   return `Postern ${privateKey.toPublicKey().toString()}:${nonce}:${signature}`;
 }

@@ -3,6 +3,7 @@
 // features it serves. The Mayor's key is pinned the first time it is seen and a
 // different one is never taken silently; an old backend that has no /api/me is
 // "legacy", and the cockpit falls back to the snapshot, polling and chain sends.
+import { Hash, Utils } from '@bsv/sdk';
 import { apiFetch } from './apiAuth';
 import { getMayorPublicKey, setMayorPublicKey } from './messages';
 import { settingsRepo } from '../data/repositories';
@@ -96,7 +97,11 @@ export async function mayorKeyState(): Promise<MayorKeyState> {
   };
 }
 
+/** A key's fingerprint, the way millwright's contrib/install-hands-root prints
+ * it (docs/protocol.md §17): the first 16 hex digits of the SHA-256 of the key's
+ * hex text, in groups of four — so he can check the key the installer is about
+ * to trust is the one this phone holds. */
 export function fingerprint(publicKeyHex: string): string {
-  const hex = publicKeyHex.replace(/^0[23]/, '');
-  return `${hex.slice(0, 4)} ${hex.slice(4, 8)} … ${hex.slice(-8, -4)} ${hex.slice(-4)}`.toUpperCase();
+  const digest = Utils.toHex(Hash.sha256(Utils.toArray(publicKeyHex, 'utf8')));
+  return digest.slice(0, 16).replace(/(.{4})(?!$)/g, '$1 ');
 }

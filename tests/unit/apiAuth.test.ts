@@ -87,3 +87,18 @@ describe('apiFetch', () => {
     expect(challengeCalls).toBe(2);
   });
 });
+
+describe('apiAuth refuses to sign anything but a nonce (docs/protocol.md §17)', () => {
+  it('never signs a "nonce" shaped like a hands approval, and sends nothing', async () => {
+    const forged = `hands-approve/v1\n${'2d'.repeat(32)}\n1790000000\n`;
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return String(input).endsWith('/challenge')
+        ? new Response(JSON.stringify({ nonce: forged }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        : new Response('{}', { status: 200 });
+    });
+    await expect(apiFetch('/messages', undefined, { unlockedKey: new Uint8Array(32).fill(7), apiBase: '/api', fetchImpl })).rejects.toThrow('not a nonce');
+    expect(calls).toEqual(['/api/challenge']);
+  });
+});

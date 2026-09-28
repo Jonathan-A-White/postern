@@ -85,6 +85,11 @@ Issues a nonce for the caller to sign (see Authentication, above).
   { "nonce": "3af1b2c3..." }
   ```
 
+The nonce is always plain lowercase hex (32 random bytes). The app refuses to sign
+anything else: the same key signs a hands step's approval (`docs/protocol.md` §17),
+and a challenge must never be able to stand in for one.
+
+
 ## GET /api/messages?since=\<seq\>
 
 Returns every indexed record after sequence number `since`, oldest first.

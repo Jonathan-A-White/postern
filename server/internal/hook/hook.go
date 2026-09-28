@@ -21,8 +21,12 @@ const (
 	// DefaultDebounce is how long after the first record of a burst the hook
 	// runs; every record in that window shares the one run.
 	DefaultDebounce = time.Second
-	// DefaultTimeout is how long one run may take before it is killed.
-	DefaultTimeout = 5 * time.Minute
+	// DefaultTimeout is how long one run may take before it is killed. It
+	// outlasts the longest thing the on-message hook (`mw postern inbox
+	// --apply`) may do: wait up to 12 minutes for its lock and then run a
+	// hands step for up to 10 (docs/protocol.md §17). A shorter limit would
+	// kill a step after its approval was spent, with no outcome recorded.
+	DefaultTimeout = 25 * time.Minute
 	// maxLoggedOutput caps how much of a run's output is logged.
 	maxLoggedOutput = 4096
 )

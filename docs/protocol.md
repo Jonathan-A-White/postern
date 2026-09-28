@@ -762,11 +762,29 @@ the approval is under 15 minutes old, and that approval has not run before. Then
 - `as: root` — hands the step and the approval to `mw-hands-root` through
   `sudo -n`. That small root-owned program (installed once, by his hands, with a
   sudoers line naming only it) checks the signature itself against his public key
-  in `/etc/mw-hands/governor.pub`, the hash, the age and that the approval is
-  unused, and only then runs the step as root. The host's own account cannot run
-  anything as root without his signature.
+  in `/etc/mw-hands/governor.pub`, that the step is for this host
+  (`/etc/mw-hands/host`, so an approval cannot be replayed on another host), the
+  hash, the age and that the approval is unused, and only then runs the step as
+  root. The host's own account cannot run anything as root without his signature.
 - a step for another host runs there over the `ssh` prefix `mw`'s config names for it
-  (`[hands_hosts]`), the same checks and the same helper on the far side.
+  (`[hands_hosts]`), the same checks and the same helper on the far side. A prefix
+  must log in as a **non-root** user: over a root login a user step would be a root
+  step no helper checked, so `mw` refuses it.
+
+The backend's on-message hook allows 25 minutes a run, longer than `mw`'s 12-minute
+lock wait plus a step's 10: a step is never killed after its approval is spent.
+
+### Nothing else his key signs can be an approval
+
+His key also signs the backend's login challenge (`docs/api.md`). The app signs a
+challenge only when it is plain lowercase hex (what the backend issues), so a
+backend can never get `hands-approve/v1\n…` signed in its place without him.
+
+### Fingerprints
+
+Wherever a key must be checked by eye — the installer before it trusts his key, the
+Me screen, a changed Mayor key — it is shown as the first 16 hex digits of the
+SHA-256 of the key's hex text, in groups of four (`15f6 7a1c 42f4 8fe6`).
 
 The outcome — exit code and the last 4000 characters of output — is commented on
 the bead (`RAN step <id> on <host> as <as>, exit <n> …`), sent back to him in the

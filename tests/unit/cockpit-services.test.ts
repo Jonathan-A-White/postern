@@ -79,7 +79,7 @@ describe('who is who', () => {
   });
 
   it('reads /api/me, calls a backend without it legacy, and a 401 no licence', async () => {
-    const answer = (response: Response) => vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/challenge') ? json({ nonce: 'n' }) : response));
+    const answer = (response: Response) => vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/challenge') ? json({ nonce: 'ab'.repeat(32) }) : response));
     expect(await fetchMe({ key: GOV_KEY, fetchImpl: answer(json({ pubkey: GOV_PUB, mayor: MAYOR_PUB, network: 'testnet', features: ['direct', 'view'] })) })).toEqual({
       pubkey: GOV_PUB,
       mayor: MAYOR_PUB,
@@ -109,7 +109,7 @@ describe('refreshView', () => {
     const sealed = await sealDocument(JSON.stringify(fixtureView()), MAYOR.toHex(), GOV_PUB);
     const seen: (string | null)[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).endsWith('/challenge')) return json({ nonce: 'n' });
+      if (String(input).endsWith('/challenge')) return json({ nonce: 'ab'.repeat(32) });
       const tag = new Headers(init?.headers).get('If-None-Match');
       seen.push(tag);
       return tag === '"v1"' ? new Response(null, { status: 304 }) : new Response(sealed, { status: 200, headers: { ETag: '"v1"' } });
@@ -125,7 +125,7 @@ describe('refreshView', () => {
     const ct = Utils.toBase64(EncryptedMessage.encrypt(Utils.toArray(JSON.stringify(snapshot), 'utf8'), MAYOR, PublicKey.fromString(GOV_PUB)));
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/challenge')) return json({ nonce: 'n' });
+      if (url.endsWith('/challenge')) return json({ nonce: 'ab'.repeat(32) });
       if (url.endsWith('/view')) return new Response('404 page not found', { status: 404 });
       return new Response(ct, { status: 200 });
     });
@@ -141,5 +141,16 @@ describe('parseEventBlock', () => {
     expect(parseEventBlock('event: message\ndata: {"seq": 4}')).toEqual({ event: 'message', data: '{"seq": 4}' });
     expect(parseEventBlock('event: view\ndata: {"etag": "\\"x\\""}')).toEqual({ event: 'view', data: '{"etag": "\\"x\\""}' });
     expect(parseEventBlock(': ping')).toBeNull();
+  });
+});
+
+describe('fingerprint', () => {
+  it('is what install-hands-root prints: sha256 of the key hex, first 16, in fours', async () => {
+    const { fingerprint } = await import('../../src/services/me');
+    const key = '03f01d6b9018ab421dd410404cb869072065522bf85734008f105cf385a023a80f';
+    const { createHash } = await import('node:crypto');
+    const expected = createHash('sha256').update(key).digest('hex').slice(0, 16).replace(/(.{4})(?!$)/g, '$1 ');
+    expect(fingerprint(key)).toBe(expected);
+    expect(fingerprint(key)).toMatch(/^[0-9a-f]{4} [0-9a-f]{4} [0-9a-f]{4} [0-9a-f]{4}$/);
   });
 });

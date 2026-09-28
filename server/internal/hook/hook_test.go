@@ -199,3 +199,12 @@ func TestANilHookIsANoOp(t *testing.T) {
 	hook.Trigger()
 	hook.RecordIndexed(index.Record{Seq: 1})
 }
+
+// docs/protocol.md §17: the hook must outlast mw's lock wait (12 min) plus a
+// hands step's own limit (10 min), or a step is killed after its approval was
+// spent and no outcome is ever recorded.
+func TestDefaultTimeoutOutlastsAHandsStep(t *testing.T) {
+	if DefaultTimeout < 22*time.Minute {
+		t.Fatalf("the hook's timeout %s is shorter than mw's 12-minute lock wait plus a 10-minute hands step", DefaultTimeout)
+	}
+}

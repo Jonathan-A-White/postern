@@ -14,11 +14,13 @@ import (
 // prove a cached answer skips the chain entirely.
 type countingReader struct {
 	historyCalls int
+	addresses    []string
 	held         bool
 }
 
 func (r *countingReader) GetHistory(address string) ([]woc.HistoryEntry, error) {
 	r.historyCalls++
+	r.addresses = append(r.addresses, address)
 	if r.held {
 		return []woc.HistoryEntry{{TxHash: "mint1", Height: 1}}, nil
 	}
@@ -92,6 +94,22 @@ func TestCachedCheckerCachesSeparatelyPerKey(t *testing.T) {
 	}
 	if reader.historyCalls != 2 {
 		t.Fatalf("historyCalls = %d, want 2 (different keys should not share a cache entry)", reader.historyCalls)
+	}
+}
+
+func TestCachedCheckerAppliesItsRule(t *testing.T) {
+	reader := &countingReader{}
+	issuerKeyHex := testPubKeyHex(t)
+	checker := NewCachedChecker(reader, time.Minute, WithRule(licence.Rule{IssuerKey: issuerKeyHex}))
+	pubKeyHex := testPubKeyHex(t)
+
+	if _, err := checker.Held(pubKeyHex); err != nil {
+		t.Fatalf("Held: %v", err)
+	}
+	holderAddress, _ := licence.AddressForPublicKey(pubKeyHex)
+	issuerAddress, _ := licence.AddressForPublicKey(issuerKeyHex)
+	if len(reader.addresses) != 2 || reader.addresses[0] != holderAddress || reader.addresses[1] != issuerAddress {
+		t.Fatalf("histories read = %q, want the holder's then the issuer's (%s, %s)", reader.addresses, holderAddress, issuerAddress)
 	}
 }
 

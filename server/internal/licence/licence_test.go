@@ -2,77 +2,216 @@ package licence
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 
-// writeVarInt writes a Bitcoin CompactSize integer.
+// The fixtures below are shaped like spell-forge-bsv's builders really
+// write them (src/bsv/license-contract.ts): a contract mint funded by the
+// issuer's P2PKH inputs with outputs [0] the 1-sat License, [1] the Fuel,
+// [2] a typed M record {"collection","holder"}, [3] the issuer's change; a
+// transfer whose input 0 spends the License outpoint (input 1 the Fuel) and
+// whose outputs are [0] the License to the new owner, [1] the Fuel, [2] a
+// typed TR record {"to": <new owner's address>}; a write the same, with a W
+// record. Scripts the rule never reads (the License and Fuel locking
+// scripts, the covenant unlocking scripts) are opaque stand-ins.
+
+// writeVarInt writes a Bitcoin CompactSize integer (up to 0xffff).
 func writeVarInt(buf *bytes.Buffer, n uint64) {
 	switch {
 	case n < 0xfd:
 		buf.WriteByte(byte(n))
+	case n <= 0xffff:
+		buf.WriteByte(0xfd)
+		binary.Write(buf, binary.LittleEndian, uint16(n))
 	default:
-		panic("writeVarInt test helper only supports short counts")
+		panic("writeVarInt test helper only supports counts up to 0xffff")
 	}
 }
 
+// pushData encodes a push the way @bsv/sdk's writeBin does.
 func pushData(data []byte) []byte {
-	if len(data) < 0x4c {
-		out := make([]byte, 0, len(data)+1)
+	var out []byte
+	switch {
+	case len(data) < 0x4c:
 		out = append(out, byte(len(data)))
-		out = append(out, data...)
-		return out
+	case len(data) <= 0xff:
+		out = append(out, 0x4c, byte(len(data)))
+	default:
+		out = append(out, 0x4d)
+		out = binary.LittleEndian.AppendUint16(out, uint16(len(data)))
 	}
-	if len(data) > 0xff {
-		panic("pushData test helper only supports pushes up to 255 bytes")
-	}
-	out := make([]byte, 0, len(data)+2)
-	out = append(out, 0x4c, byte(len(data))) // OP_PUSHDATA1
-	out = append(out, data...)
-	return out
+	return append(out, data...)
 }
 
-func typedRecordScript(recordType string, payload []byte) []byte {
-	var script []byte
-	script = append(script, 0x00, 0x6a) // OP_FALSE OP_RETURN
+// typedRecordScript is encodeTypedRecordScript's output: OP_FALSE OP_RETURN
+// <'nftgate'> <0x02> <type> <empty manifest 0x00> <payload>.
+func typedRecordScript(recordType string, payload string) []byte {
+	script := []byte{0x00, 0x6a}
 	script = append(script, pushData([]byte("nftgate"))...)
 	script = append(script, pushData([]byte{0x02})...)
 	script = append(script, pushData([]byte(recordType))...)
-	script = append(script, pushData([]byte{0x00})...) // empty manifest
-	script = append(script, pushData(payload)...)
+	script = append(script, pushData([]byte{0x00})...)
+	return append(script, pushData([]byte(payload))...)
+}
+
+var (
+	licenseScript = append([]byte{0x01, 0x4c}, bytes.Repeat([]byte{0x7e}, 40)...) // stand-in for the License covenant
+	fuelScript    = append([]byte{0x01, 0x46}, bytes.Repeat([]byte{0x7c}, 30)...) // stand-in for Fuel(C)
+)
+
+func p2pkhLock(address string) []byte {
+	hash := sha256.Sum256([]byte(address)) // any 20 bytes; only the shape matters
+	script := []byte{0x76, 0xa9}
+	script = append(script, pushData(hash[:20])...)
+	return append(script, 0x88, 0xac)
+}
+
+// p2pkhUnlock is <sig> <pubkey>, the scriptSig @bsv/sdk's P2PKH().unlock
+// writes (the signature bytes aren't checked by the rule).
+func p2pkhUnlock(key *btcec.PrivateKey) []byte {
+	sig := append(bytes.Repeat([]byte{0x30}, 70), 0x41)
+	return append(pushData(sig), pushData(key.PubKey().SerializeCompressed())...)
+}
+
+// covenantUnlock stands in for the License's or the Fuel's method call:
+// several pushes, never a P2PKH shape.
+func covenantUnlock() []byte {
+	var script []byte
+	for _, size := range []int{72, 200, 1} {
+		script = append(script, pushData(bytes.Repeat([]byte{0x5a}, size))...)
+	}
 	return script
 }
 
-func rawTxWithOutputs(outputScripts [][]byte) string {
+type testInput struct {
+	txid      string
+	vout      uint32
+	scriptSig []byte
+}
+
+type testTx struct {
+	txid string
+	hex  string
+}
+
+// buildTx serializes a transaction and names it by its real txid.
+func buildTx(inputs []testInput, outputs [][]byte) testTx {
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.LittleEndian, uint32(1))
-	writeVarInt(&buf, 1)
-	buf.Write(bytes.Repeat([]byte{0x11}, 32))
-	binary.Write(&buf, binary.LittleEndian, uint32(0))
-	writeVarInt(&buf, 0)
-	binary.Write(&buf, binary.LittleEndian, uint32(0xffffffff))
-
-	writeVarInt(&buf, uint64(len(outputScripts)))
-	for _, script := range outputScripts {
-		binary.Write(&buf, binary.LittleEndian, uint64(0))
+	writeVarInt(&buf, uint64(len(inputs)))
+	for _, in := range inputs {
+		prev, err := hex.DecodeString(in.txid)
+		if err != nil || len(prev) != 32 {
+			panic(fmt.Sprintf("bad input txid %q", in.txid))
+		}
+		for i, j := 0, len(prev)-1; i < j; i, j = i+1, j-1 {
+			prev[i], prev[j] = prev[j], prev[i]
+		}
+		buf.Write(prev)
+		binary.Write(&buf, binary.LittleEndian, in.vout)
+		writeVarInt(&buf, uint64(len(in.scriptSig)))
+		buf.Write(in.scriptSig)
+		binary.Write(&buf, binary.LittleEndian, uint32(0xffffffff))
+	}
+	writeVarInt(&buf, uint64(len(outputs)))
+	for _, script := range outputs {
+		binary.Write(&buf, binary.LittleEndian, uint64(1))
 		writeVarInt(&buf, uint64(len(script)))
 		buf.Write(script)
 	}
 	binary.Write(&buf, binary.LittleEndian, uint32(0))
-	return hex.EncodeToString(buf.Bytes())
+
+	first := sha256.Sum256(buf.Bytes())
+	second := sha256.Sum256(first[:])
+	for i, j := 0, len(second)-1; i < j; i, j = i+1, j-1 {
+		second[i], second[j] = second[j], second[i]
+	}
+	return testTx{txid: hex.EncodeToString(second[:]), hex: hex.EncodeToString(buf.Bytes())}
+}
+
+// fundingTxid is a UTXO the minter spends: any txid the chain never shows.
+func fundingTxid(n byte) string {
+	return hex.EncodeToString(bytes.Repeat([]byte{n}, 32))
+}
+
+// contractMint is buildContractMintTransaction's layout, funded by signer.
+func contractMint(signer *btcec.PrivateKey, collection, holder string) testTx {
+	signerAddress := addressOf(signer)
+	return buildTx(
+		[]testInput{{txid: fundingTxid(0xf1), vout: 2, scriptSig: p2pkhUnlock(signer)}},
+		[][]byte{
+			licenseScript,
+			fuelScript,
+			typedRecordScript("M", `{"collection":"`+collection+`","holder":"`+holder+`"}`),
+			p2pkhLock(signerAddress),
+		},
+	)
+}
+
+// contractSpend is a License spend (transfer or write) of the licence at
+// txid:0 through the Fuel at txid:1, carrying record.
+func contractSpend(licence testTx, record []byte) testTx {
+	return buildTx(
+		[]testInput{
+			{txid: licence.txid, vout: 0, scriptSig: covenantUnlock()},
+			{txid: licence.txid, vout: 1, scriptSig: covenantUnlock()},
+		},
+		[][]byte{licenseScript, fuelScript, record},
+	)
+}
+
+func newTestKey(t *testing.T) *btcec.PrivateKey {
+	t.Helper()
+	key, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatalf("NewPrivateKey: %v", err)
+	}
+	return key
+}
+
+func pubHex(key *btcec.PrivateKey) string {
+	return hex.EncodeToString(key.PubKey().SerializeCompressed())
+}
+
+func addressOf(key *btcec.PrivateKey) string {
+	address, err := AddressForPublicKey(pubHex(key))
+	if err != nil {
+		panic(err)
+	}
+	return address
 }
 
 // fakeReader is a chain reader test double: address -> history, txid -> raw hex.
 type fakeReader struct {
 	history map[string][]woc.HistoryEntry
 	txs     map[string]string
+	err     error
+}
+
+func newFakeReader() *fakeReader {
+	return &fakeReader{history: map[string][]woc.HistoryEntry{}, txs: map[string]string{}}
+}
+
+// add puts tx on chain, in the history of each of addresses.
+func (f *fakeReader) add(tx testTx, addresses ...string) {
+	f.txs[tx.txid] = tx.hex
+	for _, address := range addresses {
+		f.history[address] = append(f.history[address], woc.HistoryEntry{TxHash: tx.txid, Height: 100 + len(f.history[address])})
+	}
 }
 
 func (f *fakeReader) GetHistory(address string) ([]woc.HistoryEntry, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	return f.history[address], nil
 }
 
@@ -80,105 +219,194 @@ func (f *fakeReader) GetTransactionHex(txid string) (string, error) {
 	return f.txs[txid], nil
 }
 
-const testAddress = "mzzzTestAddress0000000000000000000"
-
-func TestHeldTrueForMintNamingTheAddress(t *testing.T) {
-	payload := []byte(`{"collection":"` + CollectionID + `","holder":"` + testAddress + `"}`)
-	mintTx := rawTxWithOutputs([][]byte{typedRecordScript("M", payload)})
-
-	reader := &fakeReader{
-		history: map[string][]woc.HistoryEntry{testAddress: {{TxHash: "mint1", Height: 100}}},
-		txs:     map[string]string{"mint1": mintTx},
-	}
-
-	held, err := Held(reader, testAddress)
+func mustHeld(t *testing.T, reader Reader, address string, rule Rule) bool {
+	t.Helper()
+	held, err := Held(reader, address, rule)
 	if err != nil {
 		t.Fatalf("Held: %v", err)
 	}
-	if !held {
-		t.Fatal("held = false, want true")
+	return held
+}
+
+func TestHeldForAMintSignedByTheIssuer(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	mint := contractMint(issuer, "postern", addressOf(holder))
+	reader := newFakeReader()
+	// A contract mint pays nothing to the holder's address: it shows only in
+	// the issuer's history (the funding inputs and the change).
+	reader.add(mint, addressOf(issuer))
+
+	if !mustHeld(t, reader, addressOf(holder), Rule{IssuerKey: pubHex(issuer)}) {
+		t.Fatal("held = false, want true for a mint the issuer signed")
+	}
+}
+
+func TestHeldIgnoresAMintNotSignedByTheIssuer(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	selfMint := contractMint(holder, "postern", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(selfMint, addressOf(holder))
+
+	if mustHeld(t, reader, addressOf(holder), Rule{IssuerKey: pubHex(issuer)}) {
+		t.Fatal("held = true for a self-minted licence, want false once an issuer is configured")
+	}
+}
+
+func TestHeldForASelfMintWhenNoIssuerIsConfigured(t *testing.T) {
+	holder := newTestKey(t)
+	selfMint := contractMint(holder, "spellforge-leaderboard-testnet", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(selfMint, addressOf(holder))
+
+	if !mustHeld(t, reader, addressOf(holder), Rule{}) {
+		t.Fatal("held = false, want the old self-mint rule with no issuer configured")
+	}
+}
+
+func TestHeldForAnIssuerMintingToItself(t *testing.T) {
+	issuer := newTestKey(t)
+	mint := contractMint(issuer, "postern", addressOf(issuer))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(issuer))
+
+	if !mustHeld(t, reader, addressOf(issuer), Rule{IssuerKey: pubHex(issuer)}) {
+		t.Fatal("held = false, want true for the issuer's own licence")
+	}
+}
+
+func TestHeldOnlyForTheConfiguredCollections(t *testing.T) {
+	holder := newTestKey(t)
+	for _, tc := range []struct {
+		collection string
+		rule       Rule
+		want       bool
+	}{
+		{"postern", Rule{}, true},
+		{"spellforge-leaderboard-testnet", Rule{}, true},
+		{"some-other-collection", Rule{}, false},
+		{"spellforge-leaderboard-testnet", Rule{Collections: []string{"postern"}}, false},
+		{"some-other-collection", Rule{Collections: []string{"postern", "some-other-collection"}}, true},
+	} {
+		reader := newFakeReader()
+		reader.add(contractMint(holder, tc.collection, addressOf(holder)), addressOf(holder))
+		if got := mustHeld(t, reader, addressOf(holder), tc.rule); got != tc.want {
+			t.Fatalf("collection %q, rule %+v: held = %v, want %v", tc.collection, tc.rule, got, tc.want)
+		}
 	}
 }
 
 func TestHeldFalseWithNoMint(t *testing.T) {
-	reader := &fakeReader{
-		history: map[string][]woc.HistoryEntry{testAddress: {}},
-		txs:     map[string]string{},
-	}
-
-	held, err := Held(reader, testAddress)
-	if err != nil {
-		t.Fatalf("Held: %v", err)
-	}
-	if held {
+	if mustHeld(t, newFakeReader(), addressOf(newTestKey(t)), Rule{}) {
 		t.Fatal("held = true, want false")
 	}
 }
 
-func TestHeldFalseForMintOfADifferentCollection(t *testing.T) {
-	payload := []byte(`{"collection":"some-other-collection","holder":"` + testAddress + `"}`)
-	mintTx := rawTxWithOutputs([][]byte{typedRecordScript("M", payload)})
+func TestHeldFalseForAMintNamingADifferentHolder(t *testing.T) {
+	holder, someoneElse := newTestKey(t), newTestKey(t)
+	reader := newFakeReader()
+	reader.add(contractMint(holder, "postern", addressOf(someoneElse)), addressOf(holder))
 
-	reader := &fakeReader{
-		history: map[string][]woc.HistoryEntry{testAddress: {{TxHash: "mint1", Height: 100}}},
-		txs:     map[string]string{"mint1": mintTx},
-	}
-
-	held, err := Held(reader, testAddress)
-	if err != nil {
-		t.Fatalf("Held: %v", err)
-	}
-	if held {
-		t.Fatal("held = true, want false for a different collection")
-	}
-}
-
-func TestHeldFalseForMintNamingADifferentHolder(t *testing.T) {
-	payload := []byte(`{"collection":"` + CollectionID + `","holder":"someoneElse"}`)
-	mintTx := rawTxWithOutputs([][]byte{typedRecordScript("M", payload)})
-
-	reader := &fakeReader{
-		history: map[string][]woc.HistoryEntry{testAddress: {{TxHash: "mint1", Height: 100}}},
-		txs:     map[string]string{"mint1": mintTx},
-	}
-
-	held, err := Held(reader, testAddress)
-	if err != nil {
-		t.Fatalf("Held: %v", err)
-	}
-	if held {
+	if mustHeld(t, reader, addressOf(holder), Rule{}) {
 		t.Fatal("held = true, want false for a mint naming a different holder")
 	}
 }
 
-func TestHeldFalseAfterATransferMovesTheMintAway(t *testing.T) {
-	mintPayload := []byte(`{"collection":"` + CollectionID + `","holder":"` + testAddress + `"}`)
-	mintTx := rawTxWithOutputs([][]byte{typedRecordScript("M", mintPayload)})
-	transferPayload := []byte(`{"origin":"mint1:0","to":"someoneElse"}`)
-	transferTx := rawTxWithOutputs([][]byte{typedRecordScript("TR", transferPayload)})
+func TestHeldFalseOnceTheLibrarysTransferSpendsTheLicence(t *testing.T) {
+	issuer, holder, buyer := newTestKey(t), newTestKey(t), newTestKey(t)
+	mint := contractMint(issuer, "postern", addressOf(holder))
+	transfer := contractSpend(mint, typedRecordScript("TR", `{"to":"`+addressOf(buyer)+`"}`))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(issuer))
+	reader.add(transfer, addressOf(holder))
 
-	reader := &fakeReader{
-		history: map[string][]woc.HistoryEntry{
-			testAddress: {{TxHash: "mint1", Height: 100}, {TxHash: "transfer1", Height: 200}},
-		},
-		txs: map[string]string{"mint1": mintTx, "transfer1": transferTx},
+	if mustHeld(t, reader, addressOf(holder), Rule{IssuerKey: pubHex(issuer)}) {
+		t.Fatal("held = true, want false once a {\"to\"} transfer spends the licence's outpoint")
+	}
+}
+
+func TestHeldFalseOnceALegacyTransferSpendsTheLicence(t *testing.T) {
+	holder, buyer := newTestKey(t), newTestKey(t)
+	mint := contractMint(holder, "spellforge-leaderboard-testnet", addressOf(holder))
+	transfer := contractSpend(mint, typedRecordScript("TR", `{"origin":"`+mint.txid+`:0","to":"`+addressOf(buyer)+`"}`))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(holder))
+	reader.add(transfer, addressOf(holder))
+
+	if mustHeld(t, reader, addressOf(holder), Rule{}) {
+		t.Fatal("held = true, want false once an {\"origin\",\"to\"} transfer spends the licence's outpoint")
+	}
+}
+
+func TestHeldIgnoresATransferThatDoesNotSpendTheLicence(t *testing.T) {
+	holder, buyer := newTestKey(t), newTestKey(t)
+	mint := contractMint(holder, "postern", addressOf(holder))
+	// Names the licence's origin in its payload, but spends the mint's
+	// change output, not the License: it moves nothing.
+	bogus := buildTx(
+		[]testInput{{txid: mint.txid, vout: 3, scriptSig: p2pkhUnlock(holder)}},
+		[][]byte{licenseScript, fuelScript, typedRecordScript("TR", `{"origin":"`+mint.txid+`:0","to":"`+addressOf(buyer)+`"}`)},
+	)
+	reader := newFakeReader()
+	reader.add(mint, addressOf(holder))
+	reader.add(bogus, addressOf(holder))
+
+	if !mustHeld(t, reader, addressOf(holder), Rule{}) {
+		t.Fatal("held = false, want true: a TR is tied to a licence by the outpoint it spends, never by its payload")
+	}
+}
+
+func TestHeldFollowsTheLicenceThroughWritesAndSelfTransfers(t *testing.T) {
+	holder, buyer := newTestKey(t), newTestKey(t)
+	mint := contractMint(holder, "postern", addressOf(holder))
+	write := contractSpend(mint, typedRecordScript("W", `{"text":"hello"}`))
+	toSelf := contractSpend(write, typedRecordScript("TR", `{"to":"`+addressOf(holder)+`"}`))
+	reader := newFakeReader()
+	for _, tx := range []testTx{mint, write, toSelf} {
+		reader.add(tx, addressOf(holder))
 	}
 
-	held, err := Held(reader, testAddress)
-	if err != nil {
-		t.Fatalf("Held: %v", err)
+	if !mustHeld(t, reader, addressOf(holder), Rule{}) {
+		t.Fatal("held = false after a write and a transfer to itself, want true")
 	}
-	if held {
-		t.Fatal("held = true, want false once the mint's origin has been transferred away")
+
+	away := contractSpend(toSelf, typedRecordScript("TR", `{"to":"`+addressOf(buyer)+`"}`))
+	reader.add(away, addressOf(holder))
+	if mustHeld(t, reader, addressOf(holder), Rule{}) {
+		t.Fatal("held = true, want false once the licence's current outpoint is transferred away")
+	}
+}
+
+func TestHeldForAFreshMintAfterAnEarlierOneWasTransferredAway(t *testing.T) {
+	issuer, holder, buyer := newTestKey(t), newTestKey(t), newTestKey(t)
+	oldMint := contractMint(holder, "spellforge-leaderboard-testnet", addressOf(holder))
+	transfer := contractSpend(oldMint, typedRecordScript("TR", `{"to":"`+addressOf(buyer)+`"}`))
+	newMint := contractMint(issuer, "postern", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(oldMint, addressOf(holder))
+	reader.add(transfer, addressOf(holder))
+	reader.add(newMint, addressOf(issuer))
+
+	if !mustHeld(t, reader, addressOf(holder), Rule{IssuerKey: pubHex(issuer)}) {
+		t.Fatal("held = false, want true for the re-minted licence")
+	}
+}
+
+func TestHeldReportsAChainReadFailure(t *testing.T) {
+	reader := newFakeReader()
+	reader.err = errors.New("WhatsOnChain said 503")
+	if _, err := Held(reader, addressOf(newTestKey(t)), Rule{}); err == nil {
+		t.Fatal("Held = nil error, want the reader's failure")
+	}
+}
+
+func TestHeldRejectsAMalformedIssuerKey(t *testing.T) {
+	if _, err := Held(newFakeReader(), addressOf(newTestKey(t)), Rule{IssuerKey: "02abcd"}); err == nil {
+		t.Fatal("Held = nil error, want an error for a malformed issuer key")
 	}
 }
 
 func TestAddressForPublicKeyIsStableAndTestnet(t *testing.T) {
-	privKey, err := btcec.NewPrivateKey()
-	if err != nil {
-		t.Fatalf("btcec.NewPrivateKey: %v", err)
-	}
-	pubKeyHex := hex.EncodeToString(privKey.PubKey().SerializeCompressed())
+	pubKeyHex := pubHex(newTestKey(t))
 
 	address, err := AddressForPublicKey(pubKeyHex)
 	if err != nil {

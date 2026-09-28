@@ -4,6 +4,8 @@
 // the view and the rest of the query says where in it. Links the old screens
 // used (`?screen=…`, from notifications already delivered) are read too.
 
+import type { MessageClass } from '../data/db';
+
 export type MapLens = 'board' | 'graph' | 'list';
 
 export type Route =
@@ -14,9 +16,16 @@ export type Route =
   | { view: 'search'; q?: string }
   | { view: 'me' }
   | { view: 'key' }
-  | { view: 'share'; id?: string };
+  | { view: 'share'; id?: string }
+  /** Where a push about a record lands before the app knows its thread: it waits
+   * for the message with this txid, then moves to that thread (src/cockpit/NoticeScreen.tsx). */
+  | { view: 'notice'; tx: string; cls?: MessageClass }
+  /** A push with no record behind it (the watchdog's alarm), carrying what it said. */
+  | { view: 'alarm'; title?: string; body?: string; ts?: number };
 
 export type TopView = 'needs' | 'map' | 'talk' | 'search' | 'me';
+
+const CLASSES: MessageClass[] = ['message', 'decision-needed', 'landing', 'alarm'];
 
 const LENSES: MapLens[] = ['board', 'graph', 'list'];
 
@@ -78,6 +87,16 @@ export function parseRoute(search: string): Route {
       return { view: 'key' };
     case 'share':
       return { view: 'share', id: params.get('s') ?? undefined };
+    case 'notice': {
+      const tx = params.get('tx');
+      if (!tx) return { view: 'needs' };
+      const cls = params.get('c');
+      return { view: 'notice', tx, cls: CLASSES.includes(cls as MessageClass) ? (cls as MessageClass) : undefined };
+    }
+    case 'alarm': {
+      const ts = Number(params.get('ts'));
+      return { view: 'alarm', title: params.get('title') ?? undefined, body: params.get('body') ?? undefined, ts: Number.isFinite(ts) && ts > 0 ? ts : undefined };
+    }
     default:
       return { view: 'needs' };
   }
@@ -104,6 +123,15 @@ export function formatRoute(route: Route): string {
       break;
     case 'share':
       if (route.id) params.set('s', route.id);
+      break;
+    case 'notice':
+      params.set('tx', route.tx);
+      if (route.cls) params.set('c', route.cls);
+      break;
+    case 'alarm':
+      if (route.title) params.set('title', route.title);
+      if (route.body) params.set('body', route.body);
+      if (route.ts) params.set('ts', String(route.ts));
       break;
   }
   return `?${params.toString()}`;
@@ -132,6 +160,8 @@ export function isDeep(route: Route): boolean {
   return (
     route.view === 'bead' ||
     route.view === 'share' ||
+    route.view === 'notice' ||
+    route.view === 'alarm' ||
     route.view === 'key' ||
     (route.view === 'talk' && route.thread !== undefined) ||
     (route.view === 'map' && route.focus !== undefined)

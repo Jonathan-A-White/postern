@@ -22,6 +22,11 @@ export const messagesRepo = {
     return db.messages.get(id);
   },
 
+  /** The message a record's txid names (its outpoints are `${txid}:${vout}`). */
+  async getByTxid(txid: string): Promise<MessageRow | undefined> {
+    return db.messages.where('id').startsWith(`${txid}:`).first();
+  },
+
   async put(row: MessageRow): Promise<void> {
     await db.messages.put(row);
   },

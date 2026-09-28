@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -31,17 +33,53 @@ const (
 	maxSubscribeBodyBytes = 1 << 16 // 64 KiB, generous for a PushSubscription
 )
 
+// Features is what GET /api/me says this backend offers (docs/protocol.md
+// §15).
+var Features = []string{"direct", "events", "view", "beads", "me"}
+
+// options are the v2 surface's collaborators, set by Option.
+type options struct {
+	notifier notify.Notifier
+	mayorKey string
+	network  string
+}
+
+// Option configures NewHandler's v2 endpoints.
+type Option func(*options)
+
+// WithNotifier sets the notifier told about every directly delivered record
+// POST /api/messages newly stores — the same fan-out the poller tells.
+func WithNotifier(n notify.Notifier) Option {
+	return func(o *options) { o.notifier = n }
+}
+
+// WithIdentity sets what GET /api/me answers besides the caller's own key:
+// the Mayor's public key (POSTERN_MAYOR_KEY, "" if unset) and the network.
+func WithIdentity(mayorKey, network string) Option {
+	return func(o *options) { o.mayorKey, o.network = mayorKey, network }
+}
+
 // NewHandler builds the full /api/* surface (plus /healthz) backed by store
 // and client. vapidPublicKey is handed to GET /api/push/vapid-public-key;
 // pushStore backs POST /api/push/subscribe; blobStore backs POST/GET
 // /api/blobs. Every /api endpoint except GET /api/challenge requires a
 // signed, licensed proof (requireLicence), checked against nonces and
-// checker.
-func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store, blobStore *blobs.Store, nonces *auth.NonceStore, checker auth.LicenceChecker) http.Handler {
+// checker. opts configure the v2 endpoints (docs/protocol.md §9–15).
+func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store, blobStore *blobs.Store, nonces *auth.NonceStore, checker auth.LicenceChecker, opts ...Option) http.Handler {
+	o := options{network: "testnet"}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if o.notifier == nil {
+		o.notifier = notify.Fanout{}
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.HandleFunc("GET /api/challenge", handleChallenge(nonces))
 	mux.HandleFunc("GET /api/messages", requireLicence(nonces, checker, handleMessages(store)))
+	mux.HandleFunc("POST /api/messages", requireLicence(nonces, checker, handleDirectMessage(store, o.notifier)))
+	mux.HandleFunc("GET /api/me", requireLicence(nonces, checker, handleMe(o.mayorKey, o.network)))
 	mux.HandleFunc("POST /api/broadcast", requireLicence(nonces, checker, handleBroadcast(client)))
 	mux.HandleFunc("GET /api/utxos/{address}", requireLicence(nonces, checker, handleUtxos(client)))
 	mux.HandleFunc("GET /api/balance/{address}", requireLicence(nonces, checker, handleBalance(client)))
@@ -72,13 +110,25 @@ func parseAuthorization(header string) (pubKeyHex, nonce, sigHex string, ok bool
 	return parts[0], parts[1], parts[2], true
 }
 
+// authKey is the request-context key requireLicence stores the
+// authenticated public key under.
+type authKey struct{}
+
+// AuthenticatedKey returns the compressed public key (hex, lower-cased) whose
+// signed, licensed proof requireLicence accepted for this request's
+// context, or "" outside requireLicence.
+func AuthenticatedKey(ctx context.Context) string {
+	key, _ := ctx.Value(authKey{}).(string)
+	return key
+}
+
 // requireLicence wraps next so it only runs once the request's Authorization
 // header proves a signed, licensed key: the header must carry a nonce this
 // nonces store issued and hasn't already consumed, a valid signature over
 // that nonce by the named public key, and that key must hold a licence per
 // checker. Anything short of that is a 401; a failure to check the licence
 // itself (a chain read failing) is a 502, like this backend's other
-// provider-proxy failures.
+// provider-proxy failures. next finds the proved key with AuthenticatedKey.
 func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pubKeyHex, nonce, sigHex, ok := parseAuthorization(r.Header.Get("Authorization"))
@@ -104,7 +154,20 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, next h
 			writeError(w, http.StatusUnauthorized, "no licence held")
 			return
 		}
-		next(w, r)
+		next(w, r.WithContext(context.WithValue(r.Context(), authKey{}, strings.ToLower(pubKeyHex))))
+	}
+}
+
+// handleMe answers who the caller is and who the Mayor is (docs/protocol.md
+// §15).
+func handleMe(mayorKey, network string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, struct {
+			PubKey   string   `json:"pubkey"`
+			Mayor    string   `json:"mayor"`
+			Network  string   `json:"network"`
+			Features []string `json:"features"`
+		}{PubKey: AuthenticatedKey(r.Context()), Mayor: mayorKey, Network: network, Features: Features})
 	}
 }
 

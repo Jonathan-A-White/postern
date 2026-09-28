@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
+	"github.com/Jonathan-A-White/postern/server/internal/beads"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
@@ -48,6 +49,7 @@ type options struct {
 	view     *view.File
 	hub      *events.Hub
 	ping     time.Duration
+	beads    *beads.Fetcher
 }
 
 // DefaultPingInterval is how often GET /api/events writes a ": ping"
@@ -78,6 +80,12 @@ func WithEvents(hub *events.Hub, ping time.Duration) Option {
 	return func(o *options) { o.hub, o.ping = hub, ping }
 }
 
+// WithBeads sets the fetcher GET /api/beads/{id} runs (POSTERN_BEAD_CMD).
+// Without it, GET /api/beads/{id} answers 501 for any valid id.
+func WithBeads(b *beads.Fetcher) Option {
+	return func(o *options) { o.beads = b }
+}
+
 // WithView sets the view file GET /api/view serves (POSTERN_VIEW_FILE).
 // Without it, GET /api/view answers 404.
 func WithView(v *view.File) Option {
@@ -104,6 +112,9 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 	if o.notifier == nil {
 		o.notifier = o.hub
 	}
+	if o.beads == nil {
+		o.beads = beads.New("")
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
@@ -113,6 +124,7 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 	mux.HandleFunc("GET /api/me", requireLicence(nonces, checker, handleMe(o.mayorKey, o.network)))
 	mux.HandleFunc("GET /api/view", requireLicence(nonces, checker, handleView(o.view)))
 	mux.HandleFunc("GET /api/events", requireLicence(nonces, checker, handleEvents(store, o.hub, o.view, o.ping)))
+	mux.HandleFunc("GET /api/beads/{id}", requireLicence(nonces, checker, handleBead(o.beads)))
 	mux.HandleFunc("POST /api/broadcast", requireLicence(nonces, checker, handleBroadcast(client)))
 	mux.HandleFunc("GET /api/utxos/{address}", requireLicence(nonces, checker, handleUtxos(client)))
 	mux.HandleFunc("GET /api/balance/{address}", requireLicence(nonces, checker, handleBalance(client)))

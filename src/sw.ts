@@ -5,12 +5,14 @@
 //  - a push shows a notification per docs/protocol.md's `class`
 //    (src/push/classOptions.ts) with his per-class switches, using the push's
 //    own title and body when the backend sends them (docs/api.md);
-//  - a tap lands where that class belongs (the Needs-you queue, or Talk), in the
-//    open app if there is one;
+//  - a tap lands at what the push is about (the bead's thread for a message or a
+//    decision, the alarm itself for a watchdog alarm; src/push/tapTarget.ts), in
+//    the open app if there is one;
 //  - files shared from another app (the manifest's share_target) are parked in
 //    IndexedDB and the app opens on the Share screen to place them.
 import { precacheAndRoute } from 'workbox-precaching';
 import { notificationSpecForClass } from './push/classOptions';
+import { resolveTapUrl, type TapData } from './push/tapTarget';
 import { settingsRepo } from './data/repositories/settings-repo';
 import { sharesRepo } from './data/repositories/view-repo';
 import type { MessageClass } from './data/db';
@@ -21,7 +23,7 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 interface PushPayload {
   class: MessageClass;
-  txid: string;
+  txid?: string;
   ts: number;
   title?: string;
   body?: string;
@@ -34,7 +36,7 @@ self.addEventListener('push', (event) => {
   const payload = event.data.json() as PushPayload;
   event.waitUntil(
     settingsRepo.getNotificationSettings().then((settings) => {
-      const spec = notificationSpecForClass(payload.class, payload.txid, settings[payload.class], { title: payload.title, body: payload.body });
+      const spec = notificationSpecForClass(payload.class, payload.txid ?? '', settings[payload.class], { title: payload.title, body: payload.body, ts: payload.ts });
       return self.registration.showNotification(spec.title, spec.options);
     }),
   );
@@ -42,9 +44,9 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data as { url?: string } | undefined)?.url ?? '/?v=needs';
+  const data = event.notification.data as TapData | undefined;
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    Promise.all([resolveTapUrl(data), self.clients.matchAll({ type: 'window', includeUncontrolled: true })]).then(([url, clientList]) => {
       for (const client of clientList) {
         if ('focus' in client) {
           client.postMessage({ type: 'sync-inbox' });

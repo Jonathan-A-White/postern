@@ -31,9 +31,19 @@ describe('notificationSpecForClass', () => {
     expect(spec.options.renotify).toBeFalsy();
   });
 
-  it('carries the txid and where a tap lands as notification data, for the click handler (plans/0021)', () => {
-    expect(notificationSpecForClass('message', 'tx-abc').options.data).toEqual({ txid: 'tx-abc', url: '/?v=talk' });
-    expect(notificationSpecForClass('decision-needed', 'tx-abc').options.data).toEqual({ txid: 'tx-abc', url: '/?v=needs' });
+  it('carries the txid, the class and where a tap lands as notification data, for the click handler (plans/0021)', () => {
+    expect(notificationSpecForClass('message', 'tx-abc').options.data).toEqual({ txid: 'tx-abc', class: 'message', url: '/?v=notice&tx=tx-abc&c=message' });
+    expect(notificationSpecForClass('decision-needed', 'tx-abc').options.data).toEqual({ txid: 'tx-abc', class: 'decision-needed', url: '/?v=notice&tx=tx-abc&c=decision-needed' });
+  });
+
+  it("points a push with no record behind it (the watchdog's alarm) at the alarm itself, carrying what it said", () => {
+    const spec = notificationSpecForClass('alarm', '', undefined, { title: 'desktop unreachable', body: 'since 09:12Z', ts: 1790000000 });
+    expect(spec.options.data.url).toBe('/?v=alarm&title=desktop+unreachable&body=since+09%3A12Z&ts=1790000000');
+  });
+
+  it('sends a record-less push of any other class to where its class belongs', () => {
+    expect(notificationSpecForClass('message', '').options.data.url).toBe('/?v=talk');
+    expect(notificationSpecForClass('landing', '').options.data.url).toBe('/?v=needs');
   });
 
   it("uses the push's own title and body when the backend sends them (docs/api.md)", () => {

@@ -34,6 +34,8 @@ describe('routes', () => {
       { view: 'search' as const, q: 'ping' },
       { view: 'me' as const },
       { view: 'share' as const, id: 's1' },
+      { view: 'notice' as const, tx: 'ab12', cls: 'decision-needed' as const },
+      { view: 'alarm' as const, title: 'desktop unreachable', body: 'since 09:12Z', ts: 1790000000 },
     ]) {
       expect(parseRoute(formatRoute(route))).toEqual(route);
     }

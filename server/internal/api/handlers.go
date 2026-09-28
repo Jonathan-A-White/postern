@@ -11,9 +11,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
+	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
@@ -44,13 +46,21 @@ type options struct {
 	mayorKey string
 	network  string
 	view     *view.File
+	hub      *events.Hub
+	ping     time.Duration
 }
+
+// DefaultPingInterval is how often GET /api/events writes a ": ping"
+// comment, so no proxy idles the stream out (docs/protocol.md §10).
+const DefaultPingInterval = 25 * time.Second
 
 // Option configures NewHandler's v2 endpoints.
 type Option func(*options)
 
 // WithNotifier sets the notifier told about every directly delivered record
-// POST /api/messages newly stores — the same fan-out the poller tells.
+// POST /api/messages newly stores — the same fan-out the poller tells, which
+// should include the events hub. Without it, direct records go to the hub
+// alone.
 func WithNotifier(n notify.Notifier) Option {
 	return func(o *options) { o.notifier = n }
 }
@@ -59,6 +69,13 @@ func WithNotifier(n notify.Notifier) Option {
 // the Mayor's public key (POSTERN_MAYOR_KEY, "" if unset) and the network.
 func WithIdentity(mayorKey, network string) Option {
 	return func(o *options) { o.mayorKey, o.network = mayorKey, network }
+}
+
+// WithEvents sets the hub GET /api/events streams from, and how often it
+// pings. Without it the handler makes its own hub, and pings every
+// DefaultPingInterval.
+func WithEvents(hub *events.Hub, ping time.Duration) Option {
+	return func(o *options) { o.hub, o.ping = hub, ping }
 }
 
 // WithView sets the view file GET /api/view serves (POSTERN_VIEW_FILE).
@@ -74,12 +91,18 @@ func WithView(v *view.File) Option {
 // signed, licensed proof (requireLicence), checked against nonces and
 // checker. opts configure the v2 endpoints (docs/protocol.md §9–15).
 func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store, blobStore *blobs.Store, nonces *auth.NonceStore, checker auth.LicenceChecker, opts ...Option) http.Handler {
-	o := options{network: "testnet"}
+	o := options{network: "testnet", ping: DefaultPingInterval}
 	for _, opt := range opts {
 		opt(&o)
 	}
+	if o.hub == nil {
+		o.hub = events.NewHub()
+	}
+	if o.ping <= 0 {
+		o.ping = DefaultPingInterval
+	}
 	if o.notifier == nil {
-		o.notifier = notify.Fanout{}
+		o.notifier = o.hub
 	}
 
 	mux := http.NewServeMux()
@@ -89,6 +112,7 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 	mux.HandleFunc("POST /api/messages", requireLicence(nonces, checker, handleDirectMessage(store, o.notifier)))
 	mux.HandleFunc("GET /api/me", requireLicence(nonces, checker, handleMe(o.mayorKey, o.network)))
 	mux.HandleFunc("GET /api/view", requireLicence(nonces, checker, handleView(o.view)))
+	mux.HandleFunc("GET /api/events", requireLicence(nonces, checker, handleEvents(store, o.hub, o.view, o.ping)))
 	mux.HandleFunc("POST /api/broadcast", requireLicence(nonces, checker, handleBroadcast(client)))
 	mux.HandleFunc("GET /api/utxos/{address}", requireLicence(nonces, checker, handleUtxos(client)))
 	mux.HandleFunc("GET /api/balance/{address}", requireLicence(nonces, checker, handleBalance(client)))

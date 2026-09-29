@@ -186,7 +186,7 @@ straight to the backend, beside the chain's records.
 - `400` — the body isn't JSON, `scriptHex` is missing or not hex, the script isn't
   an `nftgate` version-1 record with a JSON payload, or the payload isn't §1's
   envelope (`v` 1, `kind` `"msg"`, `class` one of `message`, `decision-needed`,
-  `landing`, `alarm`, 66-hex `to` and `from`, numeric `ts`, string `ct`); `error`
+  `landing`, `alarm`, `move-home`, 66-hex `to` and `from`, numeric `ts`, string `ct`); `error`
   names what is wrong.
 - `403` — the payload's `from` isn't the key that authenticated the request.
 - `413` — the body exceeds 256 KiB.

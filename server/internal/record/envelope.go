@@ -13,6 +13,7 @@ var MessageClasses = map[string]bool{
 	"decision-needed": true,
 	"landing":         true,
 	"alarm":           true,
+	"move-home":       true,
 }
 
 // Envelope is docs/protocol.md §1's clear message payload. The backend never

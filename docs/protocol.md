@@ -27,7 +27,7 @@ JSON shape that only postern understands:
   `GET /api/messages` JSON) is still self-describing.
 - `kind` — always `"msg"`.
 - `class` — one of `"message"`, `"decision-needed"`, `"landing"`, `"alarm"`
-  (`mw-f758y.5`). Sits in the clear beside the ciphertext on purpose
+  (`mw-f758y.5`), or `"move-home"` (§18). Sits in the clear beside the ciphertext on purpose
   (`mw-f758y.9` Q1): a classified-push backend, or anyone else reading the chain,
   can act on the class (e.g. wake the Mayor for `alarm`) without holding either
   party's private key.
@@ -790,3 +790,23 @@ The outcome — exit code and the last 4000 characters of output — is commente
 the bead (`RAN step <id> on <host> as <as>, exit <n> …`), sent back to him in the
 bead's thread, and mailed to the Mayor. A refused approval is answered the same
 way with why.
+
+## 18. Moving the factory's home
+
+Only the Governor starts a move of the factory's home between the desktop and the
+laptop (never the VPS), in one tap: the Me screen's Home row has "Move home to
+desktop" and "Move home to laptop" (the current home's button disabled), and after
+one confirm ("Move the factory's home to <host>? The Mayor there takes over.") the
+app sends a message of class `move-home` to the Mayor, delivered by §9 like any
+other. Its plaintext is:
+
+```json
+{ "host": "laptop" }
+```
+
+`host` is `desktop` or `laptop`. The class rides in the clear (§1) so the host that
+applies it needs no more than the envelope to know what it is. When every `/api`
+call answers `503` with `"standby": true` (`docs/api.md`'s Standby: the host that
+answered is not home), the app says "Home is down" on every screen and offers the
+same button for the other host; the send still works because a standby host serves
+the routes a send needs.

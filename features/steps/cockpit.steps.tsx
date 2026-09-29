@@ -35,9 +35,11 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-async function stubBackend(): Promise<void> {
+async function stubBackend(options: { beadlessAlarm?: boolean } = {}): Promise<void> {
   const now = Date.now();
-  const view = await sealDocument(JSON.stringify(fixtureView(now)), MAYOR.toHex(), HIM_PUB);
+  const fixture = fixtureView(now);
+  if (options.beadlessAlarm) fixture.needs = fixture.needs.map((need) => (need.kind === 'alarm' ? { ...need, bead: '', epic: '' } : need));
+  const view = await sealDocument(JSON.stringify(fixture), MAYOR.toHex(), HIM_PUB);
   const records = fixtureRecords(HIM, now);
   const details = new Map<string, string>();
   for (const id of ['mw-f758y.30.2', 'mw-2rbm.10']) details.set(id, await sealDocument(JSON.stringify(fixtureDetail(id, now)), MAYOR.toHex(), HIM_PUB));
@@ -69,7 +71,7 @@ async function stubBackend(): Promise<void> {
   );
 }
 
-async function fresh(): Promise<void> {
+async function fresh(options: { beadlessAlarm?: boolean } = {}): Promise<void> {
   cleanup();
   stopLive();
   lock();
@@ -77,7 +79,7 @@ async function fresh(): Promise<void> {
   delivered = [];
   await Promise.all([db.vault.clear(), db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear(), db.answers.clear(), db.shares.clear(), db.session.clear()]);
   await vaultRepo.save({ mode: 'phrase', ciphertext: new ArrayBuffer(48), iv: new Uint8Array(12), salt: new Uint8Array(16), publicKeyHex: HIM_PUB });
-  await stubBackend();
+  await stubBackend(options);
 }
 
 async function openAt(search: string): Promise<void> {
@@ -89,6 +91,21 @@ async function openAt(search: string): Promise<void> {
 async function liveAndUnlocked(): Promise<void> {
   await fresh();
   setKey(HIM_KEY);
+}
+
+async function liveWithBeadlessAlarm(): Promise<void> {
+  await fresh({ beadlessAlarm: true });
+  setKey(HIM_KEY);
+}
+
+async function replyOn(card: HTMLElement, text: string): Promise<void> {
+  await userEvent.click(within(card).getByRole('button', { name: 'Reply' }));
+  await userEvent.type(within(card).getByRole('textbox', { name: 'Your reply' }), text);
+  await userEvent.click(within(card).getByRole('button', { name: 'Send' }));
+}
+
+async function toastSaying(text: string): Promise<HTMLElement> {
+  return (await screen.findByText(text)).closest('[role="status"]') as HTMLElement;
 }
 
 afterAll(() => {
@@ -324,6 +341,52 @@ describeFeature(feature, ({ Scenario }) => {
       const composer = await screen.findByTestId('composer');
       expect(await within(composer).findByRole('button', { name: 'Remove screen.png' })).toBeInTheDocument();
       expect(window.location.search).toBe('?v=talk&t=general');
+    });
+  });
+
+  Scenario('mw-t64a3.1: a reply on an alarm with no bead says it went to Factory, and Open shows that thread', ({ Given, When, And, Then }) => {
+    Given('the factory is live with an alarm that names no bead and his key is unlocked', liveWithBeadlessAlarm);
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    And('"On it, thanks" is sent as a reply on the alarm', async () => {
+      await replyOn(await screen.findByRole('article', { name: /^Alarm:/ }), 'On it, thanks');
+    });
+    Then('a toast says "Sent to the Mayor in Factory"', async () => {
+      expect(await toastSaying('Sent to the Mayor in Factory')).toBeInTheDocument();
+      expect(delivered).toHaveLength(1);
+    });
+    When('"Open" is tapped on the toast', async () => {
+      await userEvent.click(within(await toastSaying('Sent to the Mayor in Factory')).getByRole('button', { name: 'Open' }));
+    });
+    Then('the Talk thread "Factory" shows "On it, thanks" and the Mayor\'s earlier "Good morning" message', async () => {
+      expect(window.location.search).toBe('?v=talk&t=general');
+      const conversation = await screen.findByTestId('conversation');
+      await waitFor(() => expect(conversation).toHaveTextContent('Good morning'));
+      expect(conversation).toHaveTextContent('On it, thanks');
+    });
+  });
+
+  Scenario("mw-t64a3.1: a reply on a bead's card says it went to that bead, and Open shows its thread", ({ Given, When, And, Then }) => {
+    Given('the factory is live and his key is unlocked', liveAndUnlocked);
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    And('"Hold this one" is sent as a reply on the approval', async () => {
+      await replyOn(await screen.findByRole('article', { name: 'Approve: Cockpit screens' }), 'Hold this one');
+    });
+    Then('a toast says "Sent to the Mayor in mw-f758y.31"', async () => {
+      expect(await toastSaying('Sent to the Mayor in mw-f758y.31')).toBeInTheDocument();
+    });
+    When('"Open" is tapped on the toast', async () => {
+      await userEvent.click(within(await toastSaying('Sent to the Mayor in mw-f758y.31')).getByRole('button', { name: 'Open' }));
+    });
+    Then('the Talk thread "mw-f758y.31" shows "Hold this one"', async () => {
+      expect(window.location.search).toBe('?v=talk&t=bead%3Amw-f758y.31');
+      const conversation = await screen.findByTestId('conversation');
+      await waitFor(() => expect(conversation).toHaveTextContent('Hold this one'));
     });
   });
 });

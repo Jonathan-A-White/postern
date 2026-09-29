@@ -7,7 +7,9 @@ import { useState } from 'react';
 import { Button, Chip, Icon, IconButton, TimeAgo, cx } from '../ui';
 import { Markdown } from '../markdown';
 import { NEED_META } from './labels';
-import { beadHref } from '../nav/route';
+import { beadHref, type Route } from '../nav/route';
+import { GENERAL, titleFor } from '../model/threads';
+import { threadKey } from '../services/threads';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { speak } from '../services/speech';
 import type { Need } from '../model/view';
@@ -37,12 +39,15 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
   const hasSteps = need.kind === 'hands' && need.steps.length > 0;
   const options = hasSteps ? [] : orderedOptions(need);
   const thread = need.bead ? { bead: need.bead } : undefined;
+  // Where a message from this card lands, so the toast can name it and open it.
+  const threadName = need.bead || titleFor(GENERAL).title;
+  const openThread: Route = { view: 'talk', thread: threadKey(thread) ?? GENERAL };
 
   async function choose(option: string) {
-    if (need.kind === 'question') await run(() => sendAnswer(need.bead, option), `Answered ${need.bead}: ${option}`);
+    if (need.kind === 'question') await run(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread });
     else if (need.kind === 'approve') await run(() => sendAction({ action: 'release', bead: need.bead }), `Released ${need.bead}`);
     else if (need.kind === 'verify') await run(() => sendAction({ action: 'verified', bead: need.bead }), `Marked ${need.bead} verified`);
-    else await run(() => sendToThread(thread, option), `Told the Mayor: ${option}`);
+    else await run(() => sendToThread(thread, option), { text: `Told the Mayor in ${threadName}: ${option}`, open: openThread });
   }
 
   async function sendReply() {
@@ -50,8 +55,8 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
     if (!text) return;
     const sent =
       need.kind === 'question'
-        ? await run(() => sendAnswer(need.bead, text), `Answered ${need.bead}`)
-        : await run(() => sendToThread(thread, text), 'Sent to the Mayor');
+        ? await run(() => sendAnswer(need.bead, text), { text: `Answered ${need.bead}`, open: openThread })
+        : await run(() => sendToThread(thread, text), { text: `Sent to the Mayor in ${threadName}`, open: openThread });
     if (sent) {
       setReply('');
       setReplying(false);

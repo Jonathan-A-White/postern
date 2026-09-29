@@ -76,3 +76,19 @@ Feature: The Governor's cockpit (plans/0021)
     Given the factory is live and his key is unlocked
     When the epic "mw-f758y.30" is opened as a list
     Then its work is listed newest activity first
+
+  Scenario: mw-t64a3.1: a reply on an alarm with no bead says it went to Factory, and Open shows that thread
+    Given the factory is live with an alarm that names no bead and his key is unlocked
+    When the cockpit opens
+    And "On it, thanks" is sent as a reply on the alarm
+    Then a toast says "Sent to the Mayor in Factory"
+    When "Open" is tapped on the toast
+    Then the Talk thread "Factory" shows "On it, thanks" and the Mayor's earlier "Good morning" message
+
+  Scenario: mw-t64a3.1: a reply on a bead's card says it went to that bead, and Open shows its thread
+    Given the factory is live and his key is unlocked
+    When the cockpit opens
+    And "Hold this one" is sent as a reply on the approval
+    Then a toast says "Sent to the Mayor in mw-f758y.31"
+    When "Open" is tapped on the toast
+    Then the Talk thread "mw-f758y.31" shows "Hold this one"

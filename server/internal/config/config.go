@@ -63,7 +63,8 @@ type Config struct {
 	// for the mill is indexed. Empty means no hook.
 	OnGrist string
 	// CORSOrigins is POSTERN_CORS_ORIGINS: the origins (scheme://host[:port])
-	// allowed to call the backend from a browser on another origin.
+	// allowed to call the backend from a browser on another origin,
+	// lower-cased.
 	CORSOrigins []string
 }
 
@@ -112,10 +113,20 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.Apps, err = appPairs(getenv("POSTERN_APPS"), cfg.Collections); err != nil {
 		return Config{}, err
 	}
-	for _, origin := range cfg.CORSOrigins {
+	if cfg.MillKey == "" {
+		for _, half := range []struct{ name, value string }{{"POSTERN_APPS", getenv("POSTERN_APPS")}, {"POSTERN_ON_GRIST", cfg.OnGrist}} {
+			if strings.TrimSpace(half.value) != "" {
+				return Config{}, fmt.Errorf("%s is set but POSTERN_MILL_KEY is not; set POSTERN_MILL_KEY or unset %s (docs/protocol.md §19)", half.name, half.name)
+			}
+		}
+	} else if len(cfg.Apps) == 0 {
+		return Config{}, fmt.Errorf("POSTERN_MILL_KEY is set but POSTERN_APPS names no app; set POSTERN_APPS (docs/protocol.md §19)")
+	}
+	for i, origin := range cfg.CORSOrigins {
 		if err := checkOrigin(origin); err != nil {
 			return Config{}, err
 		}
+		cfg.CORSOrigins[i] = strings.ToLower(origin)
 	}
 
 	return cfg, nil

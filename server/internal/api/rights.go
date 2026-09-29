@@ -82,14 +82,19 @@ func rightsOf(ctx context.Context) rights {
 // withCORS answers the origins in allowed (docs/protocol.md §19, "Reaching
 // the backend from another origin"): their responses carry
 // Access-Control-Allow-Origin, and their OPTIONS preflights are answered 204.
-// Every other origin gets no CORS headers at all.
+// Origins compare case-insensitively. Every other origin gets no CORS
+// headers at all.
 func withCORS(allowed []string, next http.Handler) http.Handler {
 	if len(allowed) == 0 {
 		return next
 	}
+	lowered := make([]string, len(allowed))
+	for i, origin := range allowed {
+		lowered[i] = strings.ToLower(origin)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == "" || !contains(allowed, origin) {
+		if origin == "" || !contains(lowered, strings.ToLower(origin)) {
 			next.ServeHTTP(w, r)
 			return
 		}

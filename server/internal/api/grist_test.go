@@ -93,10 +93,20 @@ type gristServer struct {
 
 func newGristServer(t *testing.T, opts ...Option) gristServer {
 	t.Helper()
+	return newGristServerHolding(t, nil, opts...)
+}
+
+// newGristServerHolding is newGristServer with extra licences: the
+// collections each named vector key holds instead of the vectors' own.
+func newGristServerHolding(t *testing.T, held map[string][]string, opts ...Option) gristServer {
+	t.Helper()
 	v := loadGristVectors(t)
 	checker := collectionsChecker{}
-	for _, entry := range v.Keys {
+	for name, entry := range v.Keys {
 		checker[entry.PublicKeyHex] = entry.Collections
+		if collections, ok := held[name]; ok {
+			checker[entry.PublicKeyHex] = collections
+		}
 	}
 
 	wocServer := httptest.NewServer(http.NotFoundHandler())
@@ -309,6 +319,10 @@ func TestTheMillFetchesAndDeletesABlob(t *testing.T) {
 		t.Fatalf("app upload: status %d, want 201", upload.StatusCode)
 	}
 
+	if resp := s.deliver(t, "grist", "cairnPhone", "mill"); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("delivering the grist: status %d, want 201", resp.StatusCode)
+	}
+
 	get := s.do(t, "mill", http.MethodGet, "/api/blobs/"+put.Hash, "")
 	get.Body.Close()
 	if get.StatusCode != http.StatusOK {
@@ -403,5 +417,82 @@ func TestCORSAnswersOnlyTheOriginsItIsGiven(t *testing.T) {
 	resp.Body.Close()
 	if resp.Header.Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("another origin got CORS headers: %v", resp.Header)
+	}
+}
+
+func TestCORSMatchesAnOriginConfiguredInMixedCase(t *testing.T) {
+	s := newGristServer(t, WithCORS([]string{"https://Jonathan-A-White.github.io"}))
+	challenge, _ := http.NewRequest(http.MethodGet, s.URL+"/api/challenge", nil)
+	challenge.Header.Set("Origin", "https://jonathan-a-white.github.io")
+	resp, err := http.DefaultClient.Do(challenge)
+	if err != nil {
+		t.Fatalf("GET /api/challenge: %v", err)
+	}
+	resp.Body.Close()
+	if resp.Header.Get("Access-Control-Allow-Origin") != "https://jonathan-a-white.github.io" {
+		t.Fatalf("a mixed-case configured origin did not match its lower-case Origin: headers %v", resp.Header)
+	}
+}
+
+func TestAMillKeyHoldingACockpitLicenceGetsNoCockpitRights(t *testing.T) {
+	s := newGristServerHolding(t, map[string][]string{"mill": {"postern"}})
+	resp := s.do(t, "mill", http.MethodGet, "/api/view", "")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /api/view as a mill key that also holds a cockpit licence: status %d, want 403", resp.StatusCode)
+	}
+}
+
+// uploadBlob uploads body as the key named as, answering the blob's hash.
+func (s gristServer) uploadBlob(t *testing.T, as, body string) string {
+	t.Helper()
+	resp := s.do(t, as, http.MethodPost, "/api/blobs", body)
+	defer resp.Body.Close()
+	var put struct {
+		Hash string `json:"hash"`
+	}
+	json.NewDecoder(resp.Body).Decode(&put)
+	if resp.StatusCode != http.StatusCreated || put.Hash == "" {
+		t.Fatalf("%s uploading a blob: status %d, want 201", as, resp.StatusCode)
+	}
+	return put.Hash
+}
+
+func TestTheMillDeletesOnlyBlobsOfAGristAddressedToIt(t *testing.T) {
+	s := newGristServerHolding(t, map[string][]string{"stranger": {"cairn"}})
+	named := s.uploadBlob(t, "cairnPhone", "the photo of a sent grist")
+	if resp := s.deliver(t, "grist", "cairnPhone", "mill"); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("delivering the grist: status %d", resp.StatusCode)
+	}
+	strangers := s.uploadBlob(t, "governor", "one of the Governor's own photos")
+	unsent := s.uploadBlob(t, "stranger", "an app key's photo with no grist behind it")
+
+	for name, hash := range map[string]string{"a cockpit key's blob": strangers, "an app blob whose sender sent no grist": unsent} {
+		del := s.do(t, "mill", http.MethodDelete, "/api/blobs/"+hash, "")
+		del.Body.Close()
+		if del.StatusCode != http.StatusForbidden {
+			t.Fatalf("mill DELETE %s: status %d, want 403", name, del.StatusCode)
+		}
+		if get := s.do(t, "governor", http.MethodGet, "/api/blobs/"+hash, ""); get.StatusCode != http.StatusOK {
+			t.Fatalf("%s was deleted by a refused DELETE (GET status %d)", name, get.StatusCode)
+		}
+	}
+
+	del := s.do(t, "mill", http.MethodDelete, "/api/blobs/"+named, "")
+	del.Body.Close()
+	if del.StatusCode != http.StatusNoContent {
+		t.Fatalf("mill DELETE a grist's blob: status %d, want 204", del.StatusCode)
+	}
+	if get := s.do(t, "mill", http.MethodGet, "/api/blobs/"+named, ""); get.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET after DELETE: status %d, want 404", get.StatusCode)
+	}
+}
+
+func TestABlobOnlyTheMillCouldNotHaveBeenNamedIsNotFoundNotForbidden(t *testing.T) {
+	s := newGristServer(t)
+	del := s.do(t, "mill", http.MethodDelete, "/api/blobs/"+strings.Repeat("b", 64), "")
+	del.Body.Close()
+	if del.StatusCode != http.StatusNotFound {
+		t.Fatalf("mill DELETE of a hash nobody uploaded: status %d, want 404", del.StatusCode)
 	}
 }

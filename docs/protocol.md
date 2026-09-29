@@ -668,11 +668,11 @@ in the same thread, so he sees exactly what was heard under the note he sent.
 `GET /api/me`, authenticated, answers who the caller is and who the Mayor is:
 
 ```json
-{ "pubkey": "<the caller's key>", "mayor": "<POSTERN_MAYOR_KEY, or empty>", "mill": "<POSTERN_MILL_KEY, or empty>", "network": "testnet", "features": ["direct", "events", "view", "beads", "me", "grist"] }
+{ "pubkey": "<the caller's key>", "mayor": "<POSTERN_MAYOR_KEY, or empty>", "mill": "<POSTERN_MILL_KEY>", "network": "testnet", "features": ["direct", "events", "view", "beads", "me", "grist"] }
 ```
 
-`mill` and the `grist` feature are present only when the backend has a mill key
-(§19). An app's key (§19, *Who may do what*) gets a smaller answer: its own key, the
+`mill` and the `grist` feature are absent from a cockpit key's answer (not empty)
+unless the backend has a mill key (§19). An app's key (§19, *Who may do what*) gets a smaller answer: its own key, the
 mill, the network, `"features": ["grist"]` and `"apps"`, the apps its licences name;
 never the Mayor.
 
@@ -842,13 +842,15 @@ A licence's collection (§16) now says which door it opens:
 | The key | Holds | May |
 | --- | --- | --- |
 | A **cockpit** key | a licence in one of `POSTERN_COLLECTIONS` (today `postern`) | everything, as before §19 |
-| The **mill** key | `POSTERN_MILL_KEY` | read its own records; post `grist` to any key; fetch and delete blobs; `GET /api/me` |
+| The **mill** key | `POSTERN_MILL_KEY` | read its own records; post `grist` to any key; fetch blobs; delete a blob whose uploader has sent a grist to the mill; `GET /api/me` |
 | An **app** key | a licence only in an app's collection (`POSTERN_APPS`, e.g. `cairn=cairn`) | read its own records; post `grist` to the mill only; upload blobs; subscribe its own pushes; `GET /api/me` |
 
 Anything else an app or the mill key asks for is `403`. "Its own records" means
 `GET /api/messages` returns only records whose `to` or `from` is the caller: an app
 never sees who else talks to the factory. A key that holds both kinds of licence is
-a cockpit key.
+a cockpit key. The mill key is never a cockpit key: it gets the mill's rights whatever
+it holds on the chain, and the backend logs one line at start if it also holds a
+cockpit licence.
 
 `POSTERN_APPS` maps each app's collection to the app's name, `collection=app`
 comma-separated: `cairn=cairn`. A collection is either a cockpit collection or an
@@ -856,8 +858,8 @@ app's, never both; so before spell-forge's own licences can send grist,
 `spellforge-leaderboard-testnet` leaves `POSTERN_COLLECTIONS` (the move §16 already
 anticipates). The issuer rule (§16) applies to app
 collections exactly as to Postern's own: only a mint the Governor's issuer key signed
-counts, and a transfer away revokes it. He issues one from Postern's Me screen to a
-key an app shows him as a QR code.
+counts, and a transfer away revokes it. The Me screen's "Issue a licence" is not built
+yet; it will issue one to a key an app shows him as a QR code.
 
 ### The grist record
 

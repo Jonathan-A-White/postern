@@ -155,7 +155,7 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 	mux.HandleFunc("POST /api/push/subscribe", gate(cockpitKeys|appKeys, handlePushSubscribe(pushStore)))
 	mux.HandleFunc("POST /api/blobs", gate(cockpitKeys|appKeys, handleBlobUpload(blobStore)))
 	mux.HandleFunc("GET /api/blobs/{hash}", gate(cockpitKeys|millKey, handleBlobDownload(blobStore)))
-	mux.HandleFunc("DELETE /api/blobs/{hash}", gate(cockpitKeys|millKey, handleBlobDelete(blobStore)))
+	mux.HandleFunc("DELETE /api/blobs/{hash}", gate(cockpitKeys|millKey, handleBlobDelete(blobStore, store, o.millKey)))
 	return withCORS(o.cors, mux)
 }
 
@@ -460,6 +460,10 @@ func handleBlobUpload(store *blobs.Store) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		if err := store.SetOwner(hash, AuthenticatedKey(r.Context())); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 
 		status := http.StatusCreated
 		if existed {
@@ -493,10 +497,27 @@ func handleBlobDownload(store *blobs.Store) http.HandlerFunc {
 
 // handleBlobDelete removes the blob named by the {hash} path value at once
 // (docs/protocol.md §19: the mill deletes a grist's photos once it has
-// answered): 204, or 404 if the hash is malformed or names no blob.
-func handleBlobDelete(store *blobs.Store) http.HandlerFunc {
+// answered): 204, or 404 if the hash is malformed or names no blob. A grist's
+// attachments are sealed, so the backend cannot read which blobs a grist
+// names; the mill key may delete only a blob whose uploader has sent a grist
+// to the mill (403 otherwise), which keeps it off the Governor's own photos.
+// A cockpit key deletes any blob.
+func handleBlobDelete(store *blobs.Store, records *index.Store, millKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := store.Delete(r.PathValue("hash")); err != nil {
+		hash := r.PathValue("hash")
+		if !rightsOf(r.Context()).cockpit {
+			file, _, err := store.Open(hash)
+			if err != nil {
+				writeError(w, http.StatusNotFound, "blob not found")
+				return
+			}
+			file.Close()
+			if uploader, ok := store.Owner(hash); !ok || !sentGristTo(records, uploader, millKey) {
+				writeError(w, http.StatusForbidden, "this blob is not named by a grist addressed to the mill")
+				return
+			}
+		}
+		if err := store.Delete(hash); err != nil {
 			if errors.Is(err, blobs.ErrNotFound) {
 				writeError(w, http.StatusNotFound, "blob not found")
 				return
@@ -506,6 +527,19 @@ func handleBlobDelete(store *blobs.Store) http.HandlerFunc {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// sentGristTo reports whether the index holds a grist from sender to
+// millKey.
+func sentGristTo(records *index.Store, sender, millKey string) bool {
+	if millKey == "" {
+		return false
+	}
+	return records.Any(func(rec index.Record) bool {
+		env, err := record.ParseEnvelope(rec.Payload)
+		return err == nil && env.Class == record.ClassGrist &&
+			strings.EqualFold(env.To, millKey) && strings.EqualFold(env.From, sender)
+	})
 }
 
 // writeProviderError maps a woc.Client error to an HTTP response: a

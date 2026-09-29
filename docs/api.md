@@ -77,7 +77,8 @@ A proved key is one of three kinds, and each endpoint below admits only some:
   endpoint, exactly as before §19;
 - the **mill** key is `POSTERN_MILL_KEY`, vouched for by configuration (it needs
   no licence, only the signed proof): `GET/POST /api/messages`, `GET /api/me`,
-  `GET` and `DELETE /api/blobs/{hash}`;
+  `GET /api/blobs/{hash}`, and `DELETE /api/blobs/{hash}` for a blob whose
+  uploader has sent a grist to the mill;
 - an **app** key holds a licence only in an app's collection (`POSTERN_APPS`):
   `GET/POST /api/messages`, `GET /api/me`, `POST /api/blobs`,
   `GET /api/push/vapid-public-key`, `POST /api/push/subscribe`.
@@ -336,9 +337,15 @@ Streams back a previously uploaded attachment.
 
 Removes an attachment at once rather than after 30 days: the mill deletes a
 grist's photos once it has answered (`docs/protocol.md` §19). Cockpit and mill
-keys only.
+keys only. A grist's attachments are sealed, so the backend cannot read which blobs
+one names: it records who first uploaded each blob, and the mill key may delete a
+blob only if that uploader has sent a grist addressed to the mill. Any other blob
+(the Governor's own photos, say) is `403` to the mill. A cockpit key may delete any
+blob.
 
 - `204` — deleted.
+- `403` — the caller is the mill key and no grist to the mill names this blob's
+  uploader (or the blob predates upload owners being recorded).
 - `404` — `hash` isn't 64 lowercase hex characters, or names no blob on disk.
 
 The store never looks at what the bytes are: any attachment `mime` the
@@ -496,7 +503,8 @@ applies the Governor's actions, `docs/protocol.md` §13):
   logged.
 
 The hook inherits the backend's environment and working directory. It is not run
-for a grist addressed to the mill, which wakes the on-grist hook instead.
+for any grist, to the mill or to anyone; a grist for the mill wakes the on-grist
+hook instead.
 
 ## The on-grist hook
 
@@ -547,12 +555,14 @@ With `POSTERN_HOME_CMD` unset, nothing changes.
 | `POSTERN_MILL_KEY` | The mill's compressed public key, hex (`docs/protocol.md` §19) | *(unset: no grist)* |
 | `POSTERN_APPS` | Comma-separated `collection=app` pairs: each app's licence collection and the app it opens the grist door to; never one of `POSTERN_COLLECTIONS` | *(unset: no app keys)* |
 | `POSTERN_ON_GRIST` | Shell command (`sh -c`) run after a grist for the mill is indexed (e.g. `mw grist grind`) | *(unset: no hook)* |
-| `POSTERN_CORS_ORIGINS` | Comma-separated origins (`https://host[:port]`) allowed to call the backend from a browser on another origin | *(unset: no CORS headers)* |
+| `POSTERN_CORS_ORIGINS` | Comma-separated origins (`https://host[:port]`, lower-cased at load and matched case-insensitively) allowed to call the backend from a browser on another origin | *(unset: no CORS headers)* |
 
 A malformed `POSTERN_MAYOR_KEY`, `POSTERN_ISSUER_KEY` or `POSTERN_MILL_KEY`, a
 `POSTERN_COLLECTIONS` naming no collection, a malformed `POSTERN_APPS` pair or one
 naming a cockpit collection, or a `POSTERN_CORS_ORIGINS` entry that is not an
-origin, stops the backend at start.
+origin, stops the backend at start. So does half a grist door: `POSTERN_APPS` or
+`POSTERN_ON_GRIST` without `POSTERN_MILL_KEY`, or `POSTERN_MILL_KEY` without
+`POSTERN_APPS`; the error names the missing setting.
 
 ## The poller
 

@@ -205,6 +205,18 @@ func (s *Store) Since(since uint64) ([]Record, uint64) {
 	return out, head
 }
 
+// Any reports whether any stored record satisfies match.
+func (s *Store) Any(match func(Record) bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, rec := range s.records {
+		if match(rec) {
+			return true
+		}
+	}
+	return false
+}
+
 // SeenTx reports whether txid has already been processed (whether or not it
 // carried any record-bearing outputs).
 func (s *Store) SeenTx(txid string) bool {

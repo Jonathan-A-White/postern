@@ -198,3 +198,54 @@ func TestDeleteRefusesAnUnknownOrMalformedHash(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnerIsWhoFirstUploadedTheBlob(t *testing.T) {
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	hash, _, _, err := store.Put([]byte("sealed photo"))
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if owner, ok := store.Owner(hash); ok {
+		t.Fatalf("Owner before SetOwner = %q, want none", owner)
+	}
+	if err := store.SetOwner(hash, "02aa"); err != nil {
+		t.Fatalf("SetOwner: %v", err)
+	}
+	if err := store.SetOwner(hash, "03bb"); err != nil {
+		t.Fatalf("second SetOwner: %v", err)
+	}
+	if owner, ok := store.Owner(hash); !ok || owner != "02aa" {
+		t.Fatalf("Owner = %q, %v; want the first uploader 02aa", owner, ok)
+	}
+
+	reopened, err := OpenStore(filepath.Dir(store.dir))
+	if err != nil {
+		t.Fatalf("reopening: %v", err)
+	}
+	if owner, ok := reopened.Owner(hash); !ok || owner != "02aa" {
+		t.Fatalf("Owner after reopening = %q, %v; want 02aa", owner, ok)
+	}
+
+	if err := store.Delete(hash); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if owner, ok := store.Owner(hash); ok {
+		t.Fatalf("Owner after Delete = %q, want none", owner)
+	}
+}
+
+func TestOwnerRefusesAMalformedHash(t *testing.T) {
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	if err := store.SetOwner("../x", "02aa"); err != ErrNotFound {
+		t.Fatalf("SetOwner(malformed) = %v, want ErrNotFound", err)
+	}
+	if _, ok := store.Owner("../x"); ok {
+		t.Fatal("Owner(malformed) reported an owner")
+	}
+}

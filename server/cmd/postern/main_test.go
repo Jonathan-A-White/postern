@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -319,5 +321,55 @@ func TestFanoutSendsGristForTheMillToTheOnGristHookOnly(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if lines(onMessage) != 1 || lines(onGrist) != 1 {
 		t.Fatalf("hooks ran on-message %d, on-grist %d times, want 1 each", lines(onMessage), lines(onGrist))
+	}
+}
+
+func TestOnMessageHookSkipsEveryGristRecord(t *testing.T) {
+	const mill = "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+	const other = "023c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+	dir := t.TempDir()
+	onMessage := filepath.Join(dir, "on-message")
+	cfg := config.Config{MillKey: mill, OnMessage: "echo x >> " + onMessage}
+	fanout := buildFanout(cfg, nil, &recordingNotifier{}, events.NewHub())
+	envelope := func(class, to string) index.Record {
+		return index.Record{Payload: []byte(`{"v":1,"kind":"msg","class":"` + class + `","to":"` + to + `","from":"` + other + `","ts":1,"ct":"x"}`)}
+	}
+
+	fanout.RecordIndexed(envelope("grist", mill))
+	fanout.RecordIndexed(envelope("grist", other)) // the mill's answer to an app
+	time.Sleep(300 * time.Millisecond)
+	fanout.RecordIndexed(envelope("message", other))
+
+	lines := func() int {
+		b, _ := os.ReadFile(onMessage)
+		return strings.Count(string(b), "x")
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for lines() < 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("the on-message hook never ran for a plain message")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if lines() != 1 {
+		t.Fatalf("the on-message hook ran %d times, want 1 (the message only, no grist)", lines())
+	}
+}
+
+func TestStartupNotesAMillKeyThatAlsoHoldsACockpitLicence(t *testing.T) {
+	const mill = "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+	logged := func(held bool) string {
+		var out bytes.Buffer
+		log.SetOutput(&out)
+		defer log.SetOutput(os.Stderr)
+		noteMillLicence(&stubChecker{held: held}, mill, nil)
+		return out.String()
+	}
+	if got := logged(true); strings.Count(got, "\n") != 1 || !strings.Contains(got, "mill key") || !strings.Contains(got, "cockpit") {
+		t.Fatalf("logged %q, want one line saying the mill key holds a cockpit licence and gets no cockpit rights", got)
+	}
+	if got := logged(false); got != "" {
+		t.Fatalf("logged %q for a mill key holding no licence, want nothing", got)
 	}
 }

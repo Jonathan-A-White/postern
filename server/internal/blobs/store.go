@@ -17,6 +17,11 @@ import (
 const (
 	dirName = "blobs"
 
+	// ownersDirName is the directory beside the blob directory that records
+	// who first uploaded each blob: one small file per blob, named by its
+	// hash.
+	ownersDirName = "blob-owners"
+
 	// MaxBlobBytes is the epic's per-image cap on the encrypted attachment.
 	MaxBlobBytes = 8 * 1024 * 1024 // 8 MiB
 
@@ -41,7 +46,8 @@ var hashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // Store is a content-addressed directory of blobs, rooted at
 // dataDir/blobs. Safe for concurrent use.
 type Store struct {
-	dir string
+	dir       string
+	ownersDir string
 }
 
 // OpenStore creates dataDir/blobs if it doesn't exist yet and returns a
@@ -51,7 +57,46 @@ func OpenStore(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating blob directory %s: %w", dir, err)
 	}
-	return &Store{dir: dir}, nil
+	ownersDir := filepath.Join(dataDir, ownersDirName)
+	if err := os.MkdirAll(ownersDir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating blob owners directory %s: %w", ownersDir, err)
+	}
+	return &Store{dir: dir, ownersDir: ownersDir}, nil
+}
+
+// SetOwner records key as the uploader of the blob named by hash, unless it
+// already has one: the first uploader stays the owner. A malformed hash is
+// ErrNotFound.
+func (s *Store) SetOwner(hash, key string) error {
+	if !hashPattern.MatchString(hash) {
+		return ErrNotFound
+	}
+	file, err := os.OpenFile(filepath.Join(s.ownersDir, hash), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return nil
+		}
+		return fmt.Errorf("recording blob owner: %w", err)
+	}
+	if _, err := file.WriteString(key); err != nil {
+		file.Close()
+		return fmt.Errorf("recording blob owner: %w", err)
+	}
+	return file.Close()
+}
+
+// Owner reports who first uploaded the blob named by hash. ok is false for a
+// malformed hash and for a blob with no recorded owner (uploaded before
+// owners were kept).
+func (s *Store) Owner(hash string) (key string, ok bool) {
+	if !hashPattern.MatchString(hash) {
+		return "", false
+	}
+	raw, err := os.ReadFile(filepath.Join(s.ownersDir, hash))
+	if err != nil || len(raw) == 0 {
+		return "", false
+	}
+	return string(raw), true
 }
 
 // Put stores data under the hex sha256 of its bytes, writing to a temp file
@@ -127,6 +172,7 @@ func (s *Store) Delete(hash string) error {
 		}
 		return fmt.Errorf("deleting blob: %w", err)
 	}
+	os.Remove(filepath.Join(s.ownersDir, hash))
 	return nil
 }
 
@@ -148,6 +194,7 @@ func (s *Store) Sweep(now time.Time) error {
 		}
 		if now.Sub(info.ModTime()) > Retention {
 			os.Remove(filepath.Join(s.dir, entry.Name()))
+			os.Remove(filepath.Join(s.ownersDir, entry.Name()))
 		}
 	}
 	return nil

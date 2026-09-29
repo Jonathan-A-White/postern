@@ -74,8 +74,8 @@ type app struct {
 // newApp opens the stores and wires every part of the backend together:
 // one notify.Fanout (web push, the event hub, the on-message hook, the
 // on-grist hook) that both the poller and direct delivery tell about each
-// newly indexed record. A grist for the mill wakes the on-grist hook and
-// never the on-message hook (docs/protocol.md §19).
+// newly indexed record. A grist for the mill wakes the on-grist hook, and no
+// grist wakes the on-message hook (docs/protocol.md §19).
 func newApp(cfg config.Config) (*app, error) {
 	store, err := index.Open(cfg.DataDir)
 	if err != nil {
@@ -142,6 +142,9 @@ func newApp(cfg config.Config) (*app, error) {
 		}
 		go poller.New(client, store, cfg.Anchor, poller.WithNotifier(fanout)).Run(stop)
 		go runBlobSweep(blobStore, stop)
+		if cfg.MillKey != "" {
+			go noteMillLicence(licenceChecker, cfg.MillKey, cfg.Apps)
+		}
 		go home.Run(stop, standby.DefaultInterval)
 		if cfg.ViewFile != "" {
 			go viewFile.Watch(stop, view.DefaultWatchInterval, hub.ViewChanged)
@@ -154,12 +157,12 @@ func newApp(cfg config.Config) (*app, error) {
 // buildFanout is the one fan-out for "a record was indexed": web push (silent
 // while this host is in standby), the event hub, the on-message hook when
 // configured (which runs in standby too: mw decides what to apply) for every
-// record but grist for the mill, and the on-grist hook for that grist.
+// record but grist, and the on-grist hook for grist addressed to the mill.
 func buildFanout(cfg config.Config, home *standby.Monitor, pusher, hub notify.Notifier) notify.Fanout {
 	fanout := notify.Fanout{standby.Gate(home, pusher), hub}
 	forMill := gristForMill(cfg.MillKey)
 	if cfg.OnMessage != "" {
-		fanout = append(fanout, notify.Only{Notifier: hook.New(cfg.OnMessage), Keep: func(rec index.Record) bool { return !forMill(rec) }})
+		fanout = append(fanout, notify.Only{Notifier: hook.New(cfg.OnMessage), Keep: func(rec index.Record) bool { return !isGrist(rec) }})
 		log.Printf("on-message hook: %s", cfg.OnMessage)
 	}
 	if cfg.OnGrist != "" {
@@ -167,6 +170,13 @@ func buildFanout(cfg config.Config, home *standby.Monitor, pusher, hub notify.No
 		log.Printf("on-grist hook: %s", cfg.OnGrist)
 	}
 	return fanout
+}
+
+// isGrist reports whether a record is a grist, to anyone (docs/protocol.md
+// §19): the on-message hook runs for none of them.
+func isGrist(rec index.Record) bool {
+	env, err := record.ParseEnvelope(rec.Payload)
+	return err == nil && env.Class == record.ClassGrist
 }
 
 // gristForMill reports whether a record is a grist addressed to millKey
@@ -178,6 +188,30 @@ func gristForMill(millKey string) func(rec index.Record) bool {
 		}
 		env, err := record.ParseEnvelope(rec.Payload)
 		return err == nil && env.Class == record.ClassGrist && strings.EqualFold(env.To, millKey)
+	}
+}
+
+// noteMillLicence logs one line if the mill key also holds a cockpit licence
+// on the chain: the backend ignores it, a mill key gets the mill's rights and
+// never the cockpit's (docs/protocol.md §19). A licence it cannot check is
+// not worth a line.
+func noteMillLicence(checker auth.LicenceChecker, millKey string, apps map[string]string) {
+	cockpit := false
+	if named, ok := checker.(auth.CollectionChecker); ok {
+		collections, err := named.HeldCollections(millKey)
+		if err != nil {
+			return
+		}
+		for _, collection := range collections {
+			if _, isApp := apps[collection]; !isApp {
+				cockpit = true
+			}
+		}
+	} else if held, err := checker.Held(millKey); err == nil {
+		cockpit = held
+	}
+	if cockpit {
+		log.Printf("warning: the mill key %s also holds a cockpit licence; it is a mill key only and gets no cockpit rights", millKey)
 	}
 }
 

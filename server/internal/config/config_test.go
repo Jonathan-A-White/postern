@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLoadDefaults(t *testing.T) {
 	getenv := func(key string) string {
@@ -245,5 +248,35 @@ func TestLoadRejectsBadGristConfig(t *testing.T) {
 		if _, err := Load(gristEnv(env)); err == nil {
 			t.Fatalf("%s: Load succeeded, want an error", name)
 		}
+	}
+}
+
+func TestLoadRefusesAHalfSetGristDoor(t *testing.T) {
+	const mill = "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+	for name, tc := range map[string]struct {
+		env  map[string]string
+		want string
+	}{
+		"apps without a mill key":     {map[string]string{"POSTERN_APPS": "cairn=cairn"}, "POSTERN_MILL_KEY"},
+		"on-grist without a mill key": {map[string]string{"POSTERN_ON_GRIST": "mw grist grind"}, "POSTERN_MILL_KEY"},
+		"a mill key without apps":     {map[string]string{"POSTERN_MILL_KEY": mill}, "POSTERN_APPS"},
+	} {
+		_, err := Load(gristEnv(tc.env))
+		if err == nil {
+			t.Fatalf("%s: Load succeeded, want an error", name)
+		}
+		if !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: error %q does not name %s", name, err, tc.want)
+		}
+	}
+}
+
+func TestLoadLowerCasesCORSOrigins(t *testing.T) {
+	cfg, err := Load(gristEnv(map[string]string{"POSTERN_CORS_ORIGINS": "https://Jonathan-A-White.github.io"}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.CORSOrigins) != 1 || cfg.CORSOrigins[0] != "https://jonathan-a-white.github.io" {
+		t.Fatalf("CORSOrigins = %v, want it lower-cased", cfg.CORSOrigins)
 	}
 }

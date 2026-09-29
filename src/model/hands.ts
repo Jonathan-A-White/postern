@@ -12,7 +12,8 @@ export interface HandsStep {
   run: string;
   way_back: string;
   sha256: string;
-  ran?: { at: string; exit: number; host: string };
+  /** `why` is the reason a step failed, when the Mayor's host gave one. */
+  ran?: { at: string; exit: number; host: string; why?: string };
 }
 
 const encoder = new TextEncoder();
@@ -52,7 +53,14 @@ export function decodeHandsSteps(value: unknown): HandsStep[] {
       way_back: typeof raw.way_back === 'string' ? raw.way_back : '',
       sha256: raw.sha256,
       ...(ran && typeof ran.exit === 'number'
-        ? { ran: { at: typeof ran.at === 'string' ? ran.at : '', exit: ran.exit, host: typeof ran.host === 'string' ? ran.host : '' } }
+        ? {
+            ran: {
+              at: typeof ran.at === 'string' ? ran.at : '',
+              exit: ran.exit,
+              host: typeof ran.host === 'string' ? ran.host : '',
+              ...(typeof ran.why === 'string' && ran.why !== '' ? { why: ran.why } : {}),
+            },
+          }
         : {}),
     });
   }

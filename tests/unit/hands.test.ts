@@ -47,6 +47,20 @@ describe('the hands step, byte for byte with the shared vector', () => {
     const steps = decodeHandsSteps([{ id: 'a', host: 'desktop', as: 'root', run: 'x', way_back: '', sha256: 'h', ran: { at: 't', exit: 0, host: 'desktop' } }, { id: 'b' }, 'nonsense']);
     expect(steps).toEqual([{ id: 'a', host: 'desktop', as: 'root', run: 'x', way_back: '', sha256: 'h', ran: { at: 't', exit: 0, host: 'desktop' } }]);
   });
+
+  it('reads an optional ran.why, and leaves it off when absent or not a string', () => {
+    const base = { id: 'a', host: 'desktop', as: 'user', run: 'x', way_back: '', sha256: 'h' };
+    const [withWhy, without, notString, empty] = decodeHandsSteps([
+      { ...base, ran: { at: 't', exit: 1, host: 'desktop', why: 'no such host' } },
+      { ...base, ran: { at: 't', exit: 1, host: 'desktop' } },
+      { ...base, ran: { at: 't', exit: 1, host: 'desktop', why: 7 } },
+      { ...base, ran: { at: 't', exit: 1, host: 'desktop', why: '' } },
+    ]);
+    expect(withWhy.ran).toEqual({ at: 't', exit: 1, host: 'desktop', why: 'no such host' });
+    expect(without.ran).toEqual({ at: 't', exit: 1, host: 'desktop' });
+    expect('why' in (notString.ran ?? {})).toBe(false);
+    expect('why' in (empty.ran ?? {})).toBe(false);
+  });
 });
 
 describe('stepUp', () => {

@@ -18,6 +18,8 @@ import type { ViewBead } from '../model/view';
 import { beadHref, formatRoute, type MapLens } from '../nav/route';
 import { navigate } from '../router';
 import { sendAction, useSend } from './send';
+import { useOneTap } from './oneTap';
+import { WaitingNote } from './WaitingNote';
 
 function Breadcrumb({ id, index }: { id: string; index: ViewIndex }) {
   const chain = ancestors(id, index);
@@ -138,7 +140,8 @@ function FactoryLevel({ index, filter, setFilter }: { index: ViewIndex; filter: 
 }
 
 function EpicLevel({ epic, index, lens, filter, setFilter }: { epic: ViewBead; index: ViewIndex; lens: MapLens; filter: BeadFilter; setFilter: (f: BeadFilter) => void }) {
-  const { busy, run } = useSend();
+  const { busy } = useSend();
+  const release = useOneTap(epic.id, 'release');
   const children = index.children.get(epic.id) ?? [];
   const childEpics = children.filter((bead) => isEpic(bead, index));
   const work = children.filter((bead) => !isEpic(bead, index) && matchesFilter(bead, index, filter));
@@ -176,11 +179,14 @@ function EpicLevel({ epic, index, lens, filter, setFilter }: { epic: ViewBead; i
             <Icon name="talk" size={16} />
             Discuss
           </a>
-          {held > 0 && (
-            <Button size="sm" variant="primary" icon="release" busy={busy} onClick={() => void run(() => sendAction({ action: 'release', bead: epic.id }), `Released ${epic.id}`)}>
-              Release {held} held
-            </Button>
-          )}
+          {held > 0 &&
+            (release.waiting ? (
+              <WaitingNote />
+            ) : (
+              <Button size="sm" variant="primary" icon="release" busy={busy} onClick={() => void release.tap(() => sendAction({ action: 'release', bead: epic.id }), `Released ${epic.id}`)}>
+                Release {held} held
+              </Button>
+            ))}
         </div>
       </div>
 

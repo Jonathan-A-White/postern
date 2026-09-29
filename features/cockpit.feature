@@ -92,3 +92,27 @@ Feature: The Governor's cockpit (plans/0021)
     Then a toast says "Sent to the Mayor in mw-f758y.31"
     When "Open" is tapped on the toast
     Then the Talk thread "mw-f758y.31" shows "Hold this one"
+
+  Scenario: mw-t64a3.3: one tap on Release sends once, shows it was sent at once, and cannot be tapped again
+    Given the factory is live and his key is unlocked
+    And the backend is slow to take a message
+    When the cockpit opens
+    And "Release" is tapped twice on the approval
+    Then one release action for "mw-f758y.31" is sent
+    And the approval says it was sent and is waiting for the factory, with no Release button to tap
+
+  Scenario: mw-t64a3.3: a failed send says so on the card and gives the button back
+    Given the factory is live and his key is unlocked
+    And the backend refuses the next message
+    When the cockpit opens
+    And "Release" is tapped on the approval
+    Then a toast says "The backend refused the message."
+    And the approval offers "Release" again
+
+  Scenario: mw-t64a3.3: one tap on Verified on the bead's page sends once and cannot be tapped again
+    Given the factory is live and his key is unlocked
+    And the backend is slow to take a message
+    When the bead "mw-gq6.130" is opened
+    And "Verified" is tapped twice on the bead's page
+    Then one verified action for "mw-gq6.130" is sent
+    And the bead's page says it was sent and is waiting for the factory, with no Verified button to tap

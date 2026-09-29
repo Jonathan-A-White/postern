@@ -11,8 +11,9 @@ import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
 import { NeedCard } from './NeedCard';
-import { useAnswers, useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
-import { actionRemembered } from './remembered';
+import { useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { useOneTap } from './oneTap';
+import { WaitingNote } from './WaitingNote';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
@@ -71,37 +72,49 @@ function PathGrid({ path, attempts }: { path?: BeadPath; attempts: number }) {
 
 function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail; index?: ViewIndex }) {
   const { busy, run } = useSend();
-  const answers = useAnswers();
   const status = detail?.status ?? bead?.status ?? '';
   const id = detail?.id ?? bead?.id ?? '';
   const priority = detail?.priority ?? bead?.priority ?? 2;
   const claimed = !!(detail?.assignee ?? bead?.assignee);
   const epic = bead && index ? isEpic(bead, index) : detail?.type === 'epic';
-  const sent = (action: string) => actionRemembered(answers, id, action, index?.view.written_at);
+  const release = useOneTap(id, 'release');
+  const hold = useOneTap(id, 'hold');
+  const verified = useOneTap(id, 'verified');
   const verify = index?.needsByBead.get(id)?.some((need) => need.kind === 'verify');
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Actions">
-      {status === 'deferred' && !sent('release') && (
-        <Button size="sm" variant="primary" icon="release" busy={busy} onClick={() => void run(() => sendAction({ action: 'release', bead: id }), `Released ${id}`)}>
-          Release
-        </Button>
-      )}
+      {status === 'deferred' &&
+        (release.waiting ? (
+          <WaitingNote />
+        ) : (
+          <Button size="sm" variant="primary" icon="release" busy={busy} onClick={() => void release.tap(() => sendAction({ action: 'release', bead: id }), `Released ${id}`)}>
+            Release
+          </Button>
+        ))}
       {epic && (
         <a href={formatRoute({ view: 'map', focus: id })} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised px-3 text-sm hover:border-line-strong">
           <Icon name="map" size={16} />
           Open on the map
         </a>
       )}
-      {status === 'open' && !claimed && !epic && !sent('hold') && (
-        <Button size="sm" icon="hold" busy={busy} onClick={() => void run(() => sendAction({ action: 'hold', bead: id }), `Held ${id}`)}>
-          Hold
-        </Button>
-      )}
-      {verify && (
-        <Button size="sm" variant="primary" icon="check" busy={busy} onClick={() => void run(() => sendAction({ action: 'verified', bead: id }), `Marked ${id} verified`)}>
-          Verified
-        </Button>
-      )}
+      {status === 'open' &&
+        !claimed &&
+        !epic &&
+        (hold.waiting ? (
+          <WaitingNote />
+        ) : (
+          <Button size="sm" icon="hold" busy={busy} onClick={() => void hold.tap(() => sendAction({ action: 'hold', bead: id }), `Held ${id}`)}>
+            Hold
+          </Button>
+        ))}
+      {verify &&
+        (verified.waiting ? (
+          <WaitingNote />
+        ) : (
+          <Button size="sm" variant="primary" icon="check" busy={busy} onClick={() => void verified.tap(() => sendAction({ action: 'verified', bead: id }), `Marked ${id} verified`)}>
+            Verified
+          </Button>
+        ))}
       {status !== 'closed' && id && (
         <label className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised pr-1 pl-2.5 text-sm">
           <Icon name="flag" size={15} className="text-muted" />

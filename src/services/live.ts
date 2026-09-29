@@ -13,7 +13,7 @@ import { refreshView } from './view';
 import { publicKeyHexFromMasterKey } from './vault';
 import type { DeliverOptions } from './deliver';
 
-export type LiveStatus = 'idle' | 'connecting' | 'live' | 'polling' | 'offline' | 'unlicensed';
+export type LiveStatus = 'idle' | 'connecting' | 'live' | 'polling' | 'reconnecting' | 'offline' | 'unlicensed';
 
 export interface LiveState {
   status: LiveStatus;
@@ -37,7 +37,7 @@ function setState(patch: Partial<LiveState>): void {
   for (const listener of listeners) listener();
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribeLive(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
@@ -47,7 +47,7 @@ export function getLiveState(): LiveState {
 }
 
 export function useLive(): LiveState {
-  return useSyncExternalStore(subscribe, getLiveState, getLiveState);
+  return useSyncExternalStore(subscribeLive, getLiveState, getLiveState);
 }
 
 export function hasFeature(feature: Me['features'][number]): boolean {
@@ -67,7 +67,9 @@ function queue(task: () => Promise<void>): Promise<void> {
   return syncing;
 }
 
-async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boolean }): Promise<void> {
+/** Resolves true when every part of the sync succeeded. */
+async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boolean }): Promise<boolean> {
+  let ok = false;
   await queue(async () => {
     const errors: string[] = [];
     if (what.messages) {
@@ -84,9 +86,11 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boole
         errors.push(err instanceof Error ? err.message : String(err));
       }
     }
-    if (errors.length === 0) setState({ lastHeard: Date.now(), error: undefined });
+    ok = errors.length === 0;
+    if (ok) setState({ lastHeard: Date.now(), error: undefined });
     else setState({ error: errors.join('; ') });
   });
+  return ok;
 }
 
 /** Parses the text of one server-sent event block ("event: x\ndata: {...}"). */
@@ -156,18 +160,25 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
   await syncAll(key, { messages: true, view: true });
 
   let backoff = 1000;
+  // Whether the sync after the last stream error failed too: only then, with the
+  // next reconnect failing as well, is the backend really unreachable.
+  let recoverySyncFailed = false;
   while (!signal.aborted) {
     if (me.features.includes('events')) {
       try {
         await listen(key, signal);
         backoff = 1000;
+        recoverySyncFailed = false;
       } catch (err) {
         if (signal.aborted) return;
-        setState({ status: 'offline', error: err instanceof Error ? err.message : String(err) });
+        // A dropped stream is usually a blip (a suspended phone, a network
+        // change): say 'reconnecting', and 'offline' only once a reconnect and
+        // the sync after the drop have both failed.
+        setState({ status: recoverySyncFailed ? 'offline' : 'reconnecting', error: err instanceof Error ? err.message : String(err) });
       }
       await sleep(backoff, signal);
       backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
-      if (!signal.aborted) await syncAll(key, { messages: true, view: true });
+      if (!signal.aborted) recoverySyncFailed = !(await syncAll(key, { messages: true, view: true }));
     } else {
       setState({ status: state.error ? 'offline' : 'polling' });
       await sleep(POLL_MS, signal);

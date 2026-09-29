@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/beads"
 )
@@ -82,5 +83,34 @@ func TestBeadDetailRequiresAuthorization(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+// The phone gives up on any /api call after 30 s (src/services/apiAuth.ts), so
+// the bead command must be cut off, and answered as 502, before that.
+func TestBeadCommandTimeoutIsShorterThanThePhonesPatience(t *testing.T) {
+	if beads.DefaultTimeout != 25*time.Second {
+		t.Fatalf("DefaultTimeout = %s, want 25s", beads.DefaultTimeout)
+	}
+}
+
+func TestBeadDetailAnswers502WhenTheCommandIsSlowerThanTheTimeout(t *testing.T) {
+	slow := func(ctx context.Context, argv []string) (beads.Result, error) {
+		<-ctx.Done()
+		return beads.Result{ExitCode: -1}, ctx.Err()
+	}
+	server, _ := newServerWithOptions(t, WithBeads(beads.New("mw postern bead", beads.WithRunner(slow), beads.WithTimeout(20*time.Millisecond))))
+
+	resp := doAuthorized(t, http.MethodGet, server.URL+"/api/beads/mw-abc", nil, server)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", resp.StatusCode)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&out)
+	if !strings.Contains(out.Error, "no answer within") {
+		t.Fatalf("error = %q, want it to say there was no answer in time", out.Error)
 	}
 }

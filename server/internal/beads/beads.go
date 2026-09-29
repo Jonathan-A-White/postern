@@ -17,8 +17,10 @@ import (
 	"unicode/utf8"
 )
 
-// DefaultTimeout is how long the command may run before Get gives up.
-const DefaultTimeout = 30 * time.Second
+// DefaultTimeout is how long the command may run before Get gives up. It is
+// shorter than the 30 s the phone waits for any /api call (src/services/apiAuth.ts),
+// so the phone gets a 502 rather than a dropped request.
+const DefaultTimeout = 25 * time.Second
 
 // NotFoundExitCode is the exit status the command uses for "no such bead".
 const NotFoundExitCode = 3

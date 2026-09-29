@@ -114,6 +114,22 @@ func (s *Store) Open(hash string) (*os.File, int64, error) {
 	return file, info.Size(), nil
 }
 
+// Delete removes the blob named by hash at once, rather than leaving it for
+// Sweep (docs/protocol.md §18: the mill deletes a grist's photos once it has
+// answered). A malformed hash, or one naming no blob on disk, is ErrNotFound.
+func (s *Store) Delete(hash string) error {
+	if !hashPattern.MatchString(hash) {
+		return ErrNotFound
+	}
+	if err := os.Remove(filepath.Join(s.dir, hash)); err != nil {
+		if os.IsNotExist(err) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("deleting blob: %w", err)
+	}
+	return nil
+}
+
 // Sweep deletes every blob whose mtime is older than Retention relative to
 // now.
 func (s *Store) Sweep(now time.Time) error {

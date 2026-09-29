@@ -29,7 +29,12 @@ const DirectPrefix = "direct:"
 // "direct:<sha256 hex of the script bytes>"; posting the same bytes again
 // answers 200 with the stored record rather than indexing it twice. A newly
 // stored record goes to notifier, the same fan-out the poller uses.
-func handleDirectMessage(store *index.Store, notifier notify.Notifier) http.HandlerFunc {
+//
+// A key that is not a cockpit key sends grist only, and an app's key sends
+// it to millKey only (403 otherwise); a record is stamped with the apps its
+// signer's licences open, which is what the mill trusts (docs/protocol.md
+// §18).
+func handleDirectMessage(store *index.Store, notifier notify.Notifier, millKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxDirectBodyBytes))
 		if err != nil {
@@ -76,16 +81,28 @@ func handleDirectMessage(store *index.Store, notifier notify.Notifier) http.Hand
 			writeError(w, http.StatusForbidden, "payload from is not the key that signed this request")
 			return
 		}
+		granted := rightsOf(r.Context())
+		if !granted.cockpit {
+			if envelope.Class != record.ClassGrist {
+				writeError(w, http.StatusForbidden, "this key may send only grist")
+				return
+			}
+			if !granted.mill && !strings.EqualFold(envelope.To, millKey) {
+				writeError(w, http.StatusForbidden, "an app's grist goes to the mill only")
+				return
+			}
+		}
 
 		sum := sha256.Sum256(script)
 		stored, created, err := store.AppendDirect(index.Record{
-			TxID:      DirectPrefix + hex.EncodeToString(sum[:]),
-			Vout:      0,
-			ScriptHex: scriptHex,
-			Height:    0,
-			FirstSeen: time.Now().UTC(),
-			Payload:   decoded.Payload,
-			Signer:    signer,
+			TxID:       DirectPrefix + hex.EncodeToString(sum[:]),
+			Vout:       0,
+			ScriptHex:  scriptHex,
+			Height:     0,
+			FirstSeen:  time.Now().UTC(),
+			Payload:    decoded.Payload,
+			Signer:     signer,
+			SignerApps: granted.apps,
 		})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())

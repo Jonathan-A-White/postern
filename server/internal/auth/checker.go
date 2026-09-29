@@ -14,9 +14,17 @@ type LicenceChecker interface {
 	Held(pubKeyHex string) (bool, error)
 }
 
+// CollectionChecker names the collections a public key holds licences in,
+// which say what the key may do (docs/protocol.md §18). A LicenceChecker
+// that is not also a CollectionChecker licenses every key it holds as a
+// cockpit key.
+type CollectionChecker interface {
+	HeldCollections(pubKeyHex string) ([]string, error)
+}
+
 type checkerEntry struct {
-	held      bool
-	checkedAt time.Time
+	collections []string
+	checkedAt   time.Time
 }
 
 // CachedChecker answers licence.Held for a public key, caching the result a
@@ -66,25 +74,33 @@ func NewCachedChecker(reader licence.Reader, ttl time.Duration, opts ...CachedCh
 // checker's rule, applied to the testnet address that key derives), reusing
 // a cached answer under ttl.
 func (c *CachedChecker) Held(pubKeyHex string) (bool, error) {
+	collections, err := c.HeldCollections(pubKeyHex)
+	return len(collections) > 0, err
+}
+
+// HeldCollections names the collections pubKeyHex holds licences in
+// (licence.HeldCollections under the checker's rule), reusing a cached
+// answer under ttl.
+func (c *CachedChecker) HeldCollections(pubKeyHex string) ([]string, error) {
 	c.mu.Lock()
 	entry, ok := c.cache[pubKeyHex]
 	c.mu.Unlock()
 	if ok && c.now().Sub(entry.checkedAt) < c.ttl {
-		return entry.held, nil
+		return entry.collections, nil
 	}
 
 	address, err := licence.AddressForPublicKey(pubKeyHex)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	held, err := licence.Held(c.reader, address, c.rule)
+	collections, err := licence.HeldCollections(c.reader, address, c.rule)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
 	c.mu.Lock()
-	c.cache[pubKeyHex] = checkerEntry{held: held, checkedAt: c.now()}
+	c.cache[pubKeyHex] = checkerEntry{collections: collections, checkedAt: c.now()}
 	c.mu.Unlock()
 
-	return held, nil
+	return collections, nil
 }

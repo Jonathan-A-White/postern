@@ -20,6 +20,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/poller"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
+	"github.com/Jonathan-A-White/postern/server/internal/record"
 	"github.com/Jonathan-A-White/postern/server/internal/view"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
@@ -70,8 +71,10 @@ type app struct {
 }
 
 // newApp opens the stores and wires every part of the backend together:
-// one notify.Fanout (web push, the event hub, the on-message hook) that
-// both the poller and direct delivery tell about each newly indexed record.
+// one notify.Fanout (web push, the event hub, the on-message hook, the
+// on-grist hook) that both the poller and direct delivery tell about each
+// newly indexed record. A grist for the mill wakes the on-grist hook and
+// never the on-message hook (docs/protocol.md §18).
 func newApp(cfg config.Config) (*app, error) {
 	store, err := index.Open(cfg.DataDir)
 	if err != nil {
@@ -100,16 +103,28 @@ func newApp(cfg config.Config) (*app, error) {
 
 	hub := events.NewHub()
 	fanout := notify.Fanout{sender, hub}
+	forMill := gristForMill(cfg.MillKey)
 	if cfg.OnMessage != "" {
-		fanout = append(fanout, hook.New(cfg.OnMessage))
+		fanout = append(fanout, notify.Only{Notifier: hook.New(cfg.OnMessage), Keep: func(rec index.Record) bool { return !forMill(rec) }})
 		log.Printf("on-message hook: %s", cfg.OnMessage)
+	}
+	if cfg.OnGrist != "" {
+		fanout = append(fanout, notify.Only{Notifier: hook.New(cfg.OnGrist), Keep: forMill})
+		log.Printf("on-grist hook: %s", cfg.OnGrist)
+	}
+	if cfg.MillKey != "" {
+		log.Printf("grist: mill %s, apps %v", cfg.MillKey, cfg.Apps)
 	}
 	viewFile := view.New(cfg.ViewFile)
 
 	if cfg.IssuerKey == "" {
 		log.Printf("warning: POSTERN_ISSUER_KEY is not set, so any mint naming a key in %s licenses it, self-minted or not", strings.Join(cfg.Collections, ", "))
 	}
-	rule := licence.Rule{Collections: cfg.Collections, IssuerKey: cfg.IssuerKey}
+	collections := append([]string{}, cfg.Collections...)
+	for collection := range cfg.Apps {
+		collections = append(collections, collection)
+	}
+	rule := licence.Rule{Collections: collections, IssuerKey: cfg.IssuerKey}
 	licenceChecker := auth.NewCachedChecker(client, licenceCacheTTL, auth.WithRule(rule))
 
 	handler := api.NewHandler(store, client, vapidKeys.PublicKey, pushStore, blobStore, auth.NewNonceStore(nonceTTL), licenceChecker,
@@ -118,6 +133,8 @@ func newApp(cfg config.Config) (*app, error) {
 		api.WithView(viewFile),
 		api.WithBeads(beads.New(cfg.BeadCmd)),
 		api.WithIdentity(cfg.MayorKey, cfg.Network),
+		api.WithGrist(cfg.MillKey, cfg.Apps),
+		api.WithCORS(cfg.CORSOrigins),
 	)
 
 	start := func(stop <-chan struct{}) {
@@ -132,6 +149,18 @@ func newApp(cfg config.Config) (*app, error) {
 	}
 
 	return &app{handler: handler, start: start, close: func() { store.Close() }}, nil
+}
+
+// gristForMill reports whether a record is a grist addressed to millKey
+// (docs/protocol.md §18); with no mill key, nothing is.
+func gristForMill(millKey string) func(rec index.Record) bool {
+	return func(rec index.Record) bool {
+		if millKey == "" {
+			return false
+		}
+		env, err := record.ParseEnvelope(rec.Payload)
+		return err == nil && env.Class == record.ClassGrist && strings.EqualFold(env.To, millKey)
+	}
 }
 
 // runBlobSweep runs store.Sweep on blobSweepInterval until stop is closed

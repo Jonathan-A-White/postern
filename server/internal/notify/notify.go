@@ -32,3 +32,18 @@ type Func func(rec index.Record)
 
 // RecordIndexed calls fn(rec).
 func (fn Func) RecordIndexed(rec index.Record) { fn(rec) }
+
+// Only tells Notifier about the records Keep keeps and no others: the
+// on-message hook skips grist for the mill, and the on-grist hook takes
+// only that (docs/protocol.md §18).
+type Only struct {
+	Notifier Notifier
+	Keep     func(rec index.Record) bool
+}
+
+// RecordIndexed tells o.Notifier about rec if o.Keep keeps it.
+func (o Only) RecordIndexed(rec index.Record) {
+	if o.Notifier != nil && o.Keep(rec) {
+		o.Notifier.RecordIndexed(rec)
+	}
+}

@@ -13,7 +13,12 @@ var MessageClasses = map[string]bool{
 	"decision-needed": true,
 	"landing":         true,
 	"alarm":           true,
+	ClassGrist:        true,
 }
+
+// ClassGrist is an app's AI work for the factory, and the mill's answer to
+// it (docs/protocol.md §18).
+const ClassGrist = "grist"
 
 // Envelope is docs/protocol.md §1's clear message payload. The backend never
 // decrypts Ct; it only checks the envelope's shape.

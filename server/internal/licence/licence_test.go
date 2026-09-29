@@ -433,3 +433,71 @@ func TestAddressForPublicKeyRejectsInvalidHex(t *testing.T) {
 		t.Fatal("expected an error for invalid public key hex")
 	}
 }
+
+func mustHeldCollections(t *testing.T, reader Reader, address string, rule Rule) []string {
+	t.Helper()
+	collections, err := HeldCollections(reader, address, rule)
+	if err != nil {
+		t.Fatalf("HeldCollections: %v", err)
+	}
+	return collections
+}
+
+func TestHeldCollectionsNamesEveryCollectionTheKeyHoldsALicenceIn(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	reader := newFakeReader()
+	reader.add(contractMint(issuer, "cairn", addressOf(holder)), addressOf(issuer))
+	reader.add(contractMint(issuer, "postern", addressOf(holder)), addressOf(issuer))
+	rule := Rule{Collections: []string{"postern", "cairn"}, IssuerKey: pubHex(issuer)}
+
+	got := mustHeldCollections(t, reader, addressOf(holder), rule)
+	if len(got) != 2 || got[0] != "cairn" || got[1] != "postern" {
+		t.Fatalf("collections = %v, want [cairn postern] (in mint order)", got)
+	}
+}
+
+func TestHeldCollectionsNamesACollectionOnceForTwoLicencesInIt(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	reader := newFakeReader()
+	reader.add(contractMint(issuer, "cairn", addressOf(holder)), addressOf(issuer))
+	reader.add(contractMintFundedBy(issuer, "cairn", addressOf(holder), 0xf2), addressOf(issuer))
+
+	got := mustHeldCollections(t, reader, addressOf(holder), Rule{Collections: []string{"cairn"}, IssuerKey: pubHex(issuer)})
+	if len(got) != 1 || got[0] != "cairn" {
+		t.Fatalf("collections = %v, want [cairn]", got)
+	}
+}
+
+func TestHeldCollectionsLeavesOutALicenceTransferredAway(t *testing.T) {
+	issuer, holder, buyer := newTestKey(t), newTestKey(t), newTestKey(t)
+	cairn := contractMint(issuer, "cairn", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(cairn, addressOf(issuer))
+	reader.add(contractMint(issuer, "postern", addressOf(holder)), addressOf(issuer))
+	reader.add(contractSpend(cairn, typedRecordScript("TR", `{"to":"`+addressOf(buyer)+`"}`)), addressOf(holder))
+
+	got := mustHeldCollections(t, reader, addressOf(holder), Rule{Collections: []string{"postern", "cairn"}, IssuerKey: pubHex(issuer)})
+	if len(got) != 1 || got[0] != "postern" {
+		t.Fatalf("collections = %v, want [postern] once the cairn licence is transferred away", got)
+	}
+}
+
+func TestHeldCollectionsEmptyWithNoLicence(t *testing.T) {
+	if got := mustHeldCollections(t, newFakeReader(), addressOf(newTestKey(t)), Rule{}); len(got) != 0 {
+		t.Fatalf("collections = %v, want none", got)
+	}
+}
+
+// contractMintFundedBy is contractMint funded by a different UTXO, so two
+// mints of the same licence get txids of their own.
+func contractMintFundedBy(signer *btcec.PrivateKey, collection, holder string, funding byte) testTx {
+	return buildTx(
+		[]testInput{{txid: fundingTxid(funding), vout: 2, scriptSig: p2pkhUnlock(signer)}},
+		[][]byte{
+			licenseScript,
+			fuelScript,
+			typedRecordScript("M", `{"collection":"`+collection+`","holder":"`+holder+`"}`),
+			p2pkhLock(addressOf(signer)),
+		},
+	)
+}

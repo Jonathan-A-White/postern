@@ -22,6 +22,8 @@ const fileName = "postern-index.jsonl"
 // set for a version-1 record whose payload parsed as JSON — the backend
 // never decrypts it, just stores it as opaque JSON. Chain is set only on a
 // direct record: sha256(previous direct record's chain || its txid), hex.
+// SignerApps is set only on a direct record whose signer held app licences:
+// the apps they named when it arrived (docs/protocol.md §18).
 type Record struct {
 	Seq       uint64          `json:"seq"`
 	TxID      string          `json:"txid"`
@@ -32,6 +34,8 @@ type Record struct {
 	Payload   json.RawMessage `json:"payload,omitempty"`
 	Signer    string          `json:"signer,omitempty"`
 	Chain     string          `json:"chain,omitempty"`
+	// SignerApps names the apps the signer's licences opened (§18).
+	SignerApps []string `json:"signer_apps,omitempty"`
 }
 
 // Store is the in-memory index, backed by an append-only JSONL file. Safe

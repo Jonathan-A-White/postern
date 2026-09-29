@@ -20,6 +20,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
+	"github.com/Jonathan-A-White/postern/server/internal/record"
 	"github.com/Jonathan-A-White/postern/server/internal/view"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -50,6 +51,9 @@ type options struct {
 	hub      *events.Hub
 	ping     time.Duration
 	beads    *beads.Fetcher
+	millKey  string            // POSTERN_MILL_KEY, lower-cased; "" means no grist (§18)
+	apps     map[string]string // POSTERN_APPS: an app's licence collection -> the app
+	cors     []string          // POSTERN_CORS_ORIGINS
 }
 
 // DefaultPingInterval is how often GET /api/events writes a ": ping"
@@ -86,6 +90,20 @@ func WithBeads(b *beads.Fetcher) Option {
 	return func(o *options) { o.beads = b }
 }
 
+// WithGrist sets the mill's key (POSTERN_MILL_KEY) and the apps whose
+// licences open the grist door (POSTERN_APPS: collection -> app), per
+// docs/protocol.md §18. Without it no key is a mill or an app key, and the
+// backend behaves as it did before §18.
+func WithGrist(millKey string, apps map[string]string) Option {
+	return func(o *options) { o.millKey, o.apps = strings.ToLower(millKey), apps }
+}
+
+// WithCORS sets the origins allowed to call the backend from a browser on
+// another origin (POSTERN_CORS_ORIGINS, docs/protocol.md §18).
+func WithCORS(origins []string) Option {
+	return func(o *options) { o.cors = origins }
+}
+
 // WithView sets the view file GET /api/view serves (POSTERN_VIEW_FILE).
 // Without it, GET /api/view answers 404.
 func WithView(v *view.File) Option {
@@ -97,7 +115,8 @@ func WithView(v *view.File) Option {
 // pushStore backs POST /api/push/subscribe; blobStore backs POST/GET
 // /api/blobs. Every /api endpoint except GET /api/challenge requires a
 // signed, licensed proof (requireLicence), checked against nonces and
-// checker. opts configure the v2 endpoints (docs/protocol.md §9–15).
+// checker, and admits only the kinds of key it names (docs/protocol.md
+// §18). opts configure the v2 endpoints (docs/protocol.md §9–15, §18).
 func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store, blobStore *blobs.Store, nonces *auth.NonceStore, checker auth.LicenceChecker, opts ...Option) http.Handler {
 	o := options{network: "testnet", ping: DefaultPingInterval}
 	for _, opt := range opts {
@@ -116,23 +135,28 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 		o.beads = beads.New("")
 	}
 
+	gate := func(who access, next http.HandlerFunc) http.HandlerFunc {
+		return requireLicence(nonces, checker, &o, who, next)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.HandleFunc("GET /api/challenge", handleChallenge(nonces))
-	mux.HandleFunc("GET /api/messages", requireLicence(nonces, checker, handleMessages(store)))
-	mux.HandleFunc("POST /api/messages", requireLicence(nonces, checker, handleDirectMessage(store, o.notifier)))
-	mux.HandleFunc("GET /api/me", requireLicence(nonces, checker, handleMe(o.mayorKey, o.network)))
-	mux.HandleFunc("GET /api/view", requireLicence(nonces, checker, handleView(o.view)))
-	mux.HandleFunc("GET /api/events", requireLicence(nonces, checker, handleEvents(store, o.hub, o.view, o.ping)))
-	mux.HandleFunc("GET /api/beads/{id}", requireLicence(nonces, checker, handleBead(o.beads)))
-	mux.HandleFunc("POST /api/broadcast", requireLicence(nonces, checker, handleBroadcast(client)))
-	mux.HandleFunc("GET /api/utxos/{address}", requireLicence(nonces, checker, handleUtxos(client)))
-	mux.HandleFunc("GET /api/balance/{address}", requireLicence(nonces, checker, handleBalance(client)))
-	mux.HandleFunc("GET /api/push/vapid-public-key", requireLicence(nonces, checker, handleVAPIDPublicKey(vapidPublicKey)))
-	mux.HandleFunc("POST /api/push/subscribe", requireLicence(nonces, checker, handlePushSubscribe(pushStore)))
-	mux.HandleFunc("POST /api/blobs", requireLicence(nonces, checker, handleBlobUpload(blobStore)))
-	mux.HandleFunc("GET /api/blobs/{hash}", requireLicence(nonces, checker, handleBlobDownload(blobStore)))
-	return mux
+	mux.HandleFunc("GET /api/messages", gate(everyKey, handleMessages(store)))
+	mux.HandleFunc("POST /api/messages", gate(everyKey, handleDirectMessage(store, o.notifier, o.millKey)))
+	mux.HandleFunc("GET /api/me", gate(everyKey, handleMe(&o)))
+	mux.HandleFunc("GET /api/view", gate(cockpitKeys, handleView(o.view)))
+	mux.HandleFunc("GET /api/events", gate(cockpitKeys, handleEvents(store, o.hub, o.view, o.ping)))
+	mux.HandleFunc("GET /api/beads/{id}", gate(cockpitKeys, handleBead(o.beads)))
+	mux.HandleFunc("POST /api/broadcast", gate(cockpitKeys, handleBroadcast(client)))
+	mux.HandleFunc("GET /api/utxos/{address}", gate(cockpitKeys, handleUtxos(client)))
+	mux.HandleFunc("GET /api/balance/{address}", gate(cockpitKeys, handleBalance(client)))
+	mux.HandleFunc("GET /api/push/vapid-public-key", gate(cockpitKeys|appKeys, handleVAPIDPublicKey(vapidPublicKey)))
+	mux.HandleFunc("POST /api/push/subscribe", gate(cockpitKeys|appKeys, handlePushSubscribe(pushStore)))
+	mux.HandleFunc("POST /api/blobs", gate(cockpitKeys|appKeys, handleBlobUpload(blobStore)))
+	mux.HandleFunc("GET /api/blobs/{hash}", gate(cockpitKeys|millKey, handleBlobDownload(blobStore)))
+	mux.HandleFunc("DELETE /api/blobs/{hash}", gate(cockpitKeys|millKey, handleBlobDelete(blobStore)))
+	return withCORS(o.cors, mux)
 }
 
 // authScheme is the Authorization header's scheme token: "Postern
@@ -171,10 +195,12 @@ func AuthenticatedKey(ctx context.Context) string {
 // header proves a signed, licensed key: the header must carry a nonce this
 // nonces store issued and hasn't already consumed, a valid signature over
 // that nonce by the named public key, and that key must hold a licence per
-// checker. Anything short of that is a 401; a failure to check the licence
-// itself (a chain read failing) is a 502, like this backend's other
-// provider-proxy failures. next finds the proved key with AuthenticatedKey.
-func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, next http.HandlerFunc) http.HandlerFunc {
+// checker (or be the mill's key). Anything short of that is a 401; a
+// failure to check the licence itself (a chain read failing) is a 502, like
+// this backend's other provider-proxy failures. A proved key whose kind who
+// does not admit is a 403 (docs/protocol.md §18). next finds the proved key
+// with AuthenticatedKey and what it may do with rightsOf.
+func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *options, who access, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pubKeyHex, nonce, sigHex, ok := parseAuthorization(r.Header.Get("Authorization"))
 		if !ok {
@@ -190,31 +216,59 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, next h
 			writeError(w, http.StatusUnauthorized, "signature does not verify")
 			return
 		}
-		held, err := checker.Held(pubKeyHex)
+		key := strings.ToLower(pubKeyHex)
+		granted, err := rightsFor(key, checker, o)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "checking licence: "+err.Error())
 			return
 		}
-		if !held {
+		if !granted.any() {
 			writeError(w, http.StatusUnauthorized, "no licence held")
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), authKey{}, strings.ToLower(pubKeyHex))))
+		if !who.admits(granted) {
+			writeError(w, http.StatusForbidden, "this key's licence does not open "+r.Method+" "+r.URL.Path)
+			return
+		}
+		ctx := context.WithValue(r.Context(), authKey{}, key)
+		next(w, r.WithContext(context.WithValue(ctx, rightsKey{}, granted)))
 	}
 }
 
-// handleMe answers who the caller is and who the Mayor is (docs/protocol.md
-// §15).
-func handleMe(mayorKey, network string) http.HandlerFunc {
+// handleMe answers who the caller is, who the Mayor is and who the mill is
+// (docs/protocol.md §15, §18). An app's key or the mill's is never told the
+// Mayor, and is offered only grist.
+func handleMe(o *options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller := AuthenticatedKey(r.Context())
+		granted := rightsOf(r.Context())
+		if !granted.cockpit {
+			writeJSON(w, http.StatusOK, struct {
+				PubKey   string   `json:"pubkey"`
+				Mill     string   `json:"mill"`
+				Network  string   `json:"network"`
+				Features []string `json:"features"`
+				Apps     []string `json:"apps,omitempty"`
+			}{PubKey: caller, Mill: o.millKey, Network: o.network, Features: []string{featureGrist}, Apps: granted.apps})
+			return
+		}
+		features := Features
+		if o.millKey != "" {
+			features = append(append([]string{}, Features...), featureGrist)
+		}
 		writeJSON(w, http.StatusOK, struct {
 			PubKey   string   `json:"pubkey"`
 			Mayor    string   `json:"mayor"`
+			Mill     string   `json:"mill,omitempty"`
 			Network  string   `json:"network"`
 			Features []string `json:"features"`
-		}{PubKey: AuthenticatedKey(r.Context()), Mayor: mayorKey, Network: network, Features: Features})
+		}{PubKey: caller, Mayor: o.mayorKey, Mill: o.millKey, Network: o.network, Features: features})
 	}
 }
+
+// featureGrist is what GET /api/me names when this backend takes grist
+// (docs/protocol.md §18).
+const featureGrist = "grist"
 
 func handleChallenge(nonces *auth.NonceStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -248,11 +302,31 @@ func handleMessages(store *index.Store) http.HandlerFunc {
 		}
 
 		records, next := store.Since(since)
+		if !rightsOf(r.Context()).cockpit {
+			records = ownRecords(records, AuthenticatedKey(r.Context()))
+		}
 		writeJSON(w, http.StatusOK, struct {
 			Records []index.Record `json:"records"`
 			Next    uint64         `json:"next"`
 		}{Records: records, Next: next})
 	}
+}
+
+// ownRecords keeps the records whose §1 envelope names key as to or from:
+// all an app's key or the mill's may see (docs/protocol.md §18). A record
+// with no readable envelope belongs to no one.
+func ownRecords(records []index.Record, key string) []index.Record {
+	own := []index.Record{}
+	for _, rec := range records {
+		env, err := record.ParseEnvelope(rec.Payload)
+		if err != nil {
+			continue
+		}
+		if strings.EqualFold(env.To, key) || strings.EqualFold(env.From, key) {
+			own = append(own, rec)
+		}
+	}
+	return own
 }
 
 func handleBroadcast(client *woc.Client) http.HandlerFunc {
@@ -345,6 +419,10 @@ func handlePushSubscribe(store *push.Store) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "subscription.endpoint is required")
 			return
 		}
+		if !strings.EqualFold(req.PublicKeyHex, AuthenticatedKey(r.Context())) {
+			writeError(w, http.StatusForbidden, "pubkey is not the key that signed this request")
+			return
+		}
 
 		sub := push.Subscription{
 			PublicKeyHex: req.PublicKeyHex,
@@ -410,6 +488,23 @@ func handleBlobDownload(store *blobs.Store) http.HandlerFunc {
 		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 		w.WriteHeader(http.StatusOK)
 		io.Copy(w, file)
+	}
+}
+
+// handleBlobDelete removes the blob named by the {hash} path value at once
+// (docs/protocol.md §18: the mill deletes a grist's photos once it has
+// answered): 204, or 404 if the hash is malformed or names no blob.
+func handleBlobDelete(store *blobs.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := store.Delete(r.PathValue("hash")); err != nil {
+			if errors.Is(err, blobs.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "blob not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

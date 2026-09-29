@@ -27,7 +27,8 @@ JSON shape that only postern understands:
   `GET /api/messages` JSON) is still self-describing.
 - `kind` — always `"msg"`.
 - `class` — one of `"message"`, `"decision-needed"`, `"landing"`, `"alarm"`
-  (`mw-f758y.5`). Sits in the clear beside the ciphertext on purpose
+  (`mw-f758y.5`), or `"grist"` (an app's AI work for the factory and its answer,
+  §18). Sits in the clear beside the ciphertext on purpose
   (`mw-f758y.9` Q1): a classified-push backend, or anyone else reading the chain,
   can act on the class (e.g. wake the Mayor for `alarm`) without holding either
   party's private key.
@@ -667,8 +668,13 @@ in the same thread, so he sees exactly what was heard under the note he sent.
 `GET /api/me`, authenticated, answers who the caller is and who the Mayor is:
 
 ```json
-{ "pubkey": "<the caller's key>", "mayor": "<POSTERN_MAYOR_KEY, or empty>", "network": "testnet", "features": ["direct", "events", "view", "beads", "me"] }
+{ "pubkey": "<the caller's key>", "mayor": "<POSTERN_MAYOR_KEY, or empty>", "mill": "<POSTERN_MILL_KEY, or empty>", "network": "testnet", "features": ["direct", "events", "view", "beads", "me", "grist"] }
 ```
+
+`mill` and the `grist` feature are present only when the backend has a mill key
+(§18). An app's key (§18, *Who may do what*) gets a smaller answer: its own key, the
+mill, the network, `"features": ["grist"]` and `"apps"`, the apps its licences name;
+never the Mayor.
 
 The app pins `mayor` the first time it sees it (trust on first use) and asks the
 Governor before accepting a different one; it never needs the key pasted by hand
@@ -790,3 +796,138 @@ The outcome — exit code and the last 4000 characters of output — is commente
 the bead (`RAN step <id> on <host> as <as>, exit <n> …`), sent back to him in the
 bead's thread, and mailed to the Mayor. A refused approval is answered the same
 way with why.
+
+## 18. Grist: an app's AI work for the factory
+
+The Governor, 2026-09-29 (vault `plans/0024-grist-plan.md`): an app sends the factory
+some AI work, a photo or some data, and gets an answer back later, while the app
+carries on. The first is Cairn's photo Sweep: a photo of a drawer comes back as the
+items in it. **Grist** is that work; a **grind** is an app's standing instructions for
+one kind of it (what it accepts, the model, the instructions, the answer's schema).
+Grist rides this backend exactly as a message does (§8, §9), through the same
+licence gate (§16): the "Postern method", for every app.
+
+### The mill
+
+The factory's side is the **mill**: `mw grist grind` on the factory's home host,
+holding the **mill key**, a key of its own (never the Mayor's), named to the backend
+as `POSTERN_MILL_KEY`. The mill key needs no licence: the backend's own configuration
+vouches for it. `GET /api/me` names it (§15), so an app pins it the way Postern pins
+the Mayor: trust on first use, the fingerprint shown on its key screen.
+
+### Who may do what
+
+A licence's collection (§16) now says which door it opens:
+
+| The key | Holds | May |
+| --- | --- | --- |
+| A **cockpit** key | a licence in one of `POSTERN_COLLECTIONS` (today `postern`) | everything, as before §18 |
+| The **mill** key | `POSTERN_MILL_KEY` | read its own records; post `grist` to any key; fetch and delete blobs; `GET /api/me` |
+| An **app** key | a licence only in an app's collection (`POSTERN_APPS`, e.g. `cairn=cairn`) | read its own records; post `grist` to the mill only; upload blobs; subscribe its own pushes; `GET /api/me` |
+
+Anything else an app or the mill key asks for is `403`. "Its own records" means
+`GET /api/messages` returns only records whose `to` or `from` is the caller: an app
+never sees who else talks to the factory. A key that holds both kinds of licence is
+a cockpit key.
+
+`POSTERN_APPS` maps each app's collection to the app's name, `collection=app`
+comma-separated: `cairn=cairn`. A collection is either a cockpit collection or an
+app's, never both; so before spell-forge's own licences can send grist,
+`spellforge-leaderboard-testnet` leaves `POSTERN_COLLECTIONS` (the move §16 already
+anticipates). The issuer rule (§16) applies to app
+collections exactly as to Postern's own: only a mint the Governor's issuer key signed
+counts, and a transfer away revokes it. He issues one from Postern's Me screen to a
+key an app shows him as a QR code.
+
+### The grist record
+
+A grist is §1's envelope with `"class": "grist"`, `to` the mill key and `from` the
+app's key, delivered with `POST /api/messages` (§9). Its plaintext, what `ct` seals
+to the mill key:
+
+```json
+{
+  "grist": { "app": "cairn", "kind": "sweep", "v": "1.1" },
+  "input": { "schemaVersion": "1.1", "requestType": "sweep", "place": { "name": "Top drawer", "path": "Kitchen -> Top drawer" } },
+  "attachments": [ { "hash": "<sha256 hex>", "size": 412345, "mime": "image/jpeg" } ]
+}
+```
+
+- `grist` — which grind to run: the app (it must be one the sender's licences name),
+  the kind, and the version of the app's own request schema.
+- `input` — the app's request, in the app's own schema (here Cairn's Sweep Request).
+  The mill hands it to the grind as data, never as instructions.
+- `attachments` — optional, at most 4. Each is uploaded first with `POST /api/blobs`
+  (§8), sealed to the **mill** key exactly as §8 seals an image to the Mayor's.
+  `mime` is one of `image/jpeg`, `image/png`, `image/webp`. A grind may set tighter
+  limits.
+
+The backend stamps each directly delivered record with `signer_apps`: the apps whose
+collections the signer's licences name, as it knew them when the record arrived. The
+mill trusts that stamp, not the plaintext, to decide whether a key may use an app's
+grinds.
+
+### The answer
+
+The mill answers every grist exactly once, with a `grist` record from the mill key
+to the grist's sender. Its plaintext:
+
+```json
+{
+  "re": "direct:<the grist's txid>",
+  "status": "answered",
+  "answer": { "schemaVersion": "1.1", "responseType": "sweep-result", "placeName": "Top drawer", "items": [ { "name": "scissors" } ] },
+  "grind": { "app": "cairn", "kind": "sweep", "v": "1.1", "commit": "<the app rig's commit the grind was read at>" }
+}
+```
+
+- `re` — the grist's `txid` (`direct:…`), which is how the app matches an answer to
+  the photo it sent.
+- `status`:
+  - `answered`: `answer` holds the grind's answer, in the app's own schema, already
+    checked against it by the mill. The app checks it again before it keeps anything.
+  - `refused`: the mill will not grind this grist. `reason` says why: an unknown grind,
+    an app the sender holds no licence for, too many or too large attachments, the
+    sender's daily limit, or the model declining. Sending the same grist again gets
+    the same answer.
+  - `failed`: the grind could not finish (a session died, the answer would not fit its
+    schema). `reason` says what happened; the app may send it again.
+- `reason` — present unless `answered`: one plain sentence, fit to show the person.
+- `grind` — which grind answered, and the commit of the app's rig it was read at.
+
+After answering, the mill deletes the grist's attachments (`DELETE /api/blobs/{hash}`,
+`docs/api.md`) rather than leaving them for §8's 30 days. Nothing else keeps the photo:
+the mill opens it in a private directory and removes it when the grind ends.
+
+### Waiting
+
+A grist waits at the backend until the mill takes it. The mill runs only on the
+factory's home host, and each grind occupies one of that host's story slots, first
+come first served. So a grist can wait minutes while the factory is busy, or hours
+while its host is off. Nothing is lost by waiting: the app shows the grist as *at the
+factory* and pages `GET /api/messages?since=` (every 20 seconds while any grist is
+unanswered, and when it opens) until its answer arrives.
+
+### The on-grist hook
+
+`POSTERN_ON_GRIST` is a shell command run after a grist addressed to the mill is
+indexed: on the factory's host, `mw grist grind`. It is debounced, never overlaps,
+and runs once more if a grist arrived mid-run, like `POSTERN_ON_MESSAGE` (§9). The
+on-message hook is not run for a grist to the mill, so a batch of photos never delays
+one of the Governor's taps. Grist also keeps until the mill's next pass, so a missed
+hook only delays an answer.
+
+### Reaching the backend from another origin
+
+An app served from its own origin (Cairn is on GitHub Pages) calls the backend
+cross-origin. `POSTERN_CORS_ORIGINS` lists the origins allowed to (for example
+`https://jonathan-a-white.github.io`): for those, every response carries
+`Access-Control-Allow-Origin` with that origin, and an `OPTIONS` preflight is answered
+`204` allowing `Authorization` and `Content-Type` on `GET`, `POST` and `DELETE`. Any
+other origin gets no CORS headers, so browsers refuse it.
+
+### Test vectors
+
+`docs/fixtures/grist-vectors.json` holds a grist plaintext, its answer in each
+status, and envelopes the backend must accept or refuse for each kind of key. The
+backend's tests and the mill's read the same file.

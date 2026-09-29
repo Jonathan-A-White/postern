@@ -26,7 +26,7 @@ func TestParseEnvelopeAcceptsProtocolVector1(t *testing.T) {
 }
 
 func TestParseEnvelopeAcceptsEveryKnownClass(t *testing.T) {
-	for _, class := range []string{"message", "decision-needed", "landing", "alarm"} {
+	for _, class := range []string{"message", "decision-needed", "landing", "alarm", "grist"} {
 		payload := strings.Replace(vector1, `"class":"message"`, `"class":"`+class+`"`, 1)
 		if _, err := ParseEnvelope([]byte(payload)); err != nil {
 			t.Fatalf("class %q: %v", class, err)

@@ -73,25 +73,34 @@ type outpoint struct {
 	vout int
 }
 
-// Held reports whether address holds a licence under rule. It reads every
+// Held reports whether address holds a licence under rule: whether
+// HeldCollections names any collection.
+func Held(reader Reader, address string, rule Rule) (bool, error) {
+	collections, err := HeldCollections(reader, address, rule)
+	return len(collections) > 0, err
+}
+
+// HeldCollections names every collection address holds a licence in under
+// rule, each once, in the order their first mints appear. It reads every
 // transaction in address's history (and the issuer's, when rule names one),
 // finds each mint that counts, and follows that licence's token from the
 // mint's output 0 through every spend of it those transactions show: a TR
 // record moves it to the address it names, anything else (a write) leaves
 // it with its holder, and each spend's output 0 is the token's next
-// outpoint. It holds if any counting licence ends with address.
+// outpoint. A collection is held if any counting licence in it ends with
+// address. The collection is what a licence opens (docs/protocol.md §18).
 //
 // Only transactions in those address histories are seen: a spend paid
 // wholly from the licence's Fuel touches no P2PKH address, so a transfer
 // like that stays invisible here until something (the holder's own coin, a
 // payment, its change) puts it in one of those histories.
-func Held(reader Reader, address string, rule Rule) (bool, error) {
+func HeldCollections(reader Reader, address string, rule Rule) ([]string, error) {
 	addresses := []string{address}
 	issuerKey := strings.ToLower(rule.IssuerKey)
 	if issuerKey != "" {
 		issuerAddress, err := AddressForPublicKey(issuerKey)
 		if err != nil {
-			return false, fmt.Errorf("issuer key: %w", err)
+			return nil, fmt.Errorf("issuer key: %w", err)
 		}
 		if issuerAddress != address {
 			addresses = append(addresses, issuerAddress)
@@ -103,7 +112,7 @@ func Held(reader Reader, address string, rule Rule) (bool, error) {
 	for _, addr := range addresses {
 		history, err := reader.GetHistory(addr)
 		if err != nil {
-			return false, fmt.Errorf("getting history for %s: %w", addr, err)
+			return nil, fmt.Errorf("getting history for %s: %w", addr, err)
 		}
 		for _, entry := range history {
 			if _, seen := txs[entry.TxHash]; seen {
@@ -111,7 +120,7 @@ func Held(reader Reader, address string, rule Rule) (bool, error) {
 			}
 			txHex, err := reader.GetTransactionHex(entry.TxHash)
 			if err != nil {
-				return false, fmt.Errorf("getting transaction %s: %w", entry.TxHash, err)
+				return nil, fmt.Errorf("getting transaction %s: %w", entry.TxHash, err)
 			}
 			tx, err := record.ParseTransaction(txHex)
 			if err != nil {
@@ -137,21 +146,24 @@ func Held(reader Reader, address string, rule Rule) (bool, error) {
 	if len(collections) == 0 {
 		collections = DefaultCollections
 	}
+	var held []string
 	for _, txid := range order {
-		if !countsAsMint(txs[txid], address, collections, issuerKey) {
+		collection, ok := countsAsMint(txs[txid], address, collections, issuerKey)
+		if !ok || contains(held, collection) {
 			continue
 		}
 		if holderNow(txid, address, txs, spentBy) == address {
-			return true, nil
+			held = append(held, collection)
 		}
 	}
-	return false, nil
+	return held, nil
 }
 
 // countsAsMint reports whether tx carries an M record naming holder in one
-// of collections, signed (when issuerKey is set) by the issuer.
-func countsAsMint(tx *record.Transaction, holder string, collections []string, issuerKey string) bool {
-	minted := false
+// of collections, signed (when issuerKey is set) by the issuer, and in
+// which collection.
+func countsAsMint(tx *record.Transaction, holder string, collections []string, issuerKey string) (string, bool) {
+	collection, minted := "", false
 	for _, out := range tx.Outputs {
 		typed, ok := record.DecodeTypedScript(out.ScriptHex)
 		if !ok || typed.RecordType != "M" {
@@ -162,20 +174,20 @@ func countsAsMint(tx *record.Transaction, holder string, collections []string, i
 			continue
 		}
 		if payload.Holder == holder && contains(collections, payload.Collection) {
-			minted = true
+			collection, minted = payload.Collection, true
 			break
 		}
 	}
 	if !minted || issuerKey == "" {
-		return minted
+		return collection, minted
 	}
 
 	for _, in := range tx.Inputs {
 		if key, ok := record.P2PKHPublicKey(in.ScriptSig); ok && key == issuerKey {
-			return true
+			return collection, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // holderNow follows the licence minted at mintTxid:0 through every spend

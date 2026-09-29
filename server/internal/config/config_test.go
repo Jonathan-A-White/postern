@@ -97,6 +97,9 @@ func TestLoadV2Defaults(t *testing.T) {
 	if cfg.ViewFile != "" || cfg.BeadCmd != "" || cfg.OnMessage != "" {
 		t.Fatalf("ViewFile/BeadCmd/OnMessage = %q/%q/%q, want all empty by default", cfg.ViewFile, cfg.BeadCmd, cfg.OnMessage)
 	}
+	if cfg.HomeCmd != "" {
+		t.Fatalf("HomeCmd = %q, want empty by default (no standby mode)", cfg.HomeCmd)
+	}
 	if cfg.MayorKey != "" || cfg.IssuerKey != "" {
 		t.Fatalf("MayorKey/IssuerKey = %q/%q, want both empty by default", cfg.MayorKey, cfg.IssuerKey)
 	}
@@ -165,5 +168,23 @@ func TestLoadRejectsAnEmptyCollectionList(t *testing.T) {
 	env := map[string]string{"POSTERN_ANCHOR": "mAnchorAddress", "POSTERN_COLLECTIONS": " , "}
 	if _, err := Load(func(key string) string { return env[key] }); err == nil {
 		t.Fatal("Load accepted a POSTERN_COLLECTIONS naming no collection, want an error")
+	}
+}
+
+func TestLoadReadsHomeCmdTrimmed(t *testing.T) {
+	cfg, err := Load(func(key string) string {
+		switch key {
+		case "POSTERN_ANCHOR":
+			return "mAnchorAddress"
+		case "POSTERN_HOME_CMD":
+			return "  mw home --check \n"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HomeCmd != "mw home --check" {
+		t.Fatalf("HomeCmd = %q", cfg.HomeCmd)
 	}
 }

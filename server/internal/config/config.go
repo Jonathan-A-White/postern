@@ -37,6 +37,9 @@ type Config struct {
 	// OnMessage is POSTERN_ON_MESSAGE: a shell command run (sh -c) after
 	// records are indexed. Empty means no hook.
 	OnMessage string
+	// HomeCmd is POSTERN_HOME_CMD: a shell command (sh -c) whose exit 0 says
+	// this host is home, e.g. `mw home --check`. Empty means no standby mode.
+	HomeCmd string
 	// MayorKey is POSTERN_MAYOR_KEY: the Mayor's compressed public key, hex,
 	// lower-cased, answered by GET /api/me. Empty if unset.
 	MayorKey string
@@ -64,6 +67,7 @@ func Load(getenv func(string) string) (Config, error) {
 		ViewFile:        getenv("POSTERN_VIEW_FILE"),
 		BeadCmd:         strings.TrimSpace(getenv("POSTERN_BEAD_CMD")),
 		OnMessage:       strings.TrimSpace(getenv("POSTERN_ON_MESSAGE")),
+		HomeCmd:         strings.TrimSpace(getenv("POSTERN_HOME_CMD")),
 		Collections:     splitList(orDefault(getenv("POSTERN_COLLECTIONS"), defaultCollections)),
 	}
 

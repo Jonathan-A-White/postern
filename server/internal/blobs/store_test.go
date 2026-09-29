@@ -168,3 +168,33 @@ func TestSweepRemovesOnlyBlobsOlderThanRetention(t *testing.T) {
 		t.Fatalf("a 29-day-old blob should still exist, stat: %v", err)
 	}
 }
+
+func TestDeleteRemovesABlob(t *testing.T) {
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	hash, _, _, err := store.Put([]byte("sealed photo"))
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	if err := store.Delete(hash); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, _, err := store.Open(hash); err != ErrNotFound {
+		t.Fatalf("Open after Delete: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestDeleteRefusesAnUnknownOrMalformedHash(t *testing.T) {
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	for _, hash := range []string{strings.Repeat("a", 64), "../postern-index.jsonl", ""} {
+		if err := store.Delete(hash); err != ErrNotFound {
+			t.Fatalf("Delete(%q): err = %v, want ErrNotFound", hash, err)
+		}
+	}
+}

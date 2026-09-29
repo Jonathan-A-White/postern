@@ -376,16 +376,25 @@ func TestVAPIDPublicKeyReturnsConfiguredKey(t *testing.T) {
 func TestPushSubscribeStoresSubscription(t *testing.T) {
 	server, _, pushStore := newTestServerWithPush(t, func(w http.ResponseWriter, r *http.Request) {})
 
-	body := `{"pubkey":"abc123","subscription":{"endpoint":"https://push.example/1","keys":{"p256dh":"p","auth":"a"}}}`
-	resp := doAuthorized(t, http.MethodPost, server.URL+"/api/push/subscribe", strings.NewReader(body), server)
+	key, pubKeyHex := newKey(t)
+	body := `{"pubkey":"` + pubKeyHex + `","subscription":{"endpoint":"https://push.example/1","keys":{"p256dh":"p","auth":"a"}}}`
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/push/subscribe", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("building request: %v", err)
+	}
+	req.Header = authorizedAs(t, server, key)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/push/subscribe: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 
-	subs := pushStore.ByPublicKey("abc123")
+	subs := pushStore.ByPublicKey(pubKeyHex)
 	if len(subs) != 1 || subs[0].Endpoint != "https://push.example/1" {
-		t.Fatalf("subs = %+v, want one subscription for abc123", subs)
+		t.Fatalf("subs = %+v, want one subscription for the signing key", subs)
 	}
 }
 

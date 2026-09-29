@@ -188,3 +188,62 @@ func TestLoadReadsHomeCmdTrimmed(t *testing.T) {
 		t.Fatalf("HomeCmd = %q", cfg.HomeCmd)
 	}
 }
+
+// gristEnv is an environment with the anchor set and the given overrides.
+func gristEnv(overrides map[string]string) func(string) string {
+	return func(key string) string {
+		if key == "POSTERN_ANCHOR" {
+			return "mAnchorAddress"
+		}
+		return overrides[key]
+	}
+}
+
+func TestLoadGristDefaultsToNoMillNoAppsNoCORS(t *testing.T) {
+	cfg, err := Load(gristEnv(nil))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MillKey != "" || len(cfg.Apps) != 0 || cfg.OnGrist != "" || len(cfg.CORSOrigins) != 0 {
+		t.Fatalf("grist config = %q %v %q %v, want all empty", cfg.MillKey, cfg.Apps, cfg.OnGrist, cfg.CORSOrigins)
+	}
+}
+
+func TestLoadGristFromEnv(t *testing.T) {
+	cfg, err := Load(gristEnv(map[string]string{
+		"POSTERN_MILL_KEY":     "034F355BDCB7CC0AF728EF3CCEB9615D90684BB5B2CA5F859AB0F0B704075871AA",
+		"POSTERN_APPS":         " cairn=cairn , spellforge-grist=spellforge ",
+		"POSTERN_ON_GRIST":     " mw grist grind ",
+		"POSTERN_CORS_ORIGINS": "https://jonathan-a-white.github.io, http://localhost:5173",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MillKey != "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa" {
+		t.Fatalf("MillKey = %q, want it lower-cased", cfg.MillKey)
+	}
+	if len(cfg.Apps) != 2 || cfg.Apps["cairn"] != "cairn" || cfg.Apps["spellforge-grist"] != "spellforge" {
+		t.Fatalf("Apps = %v", cfg.Apps)
+	}
+	if cfg.OnGrist != "mw grist grind" {
+		t.Fatalf("OnGrist = %q", cfg.OnGrist)
+	}
+	if len(cfg.CORSOrigins) != 2 || cfg.CORSOrigins[1] != "http://localhost:5173" {
+		t.Fatalf("CORSOrigins = %v", cfg.CORSOrigins)
+	}
+}
+
+func TestLoadRejectsBadGristConfig(t *testing.T) {
+	for name, env := range map[string]map[string]string{
+		"a malformed mill key":                  {"POSTERN_MILL_KEY": "not-a-key"},
+		"an app pair without an app":            {"POSTERN_APPS": "cairn="},
+		"an app pair without an equals":         {"POSTERN_APPS": "cairn"},
+		"an app collection that is a cockpit's": {"POSTERN_APPS": "postern=postern"},
+		"an origin with a path":                 {"POSTERN_CORS_ORIGINS": "https://example.com/app"},
+		"an origin with no scheme":              {"POSTERN_CORS_ORIGINS": "example.com"},
+	} {
+		if _, err := Load(gristEnv(env)); err == nil {
+			t.Fatalf("%s: Load succeeded, want an error", name)
+		}
+	}
+}

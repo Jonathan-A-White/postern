@@ -25,3 +25,16 @@ func TestFanoutTellsEveryNotifierInOrderSkippingNil(t *testing.T) {
 		}
 	}
 }
+
+func TestOnlyTellsItsNotifierJustTheRecordsItKeeps(t *testing.T) {
+	var told []string
+	only := Only{
+		Notifier: Func(func(rec index.Record) { told = append(told, rec.TxID) }),
+		Keep:     func(rec index.Record) bool { return rec.TxID != "direct:skip" },
+	}
+	only.RecordIndexed(index.Record{TxID: "direct:keep"})
+	only.RecordIndexed(index.Record{TxID: "direct:skip"})
+	if len(told) != 1 || told[0] != "direct:keep" {
+		t.Fatalf("told = %v, want just direct:keep", told)
+	}
+}

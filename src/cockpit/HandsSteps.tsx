@@ -45,6 +45,12 @@ function StepCard({ bead, step }: { bead: string; step: HandsStep }) {
           </Chip>
         )}
       </div>
+      {step.ran && !ranOk && step.ran.why && (
+        <div className="flex flex-col gap-0.5" role="alert">
+          <span className="text-[14px] font-semibold text-danger">Failed</span>
+          <span className="text-[13px] whitespace-pre-wrap break-words">{step.ran.why}</span>
+        </div>
+      )}
       <pre className="overflow-x-auto rounded-lg bg-canvas p-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap break-all">{step.run}</pre>
       {step.way_back && (
         <div>

@@ -570,9 +570,14 @@ parent chain up to the root, so the app can draw any level of the tree:
 | `question` | a decision-needed question asked over the postern is still open on `bead` | the question's own |
 | `approve` | a live epic has stories held (`deferred`) for his word: `bead` is the epic, `text` says how many | `["Release"]` |
 | `verify` | a story closed in the last 24 hours with no `VERIFIED` comment | `["Verified"]` |
+| `stale` | a bead that has gone stale: `since` is when it went stale; `text` is the facts (what it is, its age, what it waits on, the first 200 characters of its newest comment); it **replaces** the `approve` or `hands` need for the same bead, never both | `["Keep", "Close"]` |
 | `demo` | an open bead labelled `demo` | `[]` |
 | `hands` | an open bead labelled `hitl`: a step only his hands can do; its `steps` (§17) can be approved and run from the app | `[]` |
 | `alarm` | a story that used up its attempts, or a host whose last sync is over 20 minutes old (`bead` empty) | `[]` |
+
+The table is also the kinds' rank among equals: `stale` comes after `verify` and
+before `demo`. A bead is never in `needs` as both `stale` and `approve`, or both
+`stale` and `hands`: the `stale` need stands in for the other.
 
 `blocks` — how many unfinished beads wait on `bead`, directly or through others.
 
@@ -629,6 +634,17 @@ and the Mayor is told afterwards. An action is an ordinary message (§1, class
 | `priority` | `"priority": 0..4` | sets the bead's priority |
 | `verified` | — | comments `VERIFIED by the Governor via postern (<txid>)` on the story |
 | `run` | `step`, `sha256`, `approved_at`, `sig` | runs a hands step he approved (§17) |
+| `keep` | `"days": n` (default 30) | keeps a stale bead (§11) for `days` more days, so it is not raised as `stale` again until they pass |
+| `close` | — | closes the bead; on an epic or a map it closes the held (`deferred`) children first, then the epic |
+
+```json
+{ "action": "keep", "bead": "mw-abc.3", "days": 30 }
+{ "action": "close", "bead": "mw-abc" }
+```
+
+`close` refuses a bead that has an `in_progress` child: nothing is closed, and the
+host says so as text (a message to the Mayor naming the bead and the child) rather
+than as a comment on the bead.
 
 An answer to a question stays §6's reply, and a comment on a bead stays §6's
 threaded message with a bead thread; all three kinds are applied the moment they

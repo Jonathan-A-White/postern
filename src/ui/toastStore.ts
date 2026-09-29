@@ -3,6 +3,8 @@ export interface Toast {
   id: number;
   text: string;
   tone: 'ok' | 'error';
+  /** One optional tap beside the words (the Needs card's "Open"); the toast leaves when it is tapped. */
+  action?: { label: string; onClick: () => void };
 }
 
 let toasts: Toast[] = [];
@@ -22,13 +24,14 @@ export function currentToasts(): Toast[] {
   return toasts;
 }
 
-export function toast(text: string, tone: Toast['tone'] = 'ok', ms = 3500): void {
+export function toast(text: string, tone: Toast['tone'] = 'ok', ms = 3500, action?: Toast['action']): void {
   const id = nextId++;
-  toasts = [...toasts, { id, text, tone }];
-  emit();
-  setTimeout(() => {
+  const dismiss = () => {
     toasts = toasts.filter((t) => t.id !== id);
     emit();
-  }, ms);
+  };
+  toasts = [...toasts, { id, text, tone, action: action && { label: action.label, onClick: () => { action.onClick(); dismiss(); } } }];
+  emit();
+  setTimeout(dismiss, ms);
 }
 

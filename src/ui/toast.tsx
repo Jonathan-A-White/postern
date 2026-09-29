@@ -21,6 +21,11 @@ export function ToastHost() {
         >
           <Icon name={t.tone === 'error' ? 'alarm' : 'check'} size={16} />
           {t.text}
+          {t.action && (
+            <button type="button" onClick={t.action.onClick} className="ml-1 rounded-md px-2 py-0.5 text-[13px] font-semibold text-accent hover:bg-surface">
+              {t.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>

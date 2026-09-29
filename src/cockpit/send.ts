@@ -14,6 +14,8 @@ import { buildApproval, stepUp } from '../services/hands';
 import type { HomeHost } from '../services/standby';
 import type { ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
+import { navigate } from '../router';
+import type { Route } from '../nav/route';
 
 export class NotReady extends Error {}
 
@@ -81,14 +83,21 @@ export async function sendToThread(thread: ThreadRef | undefined, text: string, 
   return sent;
 }
 
+/** A success toast that also offers to open somewhere (a Needs card's message: its thread). */
+export interface SuccessToast {
+  text: string;
+  open: Route;
+}
+
 /** Runs a send, reporting success or failure as a toast; `busy` while it runs. */
 export function useSend() {
   const [busy, setBusy] = useState(false);
-  async function run<T>(task: () => Promise<T>, success?: string): Promise<T | undefined> {
+  async function run<T>(task: () => Promise<T>, success?: string | SuccessToast): Promise<T | undefined> {
     setBusy(true);
     try {
       const result = await task();
-      if (success) toast(success);
+      if (typeof success === 'string') toast(success);
+      else if (success) toast(success.text, 'ok', 6000, { label: 'Open', onClick: () => navigate(success.open) });
       return result;
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error', 6000);

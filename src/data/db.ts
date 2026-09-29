@@ -41,6 +41,11 @@ export interface MessageRow {
   thread?: string;
 }
 
+/** What he last did by hand to a Talk thread, per device and thread key: archived
+ * it, or brought it back, at `at` (ms). It holds only until something newer is said
+ * in the thread (src/model/threads.ts). Stored in the settings table (mw-2y46l.6). */
+export type ArchiveChoices = Record<string, { archived: boolean; at: number }>;
+
 // Recorded on a phrase-mode vault row so the UI can name, rather than merely
 // report the absence of, the fingerprint ceremony's outcome:
 // - webauthn-unavailable: this phone/browser has no WebAuthn platform authenticator.

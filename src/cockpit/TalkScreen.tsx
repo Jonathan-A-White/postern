@@ -2,59 +2,110 @@
 // decision 10): the factory-wide thread first, then each bead and topic he has
 // talked about, most recent first, with what was said last and what is unread.
 // Opening one shows it as a conversation with the composer; a bead's thread
-// links through to the bead. Two panes on a wide screen.
+// links through to the bead. Two panes on a wide screen. A thread of a finished
+// bead, quiet for 3 days, or one he put away, sits under one Archived row
+// (mw-2y46l.6); search looks through both.
 import { useEffect, useMemo, useState } from 'react';
 import { Button, EmptyState, Icon, IconButton, TimeAgo, cx } from '../ui';
 import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
-import { useBeadDetail, useMessages, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { useBeadDetail, useMessages, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { mergeConversation, previewText, type ConversationItem } from '../model/conversation';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
-import { messagesRepo } from '../data/repositories';
+import { messagesRepo, settingsRepo } from '../data/repositories';
 import { parseThreadKey, type ThreadRef } from '../services/threads';
-import { GENERAL, summariseThreads, titleFor } from '../model/threads';
+import { GENERAL, summariseThreads, titleFor, type ThreadSummary } from '../model/threads';
 
-function ThreadList({ current, filter }: { current?: string; filter: string }) {
-  const messages = useMessages();
-  const view = useViewIndex();
-  const threads = useMemo(() => summariseThreads(messages, view?.index), [messages, view]);
-  const words = filter.trim().toLowerCase();
-  const shown = words ? threads.filter((t) => `${t.title} ${t.subtitle}`.toLowerCase().includes(words)) : threads;
+function ThreadRow({ thread, active, onToggleArchive }: { thread: ThreadSummary; active: boolean; onToggleArchive: (thread: ThreadSummary) => void }) {
   return (
-    <ul className="divide-y divide-line" data-testid="thread-list">
-      {shown.map((thread) => {
-        const active = thread.key === current;
-        return (
-          <li key={thread.key}>
-            <a
-              href={formatRoute({ view: 'talk', thread: thread.key })}
-              aria-current={active ? 'true' : undefined}
-              className={cx('flex items-start gap-3 px-4 py-3 transition-colors', active ? 'bg-raised' : 'hover:bg-raised/60')}
-            >
-              <span className={cx('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', thread.key === GENERAL ? 'bg-accent/15 text-accent' : 'bg-raised text-muted')}>
-                <Icon name={thread.key === GENERAL ? 'layers' : thread.key.startsWith('bead:') ? 'check' : 'talk'} size={17} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-2">
-                  <span className={cx('truncate text-[14.5px]', thread.unread ? 'font-semibold' : 'font-medium')}>{thread.title}</span>
-                  {thread.last && <TimeAgo at={thread.last.ts} className="ml-auto shrink-0 text-[11.5px] text-faint" />}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="line-clamp-1 flex-1 text-[13px] text-muted">
-                    {thread.last ? `${thread.last.direction === 'sent' ? 'You: ' : ''}${previewText(thread.last)}` : thread.subtitle}
-                  </span>
-                  {thread.unread > 0 && (
-                    <span className="rounded-full bg-accent px-1.5 text-[11px] leading-[18px] font-semibold text-accent-fg">{thread.unread}</span>
-                  )}
-                </span>
-              </span>
-            </a>
-          </li>
-        );
-      })}
+    <li className="flex items-center">
+      <a
+        href={formatRoute({ view: 'talk', thread: thread.key })}
+        aria-current={active ? 'true' : undefined}
+        className={cx('flex min-w-0 flex-1 items-start gap-3 px-4 py-3 transition-colors', active ? 'bg-raised' : 'hover:bg-raised/60')}
+      >
+        <span className={cx('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', thread.key === GENERAL ? 'bg-accent/15 text-accent' : 'bg-raised text-muted')}>
+          <Icon name={thread.key === GENERAL ? 'layers' : thread.key.startsWith('bead:') ? 'check' : 'talk'} size={17} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className={cx('truncate text-[14.5px]', thread.unread ? 'font-semibold' : 'font-medium')}>{thread.title}</span>
+            {thread.last && <TimeAgo at={thread.last.ts} className="ml-auto shrink-0 text-[11.5px] text-faint" />}
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="line-clamp-1 flex-1 text-[13px] text-muted">
+              {thread.last ? `${thread.last.direction === 'sent' ? 'You: ' : ''}${previewText(thread.last)}` : thread.subtitle}
+            </span>
+            {thread.unread > 0 && (
+              <span className="rounded-full bg-accent px-1.5 text-[11px] leading-[18px] font-semibold text-accent-fg">{thread.unread}</span>
+            )}
+          </span>
+        </span>
+      </a>
+      {thread.key !== GENERAL &&
+        (thread.archived ? (
+          <Button size="sm" variant="ghost" className="mr-2" aria-label={`Unarchive ${thread.title}`} onClick={() => onToggleArchive(thread)}>
+            Unarchive
+          </Button>
+        ) : (
+          <IconButton icon="archive" size="sm" className="mr-2" label={`Archive ${thread.title}`} onClick={() => onToggleArchive(thread)} />
+        ))}
+    </li>
+  );
+}
+
+function ThreadList({ threads, current, filter, onToggleArchive }: { threads: ThreadSummary[]; current?: string; filter: string; onToggleArchive: (thread: ThreadSummary) => void }) {
+  const [showArchived, setShowArchived] = useState(false);
+  const words = filter.trim().toLowerCase();
+  const matching = words ? threads.filter((t) => `${t.title} ${t.subtitle}`.toLowerCase().includes(words)) : threads;
+  const live = matching.filter((t) => !t.archived);
+  const archived = matching.filter((t) => t.archived);
+  const rows = (list: ThreadSummary[], testId: string) => (
+    <ul className="divide-y divide-line" data-testid={testId}>
+      {list.map((thread) => (
+        <ThreadRow key={thread.key} thread={thread} active={thread.key === current} onToggleArchive={onToggleArchive} />
+      ))}
     </ul>
+  );
+
+  // Searching looks through both: what matches, live first, then what matches among the archived.
+  if (words) {
+    return (
+      <>
+        {rows(live, 'thread-list')}
+        {archived.length > 0 && (
+          <>
+            <div className="border-y border-line px-4 py-1.5 text-[12px] font-semibold tracking-[0.08em] text-faint uppercase">Archived</div>
+            {rows(archived, 'archived-list')}
+          </>
+        )}
+      </>
+    );
+  }
+  if (showArchived && archived.length > 0) {
+    return (
+      <>
+        <button type="button" onClick={() => setShowArchived(false)} className="flex w-full items-center gap-2 border-b border-line px-4 py-3 text-left text-sm text-muted hover:bg-raised/60">
+          <Icon name="back" size={15} />
+          Archived ({archived.length})
+        </button>
+        {rows(archived, 'archived-list')}
+      </>
+    );
+  }
+  return (
+    <>
+      {rows(live, 'thread-list')}
+      {archived.length > 0 && (
+        <button type="button" onClick={() => setShowArchived(true)} className="flex w-full items-center gap-3 border-t border-line px-4 py-3 text-left text-sm text-muted hover:bg-raised/60">
+          <Icon name="archive" size={16} />
+          <span className="flex-1">Archived ({archived.length})</span>
+          <Icon name="forward" size={15} />
+        </button>
+      )}
+    </>
   );
 }
 
@@ -129,10 +180,21 @@ export function TalkScreen({ thread }: { thread?: string }) {
   const bead = current?.startsWith('bead:') ? current.slice(5) : undefined;
   const rows = useThreadMessages(current === GENERAL ? undefined : current);
   const speakItems = useMemo(() => mergeConversation(rows), [rows]);
+  const messages = useMessages();
+  const choices = useThreadArchive();
+  const threads = useMemo(() => summariseThreads(messages, view?.index, choices), [messages, view, choices]);
+  const currentThread = threads.find((t) => t.key === current);
+  const toggleArchive = (thread: ThreadSummary) => {
+    void settingsRepo.setThreadArchived(thread.key, !thread.archived);
+    if (thread.key === current && !thread.archived) navigate({ view: 'talk' });
+  };
 
   const threadActions = (
     <>
       <SpeakAll items={speakItems} />
+      {currentThread && currentThread.key !== GENERAL && (
+        <IconButton icon="archive" label={currentThread.archived ? 'Unarchive thread' : 'Archive thread'} onClick={() => toggleArchive(currentThread)} />
+      )}
       {bead && <IconButton icon="forward" label="Open the bead" onClick={() => navigate(beadHref(bead))} />}
     </>
   );
@@ -148,7 +210,7 @@ export function TalkScreen({ thread }: { thread?: string }) {
         <NewTopic />
       </div>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-        <ThreadList current={current} filter={filter} />
+        <ThreadList threads={threads} current={current} filter={filter} onToggleArchive={toggleArchive} />
       </div>
     </>
   );

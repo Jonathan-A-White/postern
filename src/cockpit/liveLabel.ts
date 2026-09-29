@@ -9,6 +9,8 @@ export function liveLabel(live: LiveState, now: number = Date.now()): { text: st
       return { text: 'Live', tone: 'working' };
     case 'polling':
       return { text: 'Polling', tone: 'needs' };
+    case 'reconnecting':
+      return { text: 'Reconnecting…', tone: 'needs' };
     case 'connecting':
       return { text: 'Connecting…', tone: 'neutral' };
     case 'unlicensed':

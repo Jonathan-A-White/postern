@@ -5,7 +5,7 @@
 // ciphertext's own sha256 hash and byte length; this never computes either
 // itself.
 import { Utils } from '@bsv/sdk';
-import { apiFetch } from './apiAuth';
+import { ApiTimeoutError, apiFetch, withTimeout } from './apiAuth';
 import { encryptAttachment } from './messages';
 import { readErrorMessage } from './send';
 import type { Attachment } from './threads';
@@ -58,15 +58,21 @@ export async function uploadAttachment(params: UploadAttachmentParams): Promise<
     recipientPublicKeyHex: params.recipientPublicKeyHex,
   });
 
+  // An upload that times out has not sent the message it was for: nothing has gone.
+  const notSent = (err: unknown) => (err instanceof ApiTimeoutError ? new ApiTimeoutError(false) : err);
   const response = await apiFetch(
     '/blobs',
     { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: ciphertext.buffer as ArrayBuffer },
     { unlockedKey: params.senderKey, apiBase: params.apiBase, fetchImpl: params.fetchImpl },
-  );
+  ).catch((err: unknown) => {
+    throw notSent(err);
+  });
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'The image upload failed.'));
   }
-  const body = (await response.json()) as { hash?: unknown; size?: unknown };
+  const body = (await withTimeout(response.json(), false).catch((err: unknown) => {
+    throw notSent(err);
+  })) as { hash?: unknown; size?: unknown };
   if (typeof body.hash !== 'string' || typeof body.size !== 'number') {
     throw new Error('The upload succeeded but returned no hash.');
   }

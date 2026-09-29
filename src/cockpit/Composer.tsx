@@ -153,7 +153,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     }
   }
 
-  const canSend = !busy && (text.trim().length > 0 || files.length > 0 || !!quote);
+  const canSend = (text.trim().length > 0 || files.length > 0 || !!quote);
 
   return (
     <div className="pb-safe shrink-0 border-t border-line bg-surface" onDragOver={(event) => event.preventDefault()} onDrop={onDrop} data-testid="composer">

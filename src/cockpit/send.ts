@@ -3,7 +3,8 @@
 // encrypted to the pinned Mayor and delivered directly. Files go up first
 // (docs/protocol.md §8), one message each, the caption riding on the last.
 import { useState } from 'react';
-import { deliverAction, deliverAnswer, deliverMoveHome, deliverThreaded, type Delivered } from '../services/deliver';
+import { deliverAction, deliverAnswer, deliverMoveHome, deliverThreaded, writeBehind, type Delivered } from '../services/deliver';
+import { ApiTimeoutError } from '../services/apiAuth';
 import { deliverOptions } from '../services/live';
 import { getKey } from '../services/keySession';
 import { attachmentMime, MAX_ATTACHMENT_BYTES, uploadAttachment } from '../services/attachments';
@@ -27,7 +28,7 @@ function options() {
 
 export async function sendAnswer(bead: string, answer: string): Promise<Delivered> {
   const delivered = await deliverAnswer(bead, answer, options());
-  await answersRepo.save({ bead, answer, txid: delivered.txid });
+  writeBehind(answersRepo.save({ bead, answer, txid: delivered.txid }), 'your answer');
   return delivered;
 }
 
@@ -35,7 +36,7 @@ export async function sendAnswer(bead: string, answer: string): Promise<Delivere
  * the need it settles leaves the queue at once rather than at the next view. */
 export async function sendAction(action: GovernorAction): Promise<Delivered> {
   const delivered = await deliverAction(action, options());
-  await answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid });
+  writeBehind(answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid }), 'your action');
   return delivered;
 }
 
@@ -83,6 +84,15 @@ export async function sendToThread(thread: ThreadRef | undefined, text: string, 
   return sent;
 }
 
+export const MAY_HAVE_GONE = 'May have gone: check the thread before sending again';
+export const NOT_SENT = 'Not sent: try again';
+
+/** The words a failed send shows: a timeout says whether the message could have gone. */
+export function describeSendError(err: unknown): string {
+  if (err instanceof ApiTimeoutError) return err.sent ? MAY_HAVE_GONE : NOT_SENT;
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** A success toast that also offers to open somewhere (a Needs card's message: its thread). */
 export interface SuccessToast {
   text: string;
@@ -100,7 +110,7 @@ export function useSend() {
       else if (success) toast(success.text, 'ok', 6000, { label: 'Open', onClick: () => navigate(success.open) });
       return result;
     } catch (err) {
-      toast(err instanceof Error ? err.message : String(err), 'error', 6000);
+      toast(describeSendError(err), 'error', err instanceof ApiTimeoutError ? 10_000 : 6000);
       return undefined;
     } finally {
       setBusy(false);

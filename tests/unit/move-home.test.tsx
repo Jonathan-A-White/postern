@@ -112,7 +112,7 @@ describe('the confirm', () => {
 
 describe('deliverMoveHome', () => {
   it("posts a record of class move-home whose plaintext is {\"host\": …}, signed by his key", async () => {
-    const { deliverMoveHome: real } = await vi.importActual<typeof import('../../src/services/deliver')>('../../src/services/deliver');
+    const { deliverMoveHome: real, settledWrites } = await vi.importActual<typeof import('../../src/services/deliver')>('../../src/services/deliver');
     const mayor = PrivateKey.fromHex('77'.repeat(32));
     const key = new Uint8Array(Utils.toArray('45'.repeat(32), 'hex'));
     let posted: { scriptHex?: string } = {};
@@ -123,6 +123,7 @@ describe('deliverMoveHome', () => {
     });
     const delivered = await real('laptop', { key, mayorKey: mayor.toPublicKey().toString(), direct: true, fetchImpl: fetchImpl as unknown as typeof fetch });
     expect(delivered).toEqual({ txid: '2'.repeat(64), channel: 'direct' });
+    await settledWrites();
     const stored = await db.messages.get(`${'2'.repeat(64)}:0`);
     expect(stored?.class).toBe('move-home');
     expect(JSON.parse(stored!.plaintext!)).toEqual({ host: 'laptop' });

@@ -6,7 +6,7 @@
 // thread before the event stream echoes it back.
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { encodeRecordScript } from 'spell-forge-bsv';
-import { apiFetch } from './apiAuth';
+import { apiFetch, withTimeout } from './apiAuth';
 import { encryptMessage, type MessageClass } from './messages';
 import { readErrorMessage, sendTextMessage } from './send';
 import { encodeReply } from './questions';
@@ -39,9 +39,49 @@ async function postDirect(scriptHex: string, options: DeliverOptions): Promise<s
   );
   if (response.status === 404 || response.status === 405) throw new DirectUnsupported();
   if (!response.ok) throw new Error(await readErrorMessage(response, 'The backend refused the message.'));
-  const body = (await response.json()) as { txid?: unknown };
+  const body = (await withTimeout(response.json(), true)) as { txid?: unknown };
   if (typeof body.txid !== 'string') throw new Error('The backend took the message but named no id.');
   return body.txid;
+}
+
+/** Runs a local-cache write without holding the caller: a rejection is logged, a hang is ignored. */
+export function writeBehind(write: Promise<unknown>, what: string): void {
+  const tracked = write.catch((err: unknown) => console.warn(`Could not keep ${what} on this phone:`, err));
+  writing.add(tracked);
+  void tracked.finally(() => writing.delete(tracked));
+}
+
+const writing = new Set<Promise<unknown>>();
+
+/** Resolves once every write-behind started so far has finished (a test's seam;
+ * the app never waits on it, and a write that hangs keeps it waiting). */
+export async function settledWrites(): Promise<void> {
+  await Promise.all([...writing]);
+}
+
+async function rememberSent(
+  txid: string,
+  plaintext: string,
+  messageClass: MessageClass,
+  payload: ReturnType<typeof encryptMessage>,
+  senderPrivateKeyHex: string,
+): Promise<void> {
+  const existing = await messagesRepo.get(`${txid}:0`);
+  await messagesRepo.put({
+    id: `${txid}:0`,
+    txid,
+    vout: 0,
+    seq: existing?.seq ?? Number.MAX_SAFE_INTEGER,
+    class: messageClass,
+    to: payload.to,
+    from: PrivateKey.fromHex(senderPrivateKeyHex).toPublicKey().toString(),
+    ts: payload.ts,
+    ciphertext: payload.ct,
+    plaintext,
+    direction: 'sent',
+    read: true,
+    thread: threadKey(threadOf(messageClass, plaintext)),
+  });
 }
 
 /** Encrypts `plaintext` to the Mayor and delivers it; resolves with its id. */
@@ -71,22 +111,9 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
     delivered = { txid, channel: 'chain' };
   }
 
-  const existing = await messagesRepo.get(`${delivered.txid}:0`);
-  await messagesRepo.put({
-    id: `${delivered.txid}:0`,
-    txid: delivered.txid,
-    vout: 0,
-    seq: existing?.seq ?? Number.MAX_SAFE_INTEGER,
-    class: messageClass,
-    to: payload.to,
-    from: PrivateKey.fromHex(senderPrivateKeyHex).toPublicKey().toString(),
-    ts: payload.ts,
-    ciphertext: payload.ct,
-    plaintext,
-    direction: 'sent',
-    read: true,
-    thread: threadKey(threadOf(messageClass, plaintext)),
-  });
+  // The server has answered: the message has gone. Keeping a local copy is not
+  // part of sending, so a write that fails or hangs is logged and never awaited.
+  writeBehind(rememberSent(delivered.txid, plaintext, messageClass, payload, senderPrivateKeyHex), 'the sent message');
   return delivered;
 }
 

@@ -9,7 +9,7 @@ import { decodeRecordScript } from 'spell-forge-bsv';
 import { db } from '../../src/data/db';
 import { messagesRepo } from '../../src/data/repositories';
 import { decryptMessage, encryptMessage, type MessagePayload } from '../../src/services/messages';
-import { deliver, deliverThreaded } from '../../src/services/deliver';
+import { deliver, deliverThreaded, settledWrites } from '../../src/services/deliver';
 import { syncMessages } from '../../src/services/inbox';
 import { encodeQuestion } from '../../src/services/questions';
 import { encodeThreadedMessage, threadKey } from '../../src/services/threads';
@@ -65,6 +65,7 @@ function backend(options: { direct: boolean; everything401?: boolean }) {
 
 async function fresh(): Promise<void> {
   vi.unstubAllGlobals();
+  await settledWrites();
   await db.messages.clear();
   await db.settings.clear();
   await db.pendingSpends.clear();
@@ -164,6 +165,7 @@ describeFeature(feature, ({ Scenario }) => {
       await deliverThreaded({ thread: { bead: 'mw-f758y.30.2' }, text: 'about the stream' }, options());
     });
     Then('a sent row with his own words is stored under thread "bead:mw-f758y.30.2"', async () => {
+      await settledWrites();
       const rows = await messagesRepo.getAll();
       expect(rows).toHaveLength(1);
       expect(rows[0].direction).toBe('sent');

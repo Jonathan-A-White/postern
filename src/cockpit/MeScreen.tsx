@@ -6,7 +6,9 @@ import { useEffect, useState } from 'react';
 import { Banner, Button, Card, Chip, Dot, Icon, SectionTitle, TimeAgo } from '../ui';
 import { Screen } from './Shell';
 import { liveLabel } from './liveLabel';
-import { useUnlockedKey } from './hooks';
+import { useUnlockedKey, useViewIndex } from './hooks';
+import { MoveHomeButtons } from './MoveHome';
+import { HOMES, useStandby } from '../services/standby';
 import { lock, sessionExpiresAt } from '../services/keySession';
 import { refreshNow, stopLive, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
@@ -23,6 +25,7 @@ const CLASS_LABELS: Record<MessageClass, string> = {
   landing: 'Landings',
   alarm: 'Alarms',
   message: 'Messages',
+  'move-home': 'Move home',
 };
 
 const SWITCHES: { key: keyof ClassNotificationSettings; label: string }[] = [
@@ -134,6 +137,10 @@ export function MeScreen() {
   const live = useLive();
   const expires = sessionExpiresAt();
   const label = liveLabel(live);
+  const standby = useStandby();
+  const viewState = useViewIndex();
+  // In standby the view on the phone may be from a home that has since changed hands.
+  const home = standby ? undefined : viewState?.index.view.host || undefined;
 
   return (
     <Screen title="Me" subtitle="Key, Mayor, connection, notifications">
@@ -194,6 +201,16 @@ export function MeScreen() {
                 </Banner>
               </div>
             )}
+          </Card>
+        </section>
+
+        <section className="flex flex-col gap-2" aria-label="Home">
+          <SectionTitle>Home</SectionTitle>
+          <Card className="divide-y divide-line">
+            <Row label="The factory's home">{home ?? <span className="text-faint">unknown</span>}</Row>
+            <div className="px-4 py-3">
+              <MoveHomeButtons hosts={HOMES} current={home} />
+            </div>
           </Card>
         </section>
 

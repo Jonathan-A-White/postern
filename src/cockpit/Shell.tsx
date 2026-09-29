@@ -3,10 +3,12 @@
 // stepped into a bead or a thread, where the composer lives); on a wide screen,
 // a sidebar with the same places and room for two panes.
 import { type ReactNode } from 'react';
-import { Icon, IconButton, cx, type IconName } from '../ui';
+import { Banner, Icon, IconButton, cx, type IconName } from '../ui';
 import { formatRoute, isDeep, topViewOf, type Route, type TopView } from '../nav/route';
 import { goBack } from '../router';
 import { useLive } from '../services/live';
+import { hostsToMoveTo, useStandby } from '../services/standby';
+import { MoveHomeButtons } from './MoveHome';
 import { liveLabel } from './liveLabel';
 import { useAnswers, useMessages, useViewIndex, useWide } from './hooks';
 import { unsettledNeeds } from '../model/needs';
@@ -126,6 +128,23 @@ function Sidebar({ current }: { current: TopView }) {
   );
 }
 
+/** The API answered 503 standby: the host that answered is not home, so the
+ * home is down (or moving). Whatever screen he is on, he can move it (mw-43v9x.9). */
+function HomeDown() {
+  const standby = useStandby();
+  if (!standby) return null;
+  return (
+    <section aria-label="Home is down" className="shrink-0 px-2 pt-2">
+      <Banner tone="blocked" icon="alarm">
+        <div className="flex flex-col gap-2">
+          <span className="font-medium">Home is down</span>
+          <MoveHomeButtons hosts={hostsToMoveTo(standby.home)} />
+        </div>
+      </Banner>
+    </section>
+  );
+}
+
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const wide = useWide();
   const top = topViewOf(route);
@@ -133,6 +152,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
     <div className="flex h-dvh overflow-hidden bg-canvas text-fg">
       {wide && <Sidebar current={top} />}
       <div className="flex min-w-0 flex-1 flex-col">
+        <HomeDown />
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
         {!wide && !isDeep(route) && <TabBar current={top} />}
       </div>

@@ -30,10 +30,15 @@ export interface LiveState {
 
 const POLL_MS = 20_000;
 const MAX_BACKOFF_MS = 30_000;
+/** The stream pings every 25 s (docs/api.md); this long with no word is a socket the OS suspended. */
+const STREAM_STALE_MS = 60_000;
+/** Two returns to the foreground closer than this are one. */
+const FOREGROUND_DEBOUNCE_MS = 3_000;
 
 let state: LiveState = { status: 'idle', me: null, reconnects: 0 };
 const listeners = new Set<() => void>();
-let current: { key: Uint8Array; abort: AbortController } | null = null;
+let current: { key: Uint8Array; abort: AbortController; interrupt?: AbortController } | null = null;
+let lastForeground = 0;
 
 function setState(patch: Partial<LiveState>): void {
   state = { ...state, ...patch };
@@ -153,6 +158,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
+  const session = current;
   setState({ status: 'connecting', error: undefined });
   let me: Me;
   try {
@@ -174,24 +180,34 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
   // next reconnect failing as well, is the backend really unreachable.
   let recoverySyncFailed = false;
   while (!signal.aborted) {
+    // Aborted to cut a stream or a backoff short when the app returns to the foreground.
+    const interrupt = new AbortController();
+    if (session) session.interrupt = interrupt;
+    const wake = AbortSignal.any([signal, interrupt.signal]);
     if (me.features.includes('events')) {
       try {
-        await listen(key, signal);
+        await listen(key, wake);
         backoff = 1000;
         recoverySyncFailed = false;
       } catch (err) {
         if (signal.aborted) return;
+        if (interrupt.signal.aborted) {
+          // The foreground refresh already pulled everything: reconnect at once.
+          setState({ status: 'reconnecting' });
+          backoff = 1000;
+          continue;
+        }
         // A dropped stream is usually a blip (a suspended phone, a network
         // change): say 'reconnecting', and 'offline' only once a reconnect and
         // the sync after the drop have both failed.
         setState({ status: recoverySyncFailed ? 'offline' : 'reconnecting', error: err instanceof Error ? err.message : String(err) });
       }
-      await sleep(backoff, signal);
+      await sleep(backoff, wake);
       backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
       if (!signal.aborted) recoverySyncFailed = !(await syncAll(key, { messages: true, view: true }));
     } else {
       setState({ status: state.error ? 'offline' : 'polling' });
-      await sleep(POLL_MS, signal);
+      await sleep(POLL_MS, wake);
       if (!signal.aborted && (typeof document === 'undefined' || !document.hidden)) {
         await syncAll(key, { messages: true, view: true });
         if (!state.error && state.status === 'offline') setState({ status: 'polling' });
@@ -206,13 +222,41 @@ export function startLive(key: Uint8Array): void {
   stopLive();
   const abort = new AbortController();
   current = { key, abort };
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibilityChange);
+  if (typeof window !== 'undefined') window.addEventListener('pageshow', onForeground);
   void run(key, abort.signal);
 }
 
 export function stopLive(): void {
   current?.abort.abort();
   current = null;
+  lastForeground = 0;
+  if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibilityChange);
+  if (typeof window !== 'undefined') window.removeEventListener('pageshow', onForeground);
   setState({ status: 'idle' });
+}
+
+function onVisibilityChange(): void {
+  if (document.visibilityState === 'visible') onForeground();
+}
+
+/** Whether the stream has stopped talking: an error state, or silence past the pings. */
+function streamIsDead(): boolean {
+  if (!state.me?.features.includes('events')) return false;
+  if (state.status === 'reconnecting' || state.status === 'offline') return true;
+  return state.status === 'live' && Date.now() - (state.lastHeard ?? 0) > STREAM_STALE_MS;
+}
+
+/** The app is back on screen (visible again, or restored from the bfcache): the OS
+ * may have suspended the stream and swallowed `view` events, so pull everything
+ * now and, if the stream is dead, open a new one at once. */
+function onForeground(): void {
+  if (!current) return;
+  const now = Date.now();
+  if (now - lastForeground < FOREGROUND_DEBOUNCE_MS) return;
+  lastForeground = now;
+  if (streamIsDead()) current.interrupt?.abort();
+  void refreshNow();
 }
 
 /** Pull everything now (pull-to-refresh, a notification tap, a Retry button). */

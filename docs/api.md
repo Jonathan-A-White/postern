@@ -419,7 +419,7 @@ output.
 - `404` — the command exited with status 3 (no such bead).
 - `501` — `POSTERN_BEAD_CMD` is not configured.
 - `502` — anything else: another exit status, the command couldn't start, or no
-  answer within 30 seconds (it is then killed); `error` carries the start of its
+  answer within 25 seconds (it is then killed); `error` carries the start of its
   stderr.
 
 ## GET /api/me

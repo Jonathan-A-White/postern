@@ -590,7 +590,7 @@ factory's host, `mw postern bead`) with the id appended and answers its output:
 - `400` — an id that is not `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`;
 - `404` — the command exited 3 (no such bead);
 - `501` — no `POSTERN_BEAD_CMD` is configured;
-- `502` — anything else, or no answer within 30 seconds.
+- `502` — anything else, or no answer within 25 seconds.
 
 ```json
 {

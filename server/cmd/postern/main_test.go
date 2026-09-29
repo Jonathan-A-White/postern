@@ -4,6 +4,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,8 +15,10 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/config"
+	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
+	"github.com/Jonathan-A-White/postern/server/internal/standby"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
 
@@ -99,5 +105,116 @@ func TestAppServesTheV2RoutesBehindTheLicenceProof(t *testing.T) {
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Fatalf("%s %s = %d, want 401 (routed, and behind the licence proof)", route.method, route.path, resp.StatusCode)
 		}
+	}
+}
+
+// standbyApp builds the app with POSTERN_HOME_CMD set to homeCmd.
+func standbyApp(t *testing.T, homeCmd string) *httptest.Server {
+	t.Helper()
+	cfg, err := config.Load(func(key string) string {
+		return map[string]string{
+			"POSTERN_ANCHOR":    "mt6vaAWeFxu2qC6pPs7bsqTNvv87dCwMW5",
+			"POSTERN_DATA":      t.TempDir(),
+			"POSTERN_WOC_BASE":  "http://unused.invalid",
+			"POSTERN_VIEW_FILE": "/nonexistent/postern-view.txt",
+			"POSTERN_HOME_CMD":  homeCmd,
+		}[key]
+	})
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	app, err := newApp(cfg)
+	if err != nil {
+		t.Fatalf("newApp: %v", err)
+	}
+	t.Cleanup(app.close)
+	server := httptest.NewServer(app.handler)
+	t.Cleanup(server.Close)
+	return server
+}
+
+func get(t *testing.T, url string) (int, string) {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body)
+}
+
+func TestAppInStandbyAnswers503ExceptHealthzAndTheSendRoutes(t *testing.T) {
+	server := standbyApp(t, "echo desktop; exit 1")
+
+	code, body := get(t, server.URL+"/api/view")
+	if code != http.StatusServiceUnavailable || !strings.Contains(body, `"standby":true`) || !strings.Contains(body, `"home":"desktop"`) {
+		t.Fatalf("GET /api/view = %d %q, want 503 with standby true and the home", code, body)
+	}
+	code, body = get(t, server.URL+"/healthz")
+	if code != http.StatusOK || !strings.Contains(body, `"standby":true`) {
+		t.Fatalf("GET /healthz = %d %q, want 200 with standby true", code, body)
+	}
+	if code, _ = get(t, server.URL+"/api/challenge"); code != http.StatusOK {
+		t.Fatalf("GET /api/challenge = %d, want 200 (a send needs it)", code)
+	}
+	// A send route is routed as usual: behind the licence proof, so 401.
+	resp, err := http.Post(server.URL+"/api/broadcast", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("POST /api/broadcast = %d, want 401 (not 503)", resp.StatusCode)
+	}
+}
+
+func TestAppAtHomeBehavesAsBefore(t *testing.T) {
+	server := standbyApp(t, "exit 0")
+	if code, body := get(t, server.URL+"/healthz"); code != http.StatusOK || body != "ok" {
+		t.Fatalf("GET /healthz = %d %q, want 200 ok", code, body)
+	}
+	if code, _ := get(t, server.URL+"/api/view"); code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/view = %d, want 401", code)
+	}
+}
+
+// recordingNotifier counts the records it is told about.
+type recordingNotifier struct{ n atomic.Int32 }
+
+func (r *recordingNotifier) RecordIndexed(index.Record) { r.n.Add(1) }
+
+func TestStandbyPushesNothingButTheHookStillRuns(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "hook-ran")
+	cfg := config.Config{OnMessage: "touch " + marker, HomeCmd: "exit 1"}
+	mon := standby.New(cfg.HomeCmd)
+	mon.Check()
+	push := &recordingNotifier{}
+
+	buildFanout(cfg, mon, push, events.NewHub()).RecordIndexed(index.Record{TxID: "direct:ab"})
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the on-message hook did not run in standby")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if push.n.Load() != 0 {
+		t.Fatalf("push was told about %d records in standby, want 0", push.n.Load())
+	}
+}
+
+func TestAtHomePushIsSent(t *testing.T) {
+	cfg := config.Config{HomeCmd: "exit 0"}
+	mon := standby.New(cfg.HomeCmd)
+	mon.Check()
+	push := &recordingNotifier{}
+	buildFanout(cfg, mon, push, events.NewHub()).RecordIndexed(index.Record{TxID: "direct:ab"})
+	if push.n.Load() != 1 {
+		t.Fatalf("push was told about %d records at home, want 1", push.n.Load())
 	}
 }

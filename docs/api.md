@@ -456,6 +456,27 @@ applies the Governor's actions, `docs/protocol.md` §13):
 
 The hook inherits the backend's environment and working directory.
 
+## Standby
+
+When `POSTERN_HOME_CMD` is set, the backend runs it through `sh -c` at start and
+every 30 seconds (10-second limit): **exit 0 means this host is home**, anything
+else (a failing exit, a missing command, a timeout) means **standby**. Both hosts
+run the backend all the time and nginx fails over on `503`, so the host that is
+not home must not act as a second backend. In standby:
+
+- every `/api` route answers `503` with `{"standby": true, "home": "<what the
+  command printed>"}` (`home` is omitted when it printed nothing) before doing
+  any work, **except** the routes a send needs: `GET /api/challenge`,
+  `POST /api/messages`, `GET /api/me`, `GET /api/utxos/{address}` and
+  `POST /api/broadcast`, so a move-home message can still be sent when the home
+  is dead;
+- `GET /healthz` answers `200` with `{"ok": true, "standby": true, "home": …}`;
+- web push notifications are not sent;
+- the chain poll still runs and the index is kept, the event hub still hears
+  every record, and the on-message hook still runs (`mw` decides what to apply).
+
+With `POSTERN_HOME_CMD` unset, nothing changes.
+
 ## Configuration (environment)
 
 | Variable | Meaning | Default |
@@ -471,6 +492,7 @@ The hook inherits the backend's environment and working directory.
 | `POSTERN_VIEW_FILE` | The encrypted view file `mw postern view` writes, served by `GET /api/view` and watched for `view` events | *(unset: `GET /api/view` answers 404)* |
 | `POSTERN_BEAD_CMD` | The command `GET /api/beads/{id}` runs, split on whitespace, the id appended (e.g. `mw postern bead`) | *(unset: 501)* |
 | `POSTERN_ON_MESSAGE` | Shell command (`sh -c`) run after records are indexed (e.g. `mw postern inbox --apply`) | *(unset: no hook)* |
+| `POSTERN_HOME_CMD` | Shell command (`sh -c`), exit 0 = this host is home (e.g. `mw home --check`); checked at start and every 30 s; see Standby | *(unset: never standby)* |
 | `POSTERN_MAYOR_KEY` | The Mayor's compressed public key, hex (66 characters, `02`/`03` first), answered by `GET /api/me` | *(unset: `""`)* |
 | `POSTERN_ISSUER_KEY` | The licence issuer's compressed public key, hex (66 characters, `02`/`03` first); a mint counts only if this key unlocked one of its inputs | *(unset: any mint counts, with a warning)* |
 | `POSTERN_COLLECTIONS` | Comma-separated collections a licence mint may name | `postern,spellforge-leaderboard-testnet` |

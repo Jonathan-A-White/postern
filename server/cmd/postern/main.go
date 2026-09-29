@@ -20,6 +20,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/poller"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
+	"github.com/Jonathan-A-White/postern/server/internal/standby"
 	"github.com/Jonathan-A-White/postern/server/internal/view"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
@@ -98,12 +99,15 @@ func newApp(cfg config.Config) (*app, error) {
 		return nil, fmt.Errorf("opening blob store: %w", err)
 	}
 
-	hub := events.NewHub()
-	fanout := notify.Fanout{sender, hub}
-	if cfg.OnMessage != "" {
-		fanout = append(fanout, hook.New(cfg.OnMessage))
-		log.Printf("on-message hook: %s", cfg.OnMessage)
+	var home *standby.Monitor
+	if cfg.HomeCmd != "" {
+		home = standby.New(cfg.HomeCmd)
+		home.Check()
+		log.Printf("home command: %s (standby=%v)", cfg.HomeCmd, home.Standby())
 	}
+
+	hub := events.NewHub()
+	fanout := buildFanout(cfg, home, sender, hub)
 	viewFile := view.New(cfg.ViewFile)
 
 	if cfg.IssuerKey == "" {
@@ -126,12 +130,25 @@ func newApp(cfg config.Config) (*app, error) {
 		}
 		go poller.New(client, store, cfg.Anchor, poller.WithNotifier(fanout)).Run(stop)
 		go runBlobSweep(blobStore, stop)
+		go home.Run(stop, standby.DefaultInterval)
 		if cfg.ViewFile != "" {
 			go viewFile.Watch(stop, view.DefaultWatchInterval, hub.ViewChanged)
 		}
 	}
 
-	return &app{handler: handler, start: start, close: func() { store.Close() }}, nil
+	return &app{handler: standby.Middleware(home, handler), start: start, close: func() { store.Close() }}, nil
+}
+
+// buildFanout is the one fan-out for "a record was indexed": web push (silent
+// while this host is in standby), the event hub, and the on-message hook when
+// configured (which runs in standby too: mw decides what to apply).
+func buildFanout(cfg config.Config, home *standby.Monitor, pusher, hub notify.Notifier) notify.Fanout {
+	fanout := notify.Fanout{standby.Gate(home, pusher), hub}
+	if cfg.OnMessage != "" {
+		fanout = append(fanout, hook.New(cfg.OnMessage))
+		log.Printf("on-message hook: %s", cfg.OnMessage)
+	}
+	return fanout
 }
 
 // runBlobSweep runs store.Sweep on blobSweepInterval until stop is closed

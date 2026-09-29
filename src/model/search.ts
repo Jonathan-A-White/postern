@@ -42,8 +42,16 @@ export interface SearchInput {
   messages: MessageRow[];
 }
 
+/** The bead id a query is nothing but (mw-xxxx or mw-xxxx.N), lower-cased, with
+ * surrounding spaces and a trailing '-' dropped; null for any other query. */
+export function beadIdQuery(query: string): string | null {
+  const id = query.trim().toLowerCase().replace(/[\s-]+$/, '');
+  return /^mw-[a-z0-9]+(?:\.\d+)*$/.test(id) ? id : null;
+}
+
 export function search(query: string, input: SearchInput, limit = 60): SearchHit[] {
-  const words = tokens(query);
+  const id = beadIdQuery(query);
+  const words = id ? [id] : tokens(query);
   if (!words.length) return [];
   const hits: SearchHit[] = [];
   const titles = new Map(input.beads.map((bead) => [bead.id, bead.title]));

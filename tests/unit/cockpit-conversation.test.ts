@@ -4,7 +4,7 @@
 // search box finds beads, comments and messages.
 import { describe, it, expect } from 'vitest';
 import { mergeConversation, previewText, speakerOfComment } from '../../src/model/conversation';
-import { search } from '../../src/model/search';
+import { beadIdQuery, search } from '../../src/model/search';
 import { encodeQuestion, encodeReply } from '../../src/services/questions';
 import { encodeThreadedMessage } from '../../src/services/threads';
 import type { MessageRow } from '../../src/data/db';
@@ -117,6 +117,20 @@ describe('search', () => {
     });
     expect(new Set(all.map((hit) => hit.kind))).toEqual(new Set(['bead', 'comment', 'message']));
     expect(all.find((hit) => hit.kind === 'message')?.thread).toBe('bead:mw-f758y.30.2');
+  });
+
+  it('ranks an exact id first however it is typed: any case, spaces, a trailing dash', () => {
+    for (const typed of ['mw-2rbm.10', 'MW-2RBM.10', ' mw-2rbm.10 ', 'mw-2rbm.10 -', 'mw-2rbm.10-']) {
+      const hits = search(typed, { beads: view.beads, details: [], messages: [] });
+      expect(hits[0], typed).toMatchObject({ kind: 'bead', bead: 'mw-2rbm.10' });
+    }
+  });
+
+  it('reads a query that is only a bead id as that id, and nothing else as one', () => {
+    expect(beadIdQuery(' MW-EQ5NN.4 -')).toBe('mw-eq5nn.4');
+    expect(beadIdQuery('mw-f758y.30.2')).toBe('mw-f758y.30.2');
+    expect(beadIdQuery('mw-abc')).toBe('mw-abc');
+    for (const other of ['ping', 'mw-', 'mw-abc ping', 'well-known', '']) expect(beadIdQuery(other), other).toBeNull();
   });
 
   it('requires every word', () => {

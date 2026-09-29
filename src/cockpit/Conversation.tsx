@@ -9,6 +9,7 @@ import { Markdown } from '../markdown';
 import { attachmentLabel, type ConversationItem } from '../model/conversation';
 import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
+import { useLive } from '../services/live';
 import { speak } from '../services/speech';
 import { useUnlockedKey } from './hooks';
 import { VoicePlayer } from './VoicePlayer';
@@ -28,18 +29,59 @@ function AttachmentView({ attachment, direction }: { attachment: Attachment; dir
   const key = useUnlockedKey();
   const [url, setUrl] = useState<string>();
   const [error, setError] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
   const inline = attachment.mime.startsWith('image/') || attachment.mime.startsWith('audio/');
+  const { reconnects } = useLive();
+  // A failed load is tried again by itself once, when the stream reconnects or
+  // the app returns to the foreground; after that it waits for a tap on Retry.
+  const autoRetried = useRef(false);
+  const failed = useRef(false);
+  const seenReconnects = useRef(reconnects);
 
   useEffect(() => {
     if (!key || !inline) return;
     let cancelled = false;
     openAttachment(attachment, { key, direction })
-      .then((opened) => !cancelled && setUrl(opened))
-      .catch((err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)));
+      .then((opened) => {
+        if (cancelled) return;
+        failed.current = false;
+        setUrl(opened);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        failed.current = true;
+        setError(err instanceof Error ? err.message : String(err));
+      });
     return () => {
       cancelled = true;
     };
-  }, [attachment, direction, key, inline]);
+  }, [attachment, direction, key, inline, attempt]);
+
+  function retry(automatic: boolean) {
+    if (automatic) {
+      if (!failed.current || autoRetried.current) return;
+      autoRetried.current = true;
+    } else {
+      autoRetried.current = false;
+    }
+    failed.current = false;
+    setError(undefined);
+    setAttempt((n) => n + 1);
+  }
+
+  useEffect(() => {
+    if (seenReconnects.current === reconnects) return;
+    seenReconnects.current = reconnects;
+    retry(true);
+  }, [reconnects]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') retry(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   async function open() {
     if (!key) return;
@@ -47,11 +89,21 @@ function AttachmentView({ attachment, direction }: { attachment: Attachment; dir
       const opened = url ?? (await openAttachment(attachment, { key, direction }));
       window.open(opened, '_blank', 'noopener');
     } catch (err) {
+      failed.current = true;
       setError(err instanceof Error ? err.message : String(err));
     }
   }
 
-  if (error) return <p className="text-[12.5px] text-danger">{error}</p>;
+  if (error) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-danger">
+        <span>Could not load this file: {error}</span>
+        <Button size="sm" variant="secondary" onClick={() => retry(false)}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
   if (attachment.mime.startsWith('image/')) {
     return url ? (
       <button type="button" onClick={() => void open()} className="block overflow-hidden rounded-xl">

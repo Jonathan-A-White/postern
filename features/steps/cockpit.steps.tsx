@@ -4,7 +4,7 @@
 // Every POST /api/messages is decrypted with the Mayor's key so a scenario can
 // say exactly what reached him.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor, configure, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -14,6 +14,7 @@ import { App } from '../../src/App';
 import { db } from '../../src/data/db';
 import { sharesRepo, vaultRepo } from '../../src/data/repositories';
 import { lock, setKey } from '../../src/services/keySession';
+import { forgetTaps } from '../../src/cockpit/oneTap';
 import { stopLive } from '../../src/services/live';
 import { decryptMessage, type MessagePayload } from '../../src/services/messages';
 import { sealDocument } from '../../src/services/documents';
@@ -30,6 +31,15 @@ const HIM_PUB = HIM.toPublicKey().toString();
 const MAYOR_PUB = MAYOR.toPublicKey().toString();
 
 let delivered: string[] = [];
+// mw-t64a3.3: a message POST can be held until a scenario lets it through, or refused once.
+let sendGate: { promise: Promise<void>; open: () => void } | undefined;
+let refuseNext = false;
+
+function holdSends(): void {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => (open = resolve));
+  sendGate = { promise, open };
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -53,10 +63,15 @@ async function stubBackend(options: { beadlessAlarm?: boolean } = {}): Promise<v
       if (path.endsWith('/me')) return json({ pubkey: HIM_PUB, mayor: MAYOR_PUB, network: 'testnet', features: ['direct', 'view', 'beads', 'me'] });
       if (path.endsWith('/view')) return new Response(view, { status: 200, headers: { ETag: '"fixture"' } });
       if (path.endsWith('/messages') && init?.method === 'POST') {
+        if (refuseNext) {
+          refuseNext = false;
+          return json({}, 422);
+        }
         const { scriptHex } = JSON.parse(String(init.body)) as { scriptHex: string };
         const decoded = decodeRecordScript(LockingScript.fromHex(scriptHex))!;
         const payload = JSON.parse(Utils.toUTF8(Array.from(decoded.payloadBytes))) as MessagePayload;
         delivered.push(decryptMessage(payload, MAYOR.toHex()));
+        await sendGate?.promise;
         return json({ txid: `direct:${String(delivered.length).padStart(64, 'c')}`, seq: 100 + delivered.length }, 201);
       }
       if (path.endsWith('/messages')) return json({ records, next: records.length });
@@ -71,11 +86,22 @@ async function stubBackend(options: { beadlessAlarm?: boolean } = {}): Promise<v
   );
 }
 
+// Lets a held send through and waits until it is remembered, so it cannot finish under the next scenario.
+async function letTheSendFinish(bead: string): Promise<void> {
+  sendGate?.open();
+  await waitFor(async () => expect(await db.answers.get(bead)).toBeDefined());
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
 async function fresh(options: { beadlessAlarm?: boolean } = {}): Promise<void> {
   cleanup();
   stopLive();
   lock();
   vi.unstubAllGlobals();
+  forgetTaps();
+  sendGate?.open();
+  sendGate = undefined;
+  refuseNext = false;
   delivered = [];
   await Promise.all([db.vault.clear(), db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear(), db.answers.clear(), db.shares.clear(), db.session.clear()]);
   await vaultRepo.save({ mode: 'phrase', ciphertext: new ArrayBuffer(48), iv: new Uint8Array(12), salt: new Uint8Array(16), publicKeyHex: HIM_PUB });
@@ -387,6 +413,80 @@ describeFeature(feature, ({ Scenario }) => {
       expect(window.location.search).toBe('?v=talk&t=bead%3Amw-f758y.31');
       const conversation = await screen.findByTestId('conversation');
       await waitFor(() => expect(conversation).toHaveTextContent('Hold this one'));
+    });
+  });
+  Scenario('mw-t64a3.3: one tap on Release sends once, shows it was sent at once, and cannot be tapped again', ({ Given, When, And, Then }) => {
+    Given('the factory is live and his key is unlocked', liveAndUnlocked);
+    And('the backend is slow to take a message', holdSends);
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    And('"Release" is tapped twice on the approval', async () => {
+      const approval = await screen.findByRole('article', { name: 'Approve: Cockpit screens' });
+      const release = within(approval).getByRole('button', { name: 'Release' });
+      fireEvent.click(release);
+      fireEvent.click(release);
+    });
+    Then('one release action for "mw-f758y.31" is sent', async () => {
+      await waitFor(() => expect(delivered).toHaveLength(1));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(delivered).toHaveLength(1);
+      expect(JSON.parse(delivered[0])).toEqual({ action: 'release', bead: 'mw-f758y.31' });
+    });
+    And('the approval says it was sent and is waiting for the factory, with no Release button to tap', async () => {
+      const approval = screen.getByRole('article', { name: 'Approve: Cockpit screens' });
+      expect(within(approval).getByRole('status')).toHaveTextContent(/waiting for the factory/i);
+      expect(within(approval).queryByRole('button', { name: 'Release' })).toBeNull();
+      await letTheSendFinish('mw-f758y.31');
+    });
+  });
+
+  Scenario('mw-t64a3.3: a failed send says so on the card and gives the button back', ({ Given, When, And, Then }) => {
+    Given('the factory is live and his key is unlocked', liveAndUnlocked);
+    And('the backend refuses the next message', () => {
+      refuseNext = true;
+    });
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    And('"Release" is tapped on the approval', async () => {
+      const approval = await screen.findByRole('article', { name: 'Approve: Cockpit screens' });
+      await userEvent.click(within(approval).getByRole('button', { name: 'Release' }));
+    });
+    Then('a toast says "The backend refused the message."', async () => {
+      expect(await screen.findByText('The backend refused the message.')).toBeInTheDocument();
+    });
+    And('the approval offers "Release" again', async () => {
+      const approval = screen.getByRole('article', { name: 'Approve: Cockpit screens' });
+      await waitFor(() => expect(within(approval).getByRole('button', { name: 'Release' })).toBeEnabled());
+      expect(within(approval).queryByRole('status')).toBeNull();
+    });
+  });
+
+  Scenario("mw-t64a3.3: one tap on Verified on the bead's page sends once and cannot be tapped again", ({ Given, When, And, Then }) => {
+    Given('the factory is live and his key is unlocked', liveAndUnlocked);
+    And('the backend is slow to take a message', holdSends);
+    When('the bead "mw-gq6.130" is opened', async () => {
+      await openAt('?v=bead&id=mw-gq6.130');
+      await screen.findByLabelText('Actions');
+    });
+    And('"Verified" is tapped twice on the bead\'s page', async () => {
+      const verified = (await screen.findAllByRole('button', { name: 'Verified' }))[0];
+      fireEvent.click(verified);
+      fireEvent.click(verified);
+    });
+    Then('one verified action for "mw-gq6.130" is sent', async () => {
+      await waitFor(() => expect(delivered).toHaveLength(1));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(delivered).toHaveLength(1);
+      expect(JSON.parse(delivered[0])).toEqual({ action: 'verified', bead: 'mw-gq6.130' });
+    });
+    And("the bead's page says it was sent and is waiting for the factory, with no Verified button to tap", async () => {
+      expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0);
+      expect(screen.queryByRole('button', { name: 'Verified' })).toBeNull();
+      await letTheSendFinish('mw-gq6.130');
     });
   });
 });

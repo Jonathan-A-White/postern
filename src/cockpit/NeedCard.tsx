@@ -15,6 +15,8 @@ import { speak } from '../services/speech';
 import type { Need } from '../model/view';
 import { orderedOptions } from '../model/needs';
 import { HandsSteps } from './HandsSteps';
+import { useOneTap } from './oneTap';
+import { WaitingNote } from './WaitingNote';
 
 export interface NeedCardProps {
   need: Need;
@@ -32,6 +34,9 @@ function spokenText(need: Need): string {
 export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
   const meta = NEED_META[need.kind];
   const { busy, run } = useSend();
+  // An approval or a verification is one signed transaction: one tap, then it waits for the view.
+  const tapAction = need.kind === 'approve' ? 'release' : need.kind === 'verify' ? 'verified' : '';
+  const oneTap = useOneTap(tapAction ? need.bead : '', tapAction);
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -45,8 +50,8 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
 
   async function choose(option: string) {
     if (need.kind === 'question') await run(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread });
-    else if (need.kind === 'approve') await run(() => sendAction({ action: 'release', bead: need.bead }), `Released ${need.bead}`);
-    else if (need.kind === 'verify') await run(() => sendAction({ action: 'verified', bead: need.bead }), `Marked ${need.bead} verified`);
+    else if (need.kind === 'approve') await oneTap.tap(() => sendAction({ action: 'release', bead: need.bead }), `Released ${need.bead}`);
+    else if (need.kind === 'verify') await oneTap.tap(() => sendAction({ action: 'verified', bead: need.bead }), `Marked ${need.bead} verified`);
     else await run(() => sendToThread(thread, option), { text: `Told the Mayor in ${threadName}: ${option}`, open: openThread });
   }
 
@@ -114,7 +119,9 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
 
       {hasSteps && <HandsSteps bead={need.bead} steps={need.steps} />}
 
-      {options.length > 0 && (
+      {tapAction && oneTap.waiting && <WaitingNote />}
+
+      {options.length > 0 && !(tapAction && oneTap.waiting) && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Answers">
           {options.map((option) => {
             const recommended = option === need.recommended && options.length > 1;

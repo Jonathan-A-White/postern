@@ -35,3 +35,8 @@ export function toast(text: string, tone: Toast['tone'] = 'ok', ms = 3500, actio
   setTimeout(dismiss, ms);
 }
 
+/** Drops every toast at once (a test's seam: the timers that would dismiss them may be gone). */
+export function dismissAllToasts(): void {
+  toasts = [];
+  emit();
+}

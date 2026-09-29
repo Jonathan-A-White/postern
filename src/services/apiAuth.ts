@@ -26,13 +26,15 @@ export class ApiTimeoutError extends Error {
   }
 }
 
-/** Settles like `work`, or rejects with an ApiTimeoutError once `ms` have passed. */
+/** Settles like `work`, or rejects with an ApiTimeoutError once `ms` have passed.
+ * `onTimeout` (an abort) runs after the rejection is issued: aborting a fetch
+ * rejects it at once with the browser's AbortError, which must not win the race. */
 export function withTimeout<T>(work: Promise<T>, sent: boolean, ms = API_TIMEOUT_MS, onTimeout?: () => void): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      onTimeout?.();
       reject(new ApiTimeoutError(sent));
+      onTimeout?.();
     }, ms);
   });
   return Promise.race([work, expired]).finally(() => clearTimeout(timer));

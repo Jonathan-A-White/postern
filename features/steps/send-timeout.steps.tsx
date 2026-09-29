@@ -9,6 +9,7 @@ import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
 import { Composer } from '../../src/cockpit/Composer';
 import { ToastHost } from '../../src/ui/toast';
+import { dismissAllToasts } from '../../src/ui/toastStore';
 import { db } from '../../src/data/db';
 import { messagesRepo } from '../../src/data/repositories';
 import { API_TIMEOUT_MS } from '../../src/services/apiAuth';
@@ -28,14 +29,20 @@ vi.mock('../../src/services/keySession', async (importOriginal) => ({
 held.mayorKey = PrivateKey.fromRandom().toPublicKey().toString();
 
 const never = () => new Promise<Response>(() => {});
+/** Like the browser's fetch: rejects with an AbortError as soon as its signal aborts. */
+const neverUntilAborted = (init?: RequestInit) =>
+  new Promise<Response>((_, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new DOMException('signal is aborted without reason', 'AbortError')), { once: true });
+  });
 let posted = 0;
 
 function messageAccepted(): Response {
   return new Response(JSON.stringify({ txid: 'ab'.repeat(32) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
 
-async function fresh(answer: (url: string) => Promise<Response> | Response, fakeTimers: boolean): Promise<void> {
+async function fresh(answer: (url: string, init?: RequestInit) => Promise<Response> | Response, fakeTimers: boolean): Promise<void> {
   cleanup();
+  dismissAllToasts();
   vi.useRealTimers();
   vi.restoreAllMocks();
   await db.messages.clear();
@@ -43,10 +50,11 @@ async function fresh(answer: (url: string) => Promise<Response> | Response, fake
   if (fakeTimers) vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    // Not async: a real fetch's abort rejection must not be delayed by the stub's own wrapping promise.
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/messages')) posted += 1;
-      return answer(url);
+      return Promise.resolve(answer(url, init));
     }),
   );
   render(
@@ -104,6 +112,21 @@ describeFeature(feature, ({ Scenario }) => {
     });
     And('the text "Is the deploy done?" is still in the box', () => {
       expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('Is the deploy done?');
+    });
+  });
+
+  Scenario('mw-t64a3.14: a send whose fetch is aborted at the timeout says it may have gone, never the abort text', ({ Given, And, When, Then }) => {
+    Given('the backend takes the challenge and the browser aborts the message request at the timeout', () =>
+      fresh((url, init) => (isChallengeRequest(url) ? challengeResponse() : neverUntilAborted(init)), true),
+    );
+    And('he has typed "Is the deploy done?"', () => type('Is the deploy done?'));
+    When('he taps Send', tapSend);
+    And('30 seconds pass', pass30Seconds);
+    Then('he is told "May have gone: check the thread before sending again"', () => {
+      expect(screen.getByText('May have gone: check the thread before sending again')).toBeInTheDocument();
+    });
+    And('he is never shown "signal is aborted without reason"', () => {
+      expect(screen.queryByText(/aborted/)).toBeNull();
     });
   });
 

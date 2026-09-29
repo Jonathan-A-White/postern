@@ -64,7 +64,7 @@ func TestCachedCheckerCachesAHeldFalseAnswer(t *testing.T) {
 	}
 }
 
-func TestCachedCheckerRefetchesAfterTTLExpires(t *testing.T) {
+func TestCachedCheckerRefreshesInTheBackgroundAfterTTLExpires(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	reader := &countingReader{held: false}
 	checker := NewCachedChecker(reader, time.Minute, WithCheckerClock(func() time.Time { return now }))
@@ -77,6 +77,9 @@ func TestCachedCheckerRefetchesAfterTTLExpires(t *testing.T) {
 	if _, err := checker.Held(pubKeyHex); err != nil {
 		t.Fatalf("Held (after TTL): %v", err)
 	}
+	// The expired answer is served at once; the chain is walked again in
+	// the background.
+	waitFor(t, func() bool { return !checker.refreshing(pubKeyHex) })
 	if reader.historyCalls != 2 {
 		t.Fatalf("historyCalls = %d, want 2 (cache entry should have expired)", reader.historyCalls)
 	}

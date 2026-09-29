@@ -116,3 +116,48 @@ Feature: The Governor's cockpit (plans/0021)
     And "Verified" is tapped twice on the bead's page
     Then one verified action for "mw-gq6.130" is sent
     And the bead's page says it was sent and is waiting for the factory, with no Verified button to tap
+
+  Scenario: mw-2y46l.5: a stale need shows Still wanted? with its facts in full and a Keep and a Close
+    Given the factory is live with a stale bead and his key is unlocked
+    When the cockpit opens
+    Then the stale card is chipped "Still wanted?" and shows its facts in full
+    And the stale card offers "Keep" and "Close" and nothing else to tap for an answer
+
+  Scenario: mw-2y46l.5: Keep sends one keep action
+    Given the factory is live with a stale bead and his key is unlocked
+    And the backend is slow to take a message
+    When the cockpit opens
+    And "Keep" is tapped on the stale card
+    Then one keep action for "mw-gq6.132" is sent
+    And the stale card says it was sent and is waiting for the factory
+
+  Scenario: mw-2y46l.5: Close asks once, Cancel sends nothing, Close sends one close action
+    Given the factory is live with a stale bead and his key is unlocked
+    And the backend is slow to take a message
+    When the cockpit opens
+    And "Close" is tapped on the stale card
+    Then the stale card asks "Close mw-gq6.132 and its held stories?" and nothing is sent
+    When "Cancel" is tapped on the stale card
+    Then the stale card offers "Keep" and "Close" again and nothing is sent
+    When "Close" is tapped on the stale card
+    And "Close" is confirmed on the stale card
+    Then one close action for "mw-gq6.132" is sent
+    And the stale card says it was sent and is waiting for the factory
+
+  Scenario: mw-2y46l.5: a second tap on a stale card sends nothing
+    Given the factory is live with a stale bead and his key is unlocked
+    And the backend is slow to take a message
+    When the cockpit opens
+    And "Keep" is tapped twice on the stale card
+    Then one keep action for "mw-gq6.132" is sent
+    And the stale card says it was sent and is waiting for the factory
+    And the stale card offers neither "Keep" nor "Close"
+
+  Scenario: mw-2y46l.5: the bead's page shows Keep and Close when the bead has a stale need
+    Given the factory is live with a stale bead and his key is unlocked
+    And the backend is slow to take a message
+    When the bead "mw-gq6.132" is opened
+    Then the bead's actions offer "Keep" and "Close"
+    When "Keep" is tapped on the bead's actions
+    Then one keep action for "mw-gq6.132" is sent
+    And the bead's actions say it was sent and are waiting for the factory, with no Keep or Close to tap

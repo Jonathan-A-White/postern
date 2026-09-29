@@ -18,7 +18,7 @@ import { forgetTaps } from '../../src/cockpit/oneTap';
 import { stopLive } from '../../src/services/live';
 import { decryptMessage, type MessagePayload } from '../../src/services/messages';
 import { sealDocument } from '../../src/services/documents';
-import { MAYOR, fixtureDetail, fixtureRecords, fixtureView } from '../../tests/support/cockpit-fixture';
+import { MAYOR, STALE_FACTS_END, fixtureDetail, fixtureRecords, fixtureStaleNeed, fixtureView } from '../../tests/support/cockpit-fixture';
 import { approvalMessage, stepSha256 } from '../../src/model/hands';
 
 // The whole app syncs messages, the view and a bead's detail before a scenario's
@@ -45,14 +45,15 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-async function stubBackend(options: { beadlessAlarm?: boolean } = {}): Promise<void> {
+async function stubBackend(options: { beadlessAlarm?: boolean; stale?: boolean } = {}): Promise<void> {
   const now = Date.now();
   const fixture = fixtureView(now);
   if (options.beadlessAlarm) fixture.needs = fixture.needs.map((need) => (need.kind === 'alarm' ? { ...need, bead: '', epic: '' } : need));
+  if (options.stale) fixture.needs = [...fixture.needs, fixtureStaleNeed(now)];
   const view = await sealDocument(JSON.stringify(fixture), MAYOR.toHex(), HIM_PUB);
   const records = fixtureRecords(HIM, now);
   const details = new Map<string, string>();
-  for (const id of ['mw-f758y.30.2', 'mw-2rbm.10']) details.set(id, await sealDocument(JSON.stringify(fixtureDetail(id, now)), MAYOR.toHex(), HIM_PUB));
+  for (const id of ['mw-f758y.30.2', 'mw-2rbm.10', 'mw-gq6.132']) details.set(id, await sealDocument(JSON.stringify(fixtureDetail(id, now)), MAYOR.toHex(), HIM_PUB));
 
   vi.stubGlobal(
     'fetch',
@@ -93,7 +94,7 @@ async function letTheSendFinish(bead: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
-async function fresh(options: { beadlessAlarm?: boolean } = {}): Promise<void> {
+async function fresh(options: { beadlessAlarm?: boolean; stale?: boolean } = {}): Promise<void> {
   cleanup();
   stopLive();
   lock();
@@ -117,6 +118,29 @@ async function openAt(search: string): Promise<void> {
 async function liveAndUnlocked(): Promise<void> {
   await fresh();
   setKey(HIM_KEY);
+}
+
+async function liveWithStaleBead(): Promise<void> {
+  await fresh({ stale: true });
+  setKey(HIM_KEY);
+}
+
+const STALE_CARD = 'Still wanted?: Laptop boost: bd on the desktop Dolt server';
+
+async function staleCard(): Promise<HTMLElement> {
+  return screen.findByRole('article', { name: STALE_CARD });
+}
+
+async function nothingIsSent(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(delivered).toHaveLength(0);
+}
+
+async function oneActionIsSent(action: string, bead: string): Promise<void> {
+  await waitFor(() => expect(delivered).toHaveLength(1));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(delivered).toHaveLength(1);
+  expect(JSON.parse(delivered[0])).toEqual({ action, bead });
 }
 
 async function liveWithBeadlessAlarm(): Promise<void> {
@@ -487,6 +511,132 @@ describeFeature(feature, ({ Scenario }) => {
       expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0);
       expect(screen.queryByRole('button', { name: 'Verified' })).toBeNull();
       await letTheSendFinish('mw-gq6.130');
+    });
+  });
+
+  Scenario('mw-2y46l.5: a stale need shows Still wanted? with its facts in full and a Keep and a Close', ({ Given, When, Then, And }) => {
+    Given('the factory is live with a stale bead and his key is unlocked', liveWithStaleBead);
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    Then('the stale card is chipped "Still wanted?" and shows its facts in full', async () => {
+      const card = await staleCard();
+      expect(within(card).getByText('Still wanted?', { selector: 'span' })).toBeInTheDocument();
+      expect(within(card).getByText(new RegExp(STALE_FACTS_END.slice(0, 30)))).toBeInTheDocument();
+      expect(within(card).getByText(/nobody has touched it since/)).toBeInTheDocument();
+      expect(within(card).queryByRole('button', { name: 'Read all' })).toBeNull();
+    });
+    And('the stale card offers "Keep" and "Close" and nothing else to tap for an answer', async () => {
+      const card = await staleCard();
+      const answers = within(card).getByRole('group', { name: 'Answers' });
+      expect(within(answers).getAllByRole('button').map((button) => button.textContent)).toEqual(['Keep', 'Close']);
+    });
+  });
+
+  Scenario('mw-2y46l.5: Keep sends one keep action', ({ Given, When, And, Then }) => {
+    Given('the factory is live with a stale bead and his key is unlocked', liveWithStaleBead);
+    And('the backend is slow to take a message', holdSends);
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    And('"Keep" is tapped on the stale card', async () => {
+      await userEvent.click(within(await staleCard()).getByRole('button', { name: 'Keep' }));
+    });
+    Then('one keep action for "mw-gq6.132" is sent', () => oneActionIsSent('keep', 'mw-gq6.132'));
+    And('the stale card says it was sent and is waiting for the factory', async () => {
+      expect(within(await staleCard()).getByRole('status')).toHaveTextContent(/waiting for the factory/i);
+      await letTheSendFinish('mw-gq6.132');
+    });
+  });
+
+  Scenario('mw-2y46l.5: Close asks once, Cancel sends nothing, Close sends one close action', ({ Given, When, And, Then }) => {
+    Given('the factory is live with a stale bead and his key is unlocked', liveWithStaleBead);
+    And('the backend is slow to take a message', holdSends);
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    And('"Close" is tapped on the stale card', async () => {
+      await userEvent.click(within(await staleCard()).getByRole('button', { name: 'Close' }));
+    });
+    Then('the stale card asks "Close mw-gq6.132 and its held stories?" and nothing is sent', async () => {
+      const card = await staleCard();
+      expect(within(card).getByText('Close mw-gq6.132 and its held stories?')).toBeInTheDocument();
+      expect(within(card).queryByRole('button', { name: 'Keep' })).toBeNull();
+      await nothingIsSent();
+    });
+    When('"Cancel" is tapped on the stale card', async () => {
+      await userEvent.click(within(await staleCard()).getByRole('button', { name: 'Cancel' }));
+    });
+    Then('the stale card offers "Keep" and "Close" again and nothing is sent', async () => {
+      const card = await staleCard();
+      expect(within(card).getByRole('button', { name: 'Keep' })).toBeInTheDocument();
+      expect(within(card).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+      expect(within(card).queryByText('Close mw-gq6.132 and its held stories?')).toBeNull();
+      await nothingIsSent();
+    });
+    When('"Close" is tapped on the stale card', async () => {
+      await userEvent.click(within(await staleCard()).getByRole('button', { name: 'Close' }));
+    });
+    And('"Close" is confirmed on the stale card', async () => {
+      const card = await staleCard();
+      await userEvent.click(within(card).getByRole('button', { name: 'Close' }));
+    });
+    Then('one close action for "mw-gq6.132" is sent', () => oneActionIsSent('close', 'mw-gq6.132'));
+    And('the stale card says it was sent and is waiting for the factory', async () => {
+      expect(within(await staleCard()).getByRole('status')).toHaveTextContent(/waiting for the factory/i);
+      await letTheSendFinish('mw-gq6.132');
+    });
+  });
+
+  Scenario('mw-2y46l.5: a second tap on a stale card sends nothing', ({ Given, When, And, Then }) => {
+    Given('the factory is live with a stale bead and his key is unlocked', liveWithStaleBead);
+    And('the backend is slow to take a message', holdSends);
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    And('"Keep" is tapped twice on the stale card', async () => {
+      const keep = within(await staleCard()).getByRole('button', { name: 'Keep' });
+      fireEvent.click(keep);
+      fireEvent.click(keep);
+    });
+    Then('one keep action for "mw-gq6.132" is sent', () => oneActionIsSent('keep', 'mw-gq6.132'));
+    And('the stale card says it was sent and is waiting for the factory', async () => {
+      expect(within(await staleCard()).getByRole('status')).toHaveTextContent(/waiting for the factory/i);
+    });
+    And('the stale card offers neither "Keep" nor "Close"', async () => {
+      const card = await staleCard();
+      expect(within(card).queryByRole('button', { name: 'Keep' })).toBeNull();
+      expect(within(card).queryByRole('button', { name: 'Close' })).toBeNull();
+      await letTheSendFinish('mw-gq6.132');
+    });
+  });
+
+  Scenario("mw-2y46l.5: the bead's page shows Keep and Close when the bead has a stale need", ({ Given, When, And, Then }) => {
+    Given('the factory is live with a stale bead and his key is unlocked', liveWithStaleBead);
+    And('the backend is slow to take a message', holdSends);
+    When('the bead "mw-gq6.132" is opened', async () => {
+      await openAt('?v=bead&id=mw-gq6.132');
+      await screen.findByLabelText('Actions');
+    });
+    Then('the bead\'s actions offer "Keep" and "Close"', async () => {
+      const actions = await screen.findByLabelText('Actions');
+      await waitFor(() => expect(within(actions).getByRole('button', { name: 'Keep' })).toBeInTheDocument());
+      expect(within(actions).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    });
+    When('"Keep" is tapped on the bead\'s actions', async () => {
+      await userEvent.click(within(screen.getByLabelText('Actions')).getByRole('button', { name: 'Keep' }));
+    });
+    Then('one keep action for "mw-gq6.132" is sent', () => oneActionIsSent('keep', 'mw-gq6.132'));
+    And("the bead's actions say it was sent and are waiting for the factory, with no Keep or Close to tap", async () => {
+      const actions = screen.getByLabelText('Actions');
+      expect(within(actions).getByRole('status')).toHaveTextContent(/waiting for the factory/i);
+      expect(within(actions).queryByRole('button', { name: 'Keep' })).toBeNull();
+      expect(within(actions).queryByRole('button', { name: 'Close' })).toBeNull();
+      await letTheSendFinish('mw-gq6.132');
     });
   });
 });

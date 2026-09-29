@@ -5,9 +5,9 @@
 import type { Snapshot } from '../services/questions';
 import { decodeHandsSteps, type HandsStep } from './hands';
 
-export type NeedKind = 'question' | 'approve' | 'verify' | 'demo' | 'hands' | 'alarm';
+export type NeedKind = 'question' | 'approve' | 'verify' | 'stale' | 'demo' | 'hands' | 'alarm';
 
-export const NEED_KINDS: NeedKind[] = ['question', 'approve', 'verify', 'demo', 'hands', 'alarm'];
+export const NEED_KINDS: NeedKind[] = ['question', 'approve', 'verify', 'stale', 'demo', 'hands', 'alarm'];
 
 export interface BeadPath {
   rig: string;

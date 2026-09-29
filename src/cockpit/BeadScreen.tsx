@@ -14,6 +14,7 @@ import { NeedCard } from './NeedCard';
 import { useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
+import { StaleChoice } from './StaleChoice';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
@@ -81,6 +82,7 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
   const hold = useOneTap(id, 'hold');
   const verified = useOneTap(id, 'verified');
   const verify = index?.needsByBead.get(id)?.some((need) => need.kind === 'verify');
+  const stale = index?.needsByBead.get(id)?.some((need) => need.kind === 'stale');
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Actions">
       {status === 'deferred' &&
@@ -115,6 +117,7 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
             Verified
           </Button>
         ))}
+      {stale && id && <StaleChoice bead={id} size="sm" />}
       {status !== 'closed' && id && (
         <label className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised pr-1 pl-2.5 text-sm">
           <Icon name="flag" size={15} className="text-muted" />

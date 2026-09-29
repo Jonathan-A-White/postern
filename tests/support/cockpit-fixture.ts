@@ -140,6 +140,24 @@ export function fixtureView(now: number = Date.now()): View {
   };
 }
 
+/** docs/protocol.md §11: a bead gone stale, its facts in the need's text (over 280 characters, so a clipped card would lose the end). */
+export const STALE_FACTS_END = 'Newest comment: "Parked until the Dolt server moves; nobody has touched it since."';
+
+export function fixtureStaleNeed(now: number = Date.now()): Need {
+  return {
+    kind: 'stale',
+    bead: 'mw-gq6.132',
+    epic: 'mw-gq6',
+    title: 'Laptop boost: bd on the desktop Dolt server',
+    since: iso(now, 20),
+    text: `An open task, 41 days old. It waits on mw-gq6.131, which is still in progress, and nothing else waits on it. Nobody has claimed it and no Builder has tried it. It was last updated 41 days ago, before the desktop move. ${STALE_FACTS_END}`,
+    recommended: '',
+    options: ['Keep', 'Close'],
+    blocks: 0,
+    steps: [],
+  };
+}
+
 export function fixtureDetail(id: string, now: number = Date.now()): BeadDetail | undefined {
   const view = fixtureView(now);
   const b = view.beads.find((candidate) => candidate.id === id);

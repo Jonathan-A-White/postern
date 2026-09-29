@@ -84,6 +84,10 @@ export function describeAction(action: GovernorAction): string {
       return `Set ${action.bead} to P${action.priority ?? '?'}`;
     case 'verified':
       return `Marked ${action.bead} verified`;
+    case 'keep':
+      return `Kept ${action.bead}`;
+    case 'close':
+      return `Closed ${action.bead}`;
     case 'run':
       return `Approved step ${action.step ?? '?'} of ${action.bead} to run`;
     default:

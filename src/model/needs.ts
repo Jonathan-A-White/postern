@@ -14,9 +14,12 @@ export function unsettledNeeds(needs: Need[], answers: AnswerRow[]): Need[] {
   });
 }
 
+/** A stale need (docs/protocol.md §11) always offers Keep then Close. */
+export const STALE_OPTIONS = ['Keep', 'Close'];
+
 /** The recommended answer first, then the rest in the Mayor's order. */
 export function orderedOptions(need: Need): string[] {
-  const options = need.kind === 'hands' ? ['Done'] : need.kind === 'demo' ? ['Looks good'] : [...need.options];
+  const options = need.kind === 'hands' ? ['Done'] : need.kind === 'demo' ? ['Looks good'] : need.kind === 'stale' ? [...STALE_OPTIONS] : [...need.options];
   if (!need.recommended || !options.includes(need.recommended)) return options;
   return [need.recommended, ...options.filter((option) => option !== need.recommended)];
 }

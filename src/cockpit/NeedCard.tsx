@@ -17,6 +17,7 @@ import { orderedOptions } from '../model/needs';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
+import { StaleChoice } from './StaleChoice';
 
 export interface NeedCardProps {
   need: Need;
@@ -42,7 +43,9 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const hasSteps = need.kind === 'hands' && need.steps.length > 0;
-  const options = hasSteps ? [] : orderedOptions(need);
+  const stale = need.kind === 'stale';
+  // A stale need has its own Keep and Close (StaleChoice); the bead's page offers them among its actions.
+  const options = hasSteps || stale ? [] : orderedOptions(need);
   const thread = need.bead ? { bead: need.bead } : undefined;
   // Where a message from this card lands, so the toast can name it and open it.
   const threadName = need.bead || titleFor(GENERAL).title;
@@ -68,7 +71,8 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
     }
   }
 
-  const long = need.text.length > 280;
+  // A stale need's text is the facts the choice rests on: never clipped, and shown on the bead's page too.
+  const long = need.text.length > 280 && !stale;
   return (
     <article
       className={cx('flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-surface p-4', need.kind === 'alarm' && 'border-danger/40')}
@@ -102,7 +106,7 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
         {need.bead && <span className="font-mono text-[11.5px] text-faint">{need.bead}</span>}
       </div>
 
-      {need.text && need.text !== need.title && !compact && (
+      {need.text && need.text !== need.title && (!compact || stale) && (
         <div className={cx('relative text-muted', !expanded && long && 'max-h-40 overflow-hidden')}>
           <Markdown text={need.text} />
           {!expanded && long && (
@@ -118,6 +122,8 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
       )}
 
       {hasSteps && <HandsSteps bead={need.bead} steps={need.steps} />}
+
+      {stale && !compact && need.bead && <StaleChoice bead={need.bead} />}
 
       {tapAction && oneTap.waiting && <WaitingNote />}
 

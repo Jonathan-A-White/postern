@@ -3,13 +3,14 @@
 // has opened, and every message. Saved filters sit underneath as one-tap views
 // of the map.
 import { useEffect, useMemo, useState } from 'react';
-import { EmptyState, Icon, IconButton, SectionTitle, TimeAgo } from '../ui';
+import { Button, EmptyState, Icon, IconButton, SectionTitle, TimeAgo } from '../ui';
 import { Screen } from './Shell';
-import { useMessages, useViewIndex } from './hooks';
+import { useMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { deleteFilter, useSavedFilters } from './savedFilters';
-import { search, type SearchHit, type SearchHitKind } from '../model/search';
+import { beadIdQuery, search, type SearchHit, type SearchHitKind } from '../model/search';
 import { describeFilter } from '../model/filter';
-import { allStoredBeadDetails } from '../services/beads';
+import { allStoredBeadDetails, fetchBeadDetail } from '../services/beads';
+import { getLiveState } from '../services/live';
 import type { BeadDetail } from '../model/view';
 import { beadHref, formatRoute, threadHrefFor } from '../nav/route';
 import { navigate } from '../router';
@@ -23,6 +24,46 @@ const GROUPS: { kind: SearchHitKind; label: string }[] = [
 function hitHref(hit: SearchHit): string {
   if (hit.kind === 'message') return threadHrefFor(hit.thread);
   return hit.bead ? beadHref(hit.bead) : formatRoute({ view: 'map' });
+}
+
+/** A bead id typed into Search that the phone's view does not hold: one tap
+ * asks the backend for it (the read the bead screen does) and opens it. */
+function OpenById({ id }: { id: string }) {
+  const key = useUnlockedKey();
+  const [outcome, setOutcome] = useState<{ id: string; note: string }>();
+  const [busyId, setBusyId] = useState<string>();
+  const note = outcome?.id === id ? outcome.note : undefined;
+
+  function open() {
+    if (!key) {
+      setOutcome({ id, note: 'Unlock first to look it up.' });
+      return;
+    }
+    setBusyId(id);
+    fetchBeadDetail(id, { key, mayorKey: getLiveState().mayorKey })
+      .then((fetched) => {
+        if (fetched.status === 'ok') navigate(beadHref(id));
+        else setOutcome({ id, note: fetched.status === 'missing' ? `no bead ${id}` : 'This backend cannot fetch one bead yet (docs/protocol.md §12).' });
+      })
+      .catch((err: unknown) => setOutcome({ id, note: err instanceof Error ? err.message : String(err) }))
+      .finally(() => setBusyId(undefined));
+  }
+
+  return (
+    <section className="flex flex-col gap-2" aria-label="Open by id">
+      <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+        <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-faint">{id}</span>
+        <Button size="sm" variant="primary" icon="search" busy={busyId === id} onClick={open}>
+          Open {id}
+        </Button>
+      </div>
+      {note && (
+        <p role="status" className="px-1 text-sm text-muted">
+          {note}
+        </p>
+      )}
+    </section>
+  );
 }
 
 export function SearchScreen({ q }: { q?: string }) {
@@ -48,6 +89,9 @@ export function SearchScreen({ q }: { q?: string }) {
     () => search(query, { beads: view?.index.view.beads ?? [], details, messages }),
     [query, view, details, messages],
   );
+
+  const id = beadIdQuery(query);
+  const offerOpen = id !== null && !hits.some((hit) => hit.kind === 'bead' && hit.bead === id);
 
   return (
     <Screen title="Search" subtitle="Beads, comments and messages">
@@ -89,7 +133,9 @@ export function SearchScreen({ q }: { q?: string }) {
           </section>
         )}
 
-        {query.trim() && hits.length === 0 && <EmptyState icon="search" title="Nothing found">Beads you have opened are searched in full; others by title and summary.</EmptyState>}
+        {offerOpen && <OpenById id={id} />}
+
+        {query.trim() && hits.length === 0 && !offerOpen && <EmptyState icon="search" title="Nothing found">Beads you have opened are searched in full; others by title and summary.</EmptyState>}
 
         {GROUPS.map(({ kind, label }) => {
           const group = hits.filter((hit) => hit.kind === kind);

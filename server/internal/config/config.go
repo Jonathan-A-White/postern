@@ -5,6 +5,7 @@ package config
 import (
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -49,6 +50,21 @@ type Config struct {
 	// Collections is POSTERN_COLLECTIONS: the collections a licence mint may
 	// name, trimmed, blanks dropped.
 	Collections []string
+
+	// MillKey is POSTERN_MILL_KEY: the mill's compressed public key, hex,
+	// lower-cased (docs/protocol.md §19). Empty means the backend takes no
+	// grist.
+	MillKey string
+	// Apps is POSTERN_APPS, "collection=app" pairs, comma-separated: each
+	// app's licence collection and the app it opens the grist door to. A
+	// collection is an app's or a cockpit's (Collections), never both.
+	Apps map[string]string
+	// OnGrist is POSTERN_ON_GRIST: a shell command run (sh -c) after a grist
+	// for the mill is indexed. Empty means no hook.
+	OnGrist string
+	// CORSOrigins is POSTERN_CORS_ORIGINS: the origins (scheme://host[:port])
+	// allowed to call the backend from a browser on another origin.
+	CORSOrigins []string
 }
 
 // Load reads Config from the environment via getenv (os.LookupEnv-style
@@ -69,6 +85,8 @@ func Load(getenv func(string) string) (Config, error) {
 		OnMessage:       strings.TrimSpace(getenv("POSTERN_ON_MESSAGE")),
 		HomeCmd:         strings.TrimSpace(getenv("POSTERN_HOME_CMD")),
 		Collections:     splitList(orDefault(getenv("POSTERN_COLLECTIONS"), defaultCollections)),
+		OnGrist:         strings.TrimSpace(getenv("POSTERN_ON_GRIST")),
+		CORSOrigins:     splitList(getenv("POSTERN_CORS_ORIGINS")),
 	}
 
 	if cfg.Anchor == "" {
@@ -85,8 +103,51 @@ func Load(getenv func(string) string) (Config, error) {
 	if len(cfg.Collections) == 0 {
 		return Config{}, fmt.Errorf("POSTERN_COLLECTIONS names no collection")
 	}
+	if cfg.MillKey, err = compressedKey("POSTERN_MILL_KEY", getenv("POSTERN_MILL_KEY")); err != nil {
+		return Config{}, err
+	}
+	if cfg.MillKey != "" && cfg.MillKey == cfg.MayorKey {
+		return Config{}, fmt.Errorf("POSTERN_MILL_KEY is the Mayor's key; the mill has a key of its own (docs/protocol.md §19)")
+	}
+	if cfg.Apps, err = appPairs(getenv("POSTERN_APPS"), cfg.Collections); err != nil {
+		return Config{}, err
+	}
+	for _, origin := range cfg.CORSOrigins {
+		if err := checkOrigin(origin); err != nil {
+			return Config{}, err
+		}
+	}
 
 	return cfg, nil
+}
+
+// appPairs parses POSTERN_APPS: "collection=app" pairs, comma-separated,
+// none of whose collections may be one of cockpit.
+func appPairs(value string, cockpit []string) (map[string]string, error) {
+	apps := map[string]string{}
+	for _, pair := range splitList(value) {
+		collection, app, ok := strings.Cut(pair, "=")
+		collection, app = strings.TrimSpace(collection), strings.TrimSpace(app)
+		if !ok || collection == "" || app == "" {
+			return nil, fmt.Errorf("POSTERN_APPS: %q is not collection=app", pair)
+		}
+		for _, c := range cockpit {
+			if c == collection {
+				return nil, fmt.Errorf("POSTERN_APPS: %q is one of POSTERN_COLLECTIONS; a collection is an app's or the cockpit's, never both", collection)
+			}
+		}
+		apps[collection] = app
+	}
+	return apps, nil
+}
+
+// checkOrigin accepts a browser origin: scheme://host[:port], nothing else.
+func checkOrigin(origin string) error {
+	u, err := url.Parse(origin)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return fmt.Errorf("POSTERN_CORS_ORIGINS: %q is not an origin like https://example.com", origin)
+	}
+	return nil
 }
 
 // compressedKey validates value, if set, as a compressed secp256k1 public

@@ -328,3 +328,25 @@ func TestHeadIsTheLatestSequenceNumber(t *testing.T) {
 		t.Fatalf("Head() = %d, want 2", store.Head())
 	}
 }
+
+func TestSignerAppsSurviveRestart(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if _, _, err := store.AppendDirect(Record{TxID: "direct:aa", Signer: "02ab", SignerApps: []string{"cairn"}}); err != nil {
+		t.Fatalf("AppendDirect: %v", err)
+	}
+	store.Close()
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open (reopen): %v", err)
+	}
+	defer reopened.Close()
+	records, _ := reopened.Since(0)
+	if len(records) != 1 || len(records[0].SignerApps) != 1 || records[0].SignerApps[0] != "cairn" {
+		t.Fatalf("records = %+v, want one record whose signer_apps is [cairn]", records)
+	}
+}

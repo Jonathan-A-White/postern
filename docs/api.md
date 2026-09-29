@@ -69,6 +69,22 @@ something (a payment, change, the holder's own coin) puts it in one of them. The
 answer is cached a bounded time (5 minutes) per key so a proved request doesn't
 re-walk the chain every time.
 
+### Who may do what (`docs/protocol.md` §19)
+
+A proved key is one of three kinds, and each endpoint below admits only some:
+
+- a **cockpit** key holds a licence in one of `POSTERN_COLLECTIONS`: every
+  endpoint, exactly as before §19;
+- the **mill** key is `POSTERN_MILL_KEY`, vouched for by configuration (it needs
+  no licence, only the signed proof): `GET/POST /api/messages`, `GET /api/me`,
+  `GET` and `DELETE /api/blobs/{hash}`;
+- an **app** key holds a licence only in an app's collection (`POSTERN_APPS`):
+  `GET/POST /api/messages`, `GET /api/me`, `POST /api/blobs`,
+  `GET /api/push/vapid-public-key`, `POST /api/push/subscribe`.
+
+A proved key of a kind an endpoint does not admit gets `403`. A key holding both a
+cockpit and an app licence is a cockpit key.
+
 ## GET /healthz
 
 Liveness check.
@@ -92,7 +108,10 @@ and a challenge must never be able to stand in for one.
 
 ## GET /api/messages?since=\<seq\>
 
-Returns every indexed record after sequence number `since`, oldest first.
+Returns every indexed record after sequence number `since`, oldest first. For an
+app's key or the mill's, only the records whose envelope names the caller as `to`
+or `from` (`docs/protocol.md` §19); `next` is still the index head, so a cursor
+moves past records the caller cannot see.
 
 - `since` (query, optional) — a non-negative integer. Defaults to `0` (return
   everything indexed so far).
@@ -161,6 +180,11 @@ Returns every indexed record after sequence number `since`, oldest first.
 
 Direct delivery (`docs/protocol.md` §9): indexes a §1 record script posted
 straight to the backend, beside the chain's records.
+
+An app's key may post only `"class": "grist"` addressed to the mill; the mill's
+key only `grist`, to anyone; anything else from either is `403`. Each stored
+record carries `signer_apps` when its signer's licences open apps
+(`docs/protocol.md` §19).
 
 - Request body (at most 256 KiB):
 
@@ -277,6 +301,8 @@ triggers a push to it.
   either changed).
 - `400` — the body isn't valid JSON, or `pubkey`/`subscription.endpoint` is
   missing.
+- `403` — `pubkey` is not the key that signed the request: a key subscribes only
+  its own pushes.
 
 ## POST /api/blobs
 
@@ -305,6 +331,15 @@ Streams back a previously uploaded attachment.
 - `200 application/octet-stream` — the body as uploaded.
 - `404` — `hash` isn't 64 lowercase hex characters, or names no blob
   currently on disk (never uploaded, or its 30 days have passed).
+
+## DELETE /api/blobs/{hash}
+
+Removes an attachment at once rather than after 30 days: the mill deletes a
+grist's photos once it has answered (`docs/protocol.md` §19). Cockpit and mill
+keys only.
+
+- `204` — deleted.
+- `404` — `hash` isn't 64 lowercase hex characters, or names no blob on disk.
 
 The store never looks at what the bytes are: any attachment `mime` the
 plaintext names (`docs/protocol.md` §14: images, audio, PDF, plain text) is
@@ -382,7 +417,8 @@ output.
 
 ## GET /api/me
 
-Who the caller is and who the Mayor is (`docs/protocol.md` §15).
+Who the caller is, who the Mayor is and who the mill is (`docs/protocol.md` §15,
+§19).
 
 - `200 application/json`:
 
@@ -397,8 +433,13 @@ Who the caller is and who the Mayor is (`docs/protocol.md` §15).
 
   - `pubkey` — the key that authenticated this request, lower-case hex.
   - `mayor` — `POSTERN_MAYOR_KEY`, or `""` when unset.
+  - `mill` — `POSTERN_MILL_KEY`; absent when unset.
   - `network` — `POSTERN_NETWORK`.
-  - `features` — what this backend offers.
+  - `features` — what this backend offers; `grist` too when a mill key is set.
+
+  An app's key or the mill's gets `{"pubkey", "mill", "network", "features":
+  ["grist"], "apps"}` instead: never the Mayor, and `apps` names the apps its
+  licences open.
 - `401` — as for every endpoint, which includes a key holding no licence: the
   app's cue to offer the licence screen.
 
@@ -454,7 +495,14 @@ applies the Governor's actions, `docs/protocol.md` §13):
 - each run is killed after **5 minutes**; its combined output (and any failure) is
   logged.
 
-The hook inherits the backend's environment and working directory.
+The hook inherits the backend's environment and working directory. It is not run
+for a grist addressed to the mill, which wakes the on-grist hook instead.
+
+## The on-grist hook
+
+When `POSTERN_ON_GRIST` is set, the backend runs it the same way (debounced,
+never two at once, the same kill) after a grist addressed to `POSTERN_MILL_KEY`
+is indexed: on the factory's host, `mw grist grind` (`docs/protocol.md` §19).
 
 ## Standby
 
@@ -496,9 +544,15 @@ With `POSTERN_HOME_CMD` unset, nothing changes.
 | `POSTERN_MAYOR_KEY` | The Mayor's compressed public key, hex (66 characters, `02`/`03` first), answered by `GET /api/me` | *(unset: `""`)* |
 | `POSTERN_ISSUER_KEY` | The licence issuer's compressed public key, hex (66 characters, `02`/`03` first); a mint counts only if this key unlocked one of its inputs | *(unset: any mint counts, with a warning)* |
 | `POSTERN_COLLECTIONS` | Comma-separated collections a licence mint may name | `postern,spellforge-leaderboard-testnet` |
+| `POSTERN_MILL_KEY` | The mill's compressed public key, hex (`docs/protocol.md` §19) | *(unset: no grist)* |
+| `POSTERN_APPS` | Comma-separated `collection=app` pairs: each app's licence collection and the app it opens the grist door to; never one of `POSTERN_COLLECTIONS` | *(unset: no app keys)* |
+| `POSTERN_ON_GRIST` | Shell command (`sh -c`) run after a grist for the mill is indexed (e.g. `mw grist grind`) | *(unset: no hook)* |
+| `POSTERN_CORS_ORIGINS` | Comma-separated origins (`https://host[:port]`) allowed to call the backend from a browser on another origin | *(unset: no CORS headers)* |
 
-A malformed `POSTERN_MAYOR_KEY` or `POSTERN_ISSUER_KEY`, or a
-`POSTERN_COLLECTIONS` naming no collection, stops the backend at start.
+A malformed `POSTERN_MAYOR_KEY`, `POSTERN_ISSUER_KEY` or `POSTERN_MILL_KEY`, a
+`POSTERN_COLLECTIONS` naming no collection, a malformed `POSTERN_APPS` pair or one
+naming a cockpit collection, or a `POSTERN_CORS_ORIGINS` entry that is not an
+origin, stops the backend at start.
 
 ## The poller
 

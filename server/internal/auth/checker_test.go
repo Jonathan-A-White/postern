@@ -124,3 +124,25 @@ func TestCachedCheckerRejectsMalformedPublicKey(t *testing.T) {
 // answer: a checker over a reader with no history for the derived address
 // reports not held.
 var _ licence.Reader = (*countingReader)(nil)
+
+func TestCachedCheckerHeldCollectionsSharesHeldsCache(t *testing.T) {
+	reader := &countingReader{held: false}
+	checker := NewCachedChecker(reader, time.Minute)
+	pubKeyHex := testPubKeyHex(t)
+
+	collections, err := checker.HeldCollections(pubKeyHex)
+	if err != nil {
+		t.Fatalf("HeldCollections: %v", err)
+	}
+	if len(collections) != 0 {
+		t.Fatalf("collections = %v, want none", collections)
+	}
+	if _, err := checker.Held(pubKeyHex); err != nil {
+		t.Fatalf("Held: %v", err)
+	}
+	if reader.historyCalls != 1 {
+		t.Fatalf("historyCalls = %d, want 1 (Held should reuse HeldCollections' cached answer)", reader.historyCalls)
+	}
+}
+
+var _ CollectionChecker = (*CachedChecker)(nil)

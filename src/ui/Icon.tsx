@@ -48,6 +48,7 @@ const PATHS = {
   sparkle: 'M12 3v4m0 10v4M3 12h4m10 0h4M6 6l2.5 2.5m7 7L18 18m0-12-2.5 2.5m-7 7L6 18',
   plus: 'M12 5v14M5 12h14',
   bell: 'M12 3a6 6 0 0 0-6 6v3.5L4.5 15.5h15L18 12.5V9a6 6 0 0 0-6-6ZM9.5 18.5a2.5 2.5 0 0 0 5 0',
+  archive: 'M4 5h16v4H4V5Zm1 4v10h14V9M10 13h4',
   share: 'M12 15V4m0 0L8 8m4-4 4 4M5 13v7h14v-7',
 } as const;
 

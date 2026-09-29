@@ -1,8 +1,9 @@
-import { db } from '../db';
+import { db, type ArchiveChoices } from '../db';
 import { DEFAULT_NOTIFICATION_SETTINGS } from '../../push/classOptions';
 import type { NotificationSettingsMap } from '../../push/classOptions';
 
 const NOTIFICATION_SETTINGS_KEY = 'notificationSettings';
+const THREAD_ARCHIVE_KEY = 'threadArchive';
 
 export const settingsRepo = {
   async get(key: string): Promise<unknown> {
@@ -28,6 +29,21 @@ export const settingsRepo = {
 
   async setNotificationSettings(settings: NotificationSettingsMap): Promise<void> {
     await db.settings.put({ key: NOTIFICATION_SETTINGS_KEY, value: settings });
+  },
+
+  /** His hand-made archive and unarchive choices, per thread key (mw-2y46l.6). */
+  async getThreadArchive(): Promise<ArchiveChoices> {
+    const row = await db.settings.get(THREAD_ARCHIVE_KEY);
+    return (row?.value as ArchiveChoices | undefined) ?? {};
+  },
+
+  /** Records that he archived (or brought back) a thread, stamped now. */
+  async setThreadArchived(key: string, archived: boolean): Promise<void> {
+    await db.transaction('rw', db.settings, async () => {
+      const row = await db.settings.get(THREAD_ARCHIVE_KEY);
+      const choices = (row?.value as ArchiveChoices | undefined) ?? {};
+      await db.settings.put({ key: THREAD_ARCHIVE_KEY, value: { ...choices, [key]: { archived, at: Date.now() } } });
+    });
   },
 
   async resetNotificationSettings(): Promise<void> {

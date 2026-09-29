@@ -4,8 +4,8 @@
 // fetching on its own.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { liveQuery } from 'dexie';
-import type { AnswerRow, BeadDetailRow, MessageRow, ViewRow } from '../data/db';
-import { answersRepo, beadDetailsRepo, messagesRepo, viewRepo } from '../data/repositories';
+import type { AnswerRow, ArchiveChoices, BeadDetailRow, MessageRow, ViewRow } from '../data/db';
+import { answersRepo, beadDetailsRepo, messagesRepo, settingsRepo, viewRepo } from '../data/repositories';
 import { decodeBeadDetail, decodeView, type BeadDetail } from '../model/view';
 import { indexView, type ViewIndex } from '../model/tree';
 import { getKey, onKeyChange } from '../services/keySession';
@@ -57,6 +57,11 @@ export function useMessages(): MessageRow[] {
 
 export function useThreadMessages(threadKey: string | undefined): MessageRow[] {
   return useLiveQuery(() => messagesRepo.inThread(threadKey), [threadKey], [] as MessageRow[]);
+}
+
+/** What he archived or brought back by hand in Talk, on this device. */
+export function useThreadArchive(): ArchiveChoices {
+  return useLiveQuery(() => settingsRepo.getThreadArchive(), [], {} as ArchiveChoices);
 }
 
 /** Every answer and action he has sent, for settling the Needs-you queue at once. */

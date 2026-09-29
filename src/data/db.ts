@@ -8,7 +8,7 @@ export interface SettingRow {
 // docs/protocol.md's message classes. Defined here (not in src/services/messages.ts,
 // which re-exports it) so this file — the leaf data layer — never has to import from
 // the service layer.
-export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm';
+export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm' | 'move-home';
 
 export interface MessageRow {
   /** `${txid}:${vout}` — the record's own on-chain outpoint. */

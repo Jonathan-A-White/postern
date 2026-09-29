@@ -13,6 +13,7 @@ import { encodeReply } from './questions';
 import { encodeThreadedMessage, threadKey, threadOf, type Attachment, type ThreadRef } from './threads';
 import { messagesRepo } from '../data/repositories';
 import type { GovernorAction } from '../model/conversation';
+import type { HomeHost } from './standby';
 
 export interface DeliverOptions {
   key: Uint8Array;
@@ -108,4 +109,10 @@ export function deliverAnswer(bead: string, answer: string, options: DeliverOpti
 /** docs/protocol.md §13: a one-tap action the Mayor's host applies at once. */
 export function deliverAction(action: GovernorAction, options: DeliverOptions): Promise<Delivered> {
   return deliver(JSON.stringify(action), 'message', options);
+}
+
+/** Q2 of the factory's home (mw-43v9x.9): asks the Mayor to move the home to `host`.
+ * The class rides in the clear, so the Mayor's host can act on it without reading. */
+export function deliverMoveHome(host: HomeHost, options: DeliverOptions): Promise<Delivered> {
+  return deliver(JSON.stringify({ host }), 'move-home', options);
 }

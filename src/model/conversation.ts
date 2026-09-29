@@ -63,6 +63,17 @@ export function decodeAction(text: string): GovernorAction | undefined {
   };
 }
 
+/** What a move-home message (class `move-home`, plaintext {"host": …}) reads as. */
+function describeMoveHome(text: string): string {
+  try {
+    const host = (JSON.parse(text) as { host?: unknown }).host;
+    if (typeof host === 'string') return `Asked to move the factory's home to ${host}`;
+  } catch {
+    // not the shape; fall through
+  }
+  return "Asked to move the factory's home";
+}
+
 export function describeAction(action: GovernorAction): string {
   switch (action.action) {
     case 'release':
@@ -85,6 +96,7 @@ export function describeAction(action: GovernorAction): string {
 export function previewText(row: Pick<MessageRow, 'plaintext' | 'class' | 'decryptFailed'>): string {
   if (row.plaintext === undefined) return row.decryptFailed ? 'Could not be decrypted' : 'Locked — unlock to read';
   const text = row.plaintext;
+  if (row.class === 'move-home') return describeMoveHome(text);
   if (row.class === 'decision-needed') {
     const question = decodeQuestion(text);
     if (question) return question.q;
@@ -130,6 +142,7 @@ export function itemFromMessage(row: MessageRow): ConversationItem & { transcrip
     return { ...base, kind: 'text', text: row.decryptFailed ? 'This message could not be decrypted with this key.' : 'Locked — unlock to read this message.' };
   }
   const text = row.plaintext;
+  if (row.class === 'move-home') return { ...base, kind: 'text', text: describeMoveHome(text) };
   if (row.class === 'decision-needed') {
     const question = decodeQuestion(text);
     if (question) return { ...base, kind: 'question', text: question.q, question };

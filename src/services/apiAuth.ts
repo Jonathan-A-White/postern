@@ -8,6 +8,7 @@
 // carried a proof.
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { API_BASE } from './messages';
+import { noteApiResponse } from './standby';
 
 export interface ApiFetchOptions {
   /** This phone's unlocked raw master key. Omitted for an unauthenticated call. */
@@ -57,5 +58,6 @@ export async function apiFetch(
 
   const response = await fetchImpl(`${apiBase}${path}`, { ...init, headers });
   if (response.status === 401) throw new Error('Licence required');
+  await noteApiResponse(path, response);
   return response;
 }

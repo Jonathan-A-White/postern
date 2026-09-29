@@ -42,9 +42,12 @@ const TITLES: Record<MessageClass, string> = {
   landing: 'Landing to verify',
   alarm: 'Alarm',
   message: 'Message',
+  'move-home': 'Move home',
 };
 
-export const MESSAGE_CLASSES = Object.keys(TITLES) as MessageClass[];
+// The classes the Mayor sends him and he can be notified of; move-home only ever
+// goes the other way, so it has no settings row.
+export const MESSAGE_CLASSES = (Object.keys(TITLES) as MessageClass[]).filter((messageClass) => messageClass !== 'move-home');
 
 // The vibrate pattern each class uses when its `vibrate` switch is on. Kept
 // distinct from the switch itself so turning vibrate on for a class that
@@ -54,6 +57,7 @@ const VIBRATE_PATTERNS: Record<MessageClass, number[]> = {
   landing: [150],
   alarm: [300, 100, 300, 100, 300],
   message: [80],
+  'move-home': [80],
 };
 
 // mw-f758y.5's decided defaults, reproducing exactly the fixed behaviour this
@@ -63,6 +67,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettingsMap = {
   landing: { sound: true, vibrate: false, stayUntilDismissed: false, quiet: false },
   alarm: { sound: true, vibrate: true, stayUntilDismissed: true, quiet: false },
   message: { sound: true, vibrate: true, stayUntilDismissed: false, quiet: false },
+  'move-home': { sound: true, vibrate: false, stayUntilDismissed: false, quiet: false },
 };
 
 /** Builds the title and showNotification options for messageClass, tagging
@@ -77,6 +82,7 @@ export const CLASS_URLS: Record<MessageClass, string> = {
   landing: '/?v=needs',
   alarm: '/?v=needs',
   message: '/?v=talk',
+  'move-home': '/?v=me',
 };
 
 export interface NotificationText {
@@ -118,6 +124,7 @@ export function notificationSpecForClass(
       return { title, options: { ...options, tag: 'alarm', renotify: true } };
     case 'decision-needed':
     case 'message':
+    case 'move-home':
       return { title, options };
   }
 }

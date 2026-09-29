@@ -3,7 +3,7 @@
 // encrypted to the pinned Mayor and delivered directly. Files go up first
 // (docs/protocol.md §8), one message each, the caption riding on the last.
 import { useState } from 'react';
-import { deliverAction, deliverAnswer, deliverThreaded, type Delivered } from '../services/deliver';
+import { deliverAction, deliverAnswer, deliverMoveHome, deliverThreaded, type Delivered } from '../services/deliver';
 import { deliverOptions } from '../services/live';
 import { getKey } from '../services/keySession';
 import { attachmentMime, MAX_ATTACHMENT_BYTES, uploadAttachment } from '../services/attachments';
@@ -11,6 +11,7 @@ import { answersRepo } from '../data/repositories';
 import type { GovernorAction } from '../model/conversation';
 import type { HandsStep } from '../model/hands';
 import { buildApproval, stepUp } from '../services/hands';
+import type { HomeHost } from '../services/standby';
 import type { ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
 
@@ -34,6 +35,12 @@ export async function sendAction(action: GovernorAction): Promise<Delivered> {
   const delivered = await deliverAction(action, options());
   await answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid });
   return delivered;
+}
+
+/** Asks the Mayor's host to make `host` the factory's home (docs/protocol.md §18).
+ * It goes through whichever backend answers, home or standby. */
+export function sendMoveHome(host: HomeHost): Promise<Delivered> {
+  return deliverMoveHome(host, options());
 }
 
 /** docs/protocol.md §17: a fresh fingerprint, then his signed approval of one

@@ -23,12 +23,15 @@ export interface LiveState {
   /** When the phone last heard from the backend, ms since the epoch. */
   lastHeard?: number;
   error?: string;
+  /** How many times the stream has come back after a drop; screens with
+   * something that failed while it was down retry when this changes. */
+  reconnects: number;
 }
 
 const POLL_MS = 20_000;
 const MAX_BACKOFF_MS = 30_000;
 
-let state: LiveState = { status: 'idle', me: null };
+let state: LiveState = { status: 'idle', me: null, reconnects: 0 };
 const listeners = new Set<() => void>();
 let current: { key: Uint8Array; abort: AbortController } | null = null;
 
@@ -40,6 +43,11 @@ function setState(patch: Partial<LiveState>): void {
 export function subscribeLive(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** The stream is back after a drop: tells whoever failed while it was down. */
+export function noteReconnect(): void {
+  setState({ reconnects: state.reconnects + 1 });
 }
 
 export function getLiveState(): LiveState {
@@ -111,7 +119,9 @@ export function parseEventBlock(block: string): { event: string; data: string } 
 async function listen(key: Uint8Array, signal: AbortSignal): Promise<void> {
   const response = await apiFetch('/events', { headers: { Accept: 'text/event-stream' }, signal }, { unlockedKey: key });
   if (!response.ok || !response.body) throw new Error(`The event stream answered ${response.status}.`);
+  const recovered = state.status === 'reconnecting' || state.status === 'offline';
   setState({ status: 'live', lastHeard: Date.now(), error: undefined });
+  if (recovered) noteReconnect();
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = '';
   for (;;) {

@@ -7,6 +7,7 @@ Feature: A brief stream drop reads as reconnecting, not offline (mw-t64a3.11)
     When the backoff passes and the stream reconnects
     Then the connection reads "live"
     And the connection never read "offline"
+    And the reconnect was announced to the screens once
 
   Scenario: AC-2: a stream error, a failed reconnect and a failed sync read offline
     Given the factory is connected and the event stream is live

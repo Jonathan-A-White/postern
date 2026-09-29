@@ -107,6 +107,9 @@ describeFeature(feature, ({ Scenario }) => {
       expect(seen).not.toContain('offline');
       expect(seen).toContain('reconnecting');
     });
+    And('the reconnect was announced to the screens once', () => {
+      expect(getLiveState().reconnects).toBe(1);
+    });
   });
 
   Scenario('AC-2: a stream error, a failed reconnect and a failed sync read offline', ({ Given, When, Then, And }) => {

@@ -38,6 +38,13 @@ vi.mock('spell-forge-bsv', async (importOriginal) => {
   };
 });
 
+// The Key screen's Issue section reads /api/me; here it answers an app key (no collections),
+// so the only Retry on screen is the mint's own.
+vi.mock('../../src/services/me', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/me')>()),
+  fetchMe: vi.fn().mockResolvedValue({ pubkey: '', mayor: '', network: 'testnet', features: ['me'] }),
+}));
+
 const FUNDED_MNEMONIC = createMnemonic();
 const MINT_TXID = 'e'.repeat(64);
 

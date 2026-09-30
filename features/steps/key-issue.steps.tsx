@@ -103,6 +103,12 @@ async function openKeyScreen() {
   await screen.findByText('Key unlocked');
 }
 
+async function typeHolderAndChooseCairn() {
+  const section = await issueSection();
+  await userEvent.type(within(section).getByLabelText("Holder's public key"), HOLDER_PUBLIC_KEY);
+  await userEvent.selectOptions(within(section).getByLabelText('Collection'), 'cairn');
+}
+
 function heldRow() {
   return screen.getAllByTestId('issued-row').find((row) => row.textContent?.includes('held'))!;
 }
@@ -223,6 +229,9 @@ describeFeature(feature, ({ Scenario }) => {
     And('I press Issue', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
     });
+    And('I confirm the issue', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Confirm issue' }));
+    });
     Then('issueLicence was called with that key and cairn', async () => {
       await waitFor(() => expect(services.issueLicence).toHaveBeenCalledTimes(1));
       expect(services.issueLicence).toHaveBeenCalledWith(
@@ -319,6 +328,98 @@ describeFeature(feature, ({ Scenario }) => {
     And('only the held row has a Revoke button', () => {
       expect(screen.getAllByRole('button', { name: /^Revoke/ })).toHaveLength(1);
       expect(within(heldRow()).getByRole('button', { name: /^Revoke/ })).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC10: a failed /api/me says so, and Retry with a good answer shows the Issue section', ({ Given, And, When, Then }) => {
+    Given('my key is unlocked and the backend fails to answer /api/me', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+      services.fetchMe.mockRejectedValue(new Error('the backend is unreachable'));
+    });
+    When('the key screen is opened', openKeyScreen);
+    Then('I see that the collections could not be read and a Retry button', async () => {
+      expect(await screen.findByText(/Could not read the collections\./)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+    });
+    And('there is no Issue a licence section', () => {
+      expect(screen.queryByRole('region', { name: 'Issue a licence' })).not.toBeInTheDocument();
+    });
+    When('the backend answers /api/me with two collections and I press Retry', async () => {
+      services.fetchMe.mockResolvedValue(meWith(TWO_COLLECTIONS));
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+    Then('the Issue a licence section is shown', async () => {
+      await issueSection();
+    });
+    And('the collections message is gone', () => {
+      expect(screen.queryByText(/Could not read the collections\./)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC11: an app key with a good answer and no collections shows neither the section nor a message', ({ Given, When, Then, And }) => {
+    Given('my key is unlocked and the backend names no collections', async () => {
+      await unlockedWith(undefined);
+    });
+    When('the key screen is opened', openKeyScreen);
+    Then('there is no Issue a licence section', async () => {
+      await waitFor(() => expect(services.fetchMe).toHaveBeenCalled());
+      expect(screen.queryByRole('region', { name: 'Issue a licence' })).not.toBeInTheDocument();
+    });
+    And('there is no collections message and no Retry button', () => {
+      expect(screen.queryByText(/Could not read the collections/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC12: Issue asks once before spending, and only Confirm issue calls issueLicence', ({ Given, And, When, Then }) => {
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+    });
+    When('the key screen is opened', openKeyScreen);
+    And("I type a holder's key and choose cairn", typeHolderAndChooseCairn);
+    And('I press Issue', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
+    });
+    Then('I am asked to issue to the shortened key in cairn for about the mint cost in sats', () => {
+      const shortKey = `${HOLDER_PUBLIC_KEY.slice(0, 8)}…${HOLDER_PUBLIC_KEY.slice(-6)}`;
+      const cost = issueCost().totalSatoshis.toLocaleString('en-US');
+      expect(screen.getByText(`Issue a licence to ${shortKey} in cairn? Cost about ${cost} sats.`)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Confirm issue' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+    });
+    And('issueLicence has not been called', () => {
+      expect(services.issueLicence).not.toHaveBeenCalled();
+    });
+    When('I confirm the issue', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm issue' }));
+    });
+    Then('issueLicence was called with that key and cairn', async () => {
+      await waitFor(() => expect(services.issueLicence).toHaveBeenCalledTimes(1));
+      expect(services.issueLicence).toHaveBeenCalledWith(
+        expect.objectContaining({ issuerKey: MASTER, holderPublicKeyHex: HOLDER_PUBLIC_KEY, collection: 'cairn' }),
+      );
+    });
+  });
+
+  Scenario('AC13: Cancel on the Issue confirm calls nothing', ({ Given, And, When, Then }) => {
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+    });
+    When('the key screen is opened', openKeyScreen);
+    And("I type a holder's key and choose cairn", typeHolderAndChooseCairn);
+    And('I press Issue', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
+    });
+    And('I cancel the issue', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    });
+    Then('issueLicence has not been called', () => {
+      expect(services.issueLicence).not.toHaveBeenCalled();
+    });
+    And('the confirm is gone and the Issue button is back', () => {
+      expect(screen.queryByRole('button', { name: 'Confirm issue' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Issue' })).toBeInTheDocument();
     });
   });
 });

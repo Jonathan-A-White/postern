@@ -38,6 +38,7 @@ Feature: The Key screen shows my public key and issues and revokes licences (mw-
     When the key screen is opened
     And I type a holder's key and choose cairn
     And I press Issue
+    And I confirm the issue
     Then issueLicence was called with that key and cairn
     And I see the txid of the mint as a testnet link
     And the cost is shown against my balance
@@ -66,3 +67,37 @@ Feature: The Key screen shows my public key and issues and revokes licences (mw-
     Then the licences are grouped under their collections
     And each row shows a shortened holder address, its date or block, a txid link to WhatsOnChain testnet and its status
     And only the held row has a Revoke button
+
+  Scenario: AC10: a failed /api/me says so, and Retry with a good answer shows the Issue section
+    Given my key is unlocked and the backend fails to answer /api/me
+    When the key screen is opened
+    Then I see that the collections could not be read and a Retry button
+    And there is no Issue a licence section
+    When the backend answers /api/me with two collections and I press Retry
+    Then the Issue a licence section is shown
+    And the collections message is gone
+
+  Scenario: AC11: an app key with a good answer and no collections shows neither the section nor a message
+    Given my key is unlocked and the backend names no collections
+    When the key screen is opened
+    Then there is no Issue a licence section
+    And there is no collections message and no Retry button
+
+  Scenario: AC12: Issue asks once before spending, and only Confirm issue calls issueLicence
+    Given my key is unlocked and the backend names two collections
+    When the key screen is opened
+    And I type a holder's key and choose cairn
+    And I press Issue
+    Then I am asked to issue to the shortened key in cairn for about the mint cost in sats
+    And issueLicence has not been called
+    When I confirm the issue
+    Then issueLicence was called with that key and cairn
+
+  Scenario: AC13: Cancel on the Issue confirm calls nothing
+    Given my key is unlocked and the backend names two collections
+    When the key screen is opened
+    And I type a holder's key and choose cairn
+    And I press Issue
+    And I cancel the issue
+    Then issueLicence has not been called
+    And the confirm is gone and the Issue button is back

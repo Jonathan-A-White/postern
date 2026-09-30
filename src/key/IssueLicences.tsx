@@ -45,11 +45,14 @@ const collectionLabel = (collection: MeCollection) => (collection.app ? `${colle
 
 const sats = (amount: number) => `${amount.toLocaleString('en-US')} sats`;
 
+type Collections = { name: 'loading' } | { name: 'loaded'; collections: MeCollection[] } | { name: 'error' };
+
 // Async loaders are kept free of setters and applied at the call site (.then(setter)).
-const loadCollections = (key: Uint8Array): Promise<MeCollection[]> =>
-  fetchMe({ key })
-    .then((me) => me.collections ?? [])
-    .catch(() => []);
+const loadCollections = (key: Uint8Array): Promise<Collections> =>
+  fetchMe({ key }).then(
+    (me): Collections => ({ name: 'loaded', collections: me.collections ?? [] }),
+    (): Collections => ({ name: 'error' }),
+  );
 
 const loadBalance = (key: Uint8Array): Promise<number | null> => fetchIssuerBalance({ issuerKey: key }).catch(() => null);
 
@@ -120,7 +123,8 @@ function IssuedRow({
 
 export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const issuerPublicKeyHex = publicKeyHexFromMasterKey(issuerKey);
-  const [collections, setCollections] = useState<MeCollection[]>([]);
+  const [collectionsState, setCollectionsState] = useState<Collections>({ name: 'loading' });
+  const [collectionsToken, setCollectionsToken] = useState(0);
   const [balance, setBalance] = useState<number | null | undefined>(undefined);
   const [listing, setListing] = useState<Listing>({ name: 'loading' });
   const [times, setTimes] = useState<Record<string, number>>({});
@@ -129,6 +133,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const [holder, setHolder] = useState('');
   const [chosen, setChosen] = useState('');
   const [scanning, setScanning] = useState(false);
+  const [confirmingIssue, setConfirmingIssue] = useState(false);
   const [outcome, setOutcome] = useState<IssueOutcome>({ name: 'idle' });
   const [justIssued, setJustIssued] = useState<IssuedLicence[]>([]);
   const [revokedHere, setRevokedHere] = useState<string[]>([]);
@@ -137,9 +142,10 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const [revokeError, setRevokeError] = useState<string | null>(null);
 
   useEffect(() => {
-    void loadCollections(issuerKey).then(setCollections);
-  }, [issuerKey]);
+    void loadCollections(issuerKey).then(setCollectionsState);
+  }, [issuerKey, collectionsToken]);
 
+  const collections = collectionsState.name === 'loaded' ? collectionsState.collections : [];
   const enabled = collections.length > 0;
 
   useEffect(() => {
@@ -155,6 +161,24 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   }, []);
   const handleCancelScan = useCallback(() => setScanning(false), []);
 
+  if (collectionsState.name === 'error') {
+    return (
+      <section className="flex flex-col gap-2 border-t border-line pt-4">
+        <p role="alert" className="text-danger">
+          Could not read the collections.
+        </p>
+        <button
+          className={`${BUTTON} self-start`}
+          onClick={() => {
+            setCollectionsState({ name: 'loading' });
+            setCollectionsToken((token) => token + 1);
+          }}
+        >
+          Retry
+        </button>
+      </section>
+    );
+  }
   if (!enabled) return null;
 
   const cost = issueCost();
@@ -171,6 +195,8 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       setRefreshToken((token) => token + 1);
     } catch (error) {
       setOutcome({ name: 'error', message: errorText(error) });
+    } finally {
+      setConfirmingIssue(false);
     }
   }
 
@@ -237,9 +263,26 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
           Cost: {sats(cost.fuelSatoshis)} mint fuel + about {sats(cost.feeEstimateSatoshis)} fee.{' '}
           {balance === undefined ? 'Checking balance…' : balance === null ? 'Balance unavailable.' : `Balance: ${sats(balance)}.`}
         </p>
-        <button className={PRIMARY_BUTTON} disabled={outcome.name === 'issuing' || !holder.trim()} onClick={() => void handleIssue()}>
-          {outcome.name === 'issuing' ? 'Issuing…' : 'Issue'}
-        </button>
+        {!confirmingIssue && (
+          <button className={PRIMARY_BUTTON} disabled={!holder.trim()} onClick={() => setConfirmingIssue(true)}>
+            Issue
+          </button>
+        )}
+        {confirmingIssue && (
+          <div className="flex flex-col gap-2">
+            <p>
+              Issue a licence to {shorten(holder.trim(), 8, 6)} in {collection}? Cost about {sats(cost.totalSatoshis)}.
+            </p>
+            <div className="flex gap-2">
+              <button className={PRIMARY_BUTTON} disabled={outcome.name === 'issuing'} onClick={() => void handleIssue()}>
+                {outcome.name === 'issuing' ? 'Issuing…' : 'Confirm issue'}
+              </button>
+              <button className={BUTTON} disabled={outcome.name === 'issuing'} onClick={() => setConfirmingIssue(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         {outcome.name === 'issued' && (
           <p>
             Issued:{' '}

@@ -454,6 +454,11 @@ Who the caller is, who the Mayor is and who the mill is (`docs/protocol.md` §15
   - `mill` — `POSTERN_MILL_KEY`; absent when unset.
   - `network` — `POSTERN_NETWORK`.
   - `features` — what this backend offers; `grist` too when a mill key is set.
+  - `collections` — a cockpit key only: `[{"name"}, …]` for `POSTERN_COLLECTIONS`,
+    then `{"name", "app"}` for each collection of `POSTERN_APPS`, in the order
+    configured.
+  - `issuer` — a cockpit key only: the testnet address of `POSTERN_ISSUER_KEY`;
+    absent when that key is unset.
 
   An app's key or the mill's gets `{"pubkey", "mill", "network", "features":
   ["grist"], "apps"}` instead: never the Mayor, and `apps` names the apps its

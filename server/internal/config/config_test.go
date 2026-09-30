@@ -228,6 +228,9 @@ func TestLoadGristFromEnv(t *testing.T) {
 	if len(cfg.Apps) != 2 || cfg.Apps["cairn"] != "cairn" || cfg.Apps["spellforge-grist"] != "spellforge" {
 		t.Fatalf("Apps = %v", cfg.Apps)
 	}
+	if strings.Join(cfg.AppCollections, ",") != "cairn,spellforge-grist" {
+		t.Fatalf("AppCollections = %v, want them in the order listed", cfg.AppCollections)
+	}
 	if cfg.OnGrist != "mw grist grind" {
 		t.Fatalf("OnGrist = %q", cfg.OnGrist)
 	}

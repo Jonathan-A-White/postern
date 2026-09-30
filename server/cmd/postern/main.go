@@ -138,6 +138,7 @@ func newApp(cfg config.Config) (*app, error) {
 		api.WithBeads(beads.New(cfg.BeadCmd)),
 		api.WithIdentity(cfg.MayorKey, cfg.Network),
 		api.WithGrist(cfg.MillKey, cfg.Apps),
+		api.WithCatalogue(cfg.Collections, cfg.AppCollections, cfg.IssuerKey),
 		api.WithCORS(cfg.CORSOrigins),
 	)
 

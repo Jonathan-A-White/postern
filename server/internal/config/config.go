@@ -59,6 +59,8 @@ type Config struct {
 	// app's licence collection and the app it opens the grist door to. A
 	// collection is an app's or a cockpit's (Collections), never both.
 	Apps map[string]string
+	// AppCollections is the keys of Apps in the order POSTERN_APPS lists them.
+	AppCollections []string
 	// OnGrist is POSTERN_ON_GRIST: a shell command run (sh -c) after a grist
 	// for the mill is indexed. Empty means no hook.
 	OnGrist string
@@ -110,7 +112,7 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.MillKey != "" && cfg.MillKey == cfg.MayorKey {
 		return Config{}, fmt.Errorf("POSTERN_MILL_KEY is the Mayor's key; the mill has a key of its own (docs/protocol.md §19)")
 	}
-	if cfg.Apps, err = appPairs(getenv("POSTERN_APPS"), cfg.Collections); err != nil {
+	if cfg.Apps, cfg.AppCollections, err = appPairs(getenv("POSTERN_APPS"), cfg.Collections); err != nil {
 		return Config{}, err
 	}
 	if cfg.MillKey == "" {
@@ -133,23 +135,28 @@ func Load(getenv func(string) string) (Config, error) {
 }
 
 // appPairs parses POSTERN_APPS: "collection=app" pairs, comma-separated,
-// none of whose collections may be one of cockpit.
-func appPairs(value string, cockpit []string) (map[string]string, error) {
+// none of whose collections may be one of cockpit. It also answers the
+// collections in the order they were listed.
+func appPairs(value string, cockpit []string) (map[string]string, []string, error) {
 	apps := map[string]string{}
+	var order []string
 	for _, pair := range splitList(value) {
 		collection, app, ok := strings.Cut(pair, "=")
 		collection, app = strings.TrimSpace(collection), strings.TrimSpace(app)
 		if !ok || collection == "" || app == "" {
-			return nil, fmt.Errorf("POSTERN_APPS: %q is not collection=app", pair)
+			return nil, nil, fmt.Errorf("POSTERN_APPS: %q is not collection=app", pair)
 		}
 		for _, c := range cockpit {
 			if c == collection {
-				return nil, fmt.Errorf("POSTERN_APPS: %q is one of POSTERN_COLLECTIONS; a collection is an app's or the cockpit's, never both", collection)
+				return nil, nil, fmt.Errorf("POSTERN_APPS: %q is one of POSTERN_COLLECTIONS; a collection is an app's or the cockpit's, never both", collection)
 			}
+		}
+		if _, seen := apps[collection]; !seen {
+			order = append(order, collection)
 		}
 		apps[collection] = app
 	}
-	return apps, nil
+	return apps, order, nil
 }
 
 // checkOrigin accepts a browser origin: scheme://host[:port], nothing else.

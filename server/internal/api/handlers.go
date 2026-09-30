@@ -18,6 +18,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
@@ -54,6 +55,20 @@ type options struct {
 	millKey  string            // POSTERN_MILL_KEY, lower-cased; "" means no grist (§19)
 	apps     map[string]string // POSTERN_APPS: an app's licence collection -> the app
 	cors     []string          // POSTERN_CORS_ORIGINS
+
+	cockpitCollections []string // POSTERN_COLLECTIONS, for GET /api/me (§15)
+	appCollections     []string // POSTERN_APPS' collections in the order configured
+	issuerKey          string   // POSTERN_ISSUER_KEY, lower-cased; "" if unset
+
+	collections []meCollection // what a cockpit key's GET /api/me lists, built by NewHandler
+	issuer      string         // issuerKey's testnet address; "" if unset
+}
+
+// meCollection is one entry of GET /api/me's collections (§15): a
+// collection the backend knows, and the app it belongs to if it is an app's.
+type meCollection struct {
+	Name string `json:"name"`
+	App  string `json:"app,omitempty"`
 }
 
 // DefaultPingInterval is how often GET /api/events writes a ": ping"
@@ -75,6 +90,18 @@ func WithNotifier(n notify.Notifier) Option {
 // the Mayor's public key (POSTERN_MAYOR_KEY, "" if unset) and the network.
 func WithIdentity(mayorKey, network string) Option {
 	return func(o *options) { o.mayorKey, o.network = mayorKey, network }
+}
+
+// WithCatalogue sets what a cockpit key's GET /api/me says about the licence
+// collections (docs/protocol.md §15): cockpit is POSTERN_COLLECTIONS, apps the
+// collections of POSTERN_APPS in the order configured (their app names come
+// from WithGrist), and issuerKey is POSTERN_ISSUER_KEY, whose testnet address
+// is answered as "issuer" ("" leaves it out). Without it neither field is
+// answered.
+func WithCatalogue(cockpit, apps []string, issuerKey string) Option {
+	return func(o *options) {
+		o.cockpitCollections, o.appCollections, o.issuerKey = cockpit, apps, strings.ToLower(issuerKey)
+	}
 }
 
 // WithEvents sets the hub GET /api/events streams from, and how often it
@@ -124,6 +151,16 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 	}
 	if o.hub == nil {
 		o.hub = events.NewHub()
+	}
+	for _, name := range o.cockpitCollections {
+		o.collections = append(o.collections, meCollection{Name: name})
+	}
+	for _, name := range o.appCollections {
+		o.collections = append(o.collections, meCollection{Name: name, App: o.apps[name]})
+	}
+	if o.issuerKey != "" {
+		// A malformed key (config validates it) leaves the issuer out.
+		o.issuer, _ = licence.AddressForPublicKey(o.issuerKey)
 	}
 	if o.ping <= 0 {
 		o.ping = DefaultPingInterval
@@ -235,7 +272,8 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 	}
 }
 
-// handleMe answers who the caller is, who the Mayor is and who the mill is
+// handleMe answers who the caller is, who the Mayor is and who the mill is,
+// and tells a cockpit key the backend's collections and the issuer's address
 // (docs/protocol.md §15, §19). An app's key or the mill's is never told the
 // Mayor, and is offered only grist.
 func handleMe(o *options) http.HandlerFunc {
@@ -262,7 +300,10 @@ func handleMe(o *options) http.HandlerFunc {
 			Mill     string   `json:"mill,omitempty"`
 			Network  string   `json:"network"`
 			Features []string `json:"features"`
-		}{PubKey: caller, Mayor: o.mayorKey, Mill: o.millKey, Network: o.network, Features: features})
+
+			Collections []meCollection `json:"collections,omitempty"`
+			Issuer      string         `json:"issuer,omitempty"`
+		}{PubKey: caller, Mayor: o.mayorKey, Mill: o.millKey, Network: o.network, Features: features, Collections: o.collections, Issuer: o.issuer})
 	}
 }
 

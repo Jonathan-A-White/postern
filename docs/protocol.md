@@ -688,7 +688,23 @@ in the same thread, so he sees exactly what was heard under the note he sent.
 ```
 
 `mill` and the `grist` feature are absent from a cockpit key's answer (not empty)
-unless the backend has a mill key (§19). An app's key (§19, *Who may do what*) gets a smaller answer: its own key, the
+unless the backend has a mill key (§19).
+
+A cockpit key's answer also carries two fields that say what the backend
+licenses, so the cockpit need not be told by hand:
+
+```json
+{ "collections": [{ "name": "postern" }, { "name": "spellforge-leaderboard-testnet" }, { "name": "cairn", "app": "cairn" }],
+  "issuer": "<the testnet address of POSTERN_ISSUER_KEY>" }
+```
+
+`collections` has one entry per collection the backend knows: `POSTERN_COLLECTIONS`
+first, each `{ "name" }`, then the collections of `POSTERN_APPS`, each
+`{ "name", "app" }`, in the order configured. `issuer` is the testnet address of
+`POSTERN_ISSUER_KEY`, and is absent (not empty) when that key is not set. An app's
+key gets neither field.
+
+An app's key (§19, *Who may do what*) gets a smaller answer: its own key, the
 mill, the network, `"features": ["grist"]` and `"apps"`, the apps its licences name;
 never the Mayor.
 

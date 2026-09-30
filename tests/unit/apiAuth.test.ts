@@ -64,6 +64,83 @@ describe('apiFetch', () => {
     );
   });
 
+  describe('what a refusal says (mw-t64a3.25)', () => {
+    const refusal = (reason: string | undefined) =>
+      new Response(JSON.stringify({ error: 'refused', ...(reason ? { reason } : {}) }), { status: 401 });
+
+    it('retries a nonce refusal once with a fresh challenge and succeeds', async () => {
+      let challenges = 0;
+      const auths: (string | null)[] = [];
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/challenge')) {
+          challenges += 1;
+          return new Response(JSON.stringify({ nonce: String(challenges).repeat(64) }), { status: 200 });
+        }
+        auths.push(new Headers(init?.headers).get('Authorization'));
+        return auths.length === 1 ? refusal('nonce') : new Response('{}', { status: 200 });
+      });
+
+      const response = await apiFetch('/blobs', { method: 'POST', body: 'x' }, { unlockedKey: MASTER_KEY, fetchImpl });
+
+      expect(response.status).toBe(200);
+      expect(challenges).toBe(2);
+      expect(auths).toHaveLength(2);
+      expect(auths[0]).not.toBe(auths[1]);
+    });
+
+    it('still says "Licence required" for a 401 that says no licence is held', async () => {
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('/challenge') ? challengeResponse() : refusal('no_licence'),
+      );
+      await expect(apiFetch('/me', undefined, { unlockedKey: MASTER_KEY, fetchImpl })).rejects.toThrow('Licence required');
+    });
+
+    it('does not retry a no-licence refusal', async () => {
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('/challenge') ? challengeResponse() : refusal('no_licence'),
+      );
+      await apiFetch('/me', undefined, { unlockedKey: MASTER_KEY, fetchImpl }).catch(() => undefined);
+      expect(fetchImpl.mock.calls.filter(([u]) => String(u).endsWith('/challenge'))).toHaveLength(1);
+    });
+
+    it('retries a nonce refusal once only: a second one says what failed, without the word Licence', async () => {
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('/challenge') ? challengeResponse() : refusal('nonce'),
+      );
+      const failure = await apiFetch('/messages', { method: 'POST' }, { unlockedKey: MASTER_KEY, fetchImpl }).catch(
+        (err: unknown) => err as Error,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).not.toContain('Licence');
+      expect((failure as Error).message).not.toBe('');
+      expect(fetchImpl.mock.calls.filter(([u]) => !String(u).endsWith('/challenge'))).toHaveLength(2);
+    });
+
+    it('says a rejected proof was rejected, not that a licence is needed', async () => {
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('/challenge') ? challengeResponse() : refusal('signature'),
+      );
+      const failure = await apiFetch('/me', undefined, { unlockedKey: MASTER_KEY, fetchImpl }).catch((err: unknown) => err as Error);
+      expect((failure as Error).message).not.toContain('Licence');
+    });
+
+    it('falls back to "Licence required" for an old backend whose 401 names no reason', async () => {
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('/challenge') ? challengeResponse() : refusal(undefined),
+      );
+      await expect(apiFetch('/me', undefined, { unlockedKey: MASTER_KEY, fetchImpl })).rejects.toThrow('Licence required');
+    });
+
+    it('says the backend could not be reached when GET /api/challenge fails, not "Licence required"', async () => {
+      const fetchImpl = vi.fn(async () => new Response('', { status: 503 }));
+      const failure = await apiFetch('/me', undefined, { unlockedKey: MASTER_KEY, fetchImpl }).catch((err: unknown) => err as Error);
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).not.toContain('Licence');
+      expect((failure as Error).message).toContain('503');
+    });
+  });
+
   it('returns the response unchanged for a non-401 status', async () => {
     const fetchImpl = vi.fn(async () => new Response('', { status: 502 }));
     const response = await apiFetch('/messages?since=0', undefined, { fetchImpl });

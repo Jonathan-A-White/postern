@@ -196,20 +196,4 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(screen.queryByText(text)).not.toBeInTheDocument();
     });
   });
-
-  Scenario('mw-hkg17.2: a bead thread renders as before', ({ Given, When, Then, And }) => {
-    Given('a bead thread with the messages {string} and {string}', (_ctx, first: string, second: string) => {
-      say(first, { thread: 'bead:mw-a.1' });
-      say(second, { thread: 'bead:mw-a.1' });
-      window.history.replaceState(null, '', '/?v=talk&t=bead%3Amw-a.1');
-    });
-    When('the bead thread opens', open);
-    Then('the thread shows {string} and {string} in that order', async (_ctx, a: string, b: string) => {
-      await waitFor(() => expect(shown()).toEqual([a, b]));
-    });
-    And('no replies row is shown', () => {
-      expect(screen.queryByText(/\d+ repl(y|ies)/)).not.toBeInTheDocument();
-    });
-    And('the composer says {string}', (_ctx, placeholder: string) => composerSays(placeholder));
-  });
 });

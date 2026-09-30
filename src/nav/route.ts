@@ -14,7 +14,8 @@ export type Route =
   | { view: 'needs'; who?: WaitsFor }
   | { view: 'map'; focus?: string; lens?: MapLens; bucket?: string; filter?: string }
   | { view: 'bead'; id: string }
-  | { view: 'talk'; thread?: string }
+  /** `root` is the txid of a General post whose thread of replies is open (docs/protocol.md §14). */
+  | { view: 'talk'; thread?: string; root?: string }
   | { view: 'search'; q?: string }
   | { view: 'me' }
   | { view: 'key' }
@@ -80,7 +81,7 @@ export function parseRoute(search: string): Route {
       return id ? { view: 'bead', id } : { view: 'map' };
     }
     case 'talk':
-      return { view: 'talk', thread: params.get('t') ?? undefined };
+      return { view: 'talk', thread: params.get('t') ?? undefined, ...(params.get('r') ? { root: params.get('r') as string } : {}) };
     case 'search':
       return { view: 'search', q: params.get('q') ?? undefined };
     case 'me':
@@ -126,6 +127,7 @@ export function formatRoute(route: Route): string {
       break;
     case 'talk':
       if (route.thread) params.set('t', route.thread);
+      if (route.thread && route.root) params.set('r', route.root);
       break;
     case 'search':
       if (route.q) params.set('q', route.q);

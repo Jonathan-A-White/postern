@@ -148,7 +148,7 @@ function QuestionBlock({ item }: { item: ConversationItem }) {
   );
 }
 
-function Bubble({ item, onQuote }: { item: ConversationItem; onQuote?: (item: ConversationItem) => void }) {
+function Bubble({ item, onQuote, onReply }: { item: ConversationItem; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
   const mine = item.speaker === 'you';
   const builder = item.speaker === 'builder' || item.speaker === 'other';
   if (item.kind === 'action' || item.kind === 'answer') {
@@ -192,8 +192,13 @@ function Bubble({ item, onQuote }: { item: ConversationItem; onQuote?: (item: Co
             <Icon name="speaker" size={13} />
           </button>
         )}
+        {onReply && item.txid && (item.kind === 'text' || item.kind === 'attachment') && (
+          <button type="button" className="rounded px-1 font-semibold text-muted hover:text-fg" onClick={() => onReply(item)}>
+            Reply
+          </button>
+        )}
         {onQuote && item.text && (
-          <button type="button" aria-label="Reply to this" className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:text-fg focus:opacity-100" onClick={() => onQuote(item)}>
+          <button type="button" aria-label="Quote this" className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:text-fg focus:opacity-100" onClick={() => onQuote(item)}>
             <Icon name="quote" size={13} />
           </button>
         )}
@@ -205,12 +210,18 @@ function Bubble({ item, onQuote }: { item: ConversationItem; onQuote?: (item: Co
 export function Conversation({
   items,
   onQuote,
+  onReply,
+  footer,
   empty,
   className,
   scrollOnOpen = true,
 }: {
   items: ConversationItem[];
   onQuote?: (item: ConversationItem) => void;
+  /** Shows a Reply button on a message that can be answered in a thread of its own (General). */
+  onReply?: (item: ConversationItem) => void;
+  /** What sits under an item's bubble: General's 'N replies' row. */
+  footer?: (item: ConversationItem) => React.ReactNode;
   empty?: React.ReactNode;
   className?: string;
   /** Scroll to the newest message when first shown; always scroll on a new one.
@@ -242,7 +253,8 @@ export function Conversation({
                 <span className="h-px flex-1 bg-line" />
               </div>
             )}
-            <Bubble item={item} onQuote={onQuote} />
+            <Bubble item={item} onQuote={onQuote} onReply={onReply} />
+            {footer?.(item)}
           </div>
         );
       })}

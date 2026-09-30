@@ -109,3 +109,12 @@ describe('decodeThreadedMessage and §14 annotations (plans/0021)', () => {
     expect(body).toEqual({ text: 'heard this', re: 'direct:abc', role: 'transcript' });
   });
 });
+
+describe('a message that carries re (mw-hkg17.2)', () => {
+  it('is always JSON, never bare text, even with no thread or attachment', () => {
+    const re = `direct:${'a'.repeat(64)}`;
+    const encoded = encodeThreadedMessage({ text: 'an answer', re });
+    expect(JSON.parse(encoded)).toEqual({ text: 'an answer', re });
+    expect(decodeThreadedMessage(encoded)).toEqual({ text: 'an answer', re });
+  });
+});

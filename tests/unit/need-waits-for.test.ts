@@ -3,6 +3,8 @@
 // older mw carries none of the three and must decode to the same Need shape.
 import { describe, expect, it } from 'vitest';
 import { decodeView } from '../../src/model/view';
+import { needsByWaiter } from '../../src/model/needs';
+import { formatRoute, parseRoute } from '../../src/nav/route';
 import { fixtureView } from '../support/cockpit-fixture';
 
 function decodeNeeds(needs: Record<string, unknown>[]) {
@@ -45,8 +47,32 @@ describe('a need that says who it waits on (docs/protocol.md §11)', () => {
     expect(need.waits_for).toBe('you');
   });
 
+  it('takes an absent waits_for as the factory when the card is not ready, else you', () => {
+    const [notReady] = decodeNeeds([{ ...BASE, not_ready: true }]);
+    expect(notReady.waits_for).toBe('factory');
+    const [unknownWord] = decodeNeeds([{ ...BASE, not_ready: true, waits_for: 'somebody' }]);
+    expect(unknownWord.waits_for).toBe('you');
+  });
+
   it('keeps only strings in waiting_on', () => {
     const [need] = decodeNeeds([{ ...BASE, not_ready: true, waiting_on: ['A', 3, null, 'B'] }]);
     expect(need.waiting_on).toEqual(['A', 'B']);
+  });
+});
+
+describe('the Needs switch (mw-tbx1n.8)', () => {
+  it('splits needs by whose turn they are', () => {
+    const [you, mayor, factory] = decodeNeeds([{ ...BASE }, { ...BASE, waits_for: 'mayor' }, { ...BASE, not_ready: true }]);
+    const split = needsByWaiter([you, mayor, factory]);
+    expect(split.you).toEqual([you]);
+    expect(split.mayor).toEqual([mayor]);
+    expect(split.factory).toEqual([factory]);
+  });
+
+  it('keeps the chosen part in the address', () => {
+    expect(formatRoute({ view: 'needs', who: 'mayor' })).toBe('?v=needs&who=mayor');
+    expect(formatRoute({ view: 'needs', who: 'you' })).toBe('?v=needs');
+    expect(parseRoute('?v=needs&who=factory')).toEqual({ view: 'needs', who: 'factory' });
+    expect(parseRoute('?v=needs&who=nobody')).toEqual({ view: 'needs' });
   });
 });

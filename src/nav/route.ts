@@ -5,11 +5,13 @@
 // used (`?screen=…`, from notifications already delivered) are read too.
 
 import type { MessageClass } from '../data/db';
+import type { WaitsFor } from '../model/view';
 
 export type MapLens = 'board' | 'graph' | 'list';
 
 export type Route =
-  | { view: 'needs' }
+  /** `who` is the part of the Needs switch: whose turn the cards are (absent: You). */
+  | { view: 'needs'; who?: WaitsFor }
   | { view: 'map'; focus?: string; lens?: MapLens; bucket?: string; filter?: string }
   | { view: 'bead'; id: string }
   | { view: 'talk'; thread?: string }
@@ -97,6 +99,10 @@ export function parseRoute(search: string): Route {
       const ts = Number(params.get('ts'));
       return { view: 'alarm', title: params.get('title') ?? undefined, body: params.get('body') ?? undefined, ts: Number.isFinite(ts) && ts > 0 ? ts : undefined };
     }
+    case 'needs': {
+      const who = params.get('who');
+      return who === 'mayor' || who === 'factory' ? { view: 'needs', who } : { view: 'needs' };
+    }
     default:
       return { view: 'needs' };
   }
@@ -106,6 +112,9 @@ export function formatRoute(route: Route): string {
   const params = new URLSearchParams();
   params.set('v', route.view);
   switch (route.view) {
+    case 'needs':
+      if (route.who && route.who !== 'you') params.set('who', route.who);
+      break;
     case 'map':
       if (route.focus) params.set('focus', route.focus);
       if (route.lens) params.set('lens', route.lens);

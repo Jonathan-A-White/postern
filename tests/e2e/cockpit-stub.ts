@@ -45,7 +45,19 @@ export async function seedVault(page: Page, mnemonic: string): Promise<string> {
   return publicKeyHex;
 }
 
-export async function stubBackend(page: Page, governor: PrivateKey, voice?: { bytes: Uint8Array; mime: string }): Promise<{ posted: string[] }> {
+export interface StubExtras {
+  /** What /api/me names as `collections`: a cockpit key's; leave unset for an app key's answer. */
+  collections?: Array<{ name: string; app?: string }>;
+  /** The satoshis /api/utxos/{address} lists as one coin; unset lists none. */
+  utxoSatoshis?: number;
+}
+
+export async function stubBackend(
+  page: Page,
+  governor: PrivateKey,
+  voice?: { bytes: Uint8Array; mime: string },
+  extras: StubExtras = {},
+): Promise<{ posted: string[] }> {
   const governorPub = governor.toPublicKey().toString();
   const now = Date.now();
   const view = await sealDocument(JSON.stringify(fixtureView(now)), MAYOR.toHex(), governorPub);
@@ -61,7 +73,16 @@ export async function stubBackend(page: Page, governor: PrivateKey, voice?: { by
 
   await page.route('**/api/challenge', (route) => json(route, { nonce: 'a'.repeat(64) }));
   await page.route('**/api/me', (route) =>
-    json(route, { pubkey: governorPub, mayor: MAYOR.toPublicKey().toString(), network: 'testnet', features: ['direct', 'events', 'view', 'beads', 'me'] }),
+    json(route, {
+      pubkey: governorPub,
+      mayor: MAYOR.toPublicKey().toString(),
+      network: 'testnet',
+      features: ['direct', 'events', 'view', 'beads', 'me'],
+      ...(extras.collections ? { collections: extras.collections } : {}),
+    }),
+  );
+  await page.route('**/api/utxos/**', (route) =>
+    json(route, { utxos: extras.utxoSatoshis ? [{ txid: 'a'.repeat(64), vout: 0, satoshis: extras.utxoSatoshis, height: 100 }] : [] }),
   );
   await page.route('**/api/view', (route) => route.fulfill({ status: 200, contentType: 'text/plain', headers: { ETag: '"fixture"' }, body: view }));
   await page.route('**/api/events', (route) =>

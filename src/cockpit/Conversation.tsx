@@ -176,7 +176,7 @@ function Bubble({ item, onQuote }: { item: ConversationItem; onQuote?: (item: Co
             <AttachmentView attachment={item.attachment} direction={mine ? 'sent' : 'received'} />
           </div>
         )}
-        {item.text && <Markdown text={item.text} />}
+        {item.text && <Markdown text={item.text} wrap />}
         {item.transcript !== undefined && (
           <p className="mt-1.5 border-l-2 border-line-strong pl-2 text-[13px] text-muted">
             <span className="font-semibold">Heard:</span> {item.transcript}

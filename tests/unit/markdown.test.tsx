@@ -68,4 +68,14 @@ describe('Markdown', () => {
     expect(other).toHaveAttribute('target', '_blank');
     expect(other).toHaveAttribute('rel', 'noopener noreferrer');
   });
+
+  // mw-t64a3.23: a thread message's fenced block wraps its long lines (a phone is
+  // 360 px wide); a document's keeps its horizontal scroll, as before.
+  it('wraps a fenced block only when asked (thread messages), and a document keeps its scroll', () => {
+    const long = `\`\`\`\n${'x'.repeat(120)}\n\`\`\``;
+    const { container: thread } = render(<Markdown text={long} wrap />);
+    expect(thread.querySelector('.markdown')).toHaveClass('markdown-wrap');
+    const { container: document_ } = render(<Markdown text={long} />);
+    expect(document_.querySelector('.markdown')).not.toHaveClass('markdown-wrap');
+  });
 });

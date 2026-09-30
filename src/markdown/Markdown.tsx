@@ -49,11 +49,13 @@ const components: Components = {
 
 export interface MarkdownProps {
   text: string;
+  /** Wrap a fenced block's long lines instead of scrolling them (a thread message on a phone). */
+  wrap?: boolean;
 }
 
-export function Markdown({ text }: MarkdownProps) {
+export function Markdown({ text, wrap = false }: MarkdownProps) {
   return (
-    <div className="markdown">
+    <div className={wrap ? 'markdown markdown-wrap' : 'markdown'}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </ReactMarkdown>

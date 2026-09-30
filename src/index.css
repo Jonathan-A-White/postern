@@ -230,6 +230,10 @@ html {
   @apply my-2 overflow-x-auto rounded-lg bg-sunken p-3;
 }
 
+.markdown-wrap pre {
+  @apply whitespace-pre-wrap break-all;
+}
+
 .markdown code {
   @apply font-mono text-[13px];
 }

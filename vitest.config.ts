@@ -24,5 +24,8 @@ export default defineConfig({
     // those pile up and blow their own timeouts (mw-tfne4.33's landing failure).
     // Capping workers trades a little wall time for not timing out under load.
     maxWorkers: 4,
+    // CPU-bound unit tests (real @bsv/sdk signing) pass the default 5 s on a loaded host:
+    // mint-licence.test.ts refused mw-yjxcw.12's unrelated landing on 2026-09-30.
+    testTimeout: 20_000,
   },
 });

@@ -2,7 +2,7 @@
 // Issue a licence (a holder's key scanned or pasted, a collection from /api/me, the cost against
 // the balance) and Issued licences per collection with Revoke. Shown only for a cockpit key: an
 // app key's /api/me names no collections, and then this renders nothing.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchMe, type MeCollection } from '../services/me';
 import {
   fetchIssuerBalance,
@@ -13,6 +13,7 @@ import {
   type IssuedLicence,
   type IssuedLicenceEntry,
 } from '../services/issue';
+import { addressForPublicKey } from '../services/licence';
 import { publicKeyHexFromMasterKey } from '../services/vault';
 import { issuedTimes, rememberIssuedAt } from './issuedDates';
 import { hasBarcodeDetector } from './barcode';
@@ -140,6 +141,9 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [addressCopied, setAddressCopied] = useState<'idle' | 'copied' | 'unavailable'>('idle');
+  // A second tap in the tick before the first one's re-render must not build a second mint.
+  const issueInFlight = useRef(false);
 
   useEffect(() => {
     void loadCollections(issuerKey).then(setCollectionsState);
@@ -184,7 +188,23 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const cost = issueCost();
   const collection = collections.some((c) => c.name === chosen) ? chosen : collections[0].name;
 
+  const short = typeof balance === 'number' && balance < cost.totalSatoshis;
+  const fundingAddress = addressForPublicKey(issuerPublicKeyHex);
+
+  async function handleCopyAddress() {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API not available');
+      await navigator.clipboard.writeText(fundingAddress);
+      setAddressCopied('copied');
+      setTimeout(() => setAddressCopied('idle'), 3000);
+    } catch {
+      setAddressCopied('unavailable');
+    }
+  }
+
   async function handleIssue() {
+    if (issueInFlight.current) return;
+    issueInFlight.current = true;
     setOutcome({ name: 'issuing' });
     try {
       const issued = await issueLicence({ issuerKey, holderPublicKeyHex: holder, collection });
@@ -196,6 +216,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
     } catch (error) {
       setOutcome({ name: 'error', message: errorText(error) });
     } finally {
+      issueInFlight.current = false;
       setConfirmingIssue(false);
     }
   }
@@ -263,12 +284,29 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
           Cost: {sats(cost.fuelSatoshis)} mint fuel + about {sats(cost.feeEstimateSatoshis)} fee.{' '}
           {balance === undefined ? 'Checking balance…' : balance === null ? 'Balance unavailable.' : `Balance: ${sats(balance)}.`}
         </p>
+        {short && (
+          <div className="flex flex-col gap-2">
+            <p role="alert" className="text-danger">
+              Not enough sats: this needs {cost.totalSatoshis.toLocaleString('en-US')}, you have {balance.toLocaleString('en-US')}.
+            </p>
+            <p className="text-sm text-muted">
+              Send testnet sats to this key&apos;s address:{' '}
+              <span data-testid="fund-address" className="break-all font-mono">
+                {fundingAddress}
+              </span>
+            </p>
+            <button className={`${BUTTON} self-start`} onClick={() => void handleCopyAddress()}>
+              {addressCopied === 'copied' ? 'Copied' : 'Copy funding address'}
+            </button>
+            {addressCopied === 'unavailable' && <p className="text-sm">Copy is not available here: select the address by hand</p>}
+          </div>
+        )}
         {!confirmingIssue && (
-          <button className={PRIMARY_BUTTON} disabled={!holder.trim()} onClick={() => setConfirmingIssue(true)}>
+          <button className={PRIMARY_BUTTON} disabled={!holder.trim() || short} onClick={() => setConfirmingIssue(true)}>
             Issue
           </button>
         )}
-        {confirmingIssue && (
+        {confirmingIssue && !short && (
           <div className="flex flex-col gap-2">
             <p>
               Issue a licence to {shorten(holder.trim(), 8, 6)} in {collection}? Cost about {sats(cost.totalSatoshis)}.
@@ -302,9 +340,21 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
         <h2 className="text-lg font-semibold">Issued licences</h2>
         {listing.name === 'loading' && <p className="text-sm text-muted">Reading the chain…</p>}
         {listing.name === 'error' && (
-          <p role="alert" className="text-danger">
-            The issued licences could not be read: {listing.message}
-          </p>
+          <div className="flex flex-col gap-2">
+            <p role="alert" className="text-danger">
+              The issued licences could not be read. Check the connection and try again.
+            </p>
+            <p className="text-sm text-muted">{listing.message}</p>
+            <button
+              className={`${BUTTON} self-start`}
+              onClick={() => {
+                setListing({ name: 'loading' });
+                setRefreshToken((token) => token + 1);
+              }}
+            >
+              Retry
+            </button>
+          </div>
         )}
         {listing.name === 'loaded' && rows.length === 0 && <p className="text-sm text-muted">No licence issued from this key yet.</p>}
         {revokeError && (

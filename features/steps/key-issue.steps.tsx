@@ -4,7 +4,7 @@
 // covered by issue-licence.feature) are stood in for; the screen itself is the real one.
 // See gate.steps.tsx for why dont-cleanup-after-each is imported and cleanup() called by hand.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -420,6 +420,103 @@ describeFeature(feature, ({ Scenario }) => {
     And('the confirm is gone and the Issue button is back', () => {
       expect(screen.queryByRole('button', { name: 'Confirm issue' })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Issue' })).toBeInTheDocument();
+    });
+  });
+  Scenario('AC14: two taps of Confirm issue in one tick call issueLicence once', ({ Given, And, When, Then }) => {
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+      services.issueLicence.mockReturnValue(new Promise(() => {}));
+    });
+    When('the key screen is opened', openKeyScreen);
+    And("I type a holder's key and choose cairn", typeHolderAndChooseCairn);
+    And('I press Issue', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
+    });
+    And('I tap Confirm issue twice in the same tick', async () => {
+      const confirm = await screen.findByRole('button', { name: 'Confirm issue' });
+      act(() => {
+        confirm.click();
+        confirm.click();
+      });
+    });
+    Then('issueLicence was called once', async () => {
+      await waitFor(() => expect(services.issueLicence).toHaveBeenCalledTimes(1));
+    });
+  });
+
+  Scenario('AC15: a failed read of the issued licences says so plainly, and Retry reads again and shows the list', ({ Given, And, When, Then }) => {
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+    });
+    And('reading the issued licences fails', () => {
+      services.issuedLicences.mockRejectedValue(
+        new Error('Could not reach WhatsOnChain after 3 tries (offline, or rate-limited: its 429 reply carries no CORS header)'),
+      );
+    });
+    When('the key screen is opened', openKeyScreen);
+    Then('the issued licences section says they could not be read, with a Retry button', async () => {
+      const section = await screen.findByRole('region', { name: 'Issued licences' });
+      expect(await within(section).findByText("The issued licences could not be read. Check the connection and try again.")).toBeInTheDocument();
+      expect(within(section).getByRole('button', { name: 'Retry' })).toBeEnabled();
+    });
+    And('the technical cause is in a smaller second line', () => {
+      const section = screen.getByRole('region', { name: 'Issued licences' });
+      const cause = within(section).getByText(/Could not reach WhatsOnChain after 3 tries/);
+      expect(cause).toHaveClass('text-sm');
+    });
+    When('the read works and I press Retry', async () => {
+      services.issuedLicences.mockResolvedValue([HELD]);
+      const section = screen.getByRole('region', { name: 'Issued licences' });
+      await userEvent.click(within(section).getByRole('button', { name: 'Retry' }));
+    });
+    Then('the issued licences are listed', async () => {
+      expect(await screen.findAllByTestId('issued-row')).toHaveLength(1);
+      expect(services.issuedLicences).toHaveBeenCalledTimes(2);
+    });
+    And('the failure message is gone', () => {
+      expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC16: a balance below the cost says how short it is, shows my address with Copy, and offers no Confirm issue', ({ Given, And, When, Then }) => {
+    const balance = 952;
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+    });
+    And('my balance is below the cost of a licence', () => {
+      services.fetchIssuerBalance.mockResolvedValue(balance);
+    });
+    When('the key screen is opened', openKeyScreen);
+    And("I type a holder's key and choose cairn", typeHolderAndChooseCairn);
+    Then('the screen says not enough sats, naming what is needed and what I have', async () => {
+      const needed = issueCost().totalSatoshis.toLocaleString('en-US');
+      expect(await screen.findByText(`Not enough sats: this needs ${needed}, you have ${balance.toLocaleString('en-US')}.`)).toBeInTheDocument();
+    });
+    And('my own address is shown with a Copy control', () => {
+      expect(screen.getByTestId('fund-address')).toHaveTextContent(addressForPublicKey(MY_PUBLIC_KEY));
+      expect(screen.getByRole('button', { name: 'Copy funding address' })).toBeEnabled();
+    });
+    And('the Issue button is disabled and there is no Confirm issue', () => {
+      expect(screen.getByRole('button', { name: 'Issue' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Confirm issue' })).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC17: with enough balance there is no not-enough-sats message', ({ Given, When, Then, And }) => {
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+    });
+    When('the key screen is opened', openKeyScreen);
+    And("I type a holder's key and choose cairn", typeHolderAndChooseCairn);
+    Then('there is no not-enough-sats message', async () => {
+      await screen.findByText(new RegExp(`Balance: ${BALANCE.toLocaleString('en-US')} sats`));
+      expect(screen.queryByText(/Not enough sats/)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('fund-address')).not.toBeInTheDocument();
+    });
+    And('I can press Issue and reach Confirm issue', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
+      expect(await screen.findByRole('button', { name: 'Confirm issue' })).toBeEnabled();
     });
   });
 });

@@ -101,3 +101,37 @@ Feature: The Key screen shows my public key and issues and revokes licences (mw-
     And I cancel the issue
     Then issueLicence has not been called
     And the confirm is gone and the Issue button is back
+
+  Scenario: AC14: two taps of Confirm issue in one tick call issueLicence once
+    Given my key is unlocked and the backend names two collections
+    When the key screen is opened
+    And I type a holder's key and choose cairn
+    And I press Issue
+    And I tap Confirm issue twice in the same tick
+    Then issueLicence was called once
+
+  Scenario: AC15: a failed read of the issued licences says so plainly, and Retry reads again and shows the list
+    Given my key is unlocked and the backend names two collections
+    And reading the issued licences fails
+    When the key screen is opened
+    Then the issued licences section says they could not be read, with a Retry button
+    And the technical cause is in a smaller second line
+    When the read works and I press Retry
+    Then the issued licences are listed
+    And the failure message is gone
+
+  Scenario: AC16: a balance below the cost says how short it is, shows my address with Copy, and offers no Confirm issue
+    Given my key is unlocked and the backend names two collections
+    And my balance is below the cost of a licence
+    When the key screen is opened
+    And I type a holder's key and choose cairn
+    Then the screen says not enough sats, naming what is needed and what I have
+    And my own address is shown with a Copy control
+    And the Issue button is disabled and there is no Confirm issue
+
+  Scenario: AC17: with enough balance there is no not-enough-sats message
+    Given my key is unlocked and the backend names two collections
+    When the key screen is opened
+    And I type a holder's key and choose cairn
+    Then there is no not-enough-sats message
+    And I can press Issue and reach Confirm issue

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PrivateKey, Transaction, Utils } from '@bsv/sdk';
 import { chainConfig, decodeTypedRecordScript, type ChainProvider } from 'spell-forge-bsv';
 import { db } from '../../src/data/db';
@@ -356,5 +356,88 @@ describe('issuedLicences', () => {
     provider.addTransaction('someone-else', txid, hex);
     const licences = await issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, provider });
     expect(licences.map((l) => l.txid)).toEqual([txid]);
+  });
+});
+
+describe('the whole paged history of a key that has passed 100 transactions (mw-yjxcw.10)', () => {
+  const CONFIRMED = `/v1/bsv/test/address/${ISSUER_ADDRESS}/confirmed/history`;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Serves WhatsOnChain's paged /confirmed/history (newest page first), an empty /unconfirmed/history and /tx/<id>/hex. */
+  function stubWhatsOnChain(pages: Array<Array<{ tx_hash: string; height: number }>>, hexByTxid: Record<string, string> = {}) {
+    const requested: string[] = [];
+    const stub = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      requested.push(url.pathname + url.search);
+      if (url.pathname.endsWith('/confirmed/history')) {
+        const token = url.searchParams.get('token');
+        const index = token === null ? 0 : Number(token.replace('page-', ''));
+        const more = index + 1 < pages.length;
+        return new Response(JSON.stringify({ result: pages[index], nextPageToken: more ? `page-${index + 1}` : '', error: '' }), { status: 200 });
+      }
+      if (url.pathname.endsWith('/unconfirmed/history')) {
+        return new Response(JSON.stringify({ result: [], nextPageToken: '', error: '' }), { status: 200 });
+      }
+      const hexMatch = /\/tx\/([0-9a-f]{64})\/hex$/.exec(url.pathname);
+      if (hexMatch && hexByTxid[hexMatch[1]]) return new Response(hexByTxid[hexMatch[1]], { status: 200 });
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', stub);
+    return { requested, stub };
+  }
+
+  async function oldestPageMint() {
+    const mintHex = await signedRecordTxHex(ISSUER, 'M', { collection: 'cairn', holder: HOLDER_ADDRESS }, 0);
+    const otherHex = await signedRecordTxHex(OTHER, 'M', { collection: 'cairn', holder: ISSUER_ADDRESS }, 1);
+    const mintTxid = Transaction.fromHex(mintHex).id('hex');
+    const otherTxid = Transaction.fromHex(otherHex).id('hex');
+    // WhatsOnChain gives the newest page first: the mint is on the third (oldest) page.
+    const pages = [[{ tx_hash: otherTxid, height: 300 }], [{ tx_hash: otherTxid, height: 250 }], [{ tx_hash: mintTxid, height: 100 }]];
+    return { pages, mintTxid, hexByTxid: { [mintTxid]: mintHex, [otherTxid]: otherHex } };
+  }
+
+  it('lists a mint that sits on the oldest of three confirmed pages, following nextPageToken', async () => {
+    const { pages, mintTxid, hexByTxid } = await oldestPageMint();
+    const { requested } = stubWhatsOnChain(pages, hexByTxid);
+    const licences = await issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, historyPageDelayMs: 0 });
+    expect(licences.map((l) => l.txid)).toEqual([mintTxid]);
+    expect(requested.filter((path) => path.startsWith(CONFIRMED))).toEqual([
+      CONFIRMED,
+      `${CONFIRMED}?token=page-1`,
+      `${CONFIRMED}?token=page-2`,
+    ]);
+  });
+
+  it('errors, and never returns a short list, when the history runs past 50 pages', async () => {
+    const endless = Array.from({ length: 51 }, () => [{ tx_hash: 'e'.repeat(64), height: 5 }]);
+    const { requested } = stubWhatsOnChain(endless);
+    const attempt = issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, historyPageDelayMs: 0 });
+    await expect(attempt).rejects.toMatchObject({ code: 'network', message: expect.stringMatching(/50 pages/) });
+    expect(requested.filter((path) => path.startsWith(CONFIRMED))).toHaveLength(50);
+  });
+
+  it('errors when WhatsOnChain answers a page with an error field', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ result: [], nextPageToken: '', error: 'address is not valid' }), { status: 200 })),
+    );
+    const attempt = issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, historyPageDelayMs: 0 });
+    await expect(attempt).rejects.toMatchObject({ code: 'network', message: expect.stringMatching(/address is not valid/) });
+  });
+
+  it('does not refuse to revoke that oldest-page licence as not issued', async () => {
+    const { pages, mintTxid, hexByTxid } = await oldestPageMint();
+    stubWhatsOnChain(pages, hexByTxid);
+    const backendFetch = backend(10_000);
+    const result = await revokeLicence({
+      origin: `${mintTxid}:0`,
+      issuerKey: ISSUER_MASTER,
+      fetchImpl: backendFetch as unknown as typeof fetch,
+      historyPageDelayMs: 0,
+    });
+    expect(result.txid).toBe(broadcastTransactions(backendFetch)[0].id('hex'));
   });
 });

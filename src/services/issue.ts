@@ -16,6 +16,7 @@ import {
   isValidCompressedPublicKeyHex,
   outpointKey,
   selectFeeUtxos,
+  type AddressHistoryEntry,
   type ChainProvider,
   type Utxo,
 } from 'spell-forge-bsv';
@@ -33,6 +34,11 @@ const MINT_CHANGE_VOUT = 3;
 /** revokeLicence's outputs: [0] the W record, [1] the anchor, [2] change (as send.ts). */
 const REVOKE_CHANGE_VOUT = 2;
 const ORIGIN_SHAPE = /^[0-9a-f]{64}:\d+$/;
+/** WhatsOnChain serves 100 transactions a page; past this many pages a history is not read (as the backend's reader). */
+const MAX_HISTORY_PAGES = 50;
+const HISTORY_PAGE_DELAY_MS = 350;
+const HISTORY_ATTEMPTS = 3;
+const HISTORY_RETRY_DELAY_MS = 500;
 
 export type IssueErrorCode = 'invalid-key' | 'own-key' | 'not-issued' | 'insufficient-funds' | 'network';
 
@@ -69,7 +75,13 @@ export interface IssuedLicence {
   holder: string;
 }
 
-export interface RevokeLicenceParams extends IssueContext {
+/** How the issuer's own history is read when no chain provider is handed in. */
+export interface HistoryReadOptions {
+  /** Pause between two pages of WhatsOnChain's history; its free tier allows about three requests a second. */
+  historyPageDelayMs?: number;
+}
+
+export interface RevokeLicenceParams extends IssueContext, HistoryReadOptions {
   /** The mint output to end, `txid:vout`. */
   origin: string;
   /** Reads this key's mints to check the origin is one of them; never asked to broadcast. */
@@ -127,6 +139,76 @@ function withNetworkErrors(provider: ChainProvider): ChainProvider {
       provider.getUnconfirmedAddressHistory!(address).catch((e) => Promise.reject(networkError(e)));
   }
   return wrapped;
+}
+
+const sleep = (ms: number) => (ms > 0 ? new Promise<void>((resolve) => setTimeout(resolve, ms)) : Promise.resolve());
+
+interface HistoryPage {
+  result?: Array<{ tx_hash: string; height?: number }>;
+  nextPageToken?: string;
+  error?: string;
+}
+
+async function fetchHistoryPage(url: string): Promise<HistoryPage> {
+  let retryDelay = HISTORY_RETRY_DELAY_MS;
+  for (let attempt = 1; ; attempt++) {
+    let response: Response | undefined;
+    try {
+      response = await globalThis.fetch(url);
+    } catch {
+      // A rate-limited reply has no CORS header, so a browser sees it as a failed fetch.
+      if (attempt === HISTORY_ATTEMPTS) {
+        throw new IssueError('network', 'Could not reach WhatsOnChain after 3 tries (offline, or rate-limited: its 429 reply carries no CORS header)');
+      }
+    }
+    if (response?.ok) return (await response.json()) as HistoryPage;
+    if (response && response.status !== 429) throw new IssueError('network', `WhatsOnChain said ${response.status} reading the history`);
+    if (response && attempt === HISTORY_ATTEMPTS) throw new IssueError('network', 'WhatsOnChain rate-limited the request (429) after retries');
+    await sleep(retryDelay);
+    retryDelay *= 2;
+  }
+}
+
+/**
+ * The whole confirmed history of `address`, oldest first. WhatsOnChain's /history holds only
+ * the newest 100 transactions, so this pages /confirmed/history by nextPageToken (newest
+ * page first). Past MAX_HISTORY_PAGES it throws: a list missing its oldest pages would read
+ * as a key that issued nothing.
+ */
+async function readConfirmedHistory(address: string, pageDelayMs: number): Promise<AddressHistoryEntry[]> {
+  const pages: HistoryPage[] = [];
+  let token = '';
+  for (;;) {
+    if (pages.length === MAX_HISTORY_PAGES) {
+      throw new IssueError('network', `The history of this key runs past ${MAX_HISTORY_PAGES} pages, more than can be read here.`);
+    }
+    if (pages.length > 0) await sleep(pageDelayMs);
+    const query = token ? `?token=${encodeURIComponent(token)}` : '';
+    const page = await fetchHistoryPage(`${chainConfig.providerBaseUrl}/address/${address}/confirmed/history${query}`);
+    if (page.error) throw new IssueError('network', `WhatsOnChain could not read the history: ${page.error}`);
+    pages.push(page);
+    if (!page.nextPageToken) break;
+    token = page.nextPageToken;
+  }
+  return pages
+    .reverse()
+    .flatMap((page) => page.result ?? [])
+    .map((entry) => ({ txid: entry.tx_hash, height: entry.height ?? 0 }))
+    .sort((a, b) => a.height - b.height);
+}
+
+/** The library's provider, but reading the confirmed history whole (its /history holds only the newest 100). */
+function withWholeHistory(provider: ChainProvider, pageDelayMs: number): ChainProvider {
+  const whole: ChainProvider = {
+    getUtxos: (address) => provider.getUtxos(address),
+    getTransactionHex: (txid) => provider.getTransactionHex(txid),
+    broadcast: (hex) => provider.broadcast(hex),
+    getAddressHistory: (address) => readConfirmedHistory(address.trim(), pageDelayMs),
+  };
+  if (provider.getUnconfirmedAddressHistory) {
+    whole.getUnconfirmedAddressHistory = (address) => provider.getUnconfirmedAddressHistory!(address);
+  }
+  return whole;
 }
 
 /**
@@ -235,7 +317,11 @@ export async function revokeLicence(params: RevokeLicenceParams): Promise<{ txid
   const privateKey = privateKeyOf(params.issuerKey);
   const address = privateKey.toAddress(chainConfig.network);
 
-  const mine = await issuedLicences({ issuerPublicKeyHex: privateKey.toPublicKey().toString(), provider: params.provider });
+  const mine = await issuedLicences({
+    issuerPublicKeyHex: privateKey.toPublicKey().toString(),
+    provider: params.provider,
+    historyPageDelayMs: params.historyPageDelayMs,
+  });
   if (!mine.some((mint) => mint.origin === origin)) {
     throw new IssueError('not-issued', 'That licence is not one you issued.');
   }
@@ -306,16 +392,20 @@ function parsePayload(payloadBytes: number[]): Record<string, unknown> | null {
 
 /**
  * The licences this key issued, newest first (unconfirmed, then by block). Walks the key's
- * own address history — the mint it funded and the revokes it wrote both appear there —
+ * own address history (the whole confirmed history, paged) — the mint it funded and the revokes it wrote both appear there —
  * and keeps only transactions this key signed (a scriptSig that pushes its public key),
  * so a mint someone else made naming this address is not listed. A mint is `revoked` when a
  * revoke record this key signed names its origin.
  */
-export async function issuedLicences(params: {
-  issuerPublicKeyHex: string;
-  provider?: ChainProvider;
-}): Promise<IssuedLicenceEntry[]> {
-  const provider = withNetworkErrors(params.provider ?? createChainProvider());
+export async function issuedLicences(
+  params: {
+    issuerPublicKeyHex: string;
+    provider?: ChainProvider;
+  } & HistoryReadOptions,
+): Promise<IssuedLicenceEntry[]> {
+  const provider = withNetworkErrors(
+    params.provider ?? withWholeHistory(createChainProvider(), params.historyPageDelayMs ?? HISTORY_PAGE_DELAY_MS),
+  );
   const address = addressForPublicKey(params.issuerPublicKeyHex);
   const [confirmed, unconfirmed] = await Promise.all([
     provider.getAddressHistory(address),

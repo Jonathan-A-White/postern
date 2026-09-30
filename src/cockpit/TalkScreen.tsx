@@ -12,6 +12,8 @@ import { Button, EmptyState, Icon, IconButton, TimeAgo, cx } from '../ui';
 import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
+import { TopicForm } from './TopicForm';
+import { topicKey } from './topicKey';
 import { useBeadDetail, useMessages, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { mergeConversation, previewText, type ConversationItem } from '../model/conversation';
 import { groupGeneral, type GeneralThread } from '../model/generalThreads';
@@ -114,7 +116,6 @@ function ThreadList({ threads, current, filter, onToggleArchive }: { threads: Th
 
 function NewTopic() {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
   if (!open) {
     return (
       <Button size="sm" icon="plus" onClick={() => setOpen(true)}>
@@ -122,26 +123,13 @@ function NewTopic() {
       </Button>
     );
   }
-  const start = () => {
-    const topic = name.trim();
-    if (!topic) return;
-    navigate({ view: 'talk', thread: `topic:${topic}` });
-    setName('');
-    setOpen(false);
-  };
   return (
-    <form
-      className="flex flex-1 gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        start();
+    <TopicForm
+      onStart={(name) => {
+        navigate({ view: 'talk', thread: topicKey(name) });
+        setOpen(false);
       }}
-    >
-      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="What about?" aria-label="New topic" className="h-8 flex-1 text-sm" autoFocus />
-      <Button size="sm" variant="primary" type="submit" disabled={!name.trim()}>
-        Start
-      </Button>
-    </form>
+    />
   );
 }
 

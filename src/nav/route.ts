@@ -12,7 +12,7 @@ export type MapLens = 'board' | 'graph' | 'list';
 export type Route =
   /** `who` is the part of the Needs switch: whose turn the cards are (absent: You). */
   | { view: 'needs'; who?: WaitsFor }
-  | { view: 'map'; focus?: string; lens?: MapLens; bucket?: string; filter?: string }
+  | { view: 'map'; focus?: string; lens?: MapLens; bucket?: string; filter?: string; landed?: 'today' }
   | { view: 'bead'; id: string }
   /** `root` is the txid of a General post whose thread of replies is open (docs/protocol.md §14). */
   | { view: 'talk'; thread?: string; root?: string }
@@ -75,6 +75,7 @@ export function parseRoute(search: string): Route {
         lens: lens(params.get('lens')),
         bucket: params.get('b') ?? undefined,
         filter: params.get('f') ?? undefined,
+        landed: params.get('landed') === 'today' ? 'today' : undefined,
       };
     case 'bead': {
       const id = params.get('id');
@@ -121,6 +122,7 @@ export function formatRoute(route: Route): string {
       if (route.lens) params.set('lens', route.lens);
       if (route.bucket) params.set('b', route.bucket);
       if (route.filter) params.set('f', route.filter);
+      if (route.landed) params.set('landed', route.landed);
       break;
     case 'bead':
       params.set('id', route.id);

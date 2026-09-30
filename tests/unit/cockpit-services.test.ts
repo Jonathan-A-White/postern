@@ -29,6 +29,7 @@ describe('routes', () => {
     for (const route of [
       { view: 'needs' as const },
       { view: 'map' as const, focus: 'mw-a', lens: 'graph' as const, bucket: 'ready', filter: 'mine' },
+      { view: 'map' as const, landed: 'today' as const },
       { view: 'bead' as const, id: 'mw-a.1' },
       { view: 'talk' as const, thread: 'bead:mw-a.1' },
       { view: 'search' as const, q: 'ping' },
@@ -40,6 +41,12 @@ describe('routes', () => {
     ]) {
       expect(parseRoute(formatRoute(route))).toEqual(route);
     }
+  });
+
+  it('writes the Landed today map as landed=today, beside no bucket', () => {
+    expect(formatRoute({ view: 'map', landed: 'today' })).toBe('?v=map&landed=today');
+    expect(parseRoute('?v=map&landed=today')).toEqual({ view: 'map', landed: 'today' });
+    expect(parseRoute('?v=map&landed=nonsense')).toEqual({ view: 'map' });
   });
 
   it('reads the old screens’ links, so a notification already delivered still lands', () => {

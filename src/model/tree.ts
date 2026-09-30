@@ -177,6 +177,14 @@ export function rigOf(bead: ViewBead, index: ViewIndex): string {
   return '';
 }
 
+export const LANDED_TODAY_MS = 24 * 60 * 60 * 1000;
+
+/** Closed within the last 24 hours: what the Landed today figure counts and the
+ * list it opens shows. */
+export function landedToday(bead: ViewBead, now: Date = new Date()): boolean {
+  return isClosed(bead) && bead.closed >= new Date(now.getTime() - LANDED_TODAY_MS).toISOString();
+}
+
 export interface FactoryStats {
   working: number;
   ready: number;
@@ -189,7 +197,6 @@ export interface FactoryStats {
 
 export function factoryStats(index: ViewIndex, now: Date = new Date()): FactoryStats {
   const stats: FactoryStats = { working: 0, ready: 0, blocked: 0, held: 0, needs: index.view.needs.length, landedToday: 0, liveEpics: 0 };
-  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   for (const bead of index.view.beads) {
     if (isEpic(bead, index)) {
       if (!isClosed(bead)) stats.liveEpics += 1;
@@ -200,7 +207,7 @@ export function factoryStats(index: ViewIndex, now: Date = new Date()): FactoryS
     else if (bucket === 'ready') stats.ready += 1;
     else if (bucket === 'blocked') stats.blocked += 1;
     else if (bucket === 'held') stats.held += 1;
-    if (isClosed(bead) && bead.closed >= dayAgo) stats.landedToday += 1;
+    if (landedToday(bead, now)) stats.landedToday += 1;
   }
   return stats;
 }

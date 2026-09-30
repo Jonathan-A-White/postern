@@ -74,6 +74,11 @@ export function FilterBar({
             {entry.name}
           </Toggle>
         ))}
+        {filter.landedToday && (
+          <Toggle active onClick={() => onChange({ ...filter, landedToday: false })}>
+            Landed today
+          </Toggle>
+        )}
         {BUCKETS.map(({ bucket, label }) => (
           <Toggle key={bucket} active={filter.buckets.includes(bucket)} onClick={() => onChange({ ...filter, buckets: toggle<Bucket>(filter.buckets, bucket) })}>
             {label}

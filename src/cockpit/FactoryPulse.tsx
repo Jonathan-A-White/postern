@@ -30,7 +30,7 @@ export function FactoryPulse({ index, now = new Date() }: { index: ViewIndex; no
         <Metric label="Working" value={stats.working} tone="working" href={mapHref('working')} />
         <Metric label="Ready" value={stats.ready} tone="ready" href={mapHref('ready')} />
         <Metric label="Blocked" value={stats.blocked} tone="blocked" href={mapHref('blocked')} />
-        <Metric label="Landed today" value={stats.landedToday} tone="done" href={mapHref('done')} />
+        <Metric label="Landed today" value={stats.landedToday} tone="done" href={formatRoute({ view: 'map', landed: 'today' })} />
       </div>
       {hosts.length > 0 && (
         <div className="no-scrollbar flex gap-2 overflow-x-auto">

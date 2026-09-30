@@ -52,6 +52,11 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
   await expect(page.getByTestId('epic-card').first()).toBeVisible();
   await shot(page, 'cockpit-map');
 
+  // mw-gq6.155: the 'Landed today' tile opens the beads its count counted.
+  await page.getByRole('link', { name: /^Landed today/ }).click();
+  await expect(page.getByRole('region', { name: 'Matching work' }).getByText(/^Landed today · \d+$/)).toBeVisible();
+  await shot(page, 'cockpit-map-landed-today');
+
   await page.goto('/?v=map&focus=mw-f758y.30&lens=board');
   await expect(page.getByTestId('board')).toBeVisible();
   await shot(page, 'cockpit-epic-board');

@@ -82,8 +82,8 @@ function List({ beads, index }: { beads: ViewBead[]; index: ViewIndex }) {
 /** The filter a map opens with: the column a factory figure named, or a saved
  * filter by name (loaded once it is read). MapScreen is keyed by both, so a new
  * one starts a fresh filter rather than patching the old. */
-function useInitialFilter(bucket?: string, saved?: string): [BeadFilter, (filter: BeadFilter) => void] {
-  const [filter, setFilter] = useState<BeadFilter>(() => ({ ...EMPTY_FILTER, buckets: bucket ? [bucket as Bucket] : [] }));
+function useInitialFilter(bucket?: string, saved?: string, landed?: 'today'): [BeadFilter, (filter: BeadFilter) => void] {
+  const [filter, setFilter] = useState<BeadFilter>(() => ({ ...EMPTY_FILTER, buckets: bucket ? [bucket as Bucket] : [], ...(landed ? { landedToday: true } : {}) }));
   useEffect(() => {
     if (!saved) return;
     void loadSavedFilters().then((all) => {
@@ -110,7 +110,7 @@ function FactoryLevel({ index, filter, setFilter }: { index: ViewIndex; filter: 
       <FilterBar filter={filter} onChange={setFilter} rigs={rigs} hosts={hosts} />
       {!isEmptyFilter(filter) ? (
         <section className="flex flex-col gap-2" aria-label="Matching work">
-          <SectionTitle>{matches.length} matching</SectionTitle>
+          <SectionTitle>{filter.landedToday ? `Landed today · ${matches.length}` : `${matches.length} matching`}</SectionTitle>
           {matches.length ? <List beads={matches} index={index} /> : <EmptyState icon="filter" title="Nothing matches" />}
         </section>
       ) : (
@@ -291,10 +291,10 @@ function FocusNotInView({ focus }: { focus: string }) {
   );
 }
 
-export function MapScreen({ focus, lens, bucket, filter: savedFilter }: { focus?: string; lens?: MapLens; bucket?: string; filter?: string }) {
+export function MapScreen({ focus, lens, bucket, filter: savedFilter, landed }: { focus?: string; lens?: MapLens; bucket?: string; filter?: string; landed?: 'today' }) {
   const view = useViewIndex();
   const wide = useWide();
-  const [filter, setFilter] = useInitialFilter(bucket, savedFilter);
+  const [filter, setFilter] = useInitialFilter(bucket, savedFilter, landed);
   const index = view?.index;
   const epic = focus ? index?.byId.get(focus) : undefined;
 

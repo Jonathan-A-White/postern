@@ -27,7 +27,7 @@ import type { Route } from './nav/route';
 function Place({ route }: { route: Route }) {
   switch (route.view) {
     case 'map':
-      return <MapScreen key={`${route.bucket ?? ''}|${route.filter ?? ''}`} focus={route.focus} lens={route.lens} bucket={route.bucket} filter={route.filter} />;
+      return <MapScreen key={`${route.bucket ?? ''}|${route.filter ?? ''}|${route.landed ?? ''}`} focus={route.focus} lens={route.lens} bucket={route.bucket} filter={route.filter} landed={route.landed} />;
     case 'bead':
       return <BeadScreen key={route.id} id={route.id} />;
     case 'talk':

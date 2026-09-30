@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { decodeBeadDetail, decodeView, viewFromSnapshot } from '../../src/model/view';
 import { ancestors, bucketOf, descendants, epicStats, factoryStats, indexView, isFinished, isMap, splitTopLevel, topLevel } from '../../src/model/tree';
 import { layoutGraph } from '../../src/model/graph';
-import { EMPTY_FILTER, facets, matchesFilter, newestFirst } from '../../src/model/filter';
+import { describeFilter, EMPTY_FILTER, facets, isEmptyFilter, matchesFilter, newestFirst } from '../../src/model/filter';
 import { unsettledNeeds } from '../../src/model/needs';
 import { fixtureView } from '../support/cockpit-fixture';
 import type { Snapshot } from '../../src/services/questions';
@@ -110,6 +110,39 @@ describe('the tree', () => {
     expect(isMap(tops[0])).toBe(true);
     expect(isMap(tops[1])).toBe(true);
     expect(isMap(tops[2])).toBe(false);
+  });
+});
+
+describe('landed today (mw-gq6.155)', () => {
+  const template = fixtureView(NOW).beads[0];
+  const ago = (ms: number) => new Date(NOW - ms).toISOString();
+  const H = 3_600_000;
+  const closedBead = (id: string, closed: string): ViewBead => ({ ...template, id, title: id, type: 'task', status: 'closed', labels: [], waits: [], parent: undefined, done_earlier: 0, closed });
+  const index = indexView({
+    ...fixtureView(NOW),
+    needs: [],
+    beads: [closedBead('t.recent', ago(2 * H)), closedBead('t.old', ago(30 * H)), closedBead('t.week', ago(6 * 24 * H))],
+  });
+  const now = new Date(NOW);
+  const landed: typeof EMPTY_FILTER = { ...EMPTY_FILTER, landedToday: true };
+  const ids = (filter: typeof EMPTY_FILTER) => index.view.beads.filter((b) => matchesFilter(b, index, filter, now)).map((b) => b.id);
+
+  it('counts one of three beads closed 2 h, 30 h and 6 days ago', () => {
+    expect(factoryStats(index, now).landedToday).toBe(1);
+  });
+
+  it('lists exactly the beads the count counted', () => {
+    expect(ids(landed)).toEqual(['t.recent']);
+    expect(ids(landed).length).toBe(factoryStats(index, now).landedToday);
+  });
+
+  it('leaves the Done bucket listing all three', () => {
+    expect(ids({ ...EMPTY_FILTER, buckets: ['done'] })).toEqual(['t.recent', 't.old', 't.week']);
+  });
+
+  it('is a filter of its own, not an empty one', () => {
+    expect(isEmptyFilter(landed)).toBe(false);
+    expect(describeFilter(landed)).toBe('landed today');
   });
 });
 

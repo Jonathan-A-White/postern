@@ -1,7 +1,7 @@
 // src/model/filter.ts — one filter for every place beads are listed (plans/0021
 // decisions 9 and 13): the map's board and graph, the list, and search all narrow
 // by the same fields, and a filter can be saved under a name and reused.
-import { bucketOf, type Bucket, type ViewIndex } from './tree';
+import { bucketOf, landedToday, type Bucket, type ViewIndex } from './tree';
 import type { ViewBead } from './view';
 
 export interface BeadFilter {
@@ -10,12 +10,14 @@ export interface BeadFilter {
   rigs: string[];
   hosts: string[];
   types: string[];
+  /** Only beads closed within the last 24 hours (the Landed today figure). */
+  landedToday?: boolean;
 }
 
 export const EMPTY_FILTER: BeadFilter = { text: '', buckets: [], rigs: [], hosts: [], types: [] };
 
 export function isEmptyFilter(filter: BeadFilter): boolean {
-  return !filter.text.trim() && !filter.buckets.length && !filter.rigs.length && !filter.hosts.length && !filter.types.length;
+  return !filter.text.trim() && !filter.buckets.length && !filter.rigs.length && !filter.hosts.length && !filter.types.length && !filter.landedToday;
 }
 
 export function tokens(text: string): string[] {
@@ -37,7 +39,8 @@ export function matchesText(bead: ViewBead, query: string): boolean {
   return words.every((word) => haystack.includes(word));
 }
 
-export function matchesFilter(bead: ViewBead, index: ViewIndex, filter: BeadFilter): boolean {
+export function matchesFilter(bead: ViewBead, index: ViewIndex, filter: BeadFilter, now: Date = new Date()): boolean {
+  if (filter.landedToday && !landedToday(bead, now)) return false;
   if (filter.buckets.length && !filter.buckets.includes(bucketOf(bead, index))) return false;
   if (filter.rigs.length && !filter.rigs.includes(bead.path?.rig ?? '')) return false;
   if (filter.hosts.length && !filter.hosts.includes(bead.path?.host ?? '')) return false;
@@ -81,6 +84,7 @@ export interface SavedFilter {
 
 export function describeFilter(filter: BeadFilter): string {
   const parts: string[] = [];
+  if (filter.landedToday) parts.push('landed today');
   if (filter.text.trim()) parts.push(`“${filter.text.trim()}”`);
   if (filter.buckets.length) parts.push(filter.buckets.join(', '));
   if (filter.rigs.length) parts.push(filter.rigs.join(', '));

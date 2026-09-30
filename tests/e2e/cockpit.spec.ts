@@ -68,7 +68,7 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
   await shot(page, 'cockpit-search');
 
   await page.goto('/?v=me');
-  await expect(page.getByRole('heading', { name: 'Me' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Me', exact: true })).toBeVisible();
   await shot(page, 'cockpit-me');
 });
 

@@ -15,7 +15,7 @@ import { useAnswers, useBeadDetail, useThreadMessages, useViewIndex, useWide } f
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
-import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, isEpic, type ViewIndex } from '../model/tree';
+import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, epicStats, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { unsettledNeeds } from '../model/needs';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
@@ -82,6 +82,8 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
   const release = useOneTap(id, 'release');
   const hold = useOneTap(id, 'hold');
   const verified = useOneTap(id, 'verified');
+  // An epic stays open while its stories are held: the same Release N held the Map offers.
+  const held = bead && index && epic ? epicStats(id, index).counts.held : 0;
   const verify = index?.needsByBead.get(id)?.some((need) => need.kind === 'verify');
   const stale = index?.needsByBead.get(id)?.some((need) => need.kind === 'stale');
   return (
@@ -92,6 +94,16 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
         ) : (
           <Button size="sm" variant="primary" icon="release" busy={busy} onClick={() => void release.tap(() => sendAction({ action: 'release', bead: id }), `Released ${id}`)}>
             Release
+          </Button>
+        ))}
+      {epic &&
+        status !== 'deferred' &&
+        held > 0 &&
+        (release.waiting ? (
+          <WaitingNote />
+        ) : (
+          <Button size="sm" variant="primary" icon="release" busy={busy} onClick={() => void release.tap(() => sendAction({ action: 'release', bead: id }), `Released ${id}`)}>
+            Release {held} held
           </Button>
         ))}
       {epic && (

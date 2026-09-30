@@ -92,6 +92,14 @@ describe('who is who', () => {
     await expect(fetchMe({ key: GOV_KEY, fetchImpl: answer(json({ error: 'no licence held' }, 401)) })).rejects.toBeInstanceOf(NoLicenceError);
   });
 
+  it('reads the collections a cockpit key is told, and none for an app key', async () => {
+    const answer = (body: unknown) => vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/challenge') ? json({ nonce: 'ab'.repeat(32) }) : json(body)));
+    const base = { pubkey: GOV_PUB, mayor: MAYOR_PUB, network: 'testnet', features: ['me'] };
+    const cockpit = await fetchMe({ key: GOV_KEY, fetchImpl: answer({ ...base, collections: [{ name: 'postern' }, { name: 'cairn', app: 'Cairn' }, { app: 'no name' }, 'junk'] }) });
+    expect(cockpit.collections).toEqual([{ name: 'postern' }, { name: 'cairn', app: 'Cairn' }]);
+    expect((await fetchMe({ key: GOV_KEY, fetchImpl: answer(base) })).collections).toBeUndefined();
+  });
+
   it('pins the Mayor on first sight and never swaps him silently', async () => {
     expect(await reconcileMayorKey(MAYOR_PUB)).toEqual({ pinned: MAYOR_PUB });
     const other = PrivateKey.fromHex('98'.repeat(32)).toPublicKey().toString();

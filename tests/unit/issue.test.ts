@@ -207,13 +207,23 @@ describe('revokeLicence', () => {
     await db.pendingSpends.clear();
   });
 
+  /** A chain holding one mint this key issued; its origin is what a revoke may name. */
+  async function chainWithMyMint() {
+    const provider = new FakeChainProvider();
+    const hex = await signedRecordTxHex(ISSUER, 'M', { collection: 'cairn', holder: HOLDER_ADDRESS }, 0);
+    const txid = Transaction.fromHex(hex).id('hex');
+    provider.addTransaction(ISSUER_ADDRESS, txid, hex, 200);
+    return { provider, origin: `${txid}:0` };
+  }
+
   it('broadcasts a W revoke record naming the origin, signed by my key, and records a pending spend', async () => {
-    const origin = `${'c'.repeat(64)}:0`;
+    const { provider, origin } = await chainWithMyMint();
     const fetchImpl = backend(10_000);
     const result = await revokeLicence({
       origin,
       issuerKey: ISSUER_MASTER,
       fetchImpl: fetchImpl as unknown as typeof fetch,
+      provider,
     });
 
     const [tx] = broadcastTransactions(fetchImpl);
@@ -235,11 +245,27 @@ describe('revokeLicence', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('says plainly when there are not enough sats', async () => {
+  it('refuses an origin that is not one of my own mints, before fetching coins or broadcasting', async () => {
+    const { provider } = await chainWithMyMint();
+    const fetchImpl = backend(10_000);
     const attempt = revokeLicence({
       origin: `${'c'.repeat(64)}:0`,
       issuerKey: ISSUER_MASTER,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      provider,
+    });
+    await expect(attempt).rejects.toMatchObject({ message: 'That licence is not one you issued.' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await db.pendingSpends.count()).toBe(0);
+  });
+
+  it('says plainly when there are not enough sats', async () => {
+    const { provider, origin } = await chainWithMyMint();
+    const attempt = revokeLicence({
+      origin,
+      issuerKey: ISSUER_MASTER,
       fetchImpl: backend(1) as unknown as typeof fetch,
+      provider,
     });
     await expect(attempt).rejects.toMatchObject({ code: 'insufficient-funds' });
   });
@@ -276,6 +302,15 @@ describe('issuedLicences', () => {
     const first = await chainWith({ key: ISSUER, type: 'M', payload: { collection: 'cairn', holder: HOLDER_ADDRESS }, vout: 0, height: 200 });
     const origin = `${first.txids[0]}:0`;
     const revokeHex = await signedRecordTxHex(ISSUER, 'W', { kind: 'revoke', origin }, 1);
+    first.provider.addTransaction(ISSUER_ADDRESS, Transaction.fromHex(revokeHex).id('hex'), revokeHex, 201);
+    const [licence] = await issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, provider: first.provider });
+    expect(licence.revoked).toBe(true);
+  });
+
+  it('marks it revoked when the revoke record names its origin in another letter case', async () => {
+    const first = await chainWith({ key: ISSUER, type: 'M', payload: { collection: 'cairn', holder: HOLDER_ADDRESS }, vout: 0, height: 200 });
+    const origin = `${first.txids[0]}:0`;
+    const revokeHex = await signedRecordTxHex(ISSUER, 'W', { kind: 'revoke', origin: origin.toUpperCase() }, 1);
     first.provider.addTransaction(ISSUER_ADDRESS, Transaction.fromHex(revokeHex).id('hex'), revokeHex, 201);
     const [licence] = await issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, provider: first.provider });
     expect(licence.revoked).toBe(true);

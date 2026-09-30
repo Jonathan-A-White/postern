@@ -156,12 +156,21 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   });
 
   Scenario('AC5: revoking writes a revoke record naming the origin from my key', ({ Given, When, Then, And }) => {
-    const origin = `${'c'.repeat(64)}:0`;
+    let origin = '';
+    const chainWithMint = async () => {
+      const provider = new FakeChainProvider();
+      const hex = await signedRecordTxHex(ISSUER, 'M', { collection: 'cairn', holder: HOLDER_ADDRESS }, 0);
+      const txid = Transaction.fromHex(hex).id('hex');
+      provider.addTransaction(ISSUER_ADDRESS, txid, hex, 100);
+      origin = `${txid}:0`;
+      return provider;
+    };
     Given('I hold enough sats to issue a licence', () => {
       fetchImpl = backendWith(10_000);
     });
     When('I revoke the licence at a given origin', async () => {
-      await capture(revokeLicence({ origin, issuerKey: ISSUER_MASTER, fetchImpl: asFetch() }));
+      const provider = await chainWithMint();
+      await capture(revokeLicence({ origin, issuerKey: ISSUER_MASTER, fetchImpl: asFetch(), provider }));
     });
     Then('one transaction is broadcast through the backend', () => {
       expect(outcome.error).toBeUndefined();

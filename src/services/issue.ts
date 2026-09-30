@@ -34,7 +34,7 @@ const MINT_CHANGE_VOUT = 3;
 const REVOKE_CHANGE_VOUT = 2;
 const ORIGIN_SHAPE = /^[0-9a-f]{64}:\d+$/;
 
-export type IssueErrorCode = 'invalid-key' | 'own-key' | 'insufficient-funds' | 'network';
+export type IssueErrorCode = 'invalid-key' | 'own-key' | 'not-issued' | 'insufficient-funds' | 'network';
 
 /** A refusal the screen can show as it stands: `message` is plain words, `code` says which kind. */
 export class IssueError extends Error {
@@ -72,6 +72,8 @@ export interface IssuedLicence {
 export interface RevokeLicenceParams extends IssueContext {
   /** The mint output to end, `txid:vout`. */
   origin: string;
+  /** Reads this key's mints to check the origin is one of them; never asked to broadcast. */
+  provider?: ChainProvider;
 }
 
 export interface IssueCost {
@@ -221,6 +223,8 @@ export async function issueLicence(params: IssueLicenceParams): Promise<IssuedLi
  * Ends the licence whose mint output is `origin`: a transaction from this key with one
  * typed W record `{kind: 'revoke', origin}`, the 1-sat anchor and change — the shape
  * sendTextMessage writes, funded and broadcast the same way (docs/protocol.md §16).
+ * Refuses, before any coin is fetched or anything signed, an origin that is not one of
+ * this key's own mints (it would cost a fee and revoke nothing).
  */
 export async function revokeLicence(params: RevokeLicenceParams): Promise<{ txid: string }> {
   const origin = params.origin.trim();
@@ -230,6 +234,11 @@ export async function revokeLicence(params: RevokeLicenceParams): Promise<{ txid
   const apiOptions = apiOptionsOf(params);
   const privateKey = privateKeyOf(params.issuerKey);
   const address = privateKey.toAddress(chainConfig.network);
+
+  const mine = await issuedLicences({ issuerPublicKeyHex: privateKey.toPublicKey().toString(), provider: params.provider });
+  if (!mine.some((mint) => mint.origin === origin)) {
+    throw new IssueError('not-issued', 'That licence is not one you issued.');
+  }
 
   let utxos: Utxo[];
   try {
@@ -339,7 +348,7 @@ export async function issuedLicences(params: {
           position,
         });
       } else if (record.recordType === 'W' && payload.kind === 'revoke' && typeof payload.origin === 'string') {
-        revokedOrigins.add(payload.origin);
+        revokedOrigins.add(payload.origin.toLowerCase());
       }
     }
   }
@@ -353,6 +362,6 @@ export async function issuedLicences(params: {
       collection: mint.collection,
       holder: mint.holder,
       height: mint.height,
-      revoked: revokedOrigins.has(mint.origin),
+      revoked: revokedOrigins.has(mint.origin.toLowerCase()),
     }));
 }

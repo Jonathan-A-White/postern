@@ -13,6 +13,8 @@ import { useSend, type SuccessToast } from './send';
 
 const sending = new Set<string>();
 const sentAt = new Map<string, number>();
+// What each tap said and when, for a card that tells him what he answered (a question's option).
+const tapped = new Map<string, { label: string; at: number }>();
 const listeners = new Set<() => void>();
 let version = 0;
 
@@ -29,9 +31,10 @@ function subscribe(listener: () => void): () => void {
 const keyOf = (bead: string, action: string) => `${action}:${bead}`;
 
 /** Claims the tap; false when the same action on the same bead is already on its way. */
-function begin(key: string): boolean {
+function begin(key: string, label: string): boolean {
   if (sending.has(key)) return false;
   sending.add(key);
+  tapped.set(key, { label, at: Date.now() });
   changed();
   return true;
 }
@@ -39,6 +42,7 @@ function begin(key: string): boolean {
 function finish(key: string, delivered: boolean): void {
   sending.delete(key);
   if (delivered) sentAt.set(key, Date.now());
+  else tapped.delete(key);
   changed();
 }
 
@@ -46,6 +50,7 @@ function finish(key: string, delivered: boolean): void {
 export function forgetTaps(): void {
   sending.clear();
   sentAt.clear();
+  tapped.clear();
   changed();
 }
 
@@ -61,8 +66,9 @@ export function useOneTap(bead: string, action: string) {
   const sentSinceView = sentTs !== undefined && (Number.isNaN(published) || sentTs > published);
   const waiting = sending.has(key) || sentSinceView || actionRemembered(answers, bead, action, viewWrittenAt);
 
-  async function tap<T>(task: () => Promise<T>, success?: string | SuccessToast): Promise<T | undefined> {
-    if (!bead || waiting || !begin(key)) return undefined;
+  /** `label` is what the tap said (the option he chose); `said` hands it back while the tap is waiting. */
+  async function tap<T>(task: () => Promise<T>, success?: string | SuccessToast, label = ''): Promise<T | undefined> {
+    if (!bead || waiting || !begin(key, label)) return undefined;
     let result: T | undefined;
     try {
       result = await run(task, success);
@@ -71,5 +77,5 @@ export function useOneTap(bead: string, action: string) {
     }
     return result;
   }
-  return { waiting, tap };
+  return { waiting, tap, said: waiting ? tapped.get(key) : undefined };
 }

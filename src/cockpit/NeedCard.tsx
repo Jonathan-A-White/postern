@@ -35,12 +35,26 @@ function spokenText(need: Need): string {
   return parts.join(' ');
 }
 
+/** A question's own first line (Markdown marks off), and the rest of what it says. */
+function questionWords(text: string): { headline: string; rest: string } {
+  const lines = text.split('\n');
+  const at = lines.findIndex((line) => line.trim() !== '');
+  if (at < 0) return { headline: '', rest: '' };
+  const headline = lines[at].replace(/^[\s#>]+/, '').replace(/\*\*|__/g, '').trim();
+  return { headline, rest: lines.slice(at + 1).join('\n').trim() };
+}
+
 export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
   const meta = NEED_META[need.kind];
   const { busy, run } = useSend();
   // An approval or a verification is one signed transaction: one tap, then it waits for the view.
   const tapAction = waitsFor(need) !== 'you' || need.not_ready ? '' : need.kind === 'approve' ? 'release' : need.kind === 'verify' ? 'verified' : '';
   const oneTap = useOneTap(tapAction ? need.bead : '', tapAction);
+  // A question is answered once: his tap (an option or his own words) sends one answer, then the card is dead
+  // until the view drops it. One state per question, so a later question on the bead is not held by this one.
+  const asks = need.kind === 'question' && need.bead !== '';
+  const answerTap = useOneTap(asks ? need.bead : '', `answer:${need.since}`);
+  const answered = asks && answerTap.waiting;
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -60,7 +74,8 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
   const openThread: Route = { view: 'talk', thread: threadKey(thread) ?? GENERAL };
 
   async function choose(option: string) {
-    if (need.kind === 'question') await run(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread });
+    if (asks) await answerTap.tap(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread }, option);
+    else if (need.kind === 'question') await run(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread });
     else if (need.kind === 'approve') await oneTap.tap(() => sendAction({ action: 'release', bead: need.bead }), `Released ${need.bead}`);
     else if (need.kind === 'verify') await oneTap.tap(() => sendAction({ action: 'verified', bead: need.bead }), `Marked ${need.bead} verified`);
     else await run(() => sendToThread(thread, option), { text: `Told the Mayor in ${threadName}: ${option}`, open: openThread });
@@ -71,7 +86,7 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
     if (!text) return;
     const sent =
       need.kind === 'question'
-        ? await run(() => sendAnswer(need.bead, text), { text: `Answered ${need.bead}`, open: openThread })
+        ? await (asks ? answerTap.tap(() => sendAnswer(need.bead, text), { text: `Answered ${need.bead}`, open: openThread }, text) : run(() => sendAnswer(need.bead, text), { text: `Answered ${need.bead}`, open: openThread }))
         : await run(() => sendToThread(thread, text), { text: `Sent to the Mayor in ${threadName}`, open: openThread });
     if (sent) {
       setReply('');
@@ -80,7 +95,11 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
   }
 
   // A stale need's text is the facts the choice rests on: never clipped, and shown on the bead's page too.
-  const long = need.text.length > 280 && !stale;
+  // A question is headed by its own first line, so a second question on the bead does not read as the first.
+  const words = need.kind === 'question' ? questionWords(need.text) : undefined;
+  const asked = words !== undefined && words.headline !== '';
+  const body = asked ? words.rest : need.text;
+  const long = body.length > 280 && !stale;
   return (
     <article
       className={cx('flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-surface p-4', need.kind === 'alarm' && 'border-danger/40')}
@@ -104,24 +123,32 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
               {need.blocks}
             </span>
           )}
-          <TimeAgo at={need.since} />
+          {!asked && <TimeAgo at={need.since} />}
         </span>
       </div>
 
       <div className="flex flex-col gap-1.5">
+        {asked && (
+          <>
+            <h3 className="text-[16px] leading-snug font-semibold">{words.headline}</h3>
+            <span className="text-[12px] text-faint">
+              asked <TimeAgo at={need.since} />
+            </span>
+          </>
+        )}
         {need.bead ? (
-          <a href={beadHref(need.bead)} className="text-[16px] leading-snug font-semibold hover:underline">
+          <a href={beadHref(need.bead)} className={asked ? 'text-[13px] text-muted hover:underline' : 'text-[16px] leading-snug font-semibold hover:underline'}>
             {need.title || need.bead}
           </a>
         ) : (
-          <p className="text-[16px] leading-snug font-semibold">{need.title}</p>
+          <p className={asked ? 'text-[13px] text-muted' : 'text-[16px] leading-snug font-semibold'}>{need.title}</p>
         )}
         {need.bead && <span className="font-mono text-[11.5px] text-faint">{need.bead}</span>}
       </div>
 
-      {need.text && need.text !== need.title && (!compact || stale) && (
+      {body && (asked || need.text !== need.title) && (!compact || stale || asked) && (
         <div className={cx('relative text-muted', !expanded && long && 'max-h-40 overflow-hidden')}>
-          <Markdown text={need.text} />
+          <Markdown text={body} />
           {!expanded && long && (
             <button
               type="button"
@@ -148,6 +175,14 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
 
       {tapAction && oneTap.waiting && <WaitingNote />}
 
+      {answered && answerTap.said && (
+        <p role="status" className="inline-flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
+          <Icon name="check" size={15} className="shrink-0" />
+          <span className="min-w-0 truncate">You answered '{answerTap.said.label}'</span>
+          <TimeAgo at={answerTap.said.at} className="shrink-0 text-faint" />
+        </p>
+      )}
+
       {options.length > 0 && !(tapAction && oneTap.waiting) && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Answers">
           {options.map((option) => {
@@ -157,7 +192,7 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
                 key={option}
                 variant={recommended || options.length === 1 ? 'primary' : 'secondary'}
                 onClick={() => void choose(option)}
-                disabled={busy}
+                disabled={busy || answered}
                 className="max-w-full"
                 aria-label={recommended ? `${option} (recommended)` : option}
               >
@@ -183,7 +218,7 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
             <Button variant="ghost" size="sm" onClick={() => setReplying(false)}>
               Cancel
             </Button>
-            <Button variant="primary" size="sm" icon="send" busy={busy} disabled={!reply.trim()} onClick={() => void sendReply()}>
+            <Button variant="primary" size="sm" icon="send" busy={busy} disabled={!reply.trim() || answered} onClick={() => void sendReply()}>
               Send
             </Button>
           </div>
@@ -192,7 +227,7 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
 
       <div className="-mb-1 flex items-center gap-1 border-t border-line pt-2">
         {!replying && (
-          <Button variant="ghost" size="sm" icon="talk" onClick={() => setReplying(true)}>
+          <Button variant="ghost" size="sm" icon="talk" disabled={answered} onClick={() => setReplying(true)}>
             {need.kind === 'question' ? 'Answer in words' : 'Reply'}
           </Button>
         )}

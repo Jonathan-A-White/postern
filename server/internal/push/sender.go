@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -39,16 +40,27 @@ func (s *Sender) WithHTTPClient(client webpush.HTTPClient) *Sender {
 // shape (a License mint/transfer record, a payload missing these fields)
 // simply doesn't unmarshal into a non-empty To/Class and is skipped.
 type addressedPayload struct {
-	To    string `json:"to"`
-	Class string `json:"class"`
-	Ts    int64  `json:"ts"`
+	To      string `json:"to"`
+	Class   string `json:"class"`
+	Ts      int64  `json:"ts"`
+	Summary string `json:"summary"`
 }
 
+// directPrefix is api.DirectPrefix: the start of every directly delivered
+// record's txid. push cannot import api (api imports push), so the value is
+// kept here; a chain txid is 64 hex and never starts with it.
+const directPrefix = "direct:"
+
+// maxSummaryRunes is the longest summary a push carries (docs/protocol.md §1).
+const maxSummaryRunes = 80
+
 // Payload is what's sent as the push message itself. For a record it is
-// {class, txid, ts} — no plaintext, ever; the app decrypts the record's
-// content itself once it opens. Title and Body are set only by a push that
-// has no record behind it (the watchdog's alarms); the service worker shows
-// them when present.
+// {class, txid, ts}: nothing the sender did not put in the clear leaves the
+// backend, and the app decrypts the record's content itself once it opens. The
+// one exception is a direct record's clear `summary` (docs/protocol.md §1),
+// which becomes Body. Title and Body are otherwise set only by a push that has
+// no record behind it (the watchdog's alarms); the service worker shows them
+// when present.
 type Payload struct {
 	Class string `json:"class"`
 	TxID  string `json:"txid,omitempty"`
@@ -80,11 +92,8 @@ func (s *Sender) NotifyRecord(txid string, payload json.RawMessage) error {
 		return nil
 	}
 
-	var addressed addressedPayload
-	if err := json.Unmarshal(payload, &addressed); err != nil {
-		return nil
-	}
-	if addressed.To == "" || addressed.Class == "" {
+	addressed, push, ok := parseAddressed(txid, payload)
+	if !ok {
 		return nil
 	}
 
@@ -93,7 +102,7 @@ func (s *Sender) NotifyRecord(txid string, payload json.RawMessage) error {
 		return nil
 	}
 
-	body, err := json.Marshal(Payload{Class: addressed.Class, TxID: txid, Ts: addressed.Ts})
+	body, err := json.Marshal(push)
 	if err != nil {
 		return fmt.Errorf("marshaling push payload: %w", err)
 	}
@@ -105,6 +114,48 @@ func (s *Sender) NotifyRecord(txid string, payload json.RawMessage) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// recordPush is the push a record's payload asks for, and false for a record
+// that is not addressed (no payload, no `to`/`class`) and so is not push-worthy.
+func recordPush(txid string, payload json.RawMessage) (Payload, bool) {
+	_, push, ok := parseAddressed(txid, payload)
+	return push, ok
+}
+
+func parseAddressed(txid string, payload json.RawMessage) (addressedPayload, Payload, bool) {
+	var addressed addressedPayload
+	if len(payload) == 0 || json.Unmarshal(payload, &addressed) != nil {
+		return addressed, Payload{}, false
+	}
+	if addressed.To == "" || addressed.Class == "" {
+		return addressed, Payload{}, false
+	}
+	push := Payload{Class: addressed.Class, TxID: txid, Ts: addressed.Ts}
+	if strings.HasPrefix(txid, directPrefix) && summaryPushed(addressed.Class) {
+		push.Body = clipSummary(addressed.Summary)
+	}
+	return addressed, push, true
+}
+
+// summaryPushed reports whether a record of this class may show its summary in
+// a push: the four cockpit classes. A non-cockpit app key may send grist
+// (docs/protocol.md §19); its summary is never pushed.
+func summaryPushed(class string) bool {
+	switch class {
+	case "message", "decision-needed", "landing", "alarm":
+		return true
+	}
+	return false
+}
+
+// clipSummary trims summary and cuts it to maxSummaryRunes runes (not bytes).
+func clipSummary(summary string) string {
+	summary = strings.TrimSpace(summary)
+	if runes := []rune(summary); len(runes) > maxSummaryRunes {
+		summary = strings.TrimSpace(string(runes[:maxSummaryRunes]))
+	}
+	return summary
 }
 
 // Broadcast pushes payload to every stored subscription, whoever it is

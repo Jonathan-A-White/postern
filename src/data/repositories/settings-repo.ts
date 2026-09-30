@@ -4,6 +4,8 @@ import type { NotificationSettingsMap } from '../../push/classOptions';
 
 const NOTIFICATION_SETTINGS_KEY = 'notificationSettings';
 const THREAD_ARCHIVE_KEY = 'threadArchive';
+// Also stored through the generic get/set: 'lastShareThread' is the thread key he shared to last
+// (src/cockpit/ShareScreen.tsx, mw-dw0i6.2); a string, never cleared.
 
 export const settingsRepo = {
   async get(key: string): Promise<unknown> {

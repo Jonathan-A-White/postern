@@ -3,7 +3,7 @@
 // most blocking first, then anything new from the Mayor he has not read. This
 // replaces the old Inbox and Projects' "Needs you" (decision 10).
 import { useEffect, useMemo, useState } from 'react';
-import { Banner, Button, EmptyState, IconButton, SectionTitle, Spinner, TimeAgo } from '../ui';
+import { Banner, Button, EmptyState, IconButton, SectionTitle, Segmented, Spinner, TimeAgo } from '../ui';
 import { Screen } from './Shell';
 import { FactoryPulse } from './FactoryPulse';
 import { NeedCard } from './NeedCard';
@@ -15,8 +15,10 @@ import { isPushSubscribed, pushSupported, rememberPushSubscribed, subscribeToPus
 import { publicKeyHexFromMasterKey } from '../services/vault';
 import { formatRoute, threadHrefFor } from '../nav/route';
 import { previewText } from '../model/conversation';
-import { unsettledNeeds } from '../model/needs';
+import { needsByWaiter, unsettledNeeds } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
+import type { WaitsFor } from '../model/view';
+import { navigate } from '../router';
 import { toast } from '../ui/toastStore';
 
 function UnreadThreads({ index }: { index?: ViewIndex }) {
@@ -87,13 +89,21 @@ function NotifyPrompt() {
   );
 }
 
-export function NeedsScreen() {
+const EMPTY: Record<WaitsFor, { title: string; text: string }> = {
+  you: { title: 'Nothing needs you', text: 'The factory is working on its own. You will get a notification when the Mayor needs a decision.' },
+  mayor: { title: 'Nothing waits on the Mayor', text: 'Every card he owes you something on has been dealt with.' },
+  factory: { title: 'Nothing waits on the factory', text: 'No card is held back by work still to be done.' },
+};
+
+export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
   const view = useViewIndex();
   const live = useLive();
   const answers = useAnswers();
   const [refreshing, setRefreshing] = useState(false);
   const index = view?.index;
-  const needs = useMemo(() => (index ? unsettledNeeds(index.view.needs, answers) : []), [index, answers]);
+  const split = useMemo(() => needsByWaiter(index ? unsettledNeeds(index.view.needs, answers) : []), [index, answers]);
+  const needs = split[who];
+  const choose = (next: WaitsFor) => navigate(formatRoute({ view: 'needs', who: next }), { replace: true });
 
   async function refresh() {
     setRefreshing(true);
@@ -144,11 +154,23 @@ export function NeedsScreen() {
 
         {index && (
           <section className="flex flex-col gap-3" aria-label="Waiting on you">
-            <SectionTitle>{needs.length ? `Waiting on you · ${needs.length}` : 'Waiting on you'}</SectionTitle>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SectionTitle>{who === 'you' && needs.length ? `Waiting on you · ${needs.length}` : 'Waiting on you'}</SectionTitle>
+              <Segmented<WaitsFor>
+                label="Who the cards wait on"
+                value={who}
+                onChange={choose}
+                options={[
+                  { value: 'you', label: `You · ${split.you.length}` },
+                  { value: 'mayor', label: `Mayor · ${split.mayor.length}` },
+                  { value: 'factory', label: `Factory · ${split.factory.length}` },
+                ]}
+              />
+            </div>
             {needs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-line">
-                <EmptyState icon="check" title="Nothing needs you">
-                  The factory is working on its own. You will get a notification when the Mayor needs a decision.
+                <EmptyState icon="check" title={EMPTY[who].title}>
+                  {EMPTY[who].text}
                 </EmptyState>
               </div>
             ) : (

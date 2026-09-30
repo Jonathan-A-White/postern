@@ -13,7 +13,7 @@ import { threadKey } from '../services/threads';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { speak } from '../services/speech';
 import type { Need } from '../model/view';
-import { orderedOptions } from '../model/needs';
+import { orderedOptions, waitsFor } from '../model/needs';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
@@ -36,16 +36,19 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
   const meta = NEED_META[need.kind];
   const { busy, run } = useSend();
   // An approval or a verification is one signed transaction: one tap, then it waits for the view.
-  const tapAction = need.kind === 'approve' ? 'release' : need.kind === 'verify' ? 'verified' : '';
+  const tapAction = waitsFor(need) !== 'you' ? '' : need.kind === 'approve' ? 'release' : need.kind === 'verify' ? 'verified' : '';
   const oneTap = useOneTap(tapAction ? need.bead : '', tapAction);
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
   const [expanded, setExpanded] = useState(false);
 
-  const hasSteps = need.kind === 'hands' && need.steps.length > 0;
+  // A card waiting on the Mayor or the factory offers him nothing to tap but Reply and Open.
+  const waiter = waitsFor(need);
+  const waiting = waiter !== 'you';
+  const hasSteps = !waiting && need.kind === 'hands' && need.steps.length > 0;
   const stale = need.kind === 'stale';
   // A stale need has its own Keep and Close (StaleChoice); the bead's page offers them among its actions.
-  const options = hasSteps || stale ? [] : orderedOptions(need);
+  const options = waiting || hasSteps || stale ? [] : orderedOptions(need);
   const thread = need.bead ? { bead: need.bead } : undefined;
   // Where a message from this card lands, so the toast can name it and open it.
   const threadName = need.bead || titleFor(GENERAL).title;
@@ -83,6 +86,11 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
         <Chip tone={meta.tone} icon={meta.icon}>
           {meta.label}
         </Chip>
+        {waiting && (
+          <Chip tone="neutral" icon="clock">
+            {waiter === 'mayor' ? 'Waits on the Mayor' : 'Waits on the factory'}
+          </Chip>
+        )}
         {epicTitle && <span className="min-w-0 truncate text-[12px] text-muted">{epicTitle}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-2 text-[12px] text-faint">
           {need.blocks > 0 && (
@@ -121,9 +129,17 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
         </div>
       )}
 
+      {waiting && need.waiting_on && need.waiting_on.length > 0 && (
+        <ul className="flex flex-col gap-0.5 text-[13px] text-muted" aria-label="Waiting on">
+          {need.waiting_on.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      )}
+
       {hasSteps && <HandsSteps bead={need.bead} steps={need.steps} />}
 
-      {stale && !compact && need.bead && <StaleChoice bead={need.bead} />}
+      {stale && !waiting && !compact && need.bead && <StaleChoice bead={need.bead} />}
 
       {tapAction && oneTap.waiting && <WaitingNote />}
 

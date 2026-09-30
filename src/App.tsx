@@ -43,7 +43,7 @@ function Place({ route }: { route: Route }) {
     case 'alarm':
       return <AlarmScreen title={route.title} body={route.body} ts={route.ts} />;
     default:
-      return <NeedsScreen />;
+      return <NeedsScreen who={route.view === 'needs' ? route.who : undefined} />;
   }
 }
 

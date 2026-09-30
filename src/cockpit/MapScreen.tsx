@@ -11,12 +11,13 @@ import { BeadCard, BeadRow, EpicCard, ProgressBar } from './BeadCards';
 import { Graph } from './Graph';
 import { FilterBar } from './FilterBar';
 import { loadSavedFilters } from './savedFilters';
-import { useViewIndex, useWide } from './hooks';
+import { useBeadDetail, useViewIndex, useWide } from './hooks';
 import { ancestors, BUCKETS, bucketOf, epicStats, isEpic, isMap, splitTopLevel, type Bucket, type ViewIndex } from '../model/tree';
 import { EMPTY_FILTER, facets, isEmptyFilter, matchesFilter, newestFirst, type BeadFilter } from '../model/filter';
 import type { ViewBead } from '../model/view';
 import { beadHref, formatRoute, type MapLens } from '../nav/route';
 import { navigate } from '../router';
+import { refreshNow } from '../services/live';
 import { sendAction, useSend } from './send';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
@@ -252,6 +253,44 @@ function EpicLevel({ epic, index, lens, filter, setFilter }: { epic: ViewBead; i
   );
 }
 
+/** The focus is not in the stored view: either it closed long ago, or it is newer
+ * than the phone's copy of the view. The bead itself says which; when it is still
+ * open, ask for a fresh view once and let the map show it when it arrives. */
+function FocusNotInView({ focus }: { focus: string }) {
+  const { detail, status } = useBeadDetail(focus);
+  const stillOpen = status === 'ok' && (detail?.status === 'open' || detail?.status === 'in_progress');
+  useEffect(() => {
+    if (stillOpen) void refreshNow();
+  }, [stillOpen]);
+  if (status === 'loading') {
+    return (
+      <Screen title={focus} back={{ view: 'map' }}>
+        <div className="flex justify-center py-16 text-muted">
+          <Spinner size={22} />
+        </div>
+      </Screen>
+    );
+  }
+  const openAnyway = (
+    <a className="underline" href={beadHref(focus)}>
+      Open it anyway
+    </a>
+  );
+  return (
+    <Screen title={focus} back={{ view: 'map' }}>
+      {stillOpen ? (
+        <EmptyState icon="map" title="Not on the map yet">
+          {focus} is open, but the map on this phone is older than it. It will appear when the view refreshes. {openAnyway}
+        </EmptyState>
+      ) : (
+        <EmptyState icon="map" title="Not in the live view">
+          {focus} is not among the live epics (it may have closed more than a week ago). {openAnyway}
+        </EmptyState>
+      )}
+    </Screen>
+  );
+}
+
 export function MapScreen({ focus, lens, bucket, filter: savedFilter }: { focus?: string; lens?: MapLens; bucket?: string; filter?: string }) {
   const view = useViewIndex();
   const wide = useWide();
@@ -278,16 +317,7 @@ export function MapScreen({ focus, lens, bucket, filter: savedFilter }: { focus?
     );
   }
   if (focus && !epic) {
-    return (
-      <Screen title={focus} back={{ view: 'map' }}>
-        <EmptyState icon="map" title="Not in the live view">
-          {focus} is not among the live epics (it may have closed more than a week ago).{' '}
-          <a className="underline" href={beadHref(focus)}>
-            Open it anyway
-          </a>
-        </EmptyState>
-      </Screen>
-    );
+    return <FocusNotInView focus={focus} />;
   }
   if (epic) {
     return (

@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -759,5 +761,114 @@ func TestHealthzRequiresNoAuthorization(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (healthz needs no proof even with no licence held)", resp.StatusCode)
+	}
+}
+
+// twoBackends builds two backends over one data directory's nonce key, as
+// the home and the boost are once the mirror has copied it (mw-43v9x.19).
+func twoBackends(t *testing.T, now func() time.Time) (a, b *httptest.Server) {
+	t.Helper()
+	dir := t.TempDir()
+	build := func(dir string) *httptest.Server {
+		key, err := auth.LoadOrCreateNonceKey(dir)
+		if err != nil {
+			t.Fatalf("LoadOrCreateNonceKey: %v", err)
+		}
+		nonces := auth.NewNonceStore(time.Minute, auth.WithKey(key), auth.WithClock(now))
+		server, _, _, _ := newTestServerFull(t, func(w http.ResponseWriter, r *http.Request) {}, &stubChecker{held: true}, nonces)
+		return server
+	}
+	a = build(dir)
+	// The mirror copies the data directory: B starts from a copy of A's key.
+	copyDir := t.TempDir()
+	keyBytes, err := os.ReadFile(filepath.Join(dir, auth.NonceKeyFile))
+	if err != nil {
+		t.Fatalf("reading key file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(copyDir, auth.NonceKeyFile), keyBytes, 0o600); err != nil {
+		t.Fatalf("copying key file: %v", err)
+	}
+	b = build(copyDir)
+	return a, b
+}
+
+// signedHeaderFrom takes a challenge from issuer and signs it.
+func signedHeaderFrom(t *testing.T, issuer *httptest.Server) http.Header {
+	t.Helper()
+	return authorizedRequest(t, issuer)
+}
+
+func statusOf(t *testing.T, server *httptest.Server, header http.Header) int {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/messages", nil)
+	req.Header = header
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/messages: %v", err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestAChallengeFromOneBackendIsAcceptedOnceByTheOther(t *testing.T) {
+	a, b := twoBackends(t, time.Now)
+
+	header := signedHeaderFrom(t, a)
+	if got := statusOf(t, b, header); got != http.StatusOK {
+		t.Fatalf("B on A's challenge: status = %d, want 200", got)
+	}
+	if got := statusOf(t, b, header); got != http.StatusUnauthorized {
+		t.Fatalf("B on the same nonce again: status = %d, want 401", got)
+	}
+}
+
+func TestATamperedChallengeIsRefusedByBothBackends(t *testing.T) {
+	a, b := twoBackends(t, time.Now)
+
+	header := signedHeaderFrom(t, a)
+	parts := strings.Split(strings.TrimPrefix(header.Get("Authorization"), "Postern "), ":")
+	raw := []byte(parts[1])
+	if raw[len(raw)-1] == '0' {
+		raw[len(raw)-1] = '1'
+	} else {
+		raw[len(raw)-1] = '0'
+	}
+	// The signature is over the original nonce, so re-sign the tampered one
+	// with the same key to isolate the nonce check.
+	privKey, _ := btcec.NewPrivateKey()
+	hash := sha256.Sum256(raw)
+	sig := ecdsa.Sign(privKey, hash[:])
+	tampered := http.Header{}
+	tampered.Set("Authorization", "Postern "+hex.EncodeToString(privKey.PubKey().SerializeCompressed())+":"+string(raw)+":"+hex.EncodeToString(sig.Serialize()))
+
+	for name, server := range map[string]*httptest.Server{"A": a, "B": b} {
+		if got := statusOf(t, server, tampered); got != http.StatusUnauthorized {
+			t.Fatalf("%s on a tampered nonce: status = %d, want 401", name, got)
+		}
+	}
+}
+
+func TestAnExpiredChallengeIsRefusedByBothBackends(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	a, b := twoBackends(t, func() time.Time { return now })
+
+	header := signedHeaderFrom(t, a)
+	now = now.Add(2 * time.Minute)
+	for name, server := range map[string]*httptest.Server{"A": a, "B": b} {
+		if got := statusOf(t, server, header); got != http.StatusUnauthorized {
+			t.Fatalf("%s on an expired nonce: status = %d, want 401", name, got)
+		}
+	}
+}
+
+func TestANonceIsRefusedASecondTimeOnTheSameBackend(t *testing.T) {
+	a, _ := twoBackends(t, time.Now)
+
+	header := signedHeaderFrom(t, a)
+	if got := statusOf(t, a, header); got != http.StatusOK {
+		t.Fatalf("first use on A: status = %d, want 200", got)
+	}
+	if got := statusOf(t, a, header); got != http.StatusUnauthorized {
+		t.Fatalf("second use on A: status = %d, want 401", got)
 	}
 }

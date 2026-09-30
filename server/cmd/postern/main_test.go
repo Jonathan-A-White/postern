@@ -373,3 +373,32 @@ func TestStartupNotesAMillKeyThatAlsoHoldsACockpitLicence(t *testing.T) {
 		t.Fatalf("logged %q for a mill key holding no licence, want nothing", got)
 	}
 }
+
+func TestStartingWithoutANonceKeyCreatesOneAndARestartReusesIt(t *testing.T) {
+	dir := t.TempDir()
+	start := func() {
+		cfg := config.Config{DataDir: dir, HomeCmd: "exit 0"}
+		app, err := newApp(cfg)
+		if err != nil {
+			t.Fatalf("newApp: %v", err)
+		}
+		app.close()
+	}
+	path := filepath.Join(dir, auth.NonceKeyFile)
+
+	start()
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("no nonce key after start: %v", err)
+	}
+	info, _ := os.Stat(path)
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("nonce key mode = %o, want 600", info.Mode().Perm())
+	}
+
+	start()
+	second, _ := os.ReadFile(path)
+	if !bytes.Equal(first, second) {
+		t.Fatal("a restart replaced the nonce key")
+	}
+}

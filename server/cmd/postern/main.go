@@ -89,6 +89,11 @@ func newApp(cfg config.Config) (*app, error) {
 		store.Close()
 		return nil, fmt.Errorf("loading VAPID keys: %w", err)
 	}
+	nonceKey, err := auth.LoadOrCreateNonceKey(cfg.DataDir)
+	if err != nil {
+		store.Close()
+		return nil, fmt.Errorf("loading nonce key: %w", err)
+	}
 	pushStore, err := push.OpenStore(cfg.DataDir)
 	if err != nil {
 		store.Close()
@@ -126,7 +131,7 @@ func newApp(cfg config.Config) (*app, error) {
 	rule := licence.Rule{Collections: collections, IssuerKey: cfg.IssuerKey}
 	licenceChecker := auth.NewCachedChecker(client, licenceCacheTTL, auth.WithRule(rule))
 
-	handler := api.NewHandler(store, client, vapidKeys.PublicKey, pushStore, blobStore, auth.NewNonceStore(nonceTTL), licenceChecker,
+	handler := api.NewHandler(store, client, vapidKeys.PublicKey, pushStore, blobStore, auth.NewNonceStore(nonceTTL, auth.WithKey(nonceKey)), licenceChecker,
 		api.WithNotifier(fanout),
 		api.WithEvents(hub, api.DefaultPingInterval),
 		api.WithView(viewFile),

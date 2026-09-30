@@ -10,6 +10,7 @@ import { Markdown } from '../markdown';
 import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
+import { RepliesRow } from './RepliesRow';
 import { NeedCard } from './NeedCard';
 import { useAnswers, useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { useOneTap } from './oneTap';
@@ -17,9 +18,11 @@ import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, epicStats, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
+import { groupPosts } from '../model/postThreads';
 import { unsettledNeeds } from '../model/needs';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
 import { beadHref, formatRoute } from '../nav/route';
+import { navigate } from '../router';
 import { messagesRepo } from '../data/repositories';
 import { sendAction, useSend } from './send';
 import { priorityLabel, priorityTone, statusWord, typeIcon } from './labels';
@@ -270,6 +273,10 @@ export function BeadScreen({ id }: { id: string }) {
   const threadKey = `bead:${id}`;
   const rows = useThreadMessages(threadKey);
   const items = useMemo(() => mergeConversation(rows, detail?.comments ?? []), [rows, detail]);
+  // Posts once, each with one 'N replies' row: its replies are read in its thread on Talk.
+  const threads = useMemo(() => groupPosts(items), [items]);
+  const posts = useMemo(() => threads.map((thread) => thread.root), [threads]);
+  const byRoot = useMemo(() => new Map(threads.map((thread) => [thread.root.id, thread])), [threads]);
   const [quote, setQuote] = useState<{ speaker: string; text: string } | null>(null);
 
   useEffect(() => {
@@ -316,8 +323,15 @@ export function BeadScreen({ id }: { id: string }) {
 
   const conversation = (
     <Conversation
-      items={items}
+      items={posts}
       onQuote={onQuote}
+      onReply={(item) => {
+        if (item.txid) navigate({ view: 'talk', thread: threadKey, root: item.txid });
+      }}
+      footer={(item) => {
+        const thread = byRoot.get(item.id);
+        return thread && thread.replyCount > 0 ? <RepliesRow channel={threadKey} thread={thread} /> : null;
+      }}
       scrollOnOpen={wide}
       empty={
         <p className="py-6 text-center text-sm text-faint">

@@ -36,10 +36,3 @@ Feature: General shows N replies under a post; tapping it opens that post's thre
     When Back is tapped
     Then General shows "the post" once and its row says "2 replies"
     And "with a link" is not shown in General
-
-  Scenario: mw-hkg17.2: a bead thread renders as before
-    Given a bead thread with the messages "first word" and "second word"
-    When the bead thread opens
-    Then the thread shows "first word" and "second word" in that order
-    And no replies row is shown
-    And the composer says "Message the Mayor…"

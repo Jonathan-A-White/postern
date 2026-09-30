@@ -3,7 +3,7 @@
 import { expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { mergeConversation } from '../../src/model/conversation';
-import { groupGeneral, type GeneralThread } from '../../src/model/generalThreads';
+import { groupPosts, type PostThread } from '../../src/model/postThreads';
 import { encodeThreadedMessage } from '../../src/services/threads';
 import type { MessageRow } from '../../src/data/db';
 
@@ -18,7 +18,7 @@ describeFeature(feature, ({ Scenario }) => {
   Scenario('mw-hkg17.1: a General message whose re names another General message is a reply in that message\'s thread', ({ Given, And, When, Then }) => {
     const rows: MessageRow[] = [];
     const byText = new Map<string, MessageRow>();
-    let threads: GeneralThread[] = [];
+    let threads: PostThread[] = [];
     const add = (text: string, reName?: string) => {
       const re = reName === undefined ? undefined : byText.get(reName)?.txid;
       const made = makeRow(rows.length + 1, re === undefined ? text : JSON.stringify({ text, re }));
@@ -31,7 +31,7 @@ describeFeature(feature, ({ Scenario }) => {
     And('a General message {string} whose re names the reply {string}', (_ctx, text: string, target: string) => add(text, target));
     And('a General message {string}', (_ctx, text: string) => add(text));
     When('General is grouped into threads', () => {
-      threads = groupGeneral(mergeConversation(rows));
+      threads = groupPosts(mergeConversation(rows));
     });
     Then('the threads are rooted at {string} and {string} in that order', (_ctx, first: string, second: string) => {
       expect(threads.map((thread) => thread.root.text)).toEqual([first, second]);
@@ -47,7 +47,7 @@ describeFeature(feature, ({ Scenario }) => {
 
   Scenario('mw-hkg17.1: a transcript or an unknown re is not a reply', ({ Given, And, When, Then }) => {
     const rows: MessageRow[] = [];
-    let threads: GeneralThread[] = [];
+    let threads: PostThread[] = [];
 
     Given('a voice note in General', () => {
       rows.push(makeRow(1, encodeThreadedMessage({ text: '', attachment: { hash: 'h', size: 9, mime: 'audio/webm' } })));
@@ -59,7 +59,7 @@ describeFeature(feature, ({ Scenario }) => {
       rows.push(makeRow(3, JSON.stringify({ text, re: `direct:${'e'.repeat(64)}` })));
     });
     When('General is grouped into threads', () => {
-      threads = groupGeneral(mergeConversation(rows));
+      threads = groupPosts(mergeConversation(rows));
     });
     Then('the voice note has no replies', () => {
       expect(threads[0].root.kind).toBe('attachment');

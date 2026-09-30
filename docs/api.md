@@ -437,11 +437,14 @@ output.
   encoding of §12's JSON), with `Cache-Control: no-store`.
 - `400` — `id` isn't `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` (checked before anything
   else).
-- `404` — the command exited with status 3 (no such bead).
+- `404` — the command exited with status 3 and stderr empty or saying there is no such
+  bead. Status 3 with any other stderr (a locked database, say) is a 502.
 - `501` — `POSTERN_BEAD_CMD` is not configured.
 - `502` — anything else: another exit status, the command couldn't start, or no
-  answer within 25 seconds (it is then killed); `error` carries the start of its
-  stderr.
+  answer within 25 seconds (it is then killed); `error` names the timeout, or the exit
+  status (`exit 3`) and the start of its stderr. Each 502 also leaves one line in the
+  journal: the bead id, the seconds it ran and the reason (`timeout after 25s`, or the
+  exit status and the last 300 bytes of stderr).
 
 ## GET /api/me
 

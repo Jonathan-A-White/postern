@@ -82,7 +82,7 @@ func TestGetReportsAnyOtherFailureWithAStderrSnippet(t *testing.T) {
 	if !errors.As(err, &cmdErr) {
 		t.Fatalf("Get = %v, want a *CommandError", err)
 	}
-	if !strings.Contains(err.Error(), "exited 1") || !strings.Contains(err.Error(), "bd: database locked") {
+	if !strings.Contains(err.Error(), "exit 1") || !strings.Contains(err.Error(), "bd: database locked") {
 		t.Fatalf("error = %q, want the exit status and the start of stderr", err)
 	}
 	if len(err.Error()) > 400 {
@@ -128,5 +128,35 @@ func TestExecRunnerRunsARealCommandWithoutAShell(t *testing.T) {
 	}
 	if _, err := fetcher.Get(context.Background(), "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Get(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestGetExit3ThatSaysSomethingElseIsAFailureWithItsReason(t *testing.T) {
+	runner := &fakeRunner{result: Result{ExitCode: 3, Stderr: []byte(strings.Repeat("x", 500) + "\ndatabase is locked\n")}}
+	_, err := New("mw", WithRunner(runner.run)).Get(context.Background(), "mw-abc")
+	var cmdErr *CommandError
+	if !errors.As(err, &cmdErr) {
+		t.Fatalf("Get = %v, want a *CommandError", err)
+	}
+	if !strings.HasPrefix(cmdErr.Reason, "exit 3: ") || !strings.HasSuffix(cmdErr.Reason, "database is locked") {
+		t.Fatalf("Reason = %q, want the exit status and the end of stderr", cmdErr.Reason)
+	}
+	if len(cmdErr.Reason) > len("exit 3: ")+stderrTailBytes {
+		t.Fatalf("Reason is %d bytes long, want the last %d bytes of stderr at most", len(cmdErr.Reason), stderrTailBytes)
+	}
+}
+
+func TestGetTimeoutReasonAndElapsed(t *testing.T) {
+	blocking := func(ctx context.Context, argv []string) (Result, error) {
+		<-ctx.Done()
+		return Result{ExitCode: -1}, ctx.Err()
+	}
+	_, err := New("mw", WithRunner(blocking), WithTimeout(20*time.Millisecond)).Get(context.Background(), "mw-abc")
+	var cmdErr *CommandError
+	if !errors.As(err, &cmdErr) {
+		t.Fatalf("Get = %v, want a *CommandError", err)
+	}
+	if !strings.HasPrefix(cmdErr.Reason, "timeout") || !strings.Contains(cmdErr.Msg, "timeout") || cmdErr.Elapsed < 20*time.Millisecond {
+		t.Fatalf("Reason = %q, Msg = %q, Elapsed = %s", cmdErr.Reason, cmdErr.Msg, cmdErr.Elapsed)
 	}
 }

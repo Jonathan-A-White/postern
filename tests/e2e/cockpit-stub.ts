@@ -7,6 +7,7 @@ import { PrivateKey } from '@bsv/sdk';
 import { deriveMasterKey, deriveAesKeyFromPhrase, wrapKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { sealDocument } from '../../src/services/documents';
 import { encryptAttachment } from '../../src/services/messages';
+import type { Need, View } from '../../src/model/view';
 import { MAYOR, fixtureDetail, fixtureRecords, fixtureView } from '../support/cockpit-fixture';
 
 export async function seedVault(page: Page, mnemonic: string): Promise<string> {
@@ -45,11 +46,17 @@ export async function seedVault(page: Page, mnemonic: string): Promise<string> {
   return publicKeyHex;
 }
 
+function withNeeds(view: View, needs: Need[] = []): View {
+  return { ...view, needs: [...view.needs, ...needs] };
+}
+
 export interface StubExtras {
   /** What /api/me names as `collections`: a cockpit key's; leave unset for an app key's answer. */
   collections?: Array<{ name: string; app?: string }>;
   /** The satoshis /api/utxos/{address} lists as one coin; unset lists none. */
   utxoSatoshis?: number;
+  /** Needs added to the fixture's view (mw-tbx1n.8: cards that wait on the Mayor or the factory). */
+  needs?: Need[];
 }
 
 export async function stubBackend(
@@ -60,7 +67,7 @@ export async function stubBackend(
 ): Promise<{ posted: string[] }> {
   const governorPub = governor.toPublicKey().toString();
   const now = Date.now();
-  const view = await sealDocument(JSON.stringify(fixtureView(now)), MAYOR.toHex(), governorPub);
+  const view = await sealDocument(JSON.stringify(withNeeds(fixtureView(now), extras.needs)), MAYOR.toHex(), governorPub);
   let voiceAttachment: { hash: string; size: number; mime: string } | undefined;
   let voiceCiphertext: Uint8Array | undefined;
   if (voice) {

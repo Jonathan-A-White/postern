@@ -18,7 +18,10 @@ const WAIT_MS = 8000;
 
 export function NoticeScreen({ tx, cls, waitMs = WAIT_MS }: { tx: string; cls?: MessageClass; waitMs?: number }) {
   const messages = useMessages();
-  const thread = threadUrlOfMessage(messages.find((row) => row.txid === tx));
+  const thread = threadUrlOfMessage(
+    messages.find((row) => row.txid === tx),
+    messages,
+  );
 
   useEffect(() => {
     if (thread) navigate(thread.replace(/^\//, ''), { replace: true });

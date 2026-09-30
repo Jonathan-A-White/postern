@@ -34,6 +34,14 @@ function messageOn(bead: string): MessageRow {
   };
 }
 
+const POST = `direct:${'a1'.repeat(32)}`;
+
+function generalRow(txid: string, body: object | string): MessageRow {
+  return { ...messageOn('x'), id: `${txid}:0`, txid, thread: undefined, plaintext: typeof body === 'string' ? body : JSON.stringify(body) };
+}
+const replyRow = () => generalRow(TXID, { text: 'the answer', re: POST });
+const replyThread = { view: 'talk', thread: 'general', root: POST } as const;
+
 let worker: WorkerHarness;
 let appWindow: FakeWindowClient | undefined;
 let tappedUrl: string | undefined;
@@ -145,6 +153,39 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the message does not arrive in time', () => new Promise((resolve) => setTimeout(resolve, 120)));
     Then('the app moves to the Needs-you queue', async () => {
       await waitFor(() => expect(parseRoute(window.location.search)).toEqual({ view: 'needs' }));
+    });
+  });
+
+  Scenario('mw-gq6.160 AC-6: a push for a reply whose message is already here opens the reply thread of the post it answers', ({ Given, And, When, Then }) => {
+    Given("the phone already holds a General post and the Mayor's reply to it", async () => {
+      await messagesRepo.put(generalRow(POST, 'the post'));
+      await messagesRepo.put(replyRow());
+    });
+    And("the Mayor's message push for that reply arrives", () => arrive('message'));
+    When('he taps the notification', tap);
+    Then('the app opens at the reply thread of the General post', () => {
+      expect(parseRoute(new URL(tappedUrl!, 'https://postern.allmymind.org').search)).toEqual(replyThread);
+    });
+  });
+
+  Scenario('mw-gq6.160 AC-7: a push for a reply not fetched yet lands on a screen that moves to the reply thread once it arrives', ({ Given, And, When, Then }) => {
+    Given('the phone holds a General post', async () => {
+      await messagesRepo.put(generalRow(POST, 'the post'));
+    });
+    And("the Mayor's message push arrives for a reply the phone does not hold yet", () => arrive('message'));
+    When('he taps the notification', tap);
+    And('the app opens where the notification pointed', () => {
+      window.history.replaceState(null, '', tappedUrl!);
+      const route = parseRoute(window.location.search);
+      expect(route).toMatchObject({ view: 'notice', tx: TXID });
+      if (route.view !== 'notice') return;
+      render(<NoticeScreen tx={route.tx} cls={route.cls} />);
+    });
+    And('the reply arrives and decrypts', async () => {
+      await messagesRepo.put(replyRow());
+    });
+    Then('the app moves to the reply thread of the General post', async () => {
+      await waitFor(() => expect(parseRoute(window.location.search)).toEqual(replyThread));
     });
   });
 });

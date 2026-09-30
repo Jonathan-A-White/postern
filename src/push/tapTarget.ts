@@ -5,8 +5,12 @@
 // the app writes) and by the notice screen the tap otherwise lands on.
 import type { MessageClass, MessageRow } from '../data/db';
 import { messagesRepo } from '../data/repositories/messages-repo';
-import { threadHrefFor } from '../nav/route';
+import { formatRoute, threadHrefFor } from '../nav/route';
+import { decodeThreadedMessage } from '../services/threads';
 import { CLASS_URLS } from './classOptions';
+
+/** The longest chain of replies followed to a root: threads are one level deep, so this only bounds a tangled one. */
+const MAX_CHAIN = 50;
 
 export interface TapData {
   txid?: string;
@@ -14,20 +18,66 @@ export interface TapData {
   url?: string;
 }
 
+/** The txid a stored General message answers as a reply (docs/protocol.md §14):
+ * only a plain text message on the General thread counts, never a transcript. */
+function repliedTo(row: MessageRow): string | undefined {
+  if (row.class !== 'message' || row.thread || row.plaintext === undefined) return undefined;
+  const body = decodeThreadedMessage(row.plaintext);
+  return body.re !== undefined && body.role === undefined ? body.re : undefined;
+}
+
+/** The txid of the root of the reply thread this General message belongs to: the
+ * post its `re` chain ends at among the rows `find` knows, or the message's own
+ * txid when it answers nothing the phone holds (§14 keeps it a root). */
+function rootTxidOf(row: MessageRow, find: (txid: string) => MessageRow | undefined): string {
+  const seen = new Set([row.txid.toLowerCase()]);
+  let current = row;
+  for (;;) {
+    const target = repliedTo(current);
+    const next = target === undefined ? undefined : find(target);
+    if (!next) return current.txid;
+    if (seen.has(next.txid.toLowerCase())) return row.txid;
+    seen.add(next.txid.toLowerCase());
+    current = next;
+  }
+}
+
 /** The thread's URL for a message the phone has already decrypted (or given up
- * on: the general thread), or undefined while its thread is still unknown. */
-export function threadUrlOfMessage(row: MessageRow | undefined): string | undefined {
+ * on: the general thread), or undefined while its thread is still unknown. A
+ * General reply opens the reply thread of its post, the route 'N replies' opens;
+ * `rows` are the messages the chain of `re` is followed through. */
+export function threadUrlOfMessage(row: MessageRow | undefined, rows: MessageRow[] = []): string | undefined {
   if (!row) return undefined;
   if (row.thread) return `/${threadHrefFor(row.thread)}`;
+  if (row.plaintext !== undefined && repliedTo(row) !== undefined) {
+    const byTxid = new Map(rows.map((other) => [other.txid.toLowerCase(), other]));
+    return `/${formatRoute({ view: 'talk', thread: 'general', root: rootTxidOf(row, (txid) => byTxid.get(txid.toLowerCase())) })}`;
+  }
   if (row.plaintext !== undefined || row.decryptFailed) return `/${threadHrefFor(undefined)}`;
   return undefined;
 }
 
+/** The message and the stored messages its `re` chain runs through, nearest first. */
+async function chainOf(txid: string): Promise<MessageRow[]> {
+  const chain: MessageRow[] = [];
+  let next: string | undefined = txid;
+  while (next !== undefined && chain.length < MAX_CHAIN) {
+    const row: MessageRow | undefined = await messagesRepo.getByTxid(next);
+    if (!row || chain.some((seen) => seen.txid === row.txid)) break;
+    chain.push(row);
+    next = repliedTo(row);
+  }
+  return chain;
+}
+
 /** Where a tap on a notification with this data opens: the message's thread when
- * the phone already holds it decrypted, else the URL the push was built with. */
+ * the phone already holds it decrypted (a reply opens its post's reply thread),
+ * else the URL the push was built with. A push carries no plaintext, so a message
+ * not yet here lands on the notice screen, which does the same once it arrives. */
 export async function resolveTapUrl(data: TapData | undefined): Promise<string> {
   if (data?.txid) {
-    const thread = threadUrlOfMessage(await messagesRepo.getByTxid(data.txid));
+    const chain = await chainOf(data.txid);
+    const thread = threadUrlOfMessage(chain[0], chain);
     if (thread) return thread;
   }
   return data?.url ?? (data?.class ? CLASS_URLS[data.class] : undefined) ?? '/?v=needs';

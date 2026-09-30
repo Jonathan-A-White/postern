@@ -31,3 +31,17 @@ Feature: Tapping a push notification opens the app at what it is about (mw-f758y
     And the app opens where the notification pointed
     And the message does not arrive in time
     Then the app moves to the Needs-you queue
+
+  Scenario: mw-gq6.160 AC-6: a push for a reply whose message is already here opens the reply thread of the post it answers
+    Given the phone already holds a General post and the Mayor's reply to it
+    And the Mayor's message push for that reply arrives
+    When he taps the notification
+    Then the app opens at the reply thread of the General post
+
+  Scenario: mw-gq6.160 AC-7: a push for a reply not fetched yet lands on a screen that moves to the reply thread once it arrives
+    Given the phone holds a General post
+    And the Mayor's message push arrives for a reply the phone does not hold yet
+    When he taps the notification
+    And the app opens where the notification pointed
+    And the reply arrives and decrypts
+    Then the app moves to the reply thread of the General post

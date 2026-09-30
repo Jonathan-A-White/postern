@@ -54,7 +54,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const oneTap = useOneTap(tapAction ? need.bead : '', tapAction);
   // Release is for a story still held, as on the bead's page; a known status that is not held says so instead of offering it.
   const releaseNow = tapAction === 'release' ? releaseState(need, index, status) : 'held';
-  const released = releaseNow === 'building' || releaseNow === 'released';
+  const released = releaseNow === 'building' || releaseNow === 'released' || releaseNow === 'empty';
   // A question is answered once: his tap (an option or his own words) sends one answer, then the card is dead
   // until the view drops it. One state per question, so a later question on the bead is not held by this one.
   const asks = need.kind === 'question' && need.bead !== '';
@@ -184,10 +184,11 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
 
       {stale && !waiting && !compact && need.bead && <StaleChoice bead={need.bead} />}
 
-      {released && (
+      {/* On the bead's page (compact) the Actions row already says there are no stories. */}
+      {released && !(releaseNow === 'empty' && compact) && (
         <p role="status" className="inline-flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
           <Icon name="check" size={15} className="shrink-0" />
-          {releaseNow === 'building' ? 'Already released: building' : 'Already released'}
+          {releaseNow === 'building' ? 'Already released: building' : releaseNow === 'empty' ? 'No stories yet: the Mayor drafts them.' : 'Already released'}
         </p>
       )}
 

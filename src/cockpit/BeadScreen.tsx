@@ -82,13 +82,15 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
   const release = useOneTap(id, 'release');
   const hold = useOneTap(id, 'hold');
   const verified = useOneTap(id, 'verified');
-  // An epic stays open while its stories are held: the same Release N held the Map offers.
+  // An epic's Release is the Map's Release N held, offered only while a story under it is held, whatever the epic's own status.
   const held = bead && index && epic ? epicStats(id, index).counts.held : 0;
+  const hasStories = (detail?.children.length ?? 0) > 0 || (index?.children.get(id)?.length ?? 0) > 0;
   const verify = index?.needsByBead.get(id)?.some((need) => need.kind === 'verify');
   const stale = index?.needsByBead.get(id)?.some((need) => need.kind === 'stale');
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Actions">
-      {status === 'deferred' &&
+      {!epic &&
+        status === 'deferred' &&
         (release.waiting ? (
           <WaitingNote />
         ) : (
@@ -97,7 +99,6 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
           </Button>
         ))}
       {epic &&
-        status !== 'deferred' &&
         held > 0 &&
         (release.waiting ? (
           <WaitingNote />
@@ -106,6 +107,7 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
             Release {held} held
           </Button>
         ))}
+      {epic && status === 'deferred' && !hasStories && <p className="text-[13px] text-muted">No stories yet: the Mayor drafts them.</p>}
       {epic && (
         <a href={formatRoute({ view: 'map', focus: id })} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised px-3 text-sm hover:border-line-strong">
           <Icon name="map" size={16} />

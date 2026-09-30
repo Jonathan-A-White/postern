@@ -1,10 +1,11 @@
 // src/cockpit/Shell.tsx — the frame every screen sits in (plans/0021 decision
-// 9): on a phone, a header and a tab bar along the bottom (hidden once he has
-// stepped into a bead or a thread, where the composer lives); on a wide screen,
-// a sidebar with the same places and room for two panes.
+// 9): on a phone, a header and a tab bar along the bottom on every screen (a
+// bead or a thread too: the composer sits above it, and only the lowest bar
+// keeps the bottom safe-area inset); on a wide screen, a sidebar with the same
+// places and room for two panes. isDeep only decides Back, not the tab bar.
 import { type ReactNode } from 'react';
 import { Banner, Icon, IconButton, cx, type IconName } from '../ui';
-import { formatRoute, isDeep, topViewOf, type Route, type TopView } from '../nav/route';
+import { formatRoute, topViewOf, type Route, type TopView } from '../nav/route';
 import { goBack } from '../router';
 import { useLive } from '../services/live';
 import { hostsToMoveTo, useStandby } from '../services/standby';
@@ -154,7 +155,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       <div className="flex min-w-0 flex-1 flex-col">
         <HomeDown />
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
-        {!wide && !isDeep(route) && <TabBar current={top} />}
+        {!wide && <TabBar current={top} />}
       </div>
     </div>
   );

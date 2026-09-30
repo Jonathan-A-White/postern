@@ -5,6 +5,7 @@
 // top of what he sends. Files go one message each, the words on the last.
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { Icon, IconButton, cx } from '../ui';
+import { useWide } from './hooks';
 import { canRecord, formatDuration, VoiceRecorder } from '../services/recorder';
 import { refuseFile, sendToThread, useSend, type OutgoingFile } from './send';
 import { toast } from '../ui/toastStore';
@@ -51,6 +52,8 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const picker = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const { busy, run } = useSend();
+  // On a phone the tab bar sits below the composer and keeps the bottom safe-area inset.
+  const wide = useWide();
 
   useEffect(() => {
     const shared = takePendingShare();
@@ -156,7 +159,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const canSend = (text.trim().length > 0 || files.length > 0 || !!quote);
 
   return (
-    <div className="pb-safe shrink-0 border-t border-line bg-surface" onDragOver={(event) => event.preventDefault()} onDrop={onDrop} data-testid="composer">
+    <div className={cx(wide && 'pb-safe', 'shrink-0 border-t border-line bg-surface')} onDragOver={(event) => event.preventDefault()} onDrop={onDrop} data-testid="composer">
       {quote && (
         <div className="flex items-start gap-2 border-b border-line px-3 py-2 text-[12.5px] text-muted">
           <Icon name="quote" size={14} className="mt-0.5 shrink-0" />

@@ -2,7 +2,7 @@
 // browser against a stubbed v2 backend (docs/protocol.md §9–§15), from unlock to
 // every place, with one screenshot per place at whatever width the project runs
 // (390 px for `npm run shots`). The fixture is tests/support/cockpit-fixture.ts.
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
@@ -11,6 +11,16 @@ import { fixtureRecords } from '../support/cockpit-fixture';
 import { notificationSpecForClass } from '../../src/push/classOptions';
 
 test.use({ serviceWorkers: 'block' });
+
+// mw-tbx1n.12: on a phone the bottom menu stays on a bead and a thread, under the composer.
+async function expectBarUnderComposer(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 0) >= 1024) return;
+  const bar = page.getByRole('navigation', { name: 'Places' });
+  await expect(bar.getByRole('link')).toHaveText([/Needs you$/, /Map$/, /Talk$/, /Search$/, /Me$/]);
+  const composer = await page.getByTestId('composer').boundingBox();
+  const menu = await bar.boundingBox();
+  expect(composer && menu && composer.y + composer.height <= menu.y + 1).toBe(true);
+}
 
 test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ page }) => {
   const mnemonic = createMnemonic();
@@ -53,6 +63,7 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
   await page.goto('/?v=bead&id=mw-f758y.30.2');
   await expect(page.getByText('Acceptance criteria')).toBeVisible();
   await expect(page.getByText('Make the ping interval 25 seconds', { exact: false })).toBeVisible();
+  await expectBarUnderComposer(page);
   await shot(page, 'cockpit-bead');
 
   await page.goto('/?v=talk');
@@ -61,6 +72,7 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
 
   await page.goto('/?v=talk&t=general');
   await expect(page.getByText('Overnight', { exact: false })).toBeVisible();
+  await expectBarUnderComposer(page);
   await shot(page, 'cockpit-thread');
 
   await page.goto('/?v=search&q=ping');

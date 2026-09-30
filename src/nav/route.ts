@@ -164,7 +164,7 @@ export function topViewOf(route: Route): TopView {
 }
 
 /** Whether the route is a step down from a tab's own top (a bead, a thread, an
- * epic): the phone layout shows Back there and hides the tab bar. */
+ * epic): the phone layout shows Back there. */
 export function isDeep(route: Route): boolean {
   return (
     route.view === 'bead' ||

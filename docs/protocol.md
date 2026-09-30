@@ -954,6 +954,15 @@ to the mill key:
 
 - `grist` — which grind to run: the app (it must be one the sender's licences name),
   the kind, and the version of the app's own request schema.
+  The header may also carry two optional fields, `"model"` (a model name: `"haiku"`,
+  `"sonnet"`, `"opus"`) and `"effort"` (one of `"low"`, `"medium"`, `"high"`, `"xhigh"`,
+  `"max"`), as in `{ "app": "cairn", "kind": "sweep", "v": "1.1", "model": "sonnet",
+  "effort": "high" }`. Absent means the grind file's own values, as before. The mill
+  runs the asked values only within the factory's caps (`[grist] models`, and
+  `[grist] efforts`, default `low,medium,high`); a value outside them refuses the grist
+  with reason `model` or `effort`, naming the value. The backend never reads either
+  field: the plaintext is sealed to the mill key. An app should offer its user only
+  values he may choose.
 - `input` — the app's request, in the app's own schema (here Cairn's Sweep Request).
   The mill hands it to the grind as data, never as instructions.
 - `attachments` — optional, at most 4. Each is uploaded first with `POST /api/blobs`
@@ -1027,6 +1036,7 @@ other origin gets no CORS headers, so browsers refuse it.
 
 ### Test vectors
 
-`docs/fixtures/grist-vectors.json` holds a grist plaintext, its answer in each
+`docs/fixtures/grist-vectors.json` holds a grist plaintext, one whose header asks for a model and an effort
+(`gristAskingModelAndEffort`), its answer in each
 status, and envelopes the backend must accept or refuse for each kind of key. The
 backend's tests and the mill's read the same file.

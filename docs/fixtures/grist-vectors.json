@@ -34,6 +34,18 @@
       { "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "size": 412345, "mime": "image/jpeg" }
     ]
   },
+  "gristAskingModelAndEffort": {
+    "grist": { "app": "cairn", "kind": "sweep", "v": "1.1", "model": "sonnet", "effort": "high" },
+    "input": {
+      "schemaVersion": "1.1",
+      "requestType": "sweep",
+      "place": { "name": "Top drawer", "path": "Kitchen -> Top drawer" },
+      "knownItems": ["scissors", "tape measure"]
+    },
+    "attachments": [
+      { "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "size": 412345, "mime": "image/jpeg" }
+    ]
+  },
   "answers": {
     "answered": {
       "re": "direct:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",

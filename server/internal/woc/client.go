@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -123,27 +125,95 @@ func NewClient(baseURL string, opts ...Option) *Client {
 	return c
 }
 
-// GetHistory returns address's confirmed and unconfirmed transaction
-// history, oldest first (as WhatsOnChain returns it).
+// maxHistoryPages caps how many pages of confirmed history GetHistory reads
+// for one address (WhatsOnChain serves 100 transactions a page).
+const maxHistoryPages = 50
+
+// historyPage is one reply of WhatsOnChain's /confirmed/history or
+// /unconfirmed/history.
+type historyPage struct {
+	Result []struct {
+		TxHash string `json:"tx_hash"`
+		Height int    `json:"height"`
+	} `json:"result"`
+	NextPageToken string `json:"nextPageToken"`
+	Error         string `json:"error"`
+}
+
+// GetHistory returns address's whole transaction history, each transaction
+// once: every confirmed one oldest first, then the unconfirmed ones (height
+// 0). WhatsOnChain's /history holds only the newest 100, so it reads every
+// page of /confirmed/history (the newest page first, older ones by
+// nextPageToken) and /unconfirmed/history. Past maxHistoryPages it returns
+// an error, never a short list: a list missing its oldest pages would read
+// as a key that holds no licence.
 func (c *Client) GetHistory(address string) ([]HistoryEntry, error) {
-	body, err := c.get(fmt.Sprintf("/address/%s/history", address))
+	// Unconfirmed first: a transaction confirming between the reads then
+	// shows in both (and is kept as confirmed), rather than in neither.
+	unconfirmed, err := c.getHistoryPage(fmt.Sprintf("/address/%s/unconfirmed/history", address))
 	if err != nil {
 		return nil, err
 	}
 
-	var raw []struct {
-		TxHash string `json:"tx_hash"`
-		Height int    `json:"height"`
-	}
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("parsing history response: %w", err)
+	var pages []historyPage
+	token := ""
+	for {
+		if len(pages) == maxHistoryPages {
+			return nil, fmt.Errorf("history of %s runs past %d pages (%d transactions): not read", address, maxHistoryPages, maxHistoryPages*100)
+		}
+		path := fmt.Sprintf("/address/%s/confirmed/history", address)
+		if token != "" {
+			path += "?token=" + url.QueryEscape(token)
+		}
+		page, err := c.getHistoryPage(path)
+		if err != nil {
+			return nil, err
+		}
+		pages = append(pages, page)
+		if page.NextPageToken == "" {
+			break
+		}
+		token = page.NextPageToken
 	}
 
-	history := make([]HistoryEntry, len(raw))
-	for i, r := range raw {
-		history[i] = HistoryEntry{TxHash: r.TxHash, Height: r.Height}
+	var confirmed []HistoryEntry
+	for i := len(pages) - 1; i >= 0; i-- {
+		for _, r := range pages[i].Result {
+			confirmed = append(confirmed, HistoryEntry{TxHash: r.TxHash, Height: r.Height})
+		}
+	}
+	sort.SliceStable(confirmed, func(i, j int) bool { return confirmed[i].Height < confirmed[j].Height })
+
+	seen := make(map[string]bool)
+	var history []HistoryEntry
+	for _, entry := range confirmed {
+		if !seen[entry.TxHash] {
+			seen[entry.TxHash] = true
+			history = append(history, entry)
+		}
+	}
+	for _, r := range unconfirmed.Result {
+		if !seen[r.TxHash] {
+			seen[r.TxHash] = true
+			history = append(history, HistoryEntry{TxHash: r.TxHash})
+		}
 	}
 	return history, nil
+}
+
+func (c *Client) getHistoryPage(path string) (historyPage, error) {
+	body, err := c.get(path)
+	if err != nil {
+		return historyPage{}, err
+	}
+	var page historyPage
+	if err := json.Unmarshal(body, &page); err != nil {
+		return historyPage{}, fmt.Errorf("parsing history response: %w", err)
+	}
+	if page.Error != "" {
+		return historyPage{}, fmt.Errorf("WhatsOnChain history error for %s: %s", path, page.Error)
+	}
+	return page, nil
 }
 
 // GetTransactionHex returns a transaction's raw hex.

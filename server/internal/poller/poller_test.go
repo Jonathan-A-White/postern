@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -91,7 +92,9 @@ func buildP2PKHScriptSig(pubKey []byte) []byte {
 }
 
 // fakeWOC serves a fixed history and a fixed set of transaction hexes,
-// counting how many times each tx's hex was fetched.
+// counting how many times each tx's hex was fetched. history is a list of
+// {tx_hash, height}: WhatsOnChain's paged routes serve the entries with a
+// height as one page of confirmed history, the rest as unconfirmed.
 type fakeWOC struct {
 	history    string
 	txHex      map[string]string
@@ -101,8 +104,20 @@ type fakeWOC struct {
 func (f *fakeWOC) handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/address/mAnchor/history":
-			w.Write([]byte(f.history))
+		case r.URL.Path == "/address/mAnchor/confirmed/history", r.URL.Path == "/address/mAnchor/unconfirmed/history":
+			var entries []map[string]any
+			if err := json.Unmarshal([]byte(f.history), &entries); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			confirmed := r.URL.Path == "/address/mAnchor/confirmed/history"
+			result := []map[string]any{}
+			for _, entry := range entries {
+				if _, hasHeight := entry["height"]; hasHeight == confirmed {
+					result = append(result, entry)
+				}
+			}
+			json.NewEncoder(w).Encode(map[string]any{"address": "mAnchor", "result": result, "error": ""})
 		case strings.HasPrefix(r.URL.Path, "/tx/") && strings.HasSuffix(r.URL.Path, "/hex"):
 			txid := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/tx/"), "/hex")
 			f.hexFetches[txid]++

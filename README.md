@@ -16,3 +16,7 @@ screen at a 390px phone width into `test-results/shots/`. `npm run shots:publish
 then rsyncs those into the story's own set. Sets land at
 `https://postern.allmymind.org/shots/<story-id>/<name>.png`, with only the newest 30 stories' sets
 kept on the VPS.
+
+## Licence
+
+The code is released under the MIT licence; see [LICENSE](LICENSE). (This is the licence of the source code, not the Postern licence a key holds.)

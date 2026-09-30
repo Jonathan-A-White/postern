@@ -261,7 +261,9 @@ export function BeadScreen({ id }: { id: string }) {
 
   const onQuote = (item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text });
   const title = detail?.title ?? bead?.title ?? id;
-  const back = bead?.parent ? { view: 'map' as const, focus: bead.parent } : { view: 'map' as const };
+  // Opened cold the view index may not hold the bead yet: the fetched detail knows its parent too.
+  const parent = bead?.parent ?? detail?.parent;
+  const back = parent ? { view: 'map' as const, focus: parent } : { view: 'map' as const };
 
   if (!bead && !detail && (status === 'loading' || status === 'idle')) {
     return (

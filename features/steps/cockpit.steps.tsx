@@ -46,9 +46,10 @@ function json(body: unknown, status = 200): Response {
 }
 
 // mw-t64a3.21: the Mayor's links to a bead, as they reach him: the app's own address.
+const UNLISTED = 'mw-f758y.30.99';
 const BEAD_LINK = `${window.location.origin}/?v=bead&id=mw-f758y.30.2`;
 
-type BackendOptions = { beadlessAlarm?: boolean; stale?: boolean; links?: boolean };
+type BackendOptions = { beadlessAlarm?: boolean; stale?: boolean; links?: boolean; unlisted?: boolean };
 
 async function stubBackend(options: BackendOptions = {}): Promise<void> {
   const now = Date.now();
@@ -64,6 +65,8 @@ async function stubBackend(options: BackendOptions = {}): Promise<void> {
   }
   const details = new Map<string, string>();
   for (const id of ['mw-f758y.30.2', 'mw-2rbm.10', 'mw-gq6.132']) details.set(id, await sealDocument(JSON.stringify(fixtureDetail(id, now)), MAYOR.toHex(), HIM_PUB));
+  // mw-t64a3.27: a bead the backend can fetch but the live view does not list (its detail names the parent).
+  if (options.unlisted) details.set(UNLISTED, await sealDocument(JSON.stringify({ ...fixtureDetail('mw-f758y.30.2', now), id: UNLISTED, title: 'A bead the live view lacks', parent: 'mw-f758y.30' }), MAYOR.toHex(), HIM_PUB));
 
   vi.stubGlobal(
     'fetch',
@@ -132,6 +135,11 @@ async function liveAndUnlocked(): Promise<void> {
 
 async function liveWithLinks(): Promise<void> {
   await fresh({ links: true });
+  setKey(HIM_KEY);
+}
+
+async function liveWithUnlistedBead(): Promise<void> {
+  await fresh({ unlisted: true });
   setKey(HIM_KEY);
 }
 
@@ -711,6 +719,22 @@ describeFeature(feature, ({ Scenario }) => {
     });
     Then('the Map is shown', async () => {
       await waitFor(() => expect(window.location.search).toMatch(/^\?v=map/), { timeout: 3000 });
+    });
+  });
+
+  Scenario('mw-t64a3.27: a bead page opened cold, not yet in the live view, goes Back to the Map focused on its parent', ({ Given, When, Then, And }) => {
+    Given('the factory is live, his key is unlocked and one bead is fetched but not in the live view', liveWithUnlistedBead);
+    When('that bead is opened as a new page', async () => {
+      window.history.replaceState(null, '', `/?v=bead&id=${UNLISTED}`);
+      cleanup();
+      render(<App />);
+    });
+    And('the header Back is tapped', async () => {
+      await screen.findByRole('button', { name: 'Acceptance criteria' });
+      await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    });
+    Then("the Map is shown focused on that bead's parent", async () => {
+      await waitFor(() => expect(window.location.search).toBe('?v=map&focus=mw-f758y.30'), { timeout: 3000 });
     });
   });
 });

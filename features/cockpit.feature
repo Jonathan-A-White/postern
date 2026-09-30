@@ -183,3 +183,9 @@ Feature: The Governor's cockpit (plans/0021)
     When the bead "mw-f758y.30.2" is opened
     And the header Back is tapped
     Then the Map is shown
+
+  Scenario: mw-t64a3.27: a bead page opened cold, not yet in the live view, goes Back to the Map focused on its parent
+    Given the factory is live, his key is unlocked and one bead is fetched but not in the live view
+    When that bead is opened as a new page
+    And the header Back is tapped
+    Then the Map is shown focused on that bead's parent

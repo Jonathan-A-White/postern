@@ -34,9 +34,14 @@ Authorization: Postern <pubkeyHex>:<nonceHex>:<sigHex>
   `PrivateKey.sign(nonceString)` (a single SHA-256, not a double hash) and
   `Signature.toDER()`.
 
-A nonce is consumed the moment it's presented, valid or not — it can never be
-reused, whether the proof it backed succeeded or failed. It also expires a short
-time (a few minutes) after being issued.
+A nonce is consumed the moment it's presented and verified — it can never be
+reused on that backend, whether the proof it backed succeeded or failed. It also
+expires a short time (a few minutes) after being issued.
+
+A nonce is verifiable by any backend holding the same key: it carries its own
+expiry and a MAC (see `GET /api/challenge`), so the standby that answered the
+challenge and the home that receives the signed request agree on it. Only the
+single-use record is per process.
 
 - `401` — the header is missing or malformed, the nonce is unknown/expired/already
   used, the signature doesn't verify, or the key holds no licence.
@@ -102,7 +107,13 @@ Issues a nonce for the caller to sign (see Authentication, above).
   { "nonce": "3af1b2c3..." }
   ```
 
-The nonce is always plain lowercase hex (32 random bytes). The app refuses to sign
+The nonce is always plain lowercase hex: 112 characters, the bytes
+`expiry(8, big-endian unix nanoseconds) || salt(16) || HMAC-SHA256(key, expiry || salt)(32)`.
+The key is 32 random bytes kept as hex in `POSTERN_DATA/postern-nonce.key` (mode
+600), created on first start and reused after a restart. **The boost needs the same
+key** — `mw postern mirror` copies it with the rest of `POSTERN_DATA` — or a
+challenge from one backend is refused by the other (nginx round-robins `/api` over
+both). The app refuses to sign
 anything else: the same key signs a hands step's approval (`docs/protocol.md` §17),
 and a challenge must never be able to stand in for one.
 
@@ -541,7 +552,7 @@ With `POSTERN_HOME_CMD` unset, nothing changes.
 | `POSTERN_NETWORK` | Network label (informational; doesn't affect request URLs) | `testnet` |
 | `POSTERN_ANCHOR` | The anchor address the poller watches | *(required, no default)* |
 | `POSTERN_WOC_BASE` | WhatsOnChain API base URL | `https://api.whatsonchain.com/v1/bsv/test` |
-| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`), push state, and attachment blobs (`blobs/`) | `./data` |
+| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`), push state, the challenge key (`postern-nonce.key`), and attachment blobs (`blobs/`) | `./data` |
 | `POSTERN_VAPID_PUBLIC_KEY` | VAPID public key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
 | `POSTERN_VAPID_PRIVATE_KEY` | VAPID private key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
 | `POSTERN_PUSH_SUBSCRIBER` | The VAPID contact (an https URL or `mailto:` email) sent to push services | `https://postern.allmymind.org` |

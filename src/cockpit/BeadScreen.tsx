@@ -11,12 +11,13 @@ import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
 import { NeedCard } from './NeedCard';
-import { useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { useAnswers, useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
+import { unsettledNeeds } from '../model/needs';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
 import { beadHref, formatRoute } from '../nav/route';
 import { messagesRepo } from '../data/repositories';
@@ -149,7 +150,9 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
   const type = detail?.type ?? bead?.type ?? 'task';
   const bucket = bead && index ? bucketOf(bead, index) : undefined;
   const chain = index ? ancestors(id, index) : [];
-  const needs = index?.needsByBead.get(id) ?? [];
+  // What he has answered or acted on since it was raised is gone from here as it is from Needs you.
+  const answers = useAnswers();
+  const needs = unsettledNeeds(index?.needsByBead.get(id) ?? [], answers);
   const waits = detail?.waits ?? bead?.waits ?? [];
   const blocks = detail?.blocks.length ? detail.blocks : (index?.waitedOnBy.get(id) ?? []);
   const children = detail?.children.length ? detail.children : (index?.children.get(id)?.map((b) => b.id) ?? []);

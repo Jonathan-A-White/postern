@@ -121,7 +121,9 @@ describe('a one-tap action sends once and shows it is waiting', () => {
     await act(async () => {
       await storeView(Date.now() + 5_000);
     });
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Verified' })).toHaveLength(2));
+    // The bead's page filters its needs as Needs you does (mw-tbx1n.10): the card he already acted on stays gone,
+    // so the action button is the one offered again.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Verified' })).toHaveLength(1));
     expect(screen.queryByText(/waiting for the factory/i)).toBeNull();
 
     await act(async () => {

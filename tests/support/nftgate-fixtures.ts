@@ -5,7 +5,7 @@
 import { Transaction, Utils } from '@bsv/sdk';
 import { encodeTypedRecordScript } from 'spell-forge-bsv';
 
-function typedRecordTxHex(recordType: 'M' | 'TR', payload: object): string {
+function typedRecordTxHex(recordType: 'M' | 'TR' | 'W', payload: object): string {
   const tx = new Transaction();
   tx.addOutput({
     lockingScript: encodeTypedRecordScript(recordType, Utils.toArray(JSON.stringify(payload), 'utf8')),
@@ -22,4 +22,14 @@ export function mintRecordTxHex(collection: string, holderAddress: string): stri
 /** A transfer (type-TR) record moving the token at `origin` ("txid:vout") to `toAddress`. */
 export function transferRecordTxHex(origin: string, toAddress: string): string {
   return typedRecordTxHex('TR', { origin, to: toAddress });
+}
+
+/**
+ * An issuer's revoke (type-W record {kind: 'revoke', origin}): ends the licence whose
+ * mint output is `origin` ("txid:vout"). The backend reads it only from a transaction the
+ * issuer key signed (server/internal/licence, docs/protocol.md §16); this fixture carries
+ * the record alone, the app-side shape of the same case.
+ */
+export function revokeRecordTxHex(origin: string): string {
+  return typedRecordTxHex('W', { kind: 'revoke', origin });
 }

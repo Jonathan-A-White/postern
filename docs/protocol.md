@@ -730,7 +730,18 @@ holds a licence when the chain carries a type-M record for it that is:
   outpoint with a type-TR record naming someone else. A TR record's payload may be
   the library's `{"to": "<address>"}` or the older `{"origin", "to"}`; either way
   it is tied to the licence by the outpoint its transaction spends, never by the
-  payload alone.
+  payload alone;
+- **not revoked**: the issuer can end a licence without the holder's help. A typed
+  **W** record whose payload is JSON `{"kind":"revoke","origin":"<txid>:<vout>"}`, in
+  a transaction the issuer key signed (an input unlocked by `POSTERN_ISSUER_KEY`, as
+  for a mint) and found in the **issuer's** address history, ends the licence whose
+  mint output is `origin` (the token, output 0 of the mint): from that transaction on
+  nobody holds the collection through that token, whatever later TR records do with
+  it. The same record signed by any other key, in a transaction outside the issuer's
+  history, a W record with any other payload, a revoke naming an origin that is not a
+  counting mint, all change nothing. A revoke names one mint output, so a mint after
+  it, even to the same key in the same collection, is a new licence. With no issuer
+  configured a revoke record is never read.
 
 ## 17. Steps for his hands, approved and run from Postern
 
@@ -892,6 +903,10 @@ anticipates). The issuer rule (§16) applies to app
 collections exactly as to Postern's own: only a mint the Governor's issuer key signed
 counts, and a transfer away revokes it. The Me screen's "Issue a licence" is not built
 yet; it will issue one to a key an app shows him as a QR code.
+Ending one is the Key screen's **Revoke**: it writes the §16 revoke record (a W record
+`{"kind":"revoke","origin":"<txid>:<vout>"}` naming the licence's mint output, in a
+transaction the issuer key signs), and the licence stops opening its door for that key
+once the backend next walks the chain (§16, "not revoked").
 
 ### The grist record
 

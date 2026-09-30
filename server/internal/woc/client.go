@@ -5,6 +5,7 @@ package woc
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -147,6 +148,11 @@ type historyPage struct {
 // nextPageToken) and /unconfirmed/history. Past maxHistoryPages it returns
 // an error, never a short list: a list missing its oldest pages would read
 // as a key that holds no licence.
+//
+// WhatsOnChain answers a plain-text 404 on /confirmed/history for an address
+// it has never seen (while /unconfirmed/history answers an empty 200), so a
+// 404 on the first confirmed page means no confirmed history. Any other
+// failure, including a 404 on a later page, stays an error.
 func (c *Client) GetHistory(address string) ([]HistoryEntry, error) {
 	// Unconfirmed first: a transaction confirming between the reads then
 	// shows in both (and is kept as confirmed), rather than in neither.
@@ -167,7 +173,11 @@ func (c *Client) GetHistory(address string) ([]HistoryEntry, error) {
 		}
 		page, err := c.getHistoryPage(path)
 		if err != nil {
-			return nil, err
+			var apiErr *APIError
+			if len(pages) > 0 || !errors.As(err, &apiErr) || apiErr.Status != http.StatusNotFound {
+				return nil, err
+			}
+			page = historyPage{} // never seen: no confirmed history
 		}
 		pages = append(pages, page)
 		if page.NextPageToken == "" {

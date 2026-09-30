@@ -172,6 +172,117 @@ func TestGetHistoryTreatsAnErrorFieldAsAnError(t *testing.T) {
 	}
 }
 
+// neverSeen is WhatsOnChain's reply for an address with no transaction ever:
+// /confirmed/history answers a plain-text 404, /unconfirmed/history an empty
+// 200.
+func neverSeen(address string, unconfirmed []string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/address/" + address + "/confirmed/history":
+			http.Error(w, "Not Found", http.StatusNotFound)
+		case "/address/" + address + "/unconfirmed/history":
+			result := []map[string]any{}
+			for _, txid := range unconfirmed {
+				result = append(result, map[string]any{"tx_hash": txid, "height": 0})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"address": address, "result": result, "error": ""})
+		default:
+			http.Error(w, "unexpected path", http.StatusTeapot)
+		}
+	}
+}
+
+func TestGetHistoryOfAnAddressWithNoTransactionIsEmptyNotAnError(t *testing.T) {
+	client, _ := newTestClient(t, neverSeen("mFresh", nil))
+
+	history, err := client.GetHistory("mFresh")
+	if err != nil {
+		t.Fatalf("GetHistory: %v, want no error for an address WhatsOnChain has never seen", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history = %+v, want empty", history)
+	}
+}
+
+func TestGetHistoryStillReturnsTheUnconfirmedOnesWhenConfirmedAnswers404(t *testing.T) {
+	client, _ := newTestClient(t, neverSeen("mFresh", []string{"tx1", "tx2"}))
+
+	history, err := client.GetHistory("mFresh")
+	if err != nil {
+		t.Fatalf("GetHistory: %v", err)
+	}
+	want := []HistoryEntry{{"tx1", 0}, {"tx2", 0}}
+	if fmt.Sprint(history) != fmt.Sprint(want) {
+		t.Fatalf("history = %+v, want %+v", history, want)
+	}
+}
+
+func TestGetHistoryFailsWhenALaterConfirmedPageAnswers404(t *testing.T) {
+	heights := map[string]int{"a": 1, "b": 2}
+	inner := pagedHistory(t, "mAnchor", [][]string{{"b"}, {"a"}}, heights, nil)
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("token") != "" {
+			http.Error(w, "Not Found", http.StatusNotFound)
+			return
+		}
+		inner(w, r)
+	})
+
+	history, err := client.GetHistory("mAnchor")
+	if err == nil {
+		t.Fatalf("GetHistory returned %+v and no error, want the 404 on the second page", history)
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Fatalf("error = %q, want it to say 404", err)
+	}
+}
+
+func TestGetHistoryFailsOn404OfTheUnconfirmedHistory(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/unconfirmed/history") {
+			http.Error(w, "Not Found", http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(`{"address":"mAnchor","result":[],"error":""}`))
+	})
+
+	if history, err := client.GetHistory("mAnchor"); err == nil {
+		t.Fatalf("GetHistory returned %+v and no error, want the 404 on /unconfirmed/history", history)
+	}
+}
+
+func TestGetHistoryFailsOnAServerErrorOrExhaustedRateLimitOnEitherEndpoint(t *testing.T) {
+	for _, status := range []int{http.StatusInternalServerError, http.StatusTooManyRequests} {
+		for _, route := range []string{"/confirmed/history", "/unconfirmed/history"} {
+			client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, route) {
+					http.Error(w, "nope", status)
+					return
+				}
+				w.Write([]byte(`{"address":"mAnchor","result":[],"error":""}`))
+			})
+
+			history, err := client.GetHistory("mAnchor")
+			if err == nil {
+				t.Fatalf("%d on %s: history = %+v and no error, want an error", status, route, history)
+			}
+			if history != nil {
+				t.Fatalf("%d on %s: history = %+v alongside the error, want none", status, route, history)
+			}
+		}
+	}
+}
+
+func TestGetTransactionHexFailsOn404(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Not Found", http.StatusNotFound)
+	})
+
+	if hexStr, err := client.GetTransactionHex("tx1"); err == nil {
+		t.Fatalf("GetTransactionHex = %q and no error, want the 404 to stay an error", hexStr)
+	}
+}
+
 func TestGetTransactionHex(t *testing.T) {
 	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/tx/tx1/hex" {

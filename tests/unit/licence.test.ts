@@ -1,10 +1,10 @@
-import { PrivateKey } from '@bsv/sdk';
-import { chainConfig } from 'spell-forge-bsv';
+import { PrivateKey, Utils } from '@bsv/sdk';
+import { chainConfig, findTypedRecordsInTransaction } from 'spell-forge-bsv';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '../../src/data/db';
 import { addressForPublicKey, checkLicence, findLicence, getCachedLicenceStatus } from '../../src/services/licence';
 import { FakeChainProvider } from '../support/fake-chain-provider';
-import { mintRecordTxHex, transferRecordTxHex } from '../support/nftgate-fixtures';
+import { mintRecordTxHex, revokeRecordTxHex, transferRecordTxHex } from '../support/nftgate-fixtures';
 
 const KEY = PrivateKey.fromHex('11'.repeat(32));
 const PUBLIC_KEY_HEX = KEY.toPublicKey().toString();
@@ -43,6 +43,14 @@ describe('licence', () => {
     provider.addTransaction(ADDRESS, mintTxid, mintRecordTxHex(chainConfig.collectionId, ADDRESS));
     provider.addTransaction(ADDRESS, 'd'.repeat(64), transferRecordTxHex(`${mintTxid}:0`, 'mzSomeoneElseAddress'));
     expect(await findLicence(PUBLIC_KEY_HEX, provider)).toBeNull();
+  });
+
+  it('has a revoke fixture that decodes as a W record naming the origin', () => {
+    const origin = `${'c'.repeat(64)}:0`;
+    const records = findTypedRecordsInTransaction(revokeRecordTxHex(origin));
+    expect(records).toHaveLength(1);
+    expect(records[0].recordType).toBe('W');
+    expect(JSON.parse(Utils.toUTF8(records[0].payloadBytes))).toEqual({ kind: 'revoke', origin });
   });
 
   it('caches the checked result and its time', async () => {

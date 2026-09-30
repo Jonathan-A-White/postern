@@ -11,6 +11,7 @@ import { isValidElement, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { inAppHref } from '../router';
+import { remarkBeadLinks } from './beadLinks';
 import { Mermaid } from './Mermaid';
 
 function mermaidSource(children: ReactNode): string | null {
@@ -56,7 +57,7 @@ export interface MarkdownProps {
 export function Markdown({ text, wrap = false }: MarkdownProps) {
   return (
     <div className={wrap ? 'markdown markdown-wrap' : 'markdown'}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBeadLinks]} components={components}>
         {text}
       </ReactMarkdown>
     </div>

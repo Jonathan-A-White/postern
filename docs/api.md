@@ -44,7 +44,17 @@ challenge and the home that receives the signed request agree on it. Only the
 single-use record is per process.
 
 - `401` — the header is missing or malformed, the nonce is unknown/expired/already
-  used, the signature doesn't verify, or the key holds no licence.
+  used, the signature doesn't verify, or the key holds no licence. The body is
+  `{"error": "<words>", "reason": "<code>"}`; the app matches on `reason`, never on
+  `error`: `malformed_authorization`, `nonce`, `signature` or `no_licence`. Only
+  `no_licence` is about a licence; the app retries a `nonce` refusal once with a
+  fresh challenge (nothing has been acted on when it is refused).
+- `403` — a proved, licensed key whose licence does not open the route; `reason`
+  is `forbidden`.
+
+Every refusal (each 401 and the 403) writes one log line: the status, the route,
+the reason in words and its code, and the key's first 12 hex characters (`-` when
+the request named none) — never a body, a signature or a nonce.
 - `502` — the licence check itself failed (a chain read failing), distinct from a
   bad proof.
 

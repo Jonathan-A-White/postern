@@ -161,3 +161,25 @@ Feature: The Governor's cockpit (plans/0021)
     When "Keep" is tapped on the bead's actions
     Then one keep action for "mw-gq6.132" is sent
     And the bead's actions say it was sent and are waiting for the factory, with no Keep or Close to tap
+
+  Scenario: mw-t64a3.21: a link in a Talk message opens the bead in the app, and Back shows the same thread again
+    Given the factory is live with links in its words and his key is unlocked
+    When the Talk thread "Factory" is opened
+    And the link in the Mayor's message is tapped
+    Then the bead page of "mw-f758y.30.2" is shown
+    When the header Back is tapped
+    Then the Talk thread "Factory" shows the message with the link, not the Map or the thread list
+
+  Scenario: mw-t64a3.21: a link in a Needs card opens the bead in the app, and Back shows Needs you
+    Given the factory is live with links in its words and his key is unlocked
+    When the cockpit opens
+    And the link in the alarm card is tapped
+    Then the bead page of "mw-f758y.30.2" is shown
+    When the header Back is tapped
+    Then Needs you shows its cards again
+
+  Scenario: mw-t64a3.21: a bead page opened cold still goes Back to the Map
+    Given the factory is live and his key is unlocked
+    When the bead "mw-f758y.30.2" is opened
+    And the header Back is tapped
+    Then the Map is shown

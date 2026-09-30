@@ -16,7 +16,7 @@ import { sharesRepo, vaultRepo } from '../../src/data/repositories';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { stopLive } from '../../src/services/live';
-import { decryptMessage, type MessagePayload } from '../../src/services/messages';
+import { decryptMessage, encryptMessage, type MessagePayload } from '../../src/services/messages';
 import { sealDocument } from '../../src/services/documents';
 import { MAYOR, STALE_FACTS_END, fixtureDetail, fixtureRecords, fixtureStaleNeed, fixtureView } from '../../tests/support/cockpit-fixture';
 import { approvalMessage, stepSha256 } from '../../src/model/hands';
@@ -45,13 +45,23 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-async function stubBackend(options: { beadlessAlarm?: boolean; stale?: boolean } = {}): Promise<void> {
+// mw-t64a3.21: the Mayor's links to a bead, as they reach him: the app's own address.
+const BEAD_LINK = `${window.location.origin}/?v=bead&id=mw-f758y.30.2`;
+
+type BackendOptions = { beadlessAlarm?: boolean; stale?: boolean; links?: boolean };
+
+async function stubBackend(options: BackendOptions = {}): Promise<void> {
   const now = Date.now();
   const fixture = fixtureView(now);
   if (options.beadlessAlarm) fixture.needs = fixture.needs.map((need) => (need.kind === 'alarm' ? { ...need, bead: '', epic: '' } : need));
   if (options.stale) fixture.needs = [...fixture.needs, fixtureStaleNeed(now)];
+  if (options.links) fixture.needs = fixture.needs.map((need) => (need.kind === 'alarm' ? { ...need, text: `${need.text}\n\n[Open the alarm's bead](${BEAD_LINK})` } : need));
   const view = await sealDocument(JSON.stringify(fixture), MAYOR.toHex(), HIM_PUB);
   const records = fixtureRecords(HIM, now);
+  if (options.links) {
+    const payload = encryptMessage({ text: `Details are on [Open the bead](${BEAD_LINK}).`, class: 'message', senderPrivateKeyHex: MAYOR.toHex(), recipientPublicKeyHex: HIM_PUB });
+    records.push({ seq: records.length + 1, txid: `direct:${'d'.repeat(64)}`, vout: 0, payload: { ...payload, ts: Math.floor(now / 1000) - 60 } });
+  }
   const details = new Map<string, string>();
   for (const id of ['mw-f758y.30.2', 'mw-2rbm.10', 'mw-gq6.132']) details.set(id, await sealDocument(JSON.stringify(fixtureDetail(id, now)), MAYOR.toHex(), HIM_PUB));
 
@@ -94,7 +104,7 @@ async function letTheSendFinish(bead: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
-async function fresh(options: { beadlessAlarm?: boolean; stale?: boolean } = {}): Promise<void> {
+async function fresh(options: BackendOptions = {}): Promise<void> {
   cleanup();
   stopLive();
   lock();
@@ -117,6 +127,11 @@ async function openAt(search: string): Promise<void> {
 
 async function liveAndUnlocked(): Promise<void> {
   await fresh();
+  setKey(HIM_KEY);
+}
+
+async function liveWithLinks(): Promise<void> {
+  await fresh({ links: true });
   setKey(HIM_KEY);
 }
 
@@ -637,6 +652,65 @@ describeFeature(feature, ({ Scenario }) => {
       expect(within(actions).queryByRole('button', { name: 'Keep' })).toBeNull();
       expect(within(actions).queryByRole('button', { name: 'Close' })).toBeNull();
       await letTheSendFinish('mw-gq6.132');
+    });
+  });
+
+  Scenario('mw-t64a3.21: a link in a Talk message opens the bead in the app, and Back shows the same thread again', ({ Given, When, Then, And }) => {
+    Given('the factory is live with links in its words and his key is unlocked', liveWithLinks);
+    When('the Talk thread "Factory" is opened', async () => {
+      await openAt('?v=talk&t=general');
+    });
+    And('the link in the Mayor\'s message is tapped', async () => {
+      const conversation = await screen.findByTestId('conversation');
+      await userEvent.click(await within(conversation).findByRole('link', { name: 'Open the bead' }));
+    });
+    Then('the bead page of "mw-f758y.30.2" is shown', async () => {
+      expect(await screen.findByRole('button', { name: 'Acceptance criteria' })).toBeInTheDocument();
+      expect(window.location.search).toBe('?v=bead&id=mw-f758y.30.2');
+    });
+    When('the header Back is tapped', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    });
+    Then('the Talk thread "Factory" shows the message with the link, not the Map or the thread list', async () => {
+      await waitFor(() => expect(window.location.search).toBe('?v=talk&t=general'));
+      const conversation = await screen.findByTestId('conversation');
+      expect(await within(conversation).findByRole('link', { name: 'Open the bead' })).toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-t64a3.21: a link in a Needs card opens the bead in the app, and Back shows Needs you', ({ Given, When, Then, And }) => {
+    Given('the factory is live with links in its words and his key is unlocked', liveWithLinks);
+    When('the cockpit opens', async () => {
+      await openAt('');
+      await screen.findAllByTestId('need-card');
+    });
+    And('the link in the alarm card is tapped', async () => {
+      await userEvent.click(await within(await screen.findByRole('article', { name: /^Alarm:/ })).findByRole('link', { name: "Open the alarm's bead" }));
+    });
+    Then('the bead page of "mw-f758y.30.2" is shown', async () => {
+      expect(await screen.findByRole('button', { name: 'Acceptance criteria' })).toBeInTheDocument();
+      expect(window.location.search).toBe('?v=bead&id=mw-f758y.30.2');
+    });
+    When('the header Back is tapped', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    });
+    Then('Needs you shows its cards again', async () => {
+      await waitFor(() => expect(window.location.search).toBe(''));
+      expect((await screen.findAllByTestId('need-card')).length).toBeGreaterThan(1);
+    });
+  });
+
+  Scenario('mw-t64a3.21: a bead page opened cold still goes Back to the Map', ({ Given, When, Then, And }) => {
+    Given('the factory is live and his key is unlocked', liveAndUnlocked);
+    When('the bead "mw-f758y.30.2" is opened', async () => {
+      await openAt('?v=bead&id=mw-f758y.30.2');
+    });
+    And('the header Back is tapped', async () => {
+      await screen.findByRole('button', { name: 'Acceptance criteria' });
+      await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    });
+    Then('the Map is shown', async () => {
+      await waitFor(() => expect(window.location.search).toMatch(/^\?v=map/), { timeout: 3000 });
     });
   });
 });

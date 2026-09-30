@@ -9,6 +9,11 @@ export type NeedKind = 'question' | 'approve' | 'verify' | 'stale' | 'demo' | 'h
 
 export const NEED_KINDS: NeedKind[] = ['question', 'approve', 'verify', 'stale', 'demo', 'hands', 'alarm'];
 
+/** docs/protocol.md §11: who a card waits on. Only `you` cards can be acted on now. */
+export type WaitsFor = 'you' | 'mayor' | 'factory';
+
+export const WAITS_FOR: WaitsFor[] = ['you', 'mayor', 'factory'];
+
 export interface BeadPath {
   rig: string;
   branch: string;
@@ -52,6 +57,12 @@ export interface Need {
   blocks: number;
   /** docs/protocol.md §17: a `hands` need's steps he can approve and run from here. */
   steps: HandsStep[];
+  /** §11: who the card waits on. An older mw sends none, and every card was his then. */
+  waits_for?: WaitsFor;
+  /** §11: a hands or demo card that cannot be acted on yet offers neither Approve nor Done. */
+  not_ready?: boolean;
+  /** §11: what a not_ready card waits on: its open blockers' titles, or the Mayor's own words. */
+  waiting_on?: string[];
 }
 
 export interface HostState {
@@ -186,6 +197,9 @@ function decodeNeed(value: unknown): Need | undefined {
     options: strings(raw.options),
     blocks: num(raw.blocks),
     steps: decodeHandsSteps(raw.steps),
+    waits_for: WAITS_FOR.includes(raw.waits_for as WaitsFor) ? (raw.waits_for as WaitsFor) : 'you',
+    not_ready: raw.not_ready === true,
+    waiting_on: strings(raw.waiting_on),
   };
 }
 

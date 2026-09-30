@@ -14,8 +14,8 @@ import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
 import { TopicForm } from './TopicForm';
 import { topicKey } from './topicKey';
-import { useBeadDetail, useMessages, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
-import { mergeConversation, previewText, type ConversationItem } from '../model/conversation';
+import { useBeadComments, useBeadDetail, useMessages, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { groupGeneral, type GeneralThread } from '../model/generalThreads';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
@@ -37,11 +37,11 @@ function ThreadRow({ thread, active, onToggleArchive }: { thread: ThreadSummary;
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <span className={cx('truncate text-[14.5px]', thread.unread ? 'font-semibold' : 'font-medium')}>{thread.title}</span>
-            {thread.last && <TimeAgo at={thread.last.ts} className="ml-auto shrink-0 text-[11.5px] text-faint" />}
+            {thread.latest && <TimeAgo at={thread.latest.at} className="ml-auto shrink-0 text-[11.5px] text-faint" />}
           </span>
           <span className="flex items-center gap-2">
             <span className="line-clamp-1 flex-1 text-[13px] text-muted">
-              {thread.last ? `${thread.last.direction === 'sent' ? 'You: ' : ''}${previewText(thread.last)}` : thread.subtitle}
+              {thread.latest ? `${thread.latest.sent ? 'You: ' : ''}${thread.latest.preview}` : thread.subtitle}
             </span>
             {thread.unread > 0 && (
               <span className="rounded-full bg-accent px-1.5 text-[11px] leading-[18px] font-semibold text-accent-fg">{thread.unread}</span>
@@ -279,7 +279,8 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
   const speakItems = useMemo(() => mergeConversation(rows), [rows]);
   const messages = useMessages();
   const choices = useThreadArchive();
-  const threads = useMemo(() => summariseThreads(messages, view?.index, choices), [messages, view, choices]);
+  const comments = useBeadComments();
+  const threads = useMemo(() => summariseThreads(messages, view?.index, choices, undefined, comments), [messages, view, choices, comments]);
   const currentThread = threads.find((t) => t.key === current);
   const toggleArchive = (thread: ThreadSummary) => {
     void settingsRepo.setThreadArchived(thread.key, !thread.archived);

@@ -6,10 +6,11 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { liveQuery } from 'dexie';
 import type { AnswerRow, ArchiveChoices, BeadDetailRow, MessageRow, ViewRow } from '../data/db';
 import { answersRepo, beadDetailsRepo, messagesRepo, settingsRepo, viewRepo } from '../data/repositories';
-import { decodeBeadDetail, decodeView, type BeadDetail } from '../model/view';
+import { decodeBeadDetail, decodeView, type BeadComment, type BeadDetail } from '../model/view';
 import { indexView, type ViewIndex } from '../model/tree';
 import { getKey, onKeyChange } from '../services/keySession';
 import { fetchBeadDetail } from '../services/beads';
+import { threadKey } from '../services/threads';
 import { getLiveState } from '../services/live';
 
 export function useLiveQuery<T>(query: () => Promise<T>, deps: unknown[], initial: T): T {
@@ -105,6 +106,23 @@ export function useBeadDetail(id: string | undefined): { detail?: BeadDetail; st
 
   const status: DetailStatus = !id || !key ? 'idle' : result?.token === token ? result.status : 'loading';
   return { detail, status, error: result?.token === token ? result.error : undefined, refresh: () => setAttempt((n) => n + 1) };
+}
+
+/** The stored comments of every bead whose detail this phone holds, by its thread key
+ * ('bead:<id>'): the same comments useBeadDetail hands a thread screen. */
+export function useBeadComments(): ReadonlyMap<string, BeadComment[]> {
+  const rows = useLiveQuery(() => beadDetailsRepo.getAll(), [], [] as BeadDetailRow[]);
+  return useMemo(() => {
+    const byThread = new Map<string, BeadComment[]>();
+    for (const row of rows) {
+      try {
+        byThread.set(threadKey({ bead: row.id }) as string, decodeBeadDetail(row.plaintext).comments);
+      } catch {
+        // an undecodable copy shows no comments, as useBeadDetail does
+      }
+    }
+    return byThread;
+  }, [rows]);
 }
 
 /** Whether the viewport is wide enough for two panes (the `lg` breakpoint). */

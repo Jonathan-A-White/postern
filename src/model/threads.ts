@@ -6,6 +6,9 @@
 import type { ArchiveChoices, MessageRow } from '../data/db';
 import { isClosed, type ViewIndex } from './tree';
 import { parseThreadKey } from '../services/threads';
+import { markdownToPlain } from '../markdown/plain';
+import { mergeConversation, previewText } from './conversation';
+import type { BeadComment } from './view';
 
 export const GENERAL = 'general';
 
@@ -15,11 +18,23 @@ export const AUTO_ARCHIVE_AFTER_MS = 3 * 86_400_000;
 
 export type { ArchiveChoices };
 
+/** The newest entry the thread itself shows (its last message, or a bead comment
+ * newer than it): what the Talk row reads its time and preview from. */
+export interface ThreadLatest {
+  /** Milliseconds since the epoch. */
+  at: number;
+  /** His own message, so the preview reads 'You: …'. */
+  sent: boolean;
+  preview: string;
+}
+
 export interface ThreadSummary {
   key: string;
   title: string;
   subtitle: string;
+  /** The newest Postern message; archiving and his hand-made choices go by it. */
   last?: MessageRow;
+  latest?: ThreadLatest;
   unread: number;
   archived: boolean;
 }
@@ -44,8 +59,26 @@ function isArchived(summary: ThreadSummary, index: ViewIndex | undefined, choice
   return (!bead || isClosed(bead)) && now - lastMs > AUTO_ARCHIVE_AFTER_MS;
 }
 
-export function summariseThreads(messages: MessageRow[], index?: ViewIndex, choices: ArchiveChoices = {}, now: number = Date.now()): ThreadSummary[] {
+/** The newest entry the thread screen would show: the same merge it uses (mergeConversation),
+ * so a bead's comment newer than its last message is the row's time and preview. */
+function latestOf(rows: MessageRow[], comments: BeadComment[]): ThreadLatest | undefined {
+  const item = mergeConversation(rows, comments).at(-1);
+  if (!item) return undefined;
+  if (item.source === 'comment') return { at: item.at, sent: item.speaker === 'you', preview: markdownToPlain(item.text) };
+  const row = rows.find((candidate) => candidate.id === item.id);
+  return row && { at: item.at, sent: row.direction === 'sent', preview: previewText(row) };
+}
+
+/** `comments` are the stored bead comments by thread key (e.g. 'bead:mw-x'): the Mayor's notes the thread shows beside the messages. */
+export function summariseThreads(
+  messages: MessageRow[],
+  index?: ViewIndex,
+  choices: ArchiveChoices = {},
+  now: number = Date.now(),
+  comments: ReadonlyMap<string, BeadComment[]> = new Map(),
+): ThreadSummary[] {
   const byKey = new Map<string, ThreadSummary>();
+  const rowsByKey = new Map<string, MessageRow[]>();
   byKey.set(GENERAL, { key: GENERAL, ...titleFor(GENERAL, index), unread: 0, archived: false });
   for (const row of messages) {
     const key = row.thread ?? GENERAL;
@@ -53,9 +86,17 @@ export function summariseThreads(messages: MessageRow[], index?: ViewIndex, choi
     if (!summary.last || row.ts >= summary.last.ts) summary.last = row;
     if (row.direction === 'received' && !row.read) summary.unread += 1;
     byKey.set(key, summary);
+    const inThread = rowsByKey.get(key);
+    if (inThread) inThread.push(row);
+    else rowsByKey.set(key, [row]);
   }
-  for (const summary of byKey.values()) summary.archived = isArchived(summary, index, choices, now);
+  for (const summary of byKey.values()) {
+    summary.archived = isArchived(summary, index, choices, now);
+    const threadComments = comments.get(summary.key);
+    if (threadComments?.length && summary.last) summary.latest = latestOf(rowsByKey.get(summary.key) ?? [], threadComments);
+    if (!summary.latest && summary.last) summary.latest = { at: summary.last.ts * 1000, sent: summary.last.direction === 'sent', preview: previewText(summary.last) };
+  }
   const general = byKey.get(GENERAL)!;
-  const rest = [...byKey.values()].filter((summary) => summary.key !== GENERAL).sort((a, b) => (b.last?.ts ?? 0) - (a.last?.ts ?? 0));
+  const rest = [...byKey.values()].filter((summary) => summary.key !== GENERAL).sort((a, b) => (b.latest?.at ?? 0) - (a.latest?.at ?? 0));
   return [general, ...rest];
 }

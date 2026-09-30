@@ -1,8 +1,11 @@
 package woc
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,26 +29,146 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) (*Client, *int32) {
 	return client, &calls
 }
 
-func TestGetHistory(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/address/mAnchor/history" {
-			t.Errorf("path = %q, want /address/mAnchor/history", r.URL.Path)
+// pagedHistory is a stub of WhatsOnChain's paged history routes for address:
+// /confirmed/history serves pages (pages[0] the newest, each in ascending
+// height), chained by nextPageToken, and /unconfirmed/history serves
+// unconfirmed.
+func pagedHistory(t *testing.T, address string, pages [][]string, heights map[string]int, unconfirmed []string) http.HandlerFunc {
+	t.Helper()
+	token := func(i int) string { return fmt.Sprintf("page+%d/token=", i) } // escaping matters
+	return func(w http.ResponseWriter, r *http.Request) {
+		entries := func(txids []string) []map[string]any {
+			out := []map[string]any{}
+			for _, txid := range txids {
+				out = append(out, map[string]any{"tx_hash": txid, "height": heights[txid]})
+			}
+			return out
 		}
-		w.Write([]byte(`[{"tx_hash":"tx1","height":100},{"tx_hash":"tx2"}]`))
-	})
+		reply := map[string]any{"address": address, "script": "76a9", "error": ""}
+		switch r.URL.Path {
+		case "/address/" + address + "/unconfirmed/history":
+			reply["result"] = entries(unconfirmed)
+		case "/address/" + address + "/confirmed/history":
+			page := 0
+			if got := r.URL.Query().Get("token"); got != "" {
+				page = -1
+				for i := range pages {
+					if token(i) == got {
+						page = i
+					}
+				}
+				if page < 0 {
+					t.Errorf("unknown token %q", got)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+			}
+			reply["result"] = entries(pages[page])
+			if page+1 < len(pages) {
+				reply["nextPageToken"] = token(page + 1)
+			}
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(reply)
+	}
+}
+
+func TestGetHistoryReadsEveryPageOldestFirstWithUnconfirmedLast(t *testing.T) {
+	// 207 confirmed transactions at heights 1..207 in three pages of 100,
+	// 100 and 7 (newest page first, each page ascending), and one unconfirmed.
+	heights := map[string]int{}
+	var all []string
+	for h := 1; h <= 207; h++ {
+		txid := fmt.Sprintf("tx%03d", h)
+		heights[txid] = h
+		all = append(all, txid)
+	}
+	pages := [][]string{all[107:207], all[7:107], all[0:7]}
+	client, _ := newTestClient(t, pagedHistory(t, "mAnchor", pages, heights, []string{"mempool"}))
 
 	history, err := client.GetHistory("mAnchor")
 	if err != nil {
 		t.Fatalf("GetHistory: %v", err)
 	}
-	if len(history) != 2 {
-		t.Fatalf("len(history) = %d, want 2", len(history))
+	if len(history) != 208 {
+		t.Fatalf("len(history) = %d, want 208", len(history))
 	}
-	if history[0].TxHash != "tx1" || history[0].Height != 100 {
-		t.Fatalf("history[0] = %+v", history[0])
+	seen := map[string]bool{}
+	for i, entry := range history[:207] {
+		if entry.TxHash != all[i] || entry.Height != i+1 {
+			t.Fatalf("history[%d] = %+v, want %s at height %d (oldest first)", i, entry, all[i], i+1)
+		}
+		seen[entry.TxHash] = true
 	}
-	if history[1].TxHash != "tx2" || history[1].Height != 0 {
-		t.Fatalf("history[1] = %+v, want height 0 for unconfirmed", history[1])
+	if last := history[207]; last.TxHash != "mempool" || last.Height != 0 {
+		t.Fatalf("history[207] = %+v, want the unconfirmed one last at height 0", last)
+	}
+	if seen["mempool"] || len(seen) != 207 {
+		t.Fatalf("a tx_hash appears more than once")
+	}
+}
+
+func TestGetHistoryListsATransactionOnceWhenItShowsInTwoReplies(t *testing.T) {
+	// A transaction that confirms between the reads shows as both
+	// unconfirmed and confirmed; a block landing between pages repeats an
+	// entry across two of them.
+	heights := map[string]int{"a": 1, "b": 2, "c": 3}
+	pages := [][]string{{"b", "c"}, {"a", "b"}}
+	client, _ := newTestClient(t, pagedHistory(t, "mAnchor", pages, heights, []string{"c", "d"}))
+
+	history, err := client.GetHistory("mAnchor")
+	if err != nil {
+		t.Fatalf("GetHistory: %v", err)
+	}
+	want := []HistoryEntry{{"a", 1}, {"b", 2}, {"c", 3}, {"d", 0}}
+	if fmt.Sprint(history) != fmt.Sprint(want) {
+		t.Fatalf("history = %+v, want %+v", history, want)
+	}
+}
+
+func TestGetHistoryFailsPastThePageCapRatherThanReturningAShortList(t *testing.T) {
+	client, calls := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/unconfirmed/history") {
+			w.Write([]byte(`{"address":"mEndless","result":[],"error":""}`))
+			return
+		}
+		n := len(r.URL.Query().Get("token"))
+		w.Write([]byte(fmt.Sprintf(`{"address":"mEndless","result":[{"tx_hash":"tx%d","height":%d}],"nextPageToken":"%s","error":""}`,
+			n, 1000-n, strings.Repeat("x", n+1))))
+	})
+
+	history, err := client.GetHistory("mEndless")
+	if err == nil {
+		t.Fatalf("GetHistory returned %d entries and no error, want an error past the cap", len(history))
+	}
+	if history != nil {
+		t.Fatalf("history = %d entries, want none alongside the error", len(history))
+	}
+	if !strings.Contains(err.Error(), "mEndless") || !strings.Contains(err.Error(), "50 pages") {
+		t.Fatalf("error = %q, want it to name the address and the cap of 50 pages", err)
+	}
+	if *calls > 52 {
+		t.Fatalf("calls = %d, want the reads to stop at the cap", *calls)
+	}
+}
+
+func TestGetHistoryTreatsAnErrorFieldAsAnError(t *testing.T) {
+	for _, route := range []string{"/confirmed/history", "/unconfirmed/history"} {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, route) {
+				w.Write([]byte(`{"address":"mAnchor","result":[],"error":"address history too large"}`))
+				return
+			}
+			w.Write([]byte(`{"address":"mAnchor","result":[{"tx_hash":"tx1","height":5}],"error":""}`))
+		})
+
+		history, err := client.GetHistory("mAnchor")
+		if err == nil || !strings.Contains(err.Error(), "address history too large") {
+			t.Fatalf("%s: history = %+v, err = %v, want the reply's error", route, history, err)
+		}
 	}
 }
 
@@ -141,8 +264,8 @@ func TestRetriesAfterRateLimit(t *testing.T) {
 		w.Write([]byte(`[]`))
 	})
 
-	if _, err := client.GetHistory("mAddr"); err != nil {
-		t.Fatalf("GetHistory: %v", err)
+	if _, err := client.GetUtxos("mAddr"); err != nil {
+		t.Fatalf("GetUtxos: %v", err)
 	}
 	if *calls != 2 {
 		t.Fatalf("calls = %d, want 2 (one 429, one success)", *calls)
@@ -154,7 +277,7 @@ func TestGivesUpAfterRepeatedRateLimit(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	})
 
-	_, err := client.GetHistory("mAddr")
+	_, err := client.GetUtxos("mAddr")
 	if err == nil {
 		t.Fatal("expected an error after repeated 429s, got nil")
 	}

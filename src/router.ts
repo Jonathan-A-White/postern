@@ -1,8 +1,9 @@
 // src/router.ts — moves between the cockpit's places without a page load. Every
 // in-app link is a bare query string (`?v=…`, src/nav/route.ts; older `?screen=`
-// links too) or the root; a plain click on one becomes history.pushState, so
-// the unlocked key (src/services/keySession.ts) and the live connection
-// (src/services/live.ts) carry across. Back and Forward re-render the same way.
+// links too), the root, or an absolute link to this app's own address; a plain
+// click on one becomes history.pushState, so the unlocked key
+// (src/services/keySession.ts) and the live connection (src/services/live.ts)
+// carry across. Back and Forward re-render the same way.
 import { useSyncExternalStore } from 'react';
 import { formatRoute, parseRoute, type Route } from './nav/route';
 
@@ -52,8 +53,23 @@ function isPlainLeftClick(event: MouseEvent): boolean {
   return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 }
 
-function isRoutableHref(href: string): boolean {
+function isRelativeRoute(href: string): boolean {
   return href.startsWith('?') || href === '/' || href.startsWith('/?');
+}
+
+/** Where a link goes inside the app, or null when it leaves it: a relative route
+ * as written, or an absolute link to this app's own origin (the ones the Mayor
+ * sends) as its path and query. */
+export function inAppHref(href: string): string | null {
+  if (isRelativeRoute(href)) return href;
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  if (url.origin !== window.location.origin || url.pathname !== '/') return null;
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 function handleScreenLinkClick(event: MouseEvent): void {
@@ -65,10 +81,11 @@ function handleScreenLinkClick(event: MouseEvent): void {
   if (anchor.target && anchor.target !== '_self') return;
 
   const hrefValue = anchor.getAttribute('href');
-  if (!hrefValue || !isRoutableHref(hrefValue)) return;
+  const destination = hrefValue ? inAppHref(hrefValue) : null;
+  if (destination === null) return;
 
   event.preventDefault();
-  window.history.pushState({ app: true }, '', hrefValue);
+  window.history.pushState({ app: true }, '', destination);
   emitChange();
 }
 

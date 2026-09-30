@@ -52,4 +52,20 @@ describe('Markdown', () => {
     expect(document.querySelector('img')).toBeNull();
     expect(screen.getByText(/<script>alert\(1\)<\/script>/)).toBeInTheDocument();
   });
+
+  it('renders a link to this app\'s own origin, or a relative route, in place; any other origin opens a new tab (mw-t64a3.21)', () => {
+    const own = `${window.location.origin}/?v=bead&id=mw-x`;
+    render(<Markdown text={`[bead](${own}) and [needs](?v=needs) and [elsewhere](https://example.org/)`} />);
+
+    for (const name of ['bead', 'needs']) {
+      const link = screen.getByRole('link', { name });
+      expect(link).not.toHaveAttribute('target');
+    }
+    expect(screen.getByRole('link', { name: 'bead' })).toHaveAttribute('href', own);
+    expect(screen.getByRole('link', { name: 'needs' })).toHaveAttribute('href', '?v=needs');
+
+    const other = screen.getByRole('link', { name: 'elsewhere' });
+    expect(other).toHaveAttribute('target', '_blank');
+    expect(other).toHaveAttribute('rel', 'noopener noreferrer');
+  });
 });

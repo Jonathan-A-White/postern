@@ -10,6 +10,7 @@
 import { isValidElement, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { inAppHref } from '../router';
 import { Mermaid } from './Mermaid';
 
 function mermaidSource(children: ReactNode): string | null {
@@ -25,11 +26,18 @@ function mermaidSource(children: ReactNode): string | null {
 }
 
 const components: Components = {
-  a: ({ href, children, ...props }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-      {children}
-    </a>
-  ),
+  // mw-t64a3.21: a link to this app's own address is an in-app move (src/router.ts
+  // takes the click), so Back returns to where it was tapped; any other opens a new tab.
+  a: ({ href, children, ...props }) =>
+    href && inAppHref(href) !== null ? (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    ) : (
+      <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+        {children}
+      </a>
+    ),
   pre: ({ children, ...props }) => {
     const source = mermaidSource(children);
     if (source !== null) {

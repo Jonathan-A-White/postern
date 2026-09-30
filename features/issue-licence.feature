@@ -39,3 +39,16 @@ Feature: Issuing a licence to another key, and ending it (mw-yjxcw.3)
     Then I see two licences, the newest first
     And the first mint is marked revoked
     And the second is not
+
+  Scenario: AC7: revoking a licence this key did not issue is refused and spends nothing
+    Given I hold enough sats to issue a licence
+    And the chain holds a mint that someone else signed
+    When I revoke that licence
+    Then it is refused as not issued
+    And nothing is broadcast
+    And no coin was fetched or recorded as spent
+
+  Scenario: AC8: a revoke whose origin differs only in letter case shows the licence as revoked
+    Given the chain holds a mint I signed and a revoke of it I signed that names the origin in capitals
+    When I list the licences I issued
+    Then I see one licence and it is marked revoked

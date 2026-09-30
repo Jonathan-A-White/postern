@@ -219,4 +219,52 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(listed.find((l) => l.txid === secondTxid)?.revoked).toBe(false);
     });
   });
+  Scenario('AC7: revoking a licence this key did not issue is refused and spends nothing', ({ Given, And, When, Then }) => {
+    let origin = '';
+    let provider: FakeChainProvider;
+    Given('I hold enough sats to issue a licence', async () => {
+      await db.pendingSpends.clear();
+      fetchImpl = backendWith(issueCost().totalSatoshis + 5_000);
+    });
+    And('the chain holds a mint that someone else signed', async () => {
+      provider = new FakeChainProvider();
+      const hex = await signedRecordTxHex(OTHER, 'M', { collection: 'cairn', holder: HOLDER_ADDRESS }, 0);
+      const txid = Transaction.fromHex(hex).id('hex');
+      provider.addTransaction(ISSUER_ADDRESS, txid, hex, 100);
+      origin = `${txid}:0`;
+    });
+    When('I revoke that licence', async () => {
+      await capture(revokeLicence({ origin, issuerKey: ISSUER_MASTER, fetchImpl: asFetch(), provider }));
+    });
+    Then('it is refused as not issued', () => {
+      expect(outcome.error?.code).toBe('not-issued');
+      expect(outcome.error?.message).toBe('That licence is not one you issued.');
+    });
+    And('nothing is broadcast', () => {
+      expect(broadcasts(fetchImpl)).toHaveLength(0);
+    });
+    And('no coin was fetched or recorded as spent', async () => {
+      expect(fetchImpl.mock.calls.some(([url]) => String(url).includes('/utxos/'))).toBe(false);
+      expect(await db.pendingSpends.count()).toBe(0);
+    });
+  });
+
+  Scenario('AC8: a revoke whose origin differs only in letter case shows the licence as revoked', ({ Given, When, Then }) => {
+    const provider = new FakeChainProvider();
+    let listed: IssuedLicenceEntry[] = [];
+    Given('the chain holds a mint I signed and a revoke of it I signed that names the origin in capitals', async () => {
+      const mintHex = await signedRecordTxHex(ISSUER, 'M', { collection: 'cairn', holder: HOLDER_ADDRESS }, 0);
+      const txid = Transaction.fromHex(mintHex).id('hex');
+      provider.addTransaction(ISSUER_ADDRESS, txid, mintHex, 100);
+      const revokeHex = await signedRecordTxHex(ISSUER, 'W', { kind: 'revoke', origin: `${txid}:0`.toUpperCase() }, 1);
+      provider.addTransaction(ISSUER_ADDRESS, Transaction.fromHex(revokeHex).id('hex'), revokeHex, 110);
+    });
+    When('I list the licences I issued', async () => {
+      listed = await issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, provider });
+    });
+    Then('I see one licence and it is marked revoked', () => {
+      expect(listed).toHaveLength(1);
+      expect(listed[0].revoked).toBe(true);
+    });
+  });
 });

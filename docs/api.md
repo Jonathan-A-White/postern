@@ -565,11 +565,23 @@ not home must not act as a second backend. In standby:
   any work, **except** the routes a send needs: `GET /api/challenge`,
   `POST /api/messages`, `GET /api/me`, `GET /api/utxos/{address}` and
   `POST /api/broadcast`, so a move-home message can still be sent when the home
-  is dead;
+  is dead. With `POSTERN_PEERS` naming the home's backend these five are
+  relayed to it unchanged and the home's answer returned as is, so the home
+  does the work once; they are served here only when the home cannot be
+  reached at all (see below);
 - `GET /healthz` answers `200` with `{"ok": true, "standby": true, "home": …}`;
 - web push notifications are not sent;
 - the chain poll still runs and the index is kept, the event hub still hears
   every record, and the on-message hook still runs (`mw` decides what to apply).
+
+`POSTERN_PEERS` is a comma list of `<host>=<url>` (e.g.
+`laptop=http://10.88.0.2:8787,desktop=http://10.88.0.3:8787`), looked up by the
+name the home command printed. A relay that cannot connect to the home (refused,
+or no connection within 3 seconds; logged) is served here as before; once the
+home has any of the request a failure is a `502` and the request is never served
+here, so a POST does not run twice. With no URL for the home (logged once) every
+send route is served here. A relayed request carries `X-Postern-Relayed: 1`, and
+a standby that receives one serves it itself. The home ignores `POSTERN_PEERS`.
 
 With `POSTERN_HOME_CMD` unset, nothing changes.
 
@@ -589,6 +601,7 @@ With `POSTERN_HOME_CMD` unset, nothing changes.
 | `POSTERN_BEAD_CMD` | The command `GET /api/beads/{id}` runs, split on whitespace, the id appended (e.g. `mw postern bead`) | *(unset: 501)* |
 | `POSTERN_ON_MESSAGE` | Shell command (`sh -c`) run after records are indexed (e.g. `mw postern inbox --apply`) | *(unset: no hook)* |
 | `POSTERN_HOME_CMD` | Shell command (`sh -c`), exit 0 = this host is home (e.g. `mw home --check`); checked at start and every 30 s; see Standby | *(unset: never standby)* |
+| `POSTERN_PEERS` | Comma-separated `host=url` pairs (each url `http(s)://host[:port]`, no path): each host's backend, looked up by the home's name so a standby relays its send routes to the home; see Standby | *(unset: a standby serves the send routes itself)* |
 | `POSTERN_MAYOR_KEY` | The Mayor's compressed public key, hex (66 characters, `02`/`03` first), answered by `GET /api/me` | *(unset: `""`)* |
 | `POSTERN_ISSUER_KEY` | The licence issuer's compressed public key, hex (66 characters, `02`/`03` first); a mint counts only if this key unlocked one of its inputs | *(unset: any mint counts, with a warning)* |
 | `POSTERN_COLLECTIONS` | Comma-separated collections a licence mint may name | `postern,spellforge-leaderboard-testnet` |

@@ -157,7 +157,7 @@ func newApp(cfg config.Config) (*app, error) {
 		}
 	}
 
-	return &app{handler: standby.Middleware(home, handler), start: start, close: func() { store.Close() }}, nil
+	return &app{handler: standby.Middleware(home, handler, standby.WithPeers(cfg.Peers)), start: start, close: func() { store.Close() }}, nil
 }
 
 // buildFanout is the one fan-out for "a record was indexed": web push (silent

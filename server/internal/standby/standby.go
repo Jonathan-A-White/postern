@@ -7,6 +7,9 @@
 // needs, so the Governor can still send a move-home message when the home is
 // dead; /healthz answers 200 with standby true; and push notifications are
 // not sent. The chain poll, the index and the on-message hook run as ever.
+// A send route is passed on to the home's backend (POSTERN_PEERS) so the
+// home's index holds the Governor's sends; it is served here only when the
+// home cannot be reached (relay.go).
 package standby
 
 import (
@@ -184,11 +187,14 @@ func writeJSON(w http.ResponseWriter, status int, b body) {
 
 // Middleware wraps next so that, while m is in standby, /healthz answers 200
 // with standby true and every /api route but the send routes answers 503
-// before next does any work. At home, or with m nil, it is next untouched.
-func Middleware(m *Monitor, next http.Handler) http.Handler {
+// before next does any work. A send route is first relayed to the home's
+// backend when WithPeers names one (relay.go) and served by next only when
+// that cannot be done. At home, or with m nil, it is next untouched.
+func Middleware(m *Monitor, next http.Handler, opts ...MiddlewareOption) http.Handler {
 	if m == nil {
 		return next
 	}
+	rl := newRelay(opts, log.Printf)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if m.Standby() {
 			switch {
@@ -197,6 +203,8 @@ func Middleware(m *Monitor, next http.Handler) http.Handler {
 				return
 			case strings.HasPrefix(r.URL.Path, "/api/") && !isSendRoute(r):
 				writeJSON(w, http.StatusServiceUnavailable, body{Standby: true, Home: m.Home()})
+				return
+			case isSendRoute(r) && rl.try(w, r, m.Home()):
 				return
 			}
 		}

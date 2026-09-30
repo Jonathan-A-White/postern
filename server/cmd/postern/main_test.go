@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -113,15 +115,26 @@ func TestAppServesTheV2RoutesBehindTheLicenceProof(t *testing.T) {
 // standbyApp builds the app with POSTERN_HOME_CMD set to homeCmd.
 func standbyApp(t *testing.T, homeCmd string) *httptest.Server {
 	t.Helper()
-	cfg, err := config.Load(func(key string) string {
-		return map[string]string{
-			"POSTERN_ANCHOR":    "mt6vaAWeFxu2qC6pPs7bsqTNvv87dCwMW5",
-			"POSTERN_DATA":      t.TempDir(),
-			"POSTERN_WOC_BASE":  "http://unused.invalid",
-			"POSTERN_VIEW_FILE": "/nonexistent/postern-view.txt",
-			"POSTERN_HOME_CMD":  homeCmd,
-		}[key]
-	})
+	server, _ := standbyAppWith(t, homeCmd, nil)
+	return server
+}
+
+// standbyAppWith is standbyApp with more environment; it also answers the
+// data directory the index lives in.
+func standbyAppWith(t *testing.T, homeCmd string, more map[string]string) (*httptest.Server, string) {
+	t.Helper()
+	dataDir := t.TempDir()
+	env := map[string]string{
+		"POSTERN_ANCHOR":    "mt6vaAWeFxu2qC6pPs7bsqTNvv87dCwMW5",
+		"POSTERN_DATA":      dataDir,
+		"POSTERN_WOC_BASE":  "http://unused.invalid",
+		"POSTERN_VIEW_FILE": "/nonexistent/postern-view.txt",
+		"POSTERN_HOME_CMD":  homeCmd,
+	}
+	for k, v := range more {
+		env[k] = v
+	}
+	cfg, err := config.Load(func(key string) string { return env[key] })
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
@@ -132,7 +145,7 @@ func standbyApp(t *testing.T, homeCmd string) *httptest.Server {
 	t.Cleanup(app.close)
 	server := httptest.NewServer(app.handler)
 	t.Cleanup(server.Close)
-	return server
+	return server, dataDir
 }
 
 func get(t *testing.T, url string) (int, string) {
@@ -400,5 +413,169 @@ func TestStartingWithoutANonceKeyCreatesOneAndARestartReusesIt(t *testing.T) {
 	second, _ := os.ReadFile(path)
 	if !bytes.Equal(first, second) {
 		t.Fatal("a restart replaced the nonce key")
+	}
+}
+
+// captureLog sends the standard logger's output to the returned function's
+// string for the rest of the test.
+func captureLog(t *testing.T) func() string {
+	t.Helper()
+	var buf bytes.Buffer
+	var mu sync.Mutex
+	log.SetOutput(writerFunc(func(p []byte) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return buf.Write(p)
+	}))
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	return func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return buf.String()
+	}
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+// homeBackend is a stand-in for the home's postern: it answers every request
+// 418 (a status the real backend never gives) and keeps what it was sent.
+func homeBackend(t *testing.T) (*httptest.Server, func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.RequestURI()+" "+r.Header.Get("X-Test")+" "+string(b))
+		mu.Unlock()
+		w.WriteHeader(http.StatusTeapot)
+		io.WriteString(w, "the home's answer")
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), seen...)
+	}
+}
+
+func post(t *testing.T, url, body string) (int, string) {
+	t.Helper()
+	req, _ := http.NewRequest("POST", url, strings.NewReader(body))
+	req.Header.Set("X-Test", "hdr")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+// indexEmpty reports that nothing was written to the index in dataDir.
+func indexEmpty(t *testing.T, dataDir string) bool {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dataDir, "postern-index.jsonl"))
+	return err != nil || len(bytes.TrimSpace(b)) == 0
+}
+
+func TestStandbyRelaysSendsToTheHomesBackend(t *testing.T) {
+	home, seen := homeBackend(t)
+	server, dataDir := standbyAppWith(t, "echo laptop; exit 1", map[string]string{"POSTERN_PEERS": "laptop=" + home.URL})
+
+	code, body := post(t, server.URL+"/api/messages?a=b", `{"m":1}`)
+	if code != http.StatusTeapot || body != "the home's answer" {
+		t.Fatalf("POST /api/messages = %d %q, want the home's 418 answer", code, body)
+	}
+	code, body = get(t, server.URL+"/api/challenge")
+	if code != http.StatusTeapot || body != "the home's answer" {
+		t.Fatalf("GET /api/challenge = %d %q, want the home's 418 answer", code, body)
+	}
+	got := seen()
+	if len(got) != 2 || got[0] != `POST /api/messages?a=b hdr {"m":1}` || got[1] != "GET /api/challenge  " {
+		t.Fatalf("the home saw %q", got)
+	}
+	if !indexEmpty(t, dataDir) {
+		t.Fatal("the standby's own index was written")
+	}
+	// The other /api routes and /healthz are as in standby without peers.
+	if code, _ := get(t, server.URL+"/api/view"); code != http.StatusServiceUnavailable {
+		t.Fatalf("GET /api/view = %d, want 503", code)
+	}
+	if len(seen()) != 2 {
+		t.Fatal("a non-send route reached the home")
+	}
+}
+
+func TestStandbyServesSendsItselfWhenTheHomeIsUnreachable(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := l.Addr().String()
+	l.Close()
+	server, _ := standbyAppWith(t, "echo laptop; exit 1", map[string]string{"POSTERN_PEERS": "laptop=http://" + dead})
+
+	if code, _ := get(t, server.URL+"/api/challenge"); code != http.StatusOK {
+		t.Fatalf("GET /api/challenge = %d, want 200 from the standby itself", code)
+	}
+	if code, _ := post(t, server.URL+"/api/broadcast", "{}"); code != http.StatusUnauthorized {
+		t.Fatalf("POST /api/broadcast = %d, want 401 from the standby itself", code)
+	}
+}
+
+func TestStandbyWithNoPeersServesSendsItselfAndLogsOnce(t *testing.T) {
+	logged := captureLog(t)
+	server, _ := standbyAppWith(t, "echo laptop; exit 1", nil)
+	for i := 0; i < 2; i++ {
+		if code, _ := get(t, server.URL+"/api/challenge"); code != http.StatusOK {
+			t.Fatalf("GET /api/challenge = %d, want 200", code)
+		}
+	}
+	if n := strings.Count(logged(), "POSTERN_PEERS"); n != 1 {
+		t.Fatalf("log lines naming POSTERN_PEERS = %d, want 1: %q", n, logged())
+	}
+}
+
+func TestStandbyDoesNotServeASendTheHomeFailedMidRequest(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				c.Read(make([]byte, 4096))
+				c.Close()
+			}()
+		}
+	}()
+	server, dataDir := standbyAppWith(t, "echo laptop; exit 1", map[string]string{"POSTERN_PEERS": "laptop=http://" + l.Addr().String()})
+	if code, _ := post(t, server.URL+"/api/messages", `{"m":1}`); code != http.StatusBadGateway {
+		t.Fatalf("POST /api/messages = %d, want 502 (not served here)", code)
+	}
+	if !indexEmpty(t, dataDir) {
+		t.Fatal("the standby's own index was written")
+	}
+}
+
+func TestAppAtHomeIgnoresPeers(t *testing.T) {
+	home, seen := homeBackend(t)
+	server, _ := standbyAppWith(t, "exit 0", map[string]string{"POSTERN_PEERS": "laptop=" + home.URL})
+	if code, _ := get(t, server.URL+"/api/challenge"); code != http.StatusOK {
+		t.Fatalf("GET /api/challenge = %d, want 200 served here", code)
+	}
+	if code, _ := post(t, server.URL+"/api/broadcast", "{}"); code != http.StatusUnauthorized {
+		t.Fatalf("POST /api/broadcast = %d, want 401 served here", code)
+	}
+	if len(seen()) != 0 {
+		t.Fatalf("the peer saw %q at home", seen())
 	}
 }

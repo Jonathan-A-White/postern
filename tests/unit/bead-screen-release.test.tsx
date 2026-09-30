@@ -7,7 +7,8 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
 import { db } from '../../src/data/db';
-import { answersRepo, viewRepo } from '../../src/data/repositories';
+import { answersRepo, beadDetailsRepo, viewRepo } from '../../src/data/repositories';
+import { formatRoute } from '../../src/nav/route';
 import { fixtureView } from '../support/cockpit-fixture';
 import { deliverAction } from '../../src/services/deliver';
 
@@ -68,5 +69,42 @@ describe('BeadScreen offers Release and Hold only while they still apply', () =>
     render(<BeadScreen id={OPEN} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Hold' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Hold' })).toBeNull());
+  });
+});
+
+// mw-t64a3.27: opened cold (a push, a pasted link) the bead may be missing from
+// the live view; Back still goes up to its parent, read from the fetched detail.
+describe('BeadScreen Back from a bead that is not in the live view', () => {
+  beforeEach(async () => {
+    await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear()]);
+    window.history.replaceState(null, '', '/');
+  });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  async function storeDetail(id: string, parent?: string): Promise<void> {
+    const detail = { v: 2, id, title: 'A cold bead', type: 'task', status: 'open', priority: 2, ...(parent ? { parent } : {}), comments: [] };
+    await beadDetailsRepo.save({ id, plaintext: JSON.stringify(detail), fetchedAt: Date.now() });
+  }
+
+  it('goes to the Map focused on the parent named by the stored detail', async () => {
+    await storeDetail('mw-cold.1', 'mw-p');
+    const replace = vi.spyOn(window.history, 'replaceState');
+    render(<BeadScreen id="mw-cold.1" />);
+    await screen.findByLabelText('Relations');
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(replace).toHaveBeenCalledWith(null, '', formatRoute({ view: 'map', focus: 'mw-p' }));
+    expect(formatRoute({ view: 'map', focus: 'mw-p' })).toBe('?v=map&focus=mw-p');
+  });
+
+  it('goes to the plain Map when the detail names no parent', async () => {
+    await storeDetail('mw-cold.2');
+    const replace = vi.spyOn(window.history, 'replaceState');
+    render(<BeadScreen id="mw-cold.2" />);
+    await screen.findByLabelText('Relations');
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(replace).toHaveBeenCalledWith(null, '', '?v=map');
   });
 });

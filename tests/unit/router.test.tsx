@@ -1,7 +1,7 @@
 // tests/unit/router.test.tsx — mw-t64a3.21: a click on a link to this app's own
 // origin is an in-app route change (history.pushState), never a page load.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import '../../src/router';
+import { goBack } from '../../src/router';
 
 function anchor(href: string, target?: string): HTMLAnchorElement {
   const a = document.createElement('a');
@@ -49,5 +49,29 @@ describe('router link clicks', () => {
     expect(click(anchor(`${window.location.origin}/?v=needs`, '_blank')).defaultPrevented).toBe(false);
     expect(click(anchor(`${window.location.origin}/?v=needs`), { ctrlKey: true }).defaultPrevented).toBe(false);
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe('goBack', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('on a cold open (no history state) replaces the page with the fallback route', () => {
+    window.history.replaceState(null, '', '/?v=bead&id=mw-x');
+    const back = vi.spyOn(window.history, 'back');
+    const replace = vi.spyOn(window.history, 'replaceState');
+    goBack({ view: 'map', focus: 'mw-p' });
+    expect(back).not.toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith(null, '', '?v=map&focus=mw-p');
+    expect(window.location.search).toBe('?v=map&focus=mw-p');
+  });
+
+  it('after an in-app move goes back in history instead', () => {
+    window.history.pushState({ app: true }, '', '/?v=bead&id=mw-x');
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+    goBack({ view: 'map', focus: 'mw-p' });
+    expect(back).toHaveBeenCalledTimes(1);
   });
 });

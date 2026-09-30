@@ -696,6 +696,18 @@ files are several messages, the caption on the last.
 - `role` — `"transcript"` marks the text as what the Mayor's host heard in the
   voice note `re` names.
 
+**Replies in General.** A plain text message in the General thread whose `re`
+names another General message is a *reply* in that message's thread. The thread's
+root is the named message, or, if that message is itself a reply, its own root:
+threads are one level deep, however long the chain of `re` runs. Roots and their
+replies are each read in time order, and a thread knows its reply count and the
+time of its last reply. A message whose `re` names a txid the reader does not
+hold stays a root. A transcript (`role: "transcript"`) and a grist answer (§19,
+its own record kind) are annotations, not replies, and keep their rendering. The
+app groups a conversation this way with `groupGeneral` in
+`src/model/generalThreads.ts`. A message that carries `re` is always sent as the
+JSON `{ "text": …, "re": "direct:…" }` (§6), never as bare text.
+
 A voice note is a threaded message whose attachment is audio (its `text` may be
 empty). The Mayor's host transcribes it on arrival (`postern_transcribe_cmd`,
 decision 11: on the desktop, never a third party), records the transcript on the

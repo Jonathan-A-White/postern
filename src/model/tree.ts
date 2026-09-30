@@ -219,3 +219,23 @@ export function topLevel(index: ViewIndex): ViewBead[] {
     return byPriorityThenTitle(a, b);
   });
 }
+
+/** An epic or map is finished when it has something below it and nothing below
+ * it is unfinished: every work item is done (a closed one still waiting for his
+ * word is not) and every child epic is finished too. Nothing is closed by this;
+ * a new open child makes it live again on the next view. */
+export function isFinished(bead: ViewBead, index: ViewIndex, seen: Set<string> = new Set()): boolean {
+  const children = index.children.get(bead.id) ?? [];
+  if (children.length === 0 || seen.has(bead.id)) return false;
+  const path = new Set(seen).add(bead.id);
+  return children.every((child) => (isEpic(child, index) ? isFinished(child, index, path) : bucketOf(child, index) === 'done'));
+}
+
+/** The top of the map in two: what is live, and what is finished (folded into
+ * 'Done · N'), each in `topLevel`'s order. */
+export function splitTopLevel(index: ViewIndex): { live: ViewBead[]; done: ViewBead[] } {
+  const live: ViewBead[] = [];
+  const done: ViewBead[] = [];
+  for (const bead of topLevel(index)) (isFinished(bead, index) ? done : live).push(bead);
+  return { live, done };
+}

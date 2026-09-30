@@ -104,6 +104,39 @@ describe('mergeConversation', () => {
     });
   });
 
+  // mw-t64a3.23: a hands step's run is said by a bead comment and by a message in
+  // the thread "re" the txid of his approval; the comment names that txid, the
+  // message's own txid is another, so naming a row's txid did not catch it.
+  describe("a step's run said twice (a comment and a message)", () => {
+    const approval = 'bd1dcf8a19231b8dc20efa4e0a0c14a07c5c2cc9cacb58b0c469735c14a07b66';
+    const runText = `RAN step backend-x on laptop as user, exit 0 (approved by the Governor via postern, txid direct:${approval})\n\n\`\`\`\nok\n\`\`\``;
+    const runMessage = () => row(encodeThreadedMessage({ thread: { bead: 'b' }, text: runText, re: `direct:${approval}` }), { ts: 1_760_000_400 });
+    const runComment = (text = runText) => ({ at: new Date(1_760_000_399 * 1000).toISOString(), author: 'mw@laptop', text });
+
+    it('shows the run once, as the message from the Mayor', () => {
+      const items = mergeConversation([runMessage()], [runComment()]);
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ speaker: 'mayor', speakerLabel: 'Mayor', source: 'message' });
+    });
+
+    it('still shows the comment, once, when no message in the thread says the run', () => {
+      const items = mergeConversation([], [runComment()]);
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ speaker: 'builder', source: 'comment', text: runText });
+    });
+
+    it('leaves a comment with other text, naming no txid of the thread, alone', () => {
+      const items = mergeConversation([runMessage()], [runComment('Claimed. Working on it.')]);
+      expect(items.map((item) => item.source)).toEqual(['comment', 'message']);
+    });
+
+    it('leaves a comment naming another approval alone', () => {
+      const other = runText.replace(approval, '0'.repeat(64));
+      const items = mergeConversation([runMessage()], [runComment(other)]);
+      expect(items).toHaveLength(2);
+    });
+  });
+
   it('names who wrote a comment', () => {
     expect(speakerOfComment('root').speaker).toBe('mayor');
     expect(speakerOfComment('mw@laptop')).toEqual({ speaker: 'builder', label: 'Builder · laptop' });

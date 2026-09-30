@@ -40,6 +40,8 @@ export interface ConversationItem {
   /** What the Mayor's host heard in this voice note (docs/protocol.md §14). */
   transcript?: string;
   txid?: string;
+  /** The txid this message answers or annotates (its record's `re`), when it names one. */
+  re?: string;
   unread?: boolean;
   pending?: boolean;
   failed?: boolean;
@@ -162,7 +164,7 @@ export function itemFromMessage(row: MessageRow): ConversationItem & { transcrip
     return { ...base, kind: 'text', text: body.text, transcriptOf: body.re };
   }
   if (body.attachment) return { ...base, kind: 'attachment', text: body.text, attachment: body.attachment };
-  return { ...base, kind: 'text', text: body.text };
+  return { ...base, kind: 'text', text: body.text, ...(body.re !== undefined ? { re: body.re } : {}) };
 }
 
 const TXID_IN_TEXT = /\b(?:txid|tx)\s+((?:direct:)?[0-9a-f]{64})/gi;
@@ -204,8 +206,9 @@ export function speakerOfComment(author: string): { speaker: Speaker; label: str
 
 /** A bead's comments and its thread's messages, oldest first. A comment the
  * Mayor's host wrote to record one of these very messages (it names the
- * message's txid) is left out, so nothing is said twice; a transcript is folded
- * into the voice note it transcribes. */
+ * message's txid), or that says a run the thread's message says (the message is
+ * "re" a txid the comment names: the approval), is left out, so nothing is said
+ * twice; a transcript is folded into the voice note it transcribes. */
 export function mergeConversation(rows: MessageRow[], comments: BeadComment[] = []): ConversationItem[] {
   const decoded = rows.map(itemFromMessage);
   const transcripts = new Map<string, string>();
@@ -224,8 +227,10 @@ export function mergeConversation(rows: MessageRow[], comments: BeadComment[] = 
 
   const known = new Set(rows.map((row) => row.txid.toLowerCase()));
   const sentAt = new Set(rows.map((row) => row.ts));
+  const answered = new Set(items.flatMap((item) => (item.re ? [item.re.toLowerCase()] : [])));
   comments.forEach((comment, index) => {
-    if (txidsIn(comment.text).some((txid) => known.has(txid))) return;
+    const named = txidsIn(comment.text);
+    if (named.some((txid) => known.has(txid) || answered.has(txid))) return;
     // His message recorded by the hook: shown once, as the message itself (its
     // picture, not the desktop path); if the message is not here, as his words.
     const recorded = recordedMessage(comment.text);

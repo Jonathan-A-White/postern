@@ -283,3 +283,34 @@ func TestLoadLowerCasesCORSOrigins(t *testing.T) {
 		t.Fatalf("CORSOrigins = %v, want it lower-cased", cfg.CORSOrigins)
 	}
 }
+
+func TestLoadPeersDefaultsToNone(t *testing.T) {
+	cfg, err := Load(gristEnv(nil))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Peers) != 0 {
+		t.Fatalf("Peers = %v, want none", cfg.Peers)
+	}
+}
+
+func TestLoadPeersFromEnv(t *testing.T) {
+	cfg, err := Load(gristEnv(map[string]string{
+		"POSTERN_PEERS": " Laptop=http://10.88.0.2:8787 , desktop=http://10.88.0.3:8787/ ,",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Peers) != 2 || cfg.Peers["laptop"] != "http://10.88.0.2:8787" || cfg.Peers["desktop"] != "http://10.88.0.3:8787" {
+		t.Fatalf("Peers = %v, want laptop and desktop (names lower-cased, trailing slash dropped)", cfg.Peers)
+	}
+}
+
+func TestLoadRejectsBadPeers(t *testing.T) {
+	for _, bad := range []string{"laptop", "=http://a:1", "laptop=", "laptop=10.0.0.2:8787", "laptop=ftp://a:1", "laptop=http://a:1/api", "laptop=http://a:1?x=1"} {
+		_, err := Load(gristEnv(map[string]string{"POSTERN_PEERS": bad}))
+		if err == nil || !strings.Contains(err.Error(), "POSTERN_PEERS") {
+			t.Errorf("POSTERN_PEERS=%q: err = %v, want one naming POSTERN_PEERS", bad, err)
+		}
+	}
+}

@@ -157,7 +157,8 @@ moves past records the caller cannot see.
           "to": "029cbf013d04ca50ba852816c2802b06ca5ed37b44be9597fc0f95360e209afa97",
           "from": "039d1abaec9f5715a15c7628244170951e0f85e87f68ca5393d3f9fc3fa23a69c8",
           "ts": 1758700000,
-          "ct": "QkIQMwOdGrrsn1cVoVx2KCRBcJUeD4Xof2jKU5PT+fw/ojppyAKcvwE9BMpQuoUoFsKAKwbKXtN7RL6Vl/wPlTYOIJr6ly29yXkTykfSVSTrUVnERI/lCUsFLuvVhgyN79hFczet0W67HhaxJRMUSM/BXPUDPdFB/gQbllS0XYOgVPldzejkyjylJbipQqP4YgfBX9ZMXE8wgY4FS6wVF6bMvLwC4WA0bupV8apiP8jK9Q=="
+          "ct": "QkIQMwOdGrrsn1cVoVx2KCRBcJUeD4Xof2jKU5PT+fw/ojppyAKcvwE9BMpQuoUoFsKAKwbKXtN7RL6Vl/wPlTYOIJr6ly29yXkTykfSVSTrUVnERI/lCUsFLuvVhgyN79hFczet0W67HhaxJRMUSM/BXPUDPdFB/gQbllS0XYOgVPldzejkyjylJbipQqP4YgfBX9ZMXE8wgY4FS6wVF6bMvLwC4WA0bupV8apiP8jK9Q==",
+          "summary": "Answer: Pick the colour"
         }
       }
     ],
@@ -498,15 +499,25 @@ via `github.com/SherClockHolmes/webpush-go`) whose body is:
 { "class": "alarm", "txid": "3af1...", "ts": 1758700000 }
 ```
 
-No plaintext ever leaves the backend in a push — the app decrypts the
-record's `ct` itself once it syncs. A record with no `to`/`class` (a License
-mint/transfer record, for instance) or a `to` no device has subscribed for is
-silently skipped. A push endpoint that answers `410 Gone` has its
-subscription dropped from the store.
+Nothing the sender did not put in the clear leaves the backend in a push — the
+app decrypts the record's `ct` itself once it syncs. The one clear text a record's
+push may carry is a direct record's `summary` (`docs/protocol.md` §1), trimmed and
+cut to 80 runes, as the push's `body`, only when the class is `message`,
+`decision-needed`, `landing` or `alarm`; a chain record's `summary` and a `grist`
+record's are ignored, and a record with no `summary` pushes exactly as above. A
+record with no `to`/`class` (a License mint/transfer record, for instance) or a
+`to` no device has subscribed for is silently skipped. A push endpoint that
+answers `410 Gone` has its subscription dropped from the store.
 
 A push may also carry two optional fields, `title` and `body`, which the service
-worker shows when present. A record's push never has them; only a push with no
-record behind it does (the watchdog's, below), and such a push has no `txid`:
+worker shows when present. A record's push never has a `title`, and has a `body`
+only from a direct record's `summary`:
+
+```json
+{ "class": "decision-needed", "txid": "direct:9c1e...", "ts": 1758700000, "body": "Answer: Pick the colour" }
+```
+
+A push with no record behind it (the watchdog's, below) has no `txid`:
 
 ```json
 { "class": "alarm", "ts": 1758700000, "title": "desktop unreachable", "body": "since 12:04Z" }

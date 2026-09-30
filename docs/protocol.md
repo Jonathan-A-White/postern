@@ -18,7 +18,8 @@ JSON shape that only postern understands:
   "to": "<recipient compressed public key hex>",
   "from": "<sender compressed public key hex>",
   "ts": 1758700000,
-  "ct": "<base64 BRC-78 EncryptedMessage ciphertext of the UTF-8 text>"
+  "ct": "<base64 BRC-78 EncryptedMessage ciphertext of the UTF-8 text>",
+  "summary": "Answer: <bead title>"
 }
 ```
 
@@ -43,6 +44,11 @@ JSON shape that only postern understands:
   the UTF-8 bytes of the plaintext message body; nothing else is wrapped in the
   ciphertext (the class tag, timestamp, and both public keys already travel in the
   clear in the fields above).
+- `summary` — optional, a string of at most 80 runes: a bead title and an act
+  (`"Answer: <title>"`), never a word of the message itself. It sits in the clear
+  beside `ct`, so it is public to anyone who reads the record. A sender puts it only
+  on a direct record (§9), never a chain one; the backend turns it into the web
+  push's body (§9 item 6). A record without one is unchanged.
 - `thread` — never a field of this clear envelope. Every message's plaintext (what
   `ct` encrypts) MAY itself name the thread it belongs to, `{"bead": "mw-xyz12.3"}`
   or `{"topic": "<name>"}`; absent, it's the general thread. See §6.
@@ -446,7 +452,9 @@ The backend:
 5. answers `201 {"txid": "direct:…", "seq": <n>}`, or `200` with the same shape
    when those exact script bytes are already stored (a retry is harmless);
 6. then does everything the poller does for a newly indexed record: a web push to
-   the recipient's subscriptions, a `message` event on §10's stream, and the
+   the recipient's subscriptions (whose body is the record's clear `summary`, cut to
+   80 runes, when it has one and is a `message`, `decision-needed`, `landing` or
+   `alarm`; §1), a `message` event on §10's stream, and the
    on-message hook (`POSTERN_ON_MESSAGE`, `docs/api.md`).
 
 A body over 256 KiB is refused `413`. The chain channel (§4) keeps working

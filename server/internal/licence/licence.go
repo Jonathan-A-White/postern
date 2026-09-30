@@ -2,7 +2,9 @@
 // (docs/protocol.md §16): a typed M ('mint') record naming the key's own
 // testnet address as holder, in one of the configured collections, minted
 // by a transaction the issuer signed, whose licence token has not since been
-// moved to someone else by a TR ('transfer') record spending it.
+// moved to someone else by a TR ('transfer') record spending it, and which
+// the issuer has not revoked with a signed W record {"kind":"revoke",
+// "origin"} naming the mint's output 0.
 //
 // Both mint layouts spell-forge-bsv writes put the token at output 0 of the
 // mint (license-contract.ts's contract mint: [0] the License, [1] the Fuel,
@@ -68,6 +70,11 @@ type transferPayload struct {
 	To string `json:"to"`
 }
 
+type revokePayload struct {
+	Kind   string `json:"kind"`
+	Origin string `json:"origin"`
+}
+
 type outpoint struct {
 	txid string
 	vout int
@@ -87,7 +94,8 @@ func Held(reader Reader, address string, rule Rule) (bool, error) {
 // mint's output 0 through every spend of it those transactions show: a TR
 // record moves it to the address it names, anything else (a write) leaves
 // it with its holder, and each spend's output 0 is the token's next
-// outpoint. A collection is held if any counting licence in it ends with
+// outpoint. A licence the issuer revoked (revokedOrigins) is never held,
+// whatever later transfers did with it. A collection is held if any counting licence in it ends with
 // address. The collection is what a licence opens (docs/protocol.md §19).
 //
 // Only transactions in those address histories are seen: a spend paid
@@ -97,8 +105,10 @@ func Held(reader Reader, address string, rule Rule) (bool, error) {
 func HeldCollections(reader Reader, address string, rule Rule) ([]string, error) {
 	addresses := []string{address}
 	issuerKey := strings.ToLower(rule.IssuerKey)
+	issuerAddress := ""
 	if issuerKey != "" {
-		issuerAddress, err := AddressForPublicKey(issuerKey)
+		var err error
+		issuerAddress, err = AddressForPublicKey(issuerKey)
 		if err != nil {
 			return nil, fmt.Errorf("issuer key: %w", err)
 		}
@@ -109,12 +119,16 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 
 	txs := make(map[string]*record.Transaction)
 	var order []string
+	inIssuerHistory := make(map[string]bool)
 	for _, addr := range addresses {
 		history, err := reader.GetHistory(addr)
 		if err != nil {
 			return nil, fmt.Errorf("getting history for %s: %w", addr, err)
 		}
 		for _, entry := range history {
+			if addr == issuerAddress {
+				inIssuerHistory[entry.TxHash] = true
+			}
 			if _, seen := txs[entry.TxHash]; seen {
 				continue
 			}
@@ -142,6 +156,11 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 		}
 	}
 
+	var revoked map[string]bool
+	if issuerKey != "" {
+		revoked = revokedOrigins(txs, order, inIssuerHistory, issuerKey)
+	}
+
 	collections := rule.Collections
 	if len(collections) == 0 {
 		collections = DefaultCollections
@@ -149,7 +168,7 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 	var held []string
 	for _, txid := range order {
 		collection, ok := countsAsMint(txs[txid], address, collections, issuerKey)
-		if !ok || contains(held, collection) {
+		if !ok || contains(held, collection) || revoked[txid+":0"] {
 			continue
 		}
 		if holderNow(txid, address, txs, spentBy) == address {
@@ -182,12 +201,48 @@ func countsAsMint(tx *record.Transaction, holder string, collections []string, i
 		return collection, minted
 	}
 
-	for _, in := range tx.Inputs {
-		if key, ok := record.P2PKHPublicKey(in.ScriptSig); ok && key == issuerKey {
-			return collection, true
-		}
+	if signedBy(tx, issuerKey) {
+		return collection, true
 	}
 	return "", false
+}
+
+// revokedOrigins names the licence tokens the issuer has revoked: the
+// origin ("txid:vout") of every typed W record {"kind":"revoke","origin"}
+// in a transaction of the issuer's own history that one of its inputs
+// unlocks with the issuer's key. A revoke names one mint output, so a mint
+// after it is a new licence; whether the origin is a counting mint is
+// left to the caller, which only ever looks up counting mints.
+func revokedOrigins(txs map[string]*record.Transaction, order []string, inIssuerHistory map[string]bool, issuerKey string) map[string]bool {
+	revoked := make(map[string]bool)
+	for _, txid := range order {
+		tx := txs[txid]
+		if !inIssuerHistory[txid] || !signedBy(tx, issuerKey) {
+			continue
+		}
+		for _, out := range tx.Outputs {
+			typed, ok := record.DecodeTypedScript(out.ScriptHex)
+			if !ok || typed.RecordType != "W" {
+				continue
+			}
+			var payload revokePayload
+			if json.Unmarshal(typed.PayloadBytes, &payload) == nil && payload.Kind == "revoke" && payload.Origin != "" {
+				revoked[strings.ToLower(payload.Origin)] = true
+			}
+		}
+	}
+	return revoked
+}
+
+// signedBy reports whether one of tx's inputs has a P2PKH scriptSig
+// pushing key.
+func signedBy(tx *record.Transaction, key string) bool {
+	for _, in := range tx.Inputs {
+		if pushed, ok := record.P2PKHPublicKey(in.ScriptSig); ok && pushed == key {
+			return true
+		}
+	}
+	return false
 }
 
 // holderNow follows the licence minted at mintTxid:0 through every spend

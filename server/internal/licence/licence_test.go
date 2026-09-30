@@ -501,3 +501,158 @@ func contractMintFundedBy(signer *btcec.PrivateKey, collection, holder string, f
 		},
 	)
 }
+
+// revokeTx is the transaction the Key screen's Revoke writes: a typed W
+// record {"kind":"revoke","origin":origin} in a transaction whose P2PKH
+// input signer signed.
+func revokeTx(signer *btcec.PrivateKey, origin string, funding byte) testTx {
+	return buildTx(
+		[]testInput{{txid: fundingTxid(funding), vout: 0, scriptSig: p2pkhUnlock(signer)}},
+		[][]byte{
+			typedRecordScript("W", `{"kind":"revoke","origin":"`+origin+`"}`),
+			p2pkhLock(addressOf(signer)),
+		},
+	)
+}
+
+func TestHeldCollectionsLeavesOutALicenceTheIssuerRevoked(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	cairn := contractMint(issuer, "cairn", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(cairn, addressOf(issuer))
+	reader.add(contractMint(issuer, "postern", addressOf(holder)), addressOf(issuer))
+	reader.add(revokeTx(issuer, cairn.txid+":0", 0xe1), addressOf(issuer))
+
+	got := mustHeldCollections(t, reader, addressOf(holder), Rule{Collections: []string{"postern", "cairn"}, IssuerKey: pubHex(issuer)})
+	if len(got) != 1 || got[0] != "postern" {
+		t.Fatalf("collections = %v, want [postern] once the cairn licence is revoked", got)
+	}
+}
+
+func TestHeldFalseOnceTheIssuerRevokesTheOnlyLicence(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	mint := contractMint(issuer, "postern", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(issuer))
+	reader.add(revokeTx(issuer, mint.txid+":0", 0xe1), addressOf(issuer))
+
+	if mustHeld(t, reader, addressOf(holder), Rule{IssuerKey: pubHex(issuer)}) {
+		t.Fatal("held = true after the issuer revoked the licence, want false")
+	}
+}
+
+func TestHeldStaysFalseWhateverLaterTransfersDoWithARevokedToken(t *testing.T) {
+	issuer, holder, buyer := newTestKey(t), newTestKey(t), newTestKey(t)
+	mint := contractMint(issuer, "postern", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(issuer))
+	reader.add(revokeTx(issuer, mint.txid+":0", 0xe1), addressOf(issuer))
+	// The token is then moved to the buyer, and back to the holder.
+	toBuyer := contractSpend(mint, typedRecordScript("TR", `{"to":"`+addressOf(buyer)+`"}`))
+	reader.add(toBuyer, addressOf(issuer))
+	reader.add(contractSpend(toBuyer, typedRecordScript("TR", `{"to":"`+addressOf(holder)+`"}`)), addressOf(issuer))
+
+	rule := Rule{IssuerKey: pubHex(issuer)}
+	if mustHeld(t, reader, addressOf(holder), rule) || mustHeld(t, reader, addressOf(buyer), rule) {
+		t.Fatal("held = true through a revoked token, want false for everyone")
+	}
+}
+
+func TestHeldIgnoresARevokeTheHolderSignedItself(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	mint := contractMint(issuer, "cairn", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(issuer))
+	reader.add(revokeTx(holder, mint.txid+":0", 0xe1), addressOf(holder), addressOf(issuer))
+
+	got := mustHeldCollections(t, reader, addressOf(holder), Rule{Collections: []string{"cairn"}, IssuerKey: pubHex(issuer)})
+	if len(got) != 1 || got[0] != "cairn" {
+		t.Fatalf("collections = %v, want [cairn]: a revoke not signed by the issuer changes nothing", got)
+	}
+}
+
+func TestHeldIgnoresARevokeOutsideTheIssuersHistory(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	mint := contractMint(issuer, "cairn", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(issuer))
+	// Signed by the issuer's key, but only the holder's history shows it.
+	reader.add(revokeTx(issuer, mint.txid+":0", 0xe1), addressOf(holder))
+
+	got := mustHeldCollections(t, reader, addressOf(holder), Rule{Collections: []string{"cairn"}, IssuerKey: pubHex(issuer)})
+	if len(got) != 1 {
+		t.Fatalf("collections = %v, want [cairn]: a revoke is read from the issuer's history only", got)
+	}
+}
+
+func TestHeldIgnoresARevokeNamingTheWrongOrigin(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	mint := contractMint(issuer, "cairn", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(issuer))
+	reader.add(revokeTx(issuer, fundingTxid(0xab)+":0", 0xe1), addressOf(issuer))
+	reader.add(revokeTx(issuer, mint.txid+":2", 0xe2), addressOf(issuer)) // the M record's output, not the token
+
+	got := mustHeldCollections(t, reader, addressOf(holder), Rule{Collections: []string{"cairn"}, IssuerKey: pubHex(issuer)})
+	if len(got) != 1 || got[0] != "cairn" {
+		t.Fatalf("collections = %v, want [cairn]: a revoke naming another origin changes nothing", got)
+	}
+}
+
+func TestHeldIgnoresAWriteThatIsNotARevoke(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	mint := contractMint(issuer, "cairn", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(issuer))
+	for i, payload := range []string{
+		`{"kind":"note","origin":"` + mint.txid + `:0"}`,
+		`{"origin":"` + mint.txid + `:0"}`,
+		`{"kind":"revoke"}`,
+		`not json`,
+	} {
+		reader.add(buildTx(
+			[]testInput{{txid: fundingTxid(byte(0xd0 + i)), vout: 0, scriptSig: p2pkhUnlock(issuer)}},
+			[][]byte{typedRecordScript("W", payload), p2pkhLock(addressOf(issuer))},
+		), addressOf(issuer))
+	}
+	// The right payload under another record type is not a revoke either.
+	reader.add(buildTx(
+		[]testInput{{txid: fundingTxid(0xc0), vout: 0, scriptSig: p2pkhUnlock(issuer)}},
+		[][]byte{typedRecordScript("TR", `{"kind":"revoke","origin":"`+mint.txid+`:0"}`), p2pkhLock(addressOf(issuer))},
+	), addressOf(issuer))
+
+	got := mustHeldCollections(t, reader, addressOf(holder), Rule{Collections: []string{"cairn"}, IssuerKey: pubHex(issuer)})
+	if len(got) != 1 || got[0] != "cairn" {
+		t.Fatalf("collections = %v, want [cairn]: only a W record {kind: revoke, origin} revokes", got)
+	}
+}
+
+func TestHeldHoldsAgainWithAMintAfterTheRevoke(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	first := contractMint(issuer, "cairn", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(first, addressOf(issuer))
+	reader.add(revokeTx(issuer, first.txid+":0", 0xe1), addressOf(issuer))
+	rule := Rule{Collections: []string{"cairn"}, IssuerKey: pubHex(issuer)}
+	if got := mustHeldCollections(t, reader, addressOf(holder), rule); len(got) != 0 {
+		t.Fatalf("collections = %v before the new mint, want none", got)
+	}
+
+	reader.add(contractMintFundedBy(issuer, "cairn", addressOf(holder), 0xf2), addressOf(issuer))
+	if got := mustHeldCollections(t, reader, addressOf(holder), rule); len(got) != 1 || got[0] != "cairn" {
+		t.Fatalf("collections = %v, want [cairn]: a mint after the revoke is a new licence", got)
+	}
+}
+
+func TestHeldNeverReadsARevokeWithNoIssuerConfigured(t *testing.T) {
+	issuer, holder := newTestKey(t), newTestKey(t)
+	mint := contractMint(holder, "cairn", addressOf(holder))
+	reader := newFakeReader()
+	reader.add(mint, addressOf(holder))
+	reader.add(revokeTx(issuer, mint.txid+":0", 0xe1), addressOf(holder))
+
+	got := mustHeldCollections(t, reader, addressOf(holder), Rule{Collections: []string{"cairn"}})
+	if len(got) != 1 || got[0] != "cairn" {
+		t.Fatalf("collections = %v, want [cairn]: with no issuer a revoke record is never read", got)
+	}
+}

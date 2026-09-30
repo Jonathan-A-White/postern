@@ -29,6 +29,10 @@ const NotFoundExitCode = 3
 // quotes.
 const stderrSnippetBytes = 200
 
+// stderrTailBytes is how much of the end of stderr a CommandError keeps for
+// the journal.
+const stderrTailBytes = 300
+
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 var (
@@ -41,9 +45,13 @@ var (
 )
 
 // CommandError is any other failure of the command: a non-zero exit, a
-// failure to start, or no answer within the timeout.
+// failure to start, or no answer within the timeout. Msg is the short form
+// the phone is told; Reason is the fuller one for the journal (the last
+// stderrTailBytes of stderr); Elapsed is how long the command ran.
 type CommandError struct {
-	Msg string
+	Msg     string
+	Reason  string
+	Elapsed time.Duration
 }
 
 func (e *CommandError) Error() string { return e.Msg }
@@ -92,7 +100,8 @@ func New(commandLine string, opts ...Option) *Fetcher {
 
 // Get validates id, runs the command with id appended and answers its
 // stdout on exit 0. It returns ErrInvalidID, ErrNotConfigured, ErrNotFound
-// (exit NotFoundExitCode) or a *CommandError for anything else.
+// (exit NotFoundExitCode, unless stderr says something else went wrong) or a
+// *CommandError for anything else.
 func (f *Fetcher) Get(ctx context.Context, id string) ([]byte, error) {
 	if !idPattern.MatchString(id) {
 		return nil, ErrInvalidID
@@ -105,19 +114,58 @@ func (f *Fetcher) Get(ctx context.Context, id string) ([]byte, error) {
 	defer cancel()
 
 	argv := append(append(make([]string, 0, len(f.argv)+1), f.argv...), id)
+	start := time.Now()
 	result, err := f.run(ctx, argv)
+	elapsed := time.Since(start)
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return nil, &CommandError{Msg: fmt.Sprintf("%s: no answer within %s", f.argv[0], f.timeout)}
+		return nil, &CommandError{
+			Msg:     fmt.Sprintf("%s: timeout, no answer within %s", f.argv[0], f.timeout),
+			Reason:  fmt.Sprintf("timeout after %s", f.timeout),
+			Elapsed: elapsed,
+		}
 	case err != nil:
-		return nil, &CommandError{Msg: withSnippet(fmt.Sprintf("%s: %v", f.argv[0], err), result.Stderr)}
+		return nil, &CommandError{
+			Msg:     withSnippet(fmt.Sprintf("%s: %v", f.argv[0], err), result.Stderr),
+			Reason:  withTail(fmt.Sprintf("%v", err), result.Stderr),
+			Elapsed: elapsed,
+		}
 	case result.ExitCode == 0:
 		return result.Stdout, nil
-	case result.ExitCode == NotFoundExitCode:
+	case result.ExitCode == NotFoundExitCode && saysNoSuchBead(result.Stderr):
 		return nil, ErrNotFound
 	default:
-		return nil, &CommandError{Msg: withSnippet(fmt.Sprintf("%s exited %d", f.argv[0], result.ExitCode), result.Stderr)}
+		return nil, &CommandError{
+			Msg:     withSnippet(fmt.Sprintf("%s: exit %d", f.argv[0], result.ExitCode), result.Stderr),
+			Reason:  withTail(fmt.Sprintf("exit %d", result.ExitCode), result.Stderr),
+			Elapsed: elapsed,
+		}
 	}
+}
+
+// saysNoSuchBead reports whether stderr is compatible with "no such bead":
+// empty, or naming the missing bead as `mw postern bead` does ("there is no
+// bead ..."). An exit 3 that says something else (a locked database, say) is
+// a failure, not a missing bead.
+func saysNoSuchBead(stderr []byte) bool {
+	text := strings.ToLower(string(stderr))
+	return strings.TrimSpace(text) == "" || strings.Contains(text, "no bead") || strings.Contains(text, "no such bead")
+}
+
+// withTail appends the last stderrTailBytes of stderr, on one line, to msg.
+func withTail(msg string, stderr []byte) string {
+	tail := stderr
+	if len(tail) > stderrTailBytes {
+		tail = tail[len(tail)-stderrTailBytes:]
+		for len(tail) > 0 && !utf8.RuneStart(tail[0]) {
+			tail = tail[1:]
+		}
+	}
+	line := strings.Join(strings.Fields(string(tail)), " ")
+	if line == "" {
+		return msg
+	}
+	return msg + ": " + line
 }
 
 // withSnippet appends the start of stderr, on one line, to msg.

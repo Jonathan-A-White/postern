@@ -17,6 +17,8 @@ import {
 import { fetchBalanceSatoshis, mintCostSatoshis, mintMyLicence } from '../services/mint';
 import { addressForPublicKey, getCachedLicenceStatus } from '../services/licence';
 import { LicenceExplainer } from '../licence';
+import { MyPublicKey } from './KeyQr';
+import { IssueLicences } from './IssueLicences';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
 
@@ -420,6 +422,8 @@ export function KeyVault() {
             {addressCopyStatus === 'copied' ? 'Copied' : 'Copy address'}
           </button>
 
+          <MyPublicKey publicKeyHex={publicKeyHexFromMasterKey(screen.key)} />
+
           {balanceState.name === 'loading' && <p>Checking balance…</p>}
 
           {balanceState.name === 'loaded' && (
@@ -487,6 +491,8 @@ export function KeyVault() {
           )}
 
           {mintOutcome.name === 'error' && <p>{mintOutcome.message}</p>}
+
+          <IssueLicences issuerKey={screen.key} />
         </div>
       )}
     </main>

@@ -515,7 +515,8 @@ it stands. The BRC-78 header's sender key must equal the Mayor's pinned key (§1
       "text": "<markdown>",
       "recommended": "A",
       "options": ["A", "B"],
-      "blocks": 4
+      "blocks": 4,
+      "waits_for": "you"
     }
   ],
   "beads": [
@@ -580,6 +581,28 @@ before `demo`. A bead is never in `needs` as both `stale` and `approve`, or both
 `stale` and `hands`: the `stale` need stands in for the other.
 
 `blocks` — how many unfinished beads wait on `bead`, directly or through others.
+
+Every need also says who it waits on, and a card that cannot be acted on yet says why:
+
+| field | type | meaning |
+| --- | --- | --- |
+| `waits_for` | `"you"` \| `"mayor"` \| `"factory"` | who has to move next. Only a `you` card can be acted on now; the app lists the three apart and gives `mayor` and `factory` cards no buttons. Always present in `mw`'s output; a reader that finds it missing (an older `mw`) reads `you`, as every card was his then, and reads any other word as `you` too, so a newer word never hides a card |
+| `not_ready` | bool | `true` on a card that cannot be acted on yet (a `hands` or `demo` card whose blockers are open or whose steps are unwritten, a `verify` card with nothing to check yet): it offers neither Approve, Done nor Verified. Absent when ready |
+| `waiting_on` | string[] | on a `not_ready` card, what it waits on: the titles of its open blockers, or the Mayor's own words (`the Mayor to write the steps`, `the Mayor to check the landing`). Absent when ready |
+
+`waits_for` by kind:
+
+| `kind` | `waits_for` | rule |
+| --- | --- | --- |
+| `question` | `you` | an open question waits on his answer |
+| `approve` | `you` | held stories wait on his Release |
+| `verify` | `you`, or `mayor` | `you` when the landed story has a HOW TO CHECK IT section: that section (to the next heading, at most 1500 characters, image links kept) is the need's `text`. `mayor` when it has none (`not_ready`, `waiting_on` `the Mayor to check the landing`) |
+| `stale` | `you` | he decides Keep or Close |
+| `hands` | `you`, `factory` or `mayor` | `you` when it has steps and none of its bead's blockers is open, or when a comment opening `BY HAND` holds his instructions (no steps, and Done is live). `factory` while any blocker is open (`not_ready`, `waiting_on` their titles). `mayor` when it has no steps and no `BY HAND` comment (`not_ready`, `waiting_on` `the Mayor to write the steps`) |
+| `demo` | `you` or `factory` | `you` when the bead has no open blocker; otherwise `factory`, `not_ready`, `waiting_on` the blockers' titles |
+| `alarm` | `mayor` or `factory` | `mayor` for a story that used up its attempts; `factory` for a host whose last sync is over 20 minutes old |
+
+The order of `needs` is unchanged: most blocking first, then oldest.
 
 ## 12. Bead detail
 
@@ -834,6 +857,13 @@ backend can never get `hands-approve/v1\n…` signed in its place without him.
 Wherever a key must be checked by eye — the installer before it trusts his key, the
 Me screen, a changed Mayor key — it is shown as the first 16 hex digits of the
 SHA-256 of the key's hex text, in groups of four (`15f6 7a1c 42f4 8fe6`).
+
+A step waits on its bead's blockers. While any bead the `hands` bead waits on (§11's `waits`)
+is still open, the need is `not_ready` and `waits_for` is `factory`, and `waiting_on` names the
+open blockers by title; the app shows `Waits on: <title>` and offers no Approve. `mw` enforces
+the same rule when a `run` action arrives, however it got there: a step whose bead waits on an
+open bead is not run, and the answer is `NOT RUN step <id> on <bead>: waits on <title>`. This
+holds for a tap made before the blocker was added and for one that arrives late.
 
 The outcome — exit code and the last 4000 characters of output — is commented on
 the bead (`RAN step <id> on <host> as <as>, exit <n> …`), sent back to him in the

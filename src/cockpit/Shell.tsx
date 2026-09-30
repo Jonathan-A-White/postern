@@ -11,7 +11,7 @@ import { hostsToMoveTo, useStandby } from '../services/standby';
 import { MoveHomeButtons } from './MoveHome';
 import { liveLabel } from './liveLabel';
 import { useAnswers, useMessages, useViewIndex, useWide } from './hooks';
-import { unsettledNeeds } from '../model/needs';
+import { needsByWaiter, unsettledNeeds } from '../model/needs';
 
 const TABS: { view: TopView; label: string; icon: IconName; route: Route }[] = [
   { view: 'needs', label: 'Needs you', icon: 'needs', route: { view: 'needs' } },
@@ -26,7 +26,7 @@ function useBadges(): Partial<Record<TopView, number>> {
   const messages = useMessages();
   const answers = useAnswers();
   const unread = messages.filter((row) => row.direction === 'received' && !row.read).length;
-  return { needs: view ? unsettledNeeds(view.index.view.needs, answers).length : 0, talk: unread };
+  return { needs: view ? needsByWaiter(unsettledNeeds(view.index.view.needs, answers)).you.length : 0, talk: unread };
 }
 
 export function LiveBadge({ compact }: { compact?: boolean }) {

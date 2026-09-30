@@ -197,7 +197,8 @@ function decodeNeed(value: unknown): Need | undefined {
     options: strings(raw.options),
     blocks: num(raw.blocks),
     steps: decodeHandsSteps(raw.steps),
-    waits_for: WAITS_FOR.includes(raw.waits_for as WaitsFor) ? (raw.waits_for as WaitsFor) : 'you',
+    // Absent: an older mw's not_ready card waits on the factory, any other card on him. An unknown word is his too, so a card is never hidden.
+    waits_for: WAITS_FOR.includes(raw.waits_for as WaitsFor) ? (raw.waits_for as WaitsFor) : raw.waits_for === undefined && raw.not_ready === true ? 'factory' : 'you',
     not_ready: raw.not_ready === true,
     waiting_on: strings(raw.waiting_on),
   };

@@ -41,8 +41,9 @@ test('the key screen shows my QR, the Issue a licence form, and the licences I i
     [revokeTxid]: await signedRecordTxHex(governor, 'W', { kind: 'revoke', origin: revokedOrigin }, 2),
   };
   const governorAddress = addressForPublicKey(governor.toPublicKey().toString());
-  await page.route(`${WOC}/address/${governorAddress}/history`, (route) =>
-    route.fulfill({ json: [{ tx_hash: revokedTxid, height: 90 }, { tx_hash: heldTxid, height: 100 }, { tx_hash: revokeTxid, height: 101 }] }),
+  // The app pages /confirmed/history by nextPageToken (mw-yjxcw.10): one page, no token.
+  await page.route(`${WOC}/address/${governorAddress}/confirmed/history`, (route) =>
+    route.fulfill({ json: { result: [{ tx_hash: revokedTxid, height: 90 }, { tx_hash: heldTxid, height: 100 }, { tx_hash: revokeTxid, height: 101 }] } }),
   );
   await page.route(`${WOC}/address/${governorAddress}/unconfirmed/history`, (route) => route.fulfill({ json: { result: [] } }));
   await page.route(`${WOC}/tx/*/hex`, (route) => {

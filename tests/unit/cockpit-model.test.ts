@@ -3,12 +3,13 @@
 // at every zoom, laid out as a dependency graph, and narrowed by one filter.
 import { describe, it, expect } from 'vitest';
 import { decodeBeadDetail, decodeView, viewFromSnapshot } from '../../src/model/view';
-import { ancestors, bucketOf, descendants, epicStats, factoryStats, indexView, isMap, topLevel } from '../../src/model/tree';
+import { ancestors, bucketOf, descendants, epicStats, factoryStats, indexView, isFinished, isMap, splitTopLevel, topLevel } from '../../src/model/tree';
 import { layoutGraph } from '../../src/model/graph';
 import { EMPTY_FILTER, facets, matchesFilter, newestFirst } from '../../src/model/filter';
 import { unsettledNeeds } from '../../src/model/needs';
 import { fixtureView } from '../support/cockpit-fixture';
 import type { Snapshot } from '../../src/services/questions';
+import type { ViewBead } from '../../src/model/view';
 
 const NOW = Date.parse('2026-09-28T12:00:00Z');
 
@@ -109,6 +110,62 @@ describe('the tree', () => {
     expect(isMap(tops[0])).toBe(true);
     expect(isMap(tops[1])).toBe(true);
     expect(isMap(tops[2])).toBe(false);
+  });
+});
+
+describe('a finished epic or map', () => {
+  const template = fixtureView(NOW).beads[0];
+  const make = (id: string, extra: Partial<ViewBead> = {}): ViewBead => ({ ...template, id, title: id, type: 'task', status: 'open', labels: [], waits: [], parent: undefined, done_earlier: 0, ...extra });
+  const epic = make('e', { type: 'epic' });
+  const closedChild = make('e.1', { parent: 'e', status: 'closed', closed: '2026-09-28T10:00:00Z' });
+  const viewOf = (beads: ViewBead[]) => indexView({ ...fixtureView(NOW), needs: [], beads });
+
+  it('an epic with all children closed is done', () => {
+    const index = viewOf([epic, closedChild, make('e.2', { parent: 'e', status: 'closed' })]);
+    expect(isFinished(index.byId.get('e')!, index)).toBe(true);
+    const { live, done } = splitTopLevel(index);
+    expect(done.map((b) => b.id)).toEqual(['e']);
+    expect(live).toEqual([]);
+  });
+
+  it('a new open child makes it live again', () => {
+    const index = viewOf([epic, closedChild, make('e.2', { parent: 'e', status: 'open' })]);
+    expect(isFinished(index.byId.get('e')!, index)).toBe(false);
+    const { live, done } = splitTopLevel(index);
+    expect(live.map((b) => b.id)).toEqual(['e']);
+    expect(done).toEqual([]);
+  });
+
+  it('an epic with no children in the view is not done', () => {
+    const index = viewOf([epic]);
+    expect(isFinished(index.byId.get('e')!, index)).toBe(false);
+  });
+
+  it('a held child, or a closed one still waiting to be verified, keeps it live', () => {
+    const held = viewOf([epic, closedChild, make('e.2', { parent: 'e', status: 'deferred' })]);
+    expect(isFinished(held.byId.get('e')!, held)).toBe(false);
+    const verify = indexView({
+      ...fixtureView(NOW),
+      needs: [{ ...fixtureView(NOW).needs[3], bead: 'e.1', epic: 'e' }],
+      beads: [epic, closedChild],
+    });
+    expect(isFinished(verify.byId.get('e')!, verify)).toBe(false);
+  });
+
+  it('a child epic must be finished too, and a finished map folds like an epic', () => {
+    const map = make('m', { type: 'epic', labels: ['wayfinder:map'] });
+    const inner = make('m.1', { type: 'epic', parent: 'm' });
+    const open = indexView({ ...fixtureView(NOW), needs: [], beads: [map, inner, make('m.1.1', { parent: 'm.1', status: 'open' })] });
+    expect(isFinished(open.byId.get('m')!, open)).toBe(false);
+    const closed = indexView({ ...fixtureView(NOW), needs: [], beads: [map, inner, make('m.1.1', { parent: 'm.1', status: 'closed' })] });
+    expect(isFinished(closed.byId.get('m')!, closed)).toBe(true);
+    expect(splitTopLevel(closed).done.map((b) => b.id)).toEqual(['m']);
+  });
+
+  it('the fixture factory folds nothing', () => {
+    const index = indexView(fixtureView(NOW));
+    expect(splitTopLevel(index).done).toEqual([]);
+    expect(splitTopLevel(index).live).toEqual(topLevel(index));
   });
 });
 

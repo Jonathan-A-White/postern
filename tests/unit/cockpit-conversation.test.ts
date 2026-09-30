@@ -32,6 +32,14 @@ function row(plaintext: string, overrides: Partial<MessageRow> = {}): MessageRow
 }
 
 describe('previewText', () => {
+  it('reads Markdown as plain text (mw-hy6f4.6)', () => {
+    expect(previewText(row('**Landed** `mw-x.1`'))).toBe('Landed mw-x.1');
+    expect(previewText(row(encodeThreadedMessage({ text: 'see [it](https://x/y)', attachment: { hash: 'h', size: 1, mime: 'image/png' } })))).toBe('Image · see it');
+    expect(previewText(row(encodeQuestion({ bead: 'b', q: 'Ship **now** or `later`?', rec: 'A', options: ['A', 'B'] }), { class: 'decision-needed' }))).toBe('Ship now or later?');
+    expect(previewText(row(encodeReply({ bead: 'b', answer: 'A' })))).toBe('Answered: A');
+    expect(previewText(row(JSON.stringify({ action: 'release', bead: 'mw-x_y_z' })))).toBe('Released mw-x_y_z');
+  });
+
   it('reads every kind of plaintext as words', () => {
     expect(previewText(row(encodeQuestion({ bead: 'b', q: 'A or B?', rec: 'A', options: ['A', 'B'] }), { class: 'decision-needed' }))).toBe('A or B?');
     expect(previewText(row(encodeReply({ bead: 'b', answer: 'A' })))).toBe('Answered: A');

@@ -5,6 +5,7 @@
 // question, a reply as the answer given, an action as what was done, a voice note
 // as a player with what the Mayor's host heard in it.
 import type { MessageRow } from '../data/db';
+import { markdownToPlain } from '../markdown/plain';
 import { decodeQuestion, decodeReply, type QuestionBody } from '../services/questions';
 import { decodeThreadedMessage, type Attachment } from '../services/threads';
 import type { BeadComment } from './view';
@@ -96,14 +97,14 @@ export function describeAction(action: GovernorAction): string {
 }
 
 /** The one-line, human reading of a message's plaintext — for list previews,
- * notifications and read-aloud. Never JSON. */
+ * notifications and read-aloud. Never JSON, and its Markdown as plain text. */
 export function previewText(row: Pick<MessageRow, 'plaintext' | 'class' | 'decryptFailed'>): string {
   if (row.plaintext === undefined) return row.decryptFailed ? 'Could not be decrypted' : 'Locked — unlock to read';
   const text = row.plaintext;
   if (row.class === 'move-home') return describeMoveHome(text);
   if (row.class === 'decision-needed') {
     const question = decodeQuestion(text);
-    if (question) return question.q;
+    if (question) return markdownToPlain(question.q);
   }
   const action = decodeAction(text);
   if (action) return describeAction(action);
@@ -112,9 +113,10 @@ export function previewText(row: Pick<MessageRow, 'plaintext' | 'class' | 'decry
   const body = decodeThreadedMessage(text);
   if (body.attachment) {
     const label = attachmentLabel(body.attachment);
-    return body.text ? `${label} · ${body.text}` : label;
+    const plain = markdownToPlain(body.text);
+    return plain ? `${label} · ${plain}` : label;
   }
-  return body.text;
+  return markdownToPlain(body.text);
 }
 
 export function attachmentLabel(attachment: Attachment): string {

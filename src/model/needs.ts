@@ -2,7 +2,7 @@
 // decision 8). One he has answered or acted on since it was raised leaves the
 // queue at once, before the Mayor's host has applied it and the view drops it.
 import type { AnswerRow } from '../data/db';
-import type { ViewIndex } from './tree';
+import { isEpic, type ViewIndex } from './tree';
 import type { Need, WaitsFor } from './view';
 
 export function unsettledNeeds(needs: Need[], answers: AnswerRow[]): Need[] {
@@ -50,4 +50,26 @@ export function waitsOnLinks(need: Need, index: ViewIndex | undefined, hrefOf: (
     const blocker = blockers.find((bead) => bead.title === title);
     return blocker ? { title, href: hrefOf(blocker.id) } : { title };
   });
+}
+
+/** Whether any story under this bead is held (deferred), at any depth. */
+function holdsStories(id: string, index: ViewIndex, seen = new Set<string>()): boolean {
+  if (seen.has(id)) return false;
+  seen.add(id);
+  return (index.children.get(id) ?? []).some((child) => child.status === 'deferred' || holdsStories(child.id, index, seen));
+}
+
+/**
+ * Whether a release card still has something to release, or what it already is: 'held' (or
+ * 'unknown', which offers Release as before), 'building', or 'released'. A story is held when it is
+ * deferred; an epic (protocol §11: the approve need's bead) when a story under it is. `status` is the
+ * bead page's own fresher status, used for a story when given, else the view's.
+ */
+export function releaseState(need: Need, index?: ViewIndex, status?: string): 'held' | 'building' | 'released' | 'unknown' {
+  const bead = index?.byId.get(need.bead);
+  if (bead && index && isEpic(bead, index)) return holdsStories(bead.id, index) ? 'held' : 'released';
+  const now = status ?? bead?.status ?? '';
+  if (now === '') return 'unknown';
+  if (now === 'deferred') return 'held';
+  return now === 'in_progress' ? 'building' : 'released';
 }

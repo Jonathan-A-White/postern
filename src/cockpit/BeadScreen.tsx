@@ -205,7 +205,7 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
       <Actions bead={bead} detail={detail} index={index} />
 
       {needs.map((need) => (
-        <NeedCard key={`${need.kind}:${need.since}`} need={need} compact index={index} />
+        <NeedCard key={`${need.kind}:${need.since}`} need={need} compact index={index} status={detail?.status} />
       ))}
 
       <PathGrid path={detail?.path ?? bead?.path} attempts={detail?.attempts ?? bead?.attempts ?? 0} />

@@ -13,7 +13,7 @@ import { threadKey } from '../services/threads';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { speak } from '../services/speech';
 import type { Need } from '../model/view';
-import { orderedOptions, waitsFor, waitsOnLinks } from '../model/needs';
+import { orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
@@ -26,6 +26,8 @@ export interface NeedCardProps {
   compact?: boolean;
   /** The live view, so what a card waits on can link to those beads. */
   index?: ViewIndex;
+  /** The bead's status from its loaded detail, fresher than the view's; the view's is used without it. */
+  status?: string;
 }
 
 function spokenText(need: Need): string {
@@ -44,12 +46,15 @@ function questionWords(text: string): { headline: string; rest: string } {
   return { headline, rest: lines.slice(at + 1).join('\n').trim() };
 }
 
-export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
+export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardProps) {
   const meta = NEED_META[need.kind];
   const { busy, run } = useSend();
   // An approval or a verification is one signed transaction: one tap, then it waits for the view.
   const tapAction = waitsFor(need) !== 'you' || need.not_ready ? '' : need.kind === 'approve' ? 'release' : need.kind === 'verify' ? 'verified' : '';
   const oneTap = useOneTap(tapAction ? need.bead : '', tapAction);
+  // Release is for a story still held, as on the bead's page; a known status that is not held says so instead of offering it.
+  const releaseNow = tapAction === 'release' ? releaseState(need, index, status) : 'held';
+  const released = releaseNow === 'building' || releaseNow === 'released';
   // A question is answered once: his tap (an option or his own words) sends one answer, then the card is dead
   // until the view drops it. One state per question, so a later question on the bead is not held by this one.
   const asks = need.kind === 'question' && need.bead !== '';
@@ -67,7 +72,7 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
   const hasSteps = need.kind === 'hands' && need.steps.length > 0;
   const stale = need.kind === 'stale';
   // A stale need has its own Keep and Close (StaleChoice); the bead's page offers them among its actions.
-  const options = notReady || hasSteps || stale ? [] : orderedOptions(need);
+  const options = notReady || hasSteps || stale || released ? [] : orderedOptions(need);
   const thread = need.bead ? { bead: need.bead } : undefined;
   // Where a message from this card lands, so the toast can name it and open it.
   const threadName = need.bead || titleFor(GENERAL).title;
@@ -179,7 +184,14 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
 
       {stale && !waiting && !compact && need.bead && <StaleChoice bead={need.bead} />}
 
-      {tapAction && oneTap.waiting && <WaitingNote />}
+      {released && (
+        <p role="status" className="inline-flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
+          <Icon name="check" size={15} className="shrink-0" />
+          {releaseNow === 'building' ? 'Already released: building' : 'Already released'}
+        </p>
+      )}
+
+      {tapAction && oneTap.waiting && !released && <WaitingNote />}
 
       {answered && answerTap.said && (
         <p role="status" className="inline-flex min-w-0 items-center gap-1.5 text-[13px] text-muted">

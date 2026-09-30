@@ -10,11 +10,19 @@ import { settingsRepo } from '../data/repositories';
 
 export type Feature = 'direct' | 'events' | 'view' | 'beads' | 'me';
 
+/** A collection a cockpit key may issue licences in; `app` names the app it opens the grist door to. */
+export interface MeCollection {
+  name: string;
+  app?: string;
+}
+
 export interface Me {
   pubkey: string;
   mayor: string;
   network: string;
   features: Feature[];
+  /** A cockpit key only (docs/api.md): absent for an app key or an older backend. */
+  collections?: MeCollection[];
 }
 
 export const LEGACY: Me = { pubkey: '', mayor: '', network: 'testnet', features: [] };
@@ -53,7 +61,15 @@ export async function fetchMe(options: FetchMeOptions): Promise<Me> {
     mayor: typeof body.mayor === 'string' ? body.mayor : '',
     network: typeof body.network === 'string' ? body.network : 'testnet',
     features: Array.isArray(body.features) ? (body.features.filter((f) => typeof f === 'string') as Feature[]) : [],
+    ...(Array.isArray(body.collections) ? { collections: body.collections.flatMap(readCollection) } : {}),
   };
+}
+
+function readCollection(raw: unknown): MeCollection[] {
+  if (typeof raw !== 'object' || raw === null) return [];
+  const { name, app } = raw as { name?: unknown; app?: unknown };
+  if (typeof name !== 'string' || !name) return [];
+  return [typeof app === 'string' && app ? { name, app } : { name }];
 }
 
 export interface MayorKeyState {

@@ -12,7 +12,7 @@ import { Graph } from './Graph';
 import { FilterBar } from './FilterBar';
 import { loadSavedFilters } from './savedFilters';
 import { useViewIndex, useWide } from './hooks';
-import { ancestors, BUCKETS, bucketOf, epicStats, isEpic, isMap, topLevel, type Bucket, type ViewIndex } from '../model/tree';
+import { ancestors, BUCKETS, bucketOf, epicStats, isEpic, isMap, splitTopLevel, type Bucket, type ViewIndex } from '../model/tree';
 import { EMPTY_FILTER, facets, isEmptyFilter, matchesFilter, newestFirst, type BeadFilter } from '../model/filter';
 import type { ViewBead } from '../model/view';
 import { beadHref, formatRoute, type MapLens } from '../nav/route';
@@ -95,7 +95,8 @@ function useInitialFilter(bucket?: string, saved?: string): [BeadFilter, (filter
 
 function FactoryLevel({ index, filter, setFilter }: { index: ViewIndex; filter: BeadFilter; setFilter: (f: BeadFilter) => void }) {
   const { rigs, hosts } = useMemo(() => facets(index), [index]);
-  const tops = useMemo(() => topLevel(index), [index]);
+  const { live: tops, done } = useMemo(() => splitTopLevel(index), [index]);
+  const [showDone, setShowDone] = useState(false);
   const matches = useMemo(
     () => (isEmptyFilter(filter) ? [] : newestFirst(index.view.beads.filter((bead) => !isEpic(bead, index) && matchesFilter(bead, index, filter))).slice(0, 300)),
     [index, filter],
@@ -133,6 +134,27 @@ function FactoryLevel({ index, filter, setFilter }: { index: ViewIndex; filter: 
               <EmptyState icon="layers" title="No live epics" />
             )}
           </section>
+          {done.length > 0 && (
+            <section className="flex flex-col gap-2" aria-label="Done">
+              <button
+                type="button"
+                aria-expanded={showDone}
+                onClick={() => setShowDone((open) => !open)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-left text-sm text-muted hover:border-line-strong"
+              >
+                <Icon name="check" size={16} />
+                <span className="flex-1">Done · {done.length}</span>
+                <Icon name={showDone ? 'down' : 'forward'} size={15} />
+              </button>
+              {showDone && (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {done.map((bead) => (
+                    <EpicCard key={bead.id} epic={bead} index={index} />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
     </div>

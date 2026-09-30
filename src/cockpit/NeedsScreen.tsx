@@ -176,7 +176,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
             ) : (
               <div className="grid gap-3 xl:grid-cols-2">
                 {needs.map((need) => (
-                  <NeedCard key={`${need.kind}:${need.bead}:${need.since}`} need={need} epicTitle={index.byId.get(need.epic)?.title} />
+                  <NeedCard key={`${need.kind}:${need.bead}:${need.since}`} need={need} epicTitle={index.byId.get(need.epic)?.title} index={index} />
                 ))}
               </div>
             )}

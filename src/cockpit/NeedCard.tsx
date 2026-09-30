@@ -13,7 +13,8 @@ import { threadKey } from '../services/threads';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { speak } from '../services/speech';
 import type { Need } from '../model/view';
-import { orderedOptions, waitsFor } from '../model/needs';
+import { orderedOptions, waitsFor, waitsOnLinks } from '../model/needs';
+import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
@@ -23,6 +24,8 @@ export interface NeedCardProps {
   need: Need;
   epicTitle?: string;
   compact?: boolean;
+  /** The live view, so what a card waits on can link to those beads. */
+  index?: ViewIndex;
 }
 
 function spokenText(need: Need): string {
@@ -32,11 +35,11 @@ function spokenText(need: Need): string {
   return parts.join(' ');
 }
 
-export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
+export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
   const meta = NEED_META[need.kind];
   const { busy, run } = useSend();
   // An approval or a verification is one signed transaction: one tap, then it waits for the view.
-  const tapAction = waitsFor(need) !== 'you' ? '' : need.kind === 'approve' ? 'release' : need.kind === 'verify' ? 'verified' : '';
+  const tapAction = waitsFor(need) !== 'you' || need.not_ready ? '' : need.kind === 'approve' ? 'release' : need.kind === 'verify' ? 'verified' : '';
   const oneTap = useOneTap(tapAction ? need.bead : '', tapAction);
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
@@ -45,10 +48,12 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
   // A card waiting on the Mayor or the factory offers him nothing to tap but Reply and Open.
   const waiter = waitsFor(need);
   const waiting = waiter !== 'you';
-  const hasSteps = !waiting && need.kind === 'hands' && need.steps.length > 0;
+  // A not_ready card, whoever's turn it is, offers neither Approve nor Done: its steps show with what they wait on.
+  const notReady = waiting || need.not_ready === true;
+  const hasSteps = need.kind === 'hands' && need.steps.length > 0;
   const stale = need.kind === 'stale';
   // A stale need has its own Keep and Close (StaleChoice); the bead's page offers them among its actions.
-  const options = waiting || hasSteps || stale ? [] : orderedOptions(need);
+  const options = notReady || hasSteps || stale ? [] : orderedOptions(need);
   const thread = need.bead ? { bead: need.bead } : undefined;
   // Where a message from this card lands, so the toast can name it and open it.
   const threadName = need.bead || titleFor(GENERAL).title;
@@ -129,7 +134,7 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
         </div>
       )}
 
-      {waiting && need.waiting_on && need.waiting_on.length > 0 && (
+      {notReady && !hasSteps && need.waiting_on && need.waiting_on.length > 0 && (
         <ul className="flex flex-col gap-0.5 text-[13px] text-muted" aria-label="Waiting on">
           {need.waiting_on.map((reason) => (
             <li key={reason}>{reason}</li>
@@ -137,7 +142,7 @@ export function NeedCard({ need, epicTitle, compact }: NeedCardProps) {
         </ul>
       )}
 
-      {hasSteps && <HandsSteps bead={need.bead} steps={need.steps} />}
+      {hasSteps && <HandsSteps bead={need.bead} steps={need.steps} waitsOn={notReady ? waitsOnLinks(need, index, beadHref) : undefined} />}
 
       {stale && !waiting && !compact && need.bead && <StaleChoice bead={need.bead} />}
 

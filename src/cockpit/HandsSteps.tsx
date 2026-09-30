@@ -2,13 +2,15 @@
 // thumb can (docs/protocol.md §17): each shown exactly as it will run — where, as
 // whom, the commands and the way back — with "Approve and run" asking for his
 // fingerprint again before his key signs it, or "I did it myself" to tell the
-// Mayor. What ran says so, with its exit code.
+// Mayor. What ran says so, with its exit code. A step whose bead waits on an open
+// bead offers neither: it says what it waits on, each a link to that bead.
 import { useState } from 'react';
 import { Button, Chip, Icon, TimeAgo, cx } from '../ui';
 import type { HandsStep } from '../model/hands';
+import type { WaitsOn } from '../model/needs';
 import { approveHandsStep, sendToThread, useSend } from './send';
 
-function StepCard({ bead, step }: { bead: string; step: HandsStep }) {
+function StepCard({ bead, step, waitsOn }: { bead: string; step: HandsStep; waitsOn?: WaitsOn[] }) {
   const { busy, run } = useSend();
   const [confirming, setConfirming] = useState(false);
   const [approvedAt, setApprovedAt] = useState<number>();
@@ -61,7 +63,24 @@ function StepCard({ bead, step }: { bead: string; step: HandsStep }) {
           {showWayBack && <pre className="mt-1.5 overflow-x-auto rounded-lg bg-canvas p-2.5 font-mono text-[12px] whitespace-pre-wrap break-all text-muted">{step.way_back}</pre>}
         </div>
       )}
-      {!ranOk && !approvedAt && (
+      {!ranOk && !approvedAt && waitsOn && (
+        <p className="text-[13px] text-muted">
+          Waits on:{' '}
+          {waitsOn.map((item, i) => (
+            <span key={`${i}:${item.title}`}>
+              {i > 0 && ', '}
+              {item.href ? (
+                <a href={item.href} className="text-fg hover:underline">
+                  {item.title}
+                </a>
+              ) : (
+                item.title
+              )}
+            </span>
+          ))}
+        </p>
+      )}
+      {!ranOk && !approvedAt && !waitsOn && (
         confirming ? (
           <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-2.5" role="group" aria-label="Confirm">
             <p className="text-[13px]">
@@ -91,12 +110,13 @@ function StepCard({ bead, step }: { bead: string; step: HandsStep }) {
   );
 }
 
-export function HandsSteps({ bead, steps }: { bead: string; steps: HandsStep[] }) {
+/** `waitsOn` set (even empty) means the bead cannot be acted on yet: the steps show, nothing to tap. */
+export function HandsSteps({ bead, steps, waitsOn }: { bead: string; steps: HandsStep[]; waitsOn?: WaitsOn[] }) {
   if (steps.length === 0) return null;
   return (
     <ol className="flex flex-col gap-2" aria-label="Steps for your hands">
       {steps.map((step) => (
-        <StepCard key={`${step.id}:${step.sha256}`} bead={bead} step={step} />
+        <StepCard key={`${step.id}:${step.sha256}`} bead={bead} step={step} waitsOn={waitsOn} />
       ))}
     </ol>
   );

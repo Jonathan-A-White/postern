@@ -45,11 +45,12 @@ function isAttachment(value: unknown): value is Attachment {
 }
 
 /** Encodes a message body that may name a thread and/or carry an attachment.
- * Omitting both produces the same bare text an unthreaded, attachment-less
+ * Omitting all three produces the same bare text an unthreaded, attachment-less
  * message already carries, so an old reader (or one that never learns about
  * threads or attachments) sees no format change. */
 export function encodeThreadedMessage(body: ThreadedBody): string {
-  if (body.thread === undefined && body.attachment === undefined) return body.text;
+  // A `re` is only ever read from the JSON shape, so a message that carries one is never bare text.
+  if (body.thread === undefined && body.attachment === undefined && body.re === undefined) return body.text;
   return JSON.stringify({
     ...(body.thread !== undefined ? { thread: body.thread } : {}),
     text: body.text,

@@ -32,6 +32,7 @@ describe('routes', () => {
       { view: 'bead' as const, id: 'mw-a.1' },
       { view: 'talk' as const, thread: 'bead:mw-a.1' },
       { view: 'search' as const, q: 'ping' },
+      { view: 'talk' as const, thread: 'general', root: `direct:${'ab'.repeat(32)}` },
       { view: 'me' as const },
       { view: 'share' as const, id: 's1' },
       { view: 'notice' as const, tx: 'ab12', cls: 'decision-needed' as const },

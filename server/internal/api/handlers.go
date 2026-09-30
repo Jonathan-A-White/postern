@@ -5,9 +5,11 @@ package api
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -241,16 +243,16 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 	return func(w http.ResponseWriter, r *http.Request) {
 		pubKeyHex, nonce, sigHex, ok := parseAuthorization(r.Header.Get("Authorization"))
 		if !ok {
-			writeError(w, http.StatusUnauthorized, "missing or malformed Authorization header")
+			refuse(w, r, http.StatusUnauthorized, reasonMalformed, "missing or malformed Authorization header", "")
 			return
 		}
 		if !nonces.Consume(nonce) {
-			writeError(w, http.StatusUnauthorized, "nonce is missing, expired, or already used")
+			refuse(w, r, http.StatusUnauthorized, reasonNonce, "nonce is missing, expired, or already used", pubKeyHex)
 			return
 		}
 		valid, err := auth.VerifySignature(pubKeyHex, nonce, sigHex)
 		if err != nil || !valid {
-			writeError(w, http.StatusUnauthorized, "signature does not verify")
+			refuse(w, r, http.StatusUnauthorized, reasonSignature, "signature does not verify", pubKeyHex)
 			return
 		}
 		key := strings.ToLower(pubKeyHex)
@@ -260,16 +262,52 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 			return
 		}
 		if !granted.any() {
-			writeError(w, http.StatusUnauthorized, "no licence held")
+			refuse(w, r, http.StatusUnauthorized, reasonNoLicence, "no licence held", key)
 			return
 		}
 		if !who.admits(granted) {
-			writeError(w, http.StatusForbidden, "this key's licence does not open "+r.Method+" "+r.URL.Path)
+			refuse(w, r, http.StatusForbidden, reasonForbidden, "this key's licence does not open this route", key)
 			return
 		}
 		ctx := context.WithValue(r.Context(), authKey{}, key)
 		next(w, r.WithContext(context.WithValue(ctx, rightsKey{}, granted)))
 	}
+}
+
+// The machine-readable reason in a refusal's body ({"error", "reason"}): the
+// app matches on these, never on the English in "error" (docs/api.md). Only
+// reasonNoLicence is about a licence.
+const (
+	reasonMalformed = "malformed_authorization"
+	reasonNonce     = "nonce"
+	reasonSignature = "signature"
+	reasonNoLicence = "no_licence"
+	reasonForbidden = "forbidden"
+)
+
+// refuse answers a refused request and logs it as one line: the status, the
+// reason in words, the route and the first 12 hex characters of the key the
+// request named ("-" when it named none). Never the body, a signature or a
+// nonce.
+func refuse(w http.ResponseWriter, r *http.Request, status int, reason, message, pubKeyHex string) {
+	log.Printf("refused %d %s: %s (%s key %s)", status, r.Method+" "+r.URL.EscapedPath(), message, reason, keyPrefix(pubKeyHex))
+	writeJSON(w, status, struct {
+		Error  string `json:"error"`
+		Reason string `json:"reason"`
+	}{Error: message, Reason: reason})
+}
+
+// keyPrefix is the first 12 characters of a public key for a log line, or "-"
+// when there is no key or what was sent is not hex (it is not logged).
+func keyPrefix(pubKeyHex string) string {
+	if len(pubKeyHex) < 12 {
+		return "-"
+	}
+	prefix := strings.ToLower(pubKeyHex[:12])
+	if _, err := hex.DecodeString(prefix); err != nil {
+		return "-"
+	}
+	return prefix
 }
 
 // handleMe answers who the caller is, who the Mayor is and who the mill is,

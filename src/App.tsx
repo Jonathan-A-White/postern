@@ -31,7 +31,7 @@ function Place({ route }: { route: Route }) {
     case 'bead':
       return <BeadScreen key={route.id} id={route.id} />;
     case 'talk':
-      return <TalkScreen thread={route.thread} />;
+      return <TalkScreen thread={route.thread} root={route.root} />;
     case 'search':
       return <SearchScreen q={route.q} />;
     case 'me':

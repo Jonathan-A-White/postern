@@ -40,9 +40,13 @@ export interface ComposerProps {
   quote?: { speaker: string; text: string } | null;
   onClearQuote?: () => void;
   autoFocus?: boolean;
+  /** The txid this message answers: it goes out as a reply in that message's thread (docs/protocol.md §14). */
+  re?: string;
+  /** Words only: no files, photos or voice notes (a reply in a General thread is a plain message). */
+  textOnly?: boolean;
 }
 
-export function Composer({ thread, placeholder = 'Message the Mayor…', quote, onClearQuote, autoFocus }: ComposerProps) {
+export function Composer({ thread, placeholder = 'Message the Mayor…', quote, onClearQuote, autoFocus, re, textOnly }: ComposerProps) {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<Pending[]>([]);
   const [recording, setRecording] = useState(false);
@@ -56,13 +60,14 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const wide = useWide();
 
   useEffect(() => {
+    if (textOnly) return;
     const shared = takePendingShare();
     if (!shared) return;
     void Promise.all(shared.files.map((file) => toPending(new Blob([file.bytes], { type: file.type }), file.name))).then((pending) => {
       setFiles((current) => [...current, ...pending]);
       if (shared.text) setText((current) => current || shared.text || '');
     });
-  }, []);
+  }, [textOnly]);
 
   useEffect(() => {
     if (!recording) return;
@@ -79,6 +84,10 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   }, [text]);
 
   async function addFiles(list: FileList | File[]) {
+    if (textOnly) {
+      toast('A reply in a thread carries words only.', 'error');
+      return;
+    }
     const accepted: Pending[] = [];
     for (const file of Array.from(list)) {
       const refusal = refuseFile(file);
@@ -125,7 +134,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   async function send() {
     const body = `${quote ? quoteBlock(quote) : ''}${text.trim()}`;
     if (!body.trim() && files.length === 0) return;
-    const sent = await run(() => sendToThread(thread, body, files));
+    const sent = await run(() => sendToThread(thread, body, files, re));
     if (sent) {
       files.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
       setText('');
@@ -208,8 +217,8 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           </div>
         ) : (
           <>
-            <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />
-            <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} className="lg:hidden" />
+            {!textOnly && <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />}
+            {!textOnly && <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} className="lg:hidden" />}
             <textarea
               ref={textarea}
               value={text}
@@ -226,8 +235,8 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
         )}
         {recording ? (
           <IconButton icon="stop" label="Stop recording" tone="danger" size="lg" onClick={() => void stopRecording()} />
-        ) : canSend ? (
-          <IconButton icon="send" label="Send" tone="accent" size="lg" disabled={busy} onClick={() => void send()} />
+        ) : canSend || textOnly ? (
+          <IconButton icon="send" label="Send" tone="accent" size="lg" disabled={busy || !canSend} onClick={() => void send()} />
         ) : (
           <IconButton icon="mic" label="Record a voice note" size="lg" disabled={!canRecord()} onClick={() => void startRecording()} className={cx(!canRecord() && 'opacity-40')} />
         )}

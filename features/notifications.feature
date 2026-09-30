@@ -19,3 +19,9 @@ Feature: Per-class notification settings (on the Me screen since plans/0021)
     When "Reset to defaults" is tapped
     Then "message" shows sound on, vibrate on, stay until dismissed off, and quiet off
     And a pushed record of class "message" has its vibrate pattern back
+
+  Scenario: AC-4: vibrate without sound still buzzes, and the screen says what the phone does
+    Given the notification settings screen is opened
+    When sound is turned off for "message"
+    Then a pushed record of class "message" is not silent and has its vibrate pattern
+    And the settings screen explains that vibrate without sound plays the phone's notification sound

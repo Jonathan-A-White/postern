@@ -116,6 +116,32 @@ describeFeature(feature, ({ Scenario }) => {
       expect(spec.options.vibrate).toBeDefined();
     });
   });
+
+  Scenario('AC-4: vibrate without sound still buzzes, and the screen says what the phone does', ({ Given, When, Then, And }) => {
+    Given('the notification settings screen is opened', async () => {
+      await freshScreen();
+      await renderScreen();
+    });
+
+    When('sound is turned off for "message"', async () => {
+      await toggleSwitch('message', 'Sound');
+    });
+
+    Then('a pushed record of class "message" is not silent and has its vibrate pattern', async () => {
+      const settings = await settingsRepo.getNotificationSettings();
+      const spec = notificationSpecForClass('message', 'tx1', settings.message);
+      expect(spec.options.silent).toBe(false);
+      expect(spec.options.vibrate).toBeDefined();
+    });
+
+    And("the settings screen explains that vibrate without sound plays the phone's notification sound", () => {
+      expect(
+        screen.getByText(
+          "Vibrate without Sound still plays the phone's notification sound unless the phone is on vibrate; for vibrate only, set Postern's notification sound to None in the phone's settings.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
 });
 
 afterAll(() => {

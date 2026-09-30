@@ -114,6 +114,12 @@ function Notifications() {
             </div>
           ))}
         {settings && (
+          <p className="px-4 py-3 text-[13px] text-muted">
+            Vibrate without Sound still plays the phone's notification sound unless the phone is on vibrate; for vibrate only, set Postern's notification sound
+            to None in the phone's settings.
+          </p>
+        )}
+        {settings && (
           <div className="px-4 py-3">
             <Button
               size="sm"

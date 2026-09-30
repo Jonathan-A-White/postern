@@ -112,7 +112,9 @@ export function notificationSpecForClass(
 ): NotificationSpec {
   const title = text.title || TITLES[messageClass];
   const data = { txid, class: messageClass, url: tapUrl(messageClass, txid, text) };
-  const silent = settings.quiet || !settings.sound;
+  // The Notifications API's `silent` mutes the vibration as well as the sound, so
+  // a class with Vibrate on must not be silent whatever Sound says (mw-t64a3.20).
+  const silent = settings.quiet || (!settings.sound && !settings.vibrate);
   const vibrate = !settings.quiet && settings.vibrate ? VIBRATE_PATTERNS[messageClass] : undefined;
   const requireInteraction = settings.stayUntilDismissed;
   const options: NotificationOptions = { data, silent, requireInteraction, ...(vibrate && { vibrate }), ...(text.body && { body: text.body }) };

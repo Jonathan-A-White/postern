@@ -82,10 +82,25 @@ describe('notificationSpecForClass', () => {
     expect(spec.options.requireInteraction).toBeFalsy();
   });
 
-  it('turning off sound marks the notification silent', () => {
-    const muted: ClassNotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS.landing, sound: false };
+  it('sound off with vibrate on is not silent and keeps its vibrate pattern (a silent notification cannot vibrate)', () => {
+    const vibrateOnly: ClassNotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS.message, sound: false, vibrate: true, quiet: false };
+    const spec = notificationSpecForClass('message', 'tx1', vibrateOnly);
+    expect(spec.options.silent).toBe(false);
+    expect(spec.options.vibrate).toEqual([80]);
+  });
+
+  it('sound off and vibrate off marks the notification silent, with no vibrate pattern', () => {
+    const muted: ClassNotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS.landing, sound: false, vibrate: false };
     const spec = notificationSpecForClass('landing', 'tx1', muted);
     expect(spec.options.silent).toBe(true);
+    expect(spec.options.vibrate).toBeUndefined();
+  });
+
+  it('sound on and vibrate off is not silent and has no vibrate pattern', () => {
+    const soundOnly: ClassNotificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS.landing, sound: true, vibrate: false };
+    const spec = notificationSpecForClass('landing', 'tx1', soundOnly);
+    expect(spec.options.silent).toBe(false);
+    expect(spec.options.vibrate).toBeUndefined();
   });
 
   it('quiet overrides sound and vibrate regardless of their own switches', () => {
@@ -93,6 +108,16 @@ describe('notificationSpecForClass', () => {
     const spec = notificationSpecForClass('alarm', 'tx1', quiet);
     expect(spec.options.silent).toBe(true);
     expect(spec.options.vibrate).toBeUndefined();
+  });
+
+  it('quiet is silent with no vibrate pattern whatever the sound and vibrate boxes say', () => {
+    for (const sound of [true, false]) {
+      for (const vibrate of [true, false]) {
+        const spec = notificationSpecForClass('decision-needed', 'tx1', { sound, vibrate, stayUntilDismissed: true, quiet: true });
+        expect(spec.options.silent).toBe(true);
+        expect(spec.options.vibrate).toBeUndefined();
+      }
+    }
   });
 
   it('renotify and tag stay fixed per class regardless of settings', () => {

@@ -5,13 +5,16 @@ import type { NeedKind } from '../model/view';
 
 export const NEED_META: Record<NeedKind, { label: string; icon: IconName; tone: Tone; verb: string }> = {
   question: { label: 'Question', icon: 'talk', tone: 'needs', verb: 'The Mayor asks' },
-  approve: { label: 'Approve', icon: 'release', tone: 'held', verb: 'Held for your word' },
+  approve: { label: 'Release', icon: 'release', tone: 'held', verb: 'Held for your word' },
   verify: { label: 'Verify', icon: 'eye', tone: 'done', verb: 'Landed — check it' },
   stale: { label: 'Still wanted?', icon: 'clock', tone: 'held', verb: 'Has this gone stale' },
   demo: { label: 'Demo', icon: 'play', tone: 'ready', verb: 'A demo is ready' },
   hands: { label: 'Your hands', icon: 'hand', tone: 'needs', verb: 'Only you can do this' },
   alarm: { label: 'Alarm', icon: 'alarm', tone: 'danger', verb: 'Something is wrong' },
 };
+
+/** What a verify card's button says: the tap's meaning, not the protocol's word ('Verified'). */
+export const VERIFY_BUTTON = 'I checked it: it works';
 
 export function typeIcon(type: string, isMap = false): IconName {
   if (isMap) return 'map';

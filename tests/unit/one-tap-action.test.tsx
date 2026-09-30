@@ -94,12 +94,13 @@ describe('a one-tap action sends once and shows it is waiting', () => {
     await storeView(Date.now() - 60_000);
     const send = slowSend();
     render(<BeadScreen id={VERIFY} />);
-    const buttons = await screen.findAllByRole('button', { name: 'Verified' });
-    expect(buttons).toHaveLength(2);
-    fireEvent.click(buttons[1]);
-    fireEvent.click(buttons[0]);
+    const action = await screen.findByRole('button', { name: 'Verified' });
+    const card = await screen.findByRole('button', { name: 'I checked it: it works' });
+    fireEvent.click(card);
+    fireEvent.click(action);
     expect(deliverAction).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: 'Verified' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'I checked it: it works' })).toBeNull();
     expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0);
     await act(async () => send.finish());
     // Delivered, the view has not republished: still waiting, still no second tap.
@@ -114,7 +115,7 @@ describe('a one-tap action sends once and shows it is waiting', () => {
     await storeView(Date.now() - 60_000);
     const send = slowSend();
     render(<BeadScreen id={VERIFY} />);
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Verified' }))[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'I checked it: it works' }));
     await act(async () => send.finish());
     await waitFor(() => expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0));
 
@@ -124,6 +125,7 @@ describe('a one-tap action sends once and shows it is waiting', () => {
     // The bead's page filters its needs as Needs you does (mw-tbx1n.10): the card he already acted on stays gone,
     // so the action button is the one offered again.
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Verified' })).toHaveLength(1));
+    expect(screen.queryByRole('button', { name: 'I checked it: it works' })).toBeNull();
     expect(screen.queryByText(/waiting for the factory/i)).toBeNull();
 
     await act(async () => {

@@ -207,7 +207,7 @@ describeFeature(feature, ({ Scenario }) => {
     And('the queue also holds an approval, a step for his hands, a landing to verify and an alarm', async () => {
       const cards = await screen.findAllByTestId('need-card');
       const labels = cards.map((card) => card.getAttribute('aria-label') ?? '');
-      for (const kind of ['Approve', 'Your hands', 'Verify', 'Alarm']) expect(labels.some((label) => label.startsWith(`${kind}:`))).toBe(true);
+      for (const kind of ['Release', 'Your hands', 'Verify', 'Alarm']) expect(labels.some((label) => label.startsWith(`${kind}:`))).toBe(true);
     });
   });
 
@@ -236,7 +236,7 @@ describeFeature(feature, ({ Scenario }) => {
       await screen.findAllByTestId('need-card');
     });
     And('"Release" is tapped on the approval', async () => {
-      const approval = await screen.findByRole('article', { name: 'Approve: Cockpit screens' });
+      const approval = await screen.findByRole('article', { name: 'Release: Cockpit screens' });
       await userEvent.click(within(approval).getByRole('button', { name: 'Release' }));
     });
     Then('a release action for "mw-f758y.31" is delivered directly to the Mayor', async () => {
@@ -448,7 +448,7 @@ describeFeature(feature, ({ Scenario }) => {
       await screen.findAllByTestId('need-card');
     });
     And('"Hold this one" is sent as a reply on the approval', async () => {
-      await replyOn(await screen.findByRole('article', { name: 'Approve: Cockpit screens' }), 'Hold this one');
+      await replyOn(await screen.findByRole('article', { name: 'Release: Cockpit screens' }), 'Hold this one');
     });
     Then('a toast says "Sent to the Mayor in mw-f758y.31"', async () => {
       expect(await toastSaying('Sent to the Mayor in mw-f758y.31')).toBeInTheDocument();
@@ -470,7 +470,7 @@ describeFeature(feature, ({ Scenario }) => {
       await screen.findAllByTestId('need-card');
     });
     And('"Release" is tapped twice on the approval', async () => {
-      const approval = await screen.findByRole('article', { name: 'Approve: Cockpit screens' });
+      const approval = await screen.findByRole('article', { name: 'Release: Cockpit screens' });
       const release = within(approval).getByRole('button', { name: 'Release' });
       fireEvent.click(release);
       fireEvent.click(release);
@@ -482,7 +482,7 @@ describeFeature(feature, ({ Scenario }) => {
       expect(JSON.parse(delivered[0])).toEqual({ action: 'release', bead: 'mw-f758y.31' });
     });
     And('the approval says it was sent and is waiting for the factory, with no Release button to tap', async () => {
-      const approval = screen.getByRole('article', { name: 'Approve: Cockpit screens' });
+      const approval = screen.getByRole('article', { name: 'Release: Cockpit screens' });
       expect(within(approval).getByRole('status')).toHaveTextContent(/waiting for the factory/i);
       expect(within(approval).queryByRole('button', { name: 'Release' })).toBeNull();
       await letTheSendFinish('mw-f758y.31');
@@ -499,14 +499,14 @@ describeFeature(feature, ({ Scenario }) => {
       await screen.findAllByTestId('need-card');
     });
     And('"Release" is tapped on the approval', async () => {
-      const approval = await screen.findByRole('article', { name: 'Approve: Cockpit screens' });
+      const approval = await screen.findByRole('article', { name: 'Release: Cockpit screens' });
       await userEvent.click(within(approval).getByRole('button', { name: 'Release' }));
     });
     Then('a toast says "The backend refused the message."', async () => {
       expect(await screen.findByText('The backend refused the message.')).toBeInTheDocument();
     });
     And('the approval offers "Release" again', async () => {
-      const approval = screen.getByRole('article', { name: 'Approve: Cockpit screens' });
+      const approval = screen.getByRole('article', { name: 'Release: Cockpit screens' });
       await waitFor(() => expect(within(approval).getByRole('button', { name: 'Release' })).toBeEnabled());
       expect(within(approval).queryByRole('status')).toBeNull();
     });

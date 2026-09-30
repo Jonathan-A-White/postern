@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { Button, Chip, Icon, IconButton, TimeAgo, cx } from '../ui';
 import { Markdown } from '../markdown';
-import { NEED_META } from './labels';
+import { NEED_META, VERIFY_BUTTON } from './labels';
 import { beadHref, type Route } from '../nav/route';
 import { GENERAL, titleFor } from '../model/threads';
 import { threadKey } from '../services/threads';
@@ -62,7 +62,7 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
   // A card waiting on the Mayor or the factory offers him nothing to tap but Reply and Open.
   const waiter = waitsFor(need);
   const waiting = waiter !== 'you';
-  // A not_ready card, whoever's turn it is, offers neither Approve nor Done: its steps show with what they wait on.
+  // A not_ready card, whoever's turn it is, offers neither Release nor Done: its steps show with what they wait on.
   const notReady = waiting || need.not_ready === true;
   const hasSteps = need.kind === 'hands' && need.steps.length > 0;
   const stale = need.kind === 'stale';
@@ -99,7 +99,9 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
   const words = need.kind === 'question' ? questionWords(need.text) : undefined;
   const asked = words !== undefined && words.headline !== '';
   const body = asked ? words.rest : need.text;
-  const long = body.length > 280 && !stale;
+  // A verify card's text is its HOW TO CHECK IT steps: shown in full, on the bead's page too, under their own heading.
+  const verifySteps = need.kind === 'verify' && body.trim() !== '';
+  const long = body.length > 280 && !stale && !verifySteps;
   return (
     <article
       className={cx('flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-surface p-4', need.kind === 'alarm' && 'border-danger/40')}
@@ -146,8 +148,12 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
         {need.bead && <span className="font-mono text-[11.5px] text-faint">{need.bead}</span>}
       </div>
 
-      {body && (asked || need.text !== need.title) && (!compact || stale || asked) && (
-        <div className={cx('relative text-muted', !expanded && long && 'max-h-40 overflow-hidden')}>
+      {body && (asked || need.text !== need.title) && (!compact || stale || asked || verifySteps) && (
+        <div
+          className={cx('relative text-muted', !expanded && long && 'max-h-40 overflow-hidden', verifySteps && 'flex flex-col gap-1 [&_img]:h-auto [&_img]:w-full')}
+          data-testid={verifySteps ? 'verify-steps' : undefined}
+        >
+          {verifySteps && <h4 className="text-[13px] font-semibold text-fg">How to check it</h4>}
           <Markdown text={body} />
           {!expanded && long && (
             <button
@@ -187,6 +193,7 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
         <div className="flex flex-wrap gap-2" role="group" aria-label="Answers">
           {options.map((option) => {
             const recommended = option === need.recommended && options.length > 1;
+            const words = need.kind === 'verify' ? VERIFY_BUTTON : option;
             return (
               <Button
                 key={option}
@@ -194,9 +201,9 @@ export function NeedCard({ need, epicTitle, compact, index }: NeedCardProps) {
                 onClick={() => void choose(option)}
                 disabled={busy || answered}
                 className="max-w-full"
-                aria-label={recommended ? `${option} (recommended)` : option}
+                aria-label={recommended ? `${words} (recommended)` : words}
               >
-                <span className="truncate">{option}</span>
+                <span className="truncate">{words}</span>
                 {recommended && <span className="text-[11px] font-medium opacity-75">recommended</span>}
               </Button>
             );

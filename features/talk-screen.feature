@@ -40,6 +40,17 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the recogniser is started again on the default input
     And the screen says it is listening on the phone's own microphone
 
+  Scenario: AC-1: earbuds whose microphone hears nothing are given up on, and the hold goes on on the phone's own microphone (mw-j0f2d.34)
+    Given the phone has the inputs "Phone microphone" and "Bluetooth headset"
+    And the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    Then the recogniser listens on the "Bluetooth headset" input
+    When the recogniser ends with no speech and no words
+    Then the recogniser is started again on the default input
+    And the screen says it is listening on the phone's own microphone
+    When he says "what landed" and lets go
+    Then the turn sent is "what landed"
+
   Scenario: AC-1: an Android phone that sends each growing hypothesis as a new result shows and sends the phrase once (mw-j0f2d.12)
     Given the Talk line is open with a believable speech recogniser
     When he presses and holds the talk button

@@ -109,9 +109,23 @@ cockpit and an app licence is a cockpit key.
 
 ## GET /healthz
 
-Liveness check.
+Liveness check, and which build is running. Served by the backend at `/healthz`;
+the site's proxy reaches it as `/api/healthz`.
 
-- `200 text/plain` — body `ok`.
+- `200 application/json`:
+
+  ```json
+  { "ok": true, "standby": false, "commit": "0a560d1" }
+  ```
+
+  `commit` is the short git revision the running binary was built from, so a
+  backend swap is verified from this line instead of a `cmp` of the binary. It is
+  the Go toolchain's own `vcs.revision` stamp (`runtime/debug.ReadBuildInfo`), so
+  `go build -o {out} ./cmd/postern` needs no flag; a build may override it with
+  `-ldflags "-X github.com/Jonathan-A-White/postern/server/internal/buildinfo.commit=<rev>"`.
+  It reads `dev` when the build carries neither (a `go run`, or a build outside a
+  git checkout). In standby the same line answers with `"standby": true` and
+  `"home": …`, still carrying `commit`.
 
 ## GET /api/challenge
 
@@ -596,7 +610,7 @@ not home must not act as a second backend. In standby:
   relayed to it unchanged and the home's answer returned as is, so the home
   does the work once; they are served here only when the home cannot be
   reached at all (see below);
-- `GET /healthz` answers `200` with `{"ok": true, "standby": true, "home": …}`;
+- `GET /healthz` answers `200` with `{"ok": true, "standby": true, "home": …, "commit": …}`;
 - web push notifications are not sent;
 - the chain poll still runs and the index is kept, the event hub still hears
   every record, and the on-message hook still runs (`mw` decides what to apply).

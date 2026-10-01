@@ -11,7 +11,7 @@ async function waitForHealthz(request: APIRequestContext, deadline: number): Pro
     const status = response.status();
     if (status !== 502 && status !== 504) {
       expect(response.ok()).toBe(true);
-      expect(await response.text()).toBe('ok');
+      expect(await response.json()).toMatchObject({ ok: true, commit: expect.any(String) });
       return;
     }
     if (Date.now() >= deadline) {

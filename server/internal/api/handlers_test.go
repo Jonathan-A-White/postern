@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
+	"github.com/Jonathan-A-White/postern/server/internal/buildinfo"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
@@ -176,6 +177,26 @@ func TestHealthz(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	var got struct {
+		OK      bool   `json:"ok"`
+		Standby bool   `json:"standby"`
+		Home    string `json:"home"`
+		Commit  string `json:"commit"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding healthz body: %v", err)
+	}
+	if !got.OK || got.Standby || got.Home != "" {
+		t.Errorf("healthz = %+v, want ok true, standby false, no home", got)
+	}
+	// A test binary carries no vcs stamp, so this reads "dev"; a real build
+	// reads its short revision. Either way it is what buildinfo says.
+	if got.Commit == "" || got.Commit != buildinfo.Commit() {
+		t.Errorf("commit = %q, want %q", got.Commit, buildinfo.Commit())
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/buildinfo"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 )
@@ -221,6 +222,9 @@ func TestMiddlewareStandbyHealthzIsOKWithStandbyTrue(t *testing.T) {
 	var got map[string]any
 	if err := json.Unmarshal(body, &got); err != nil || got["standby"] != true {
 		t.Fatalf("body = %q (%v)", body, err)
+	}
+	if got["commit"] != buildinfo.Commit() {
+		t.Fatalf("commit = %v, want %q", got["commit"], buildinfo.Commit())
 	}
 }
 

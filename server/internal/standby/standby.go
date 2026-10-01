@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/buildinfo"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 )
@@ -177,6 +178,7 @@ type body struct {
 	OK      bool   `json:"ok,omitempty"`
 	Standby bool   `json:"standby"`
 	Home    string `json:"home,omitempty"`
+	Commit  string `json:"commit,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, b body) {
@@ -199,7 +201,7 @@ func Middleware(m *Monitor, next http.Handler, opts ...MiddlewareOption) http.Ha
 		if m.Standby() {
 			switch {
 			case r.URL.Path == "/healthz":
-				writeJSON(w, http.StatusOK, body{OK: true, Standby: true, Home: m.Home()})
+				writeJSON(w, http.StatusOK, body{OK: true, Standby: true, Home: m.Home(), Commit: buildinfo.Commit()})
 				return
 			case strings.HasPrefix(r.URL.Path, "/api/") && !isSendRoute(r):
 				writeJSON(w, http.StatusServiceUnavailable, body{Standby: true, Home: m.Home()})

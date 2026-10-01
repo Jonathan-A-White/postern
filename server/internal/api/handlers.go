@@ -18,6 +18,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/beads"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
+	"github.com/Jonathan-A-White/postern/server/internal/buildinfo"
 	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
@@ -365,8 +366,11 @@ func handleChallenge(nonces *auth.NonceStore) http.HandlerFunc {
 }
 
 func handleHealthz(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	writeJSON(w, http.StatusOK, struct {
+		OK      bool   `json:"ok"`
+		Standby bool   `json:"standby"`
+		Commit  string `json:"commit"`
+	}{OK: true, Commit: buildinfo.Commit()})
 }
 
 func handleMessages(store *index.Store) http.HandlerFunc {

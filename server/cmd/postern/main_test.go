@@ -66,8 +66,8 @@ func TestHealthz(t *testing.T) {
 		t.Fatalf("reading body: %v", err)
 	}
 
-	if string(body) != "ok" {
-		t.Fatalf("body = %q, want %q", string(body), "ok")
+	if !strings.Contains(string(body), `"ok":true`) || !strings.Contains(string(body), `"commit":"`) {
+		t.Fatalf("body = %q, want JSON with ok true and a commit", string(body))
 	}
 }
 
@@ -167,8 +167,8 @@ func TestAppInStandbyAnswers503ExceptHealthzAndTheSendRoutes(t *testing.T) {
 		t.Fatalf("GET /api/view = %d %q, want 503 with standby true and the home", code, body)
 	}
 	code, body = get(t, server.URL+"/healthz")
-	if code != http.StatusOK || !strings.Contains(body, `"standby":true`) {
-		t.Fatalf("GET /healthz = %d %q, want 200 with standby true", code, body)
+	if code != http.StatusOK || !strings.Contains(body, `"standby":true`) || !strings.Contains(body, `"commit":"`) {
+		t.Fatalf("GET /healthz = %d %q, want 200 with standby true and a commit", code, body)
 	}
 	if code, _ = get(t, server.URL+"/api/challenge"); code != http.StatusOK {
 		t.Fatalf("GET /api/challenge = %d, want 200 (a send needs it)", code)
@@ -186,8 +186,8 @@ func TestAppInStandbyAnswers503ExceptHealthzAndTheSendRoutes(t *testing.T) {
 
 func TestAppAtHomeBehavesAsBefore(t *testing.T) {
 	server := standbyApp(t, "exit 0")
-	if code, body := get(t, server.URL+"/healthz"); code != http.StatusOK || body != "ok" {
-		t.Fatalf("GET /healthz = %d %q, want 200 ok", code, body)
+	if code, body := get(t, server.URL+"/healthz"); code != http.StatusOK || !strings.Contains(body, `"ok":true`) || !strings.Contains(body, `"standby":false`) {
+		t.Fatalf("GET /healthz = %d %q, want 200 ok, standby false", code, body)
 	}
 	if code, _ := get(t, server.URL+"/api/view"); code != http.StatusUnauthorized {
 		t.Fatalf("GET /api/view = %d, want 401", code)

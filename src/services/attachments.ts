@@ -5,7 +5,7 @@
 // ciphertext's own sha256 hash and byte length; this never computes either
 // itself.
 import { Utils } from '@bsv/sdk';
-import { ApiTimeoutError, apiFetch, withTimeout } from './apiAuth';
+import { ApiTimeoutError, RefusedError, apiFetch, withTimeout } from './apiAuth';
 import { encryptAttachment } from './messages';
 import { readErrorMessage } from './send';
 import type { Attachment } from './threads';
@@ -68,7 +68,7 @@ export async function uploadAttachment(params: UploadAttachmentParams): Promise<
     throw notSent(err);
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response, 'The image upload failed.'));
+    throw new RefusedError(await readErrorMessage(response, 'The image upload failed.'), response.status);
   }
   const body = (await withTimeout(response.json(), false).catch((err: unknown) => {
     throw notSent(err);

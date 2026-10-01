@@ -52,3 +52,16 @@ describe('pendingMessageItems', () => {
     expect(item.re).toBe('abc');
   });
 });
+
+describe('a refused row (mw-jrx0s.21)', () => {
+  it('still holds its card dead, but is not counted as waiting for the network', () => {
+    const failed = row({ kind: 'answer', bead: 'mw-a', created: 5000, state: 'failed', attempts: 1, failure: 'unknown class' });
+    expect(pendingAnswer([failed], 'mw-a', 4000)).toBe(failed);
+    expect(anyPending([failed])).toBe(false);
+  });
+
+  it('shows a refused message as a bubble that says what the backend said', () => {
+    const [item] = pendingMessageItems([row({ id: 4, state: 'failed', failure: 'too big' })], [], () => true);
+    expect(item).toMatchObject({ id: 'outbox:4', outboxId: 4, failure: 'too big' });
+  });
+});

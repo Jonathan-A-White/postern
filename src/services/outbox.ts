@@ -5,10 +5,14 @@
 // the app opens (a reload loses nothing), when the browser says it is online, and when the live
 // connection comes back. A sent row waits until its own record or event is seen coming back
 // (since-paging, or the `card_answered` event naming its txid) and is then acked.
+// A 4xx the backend gives (other than 408 and 429) is final: the row is marked failed with the
+// backend's words and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
+// Talk turns are a lane of their own, so no upload or failing message holds one back.
 import { answersRepo, eventsRepo, messagesRepo, outboxRepo } from '../data/repositories';
 import type { OutboxKind, OutboxRow } from '../data/db';
 import type { GovernorAction } from '../model/conversation';
 import { retryDelay } from '../model/outbox';
+import { isPermanentRefusal } from './apiAuth';
 import type { TalkTurn } from '../model/talkLine';
 import { attachmentMime, uploadAttachment } from './attachments';
 import { deliverAction, deliverAnswer, deliverThreaded, writeBehind, type Delivered, type DeliverOptions } from './deliver';
@@ -56,9 +60,16 @@ const KEEP_ACKED_MS = 24 * 60 * 60 * 1000;
 /** A record kept by the phone's own write when it sent has this seq until since-paging brings the real one. */
 const OWN_WRITE_SEQ = Number.MAX_SAFE_INTEGER;
 
-let draining: Promise<void> | undefined;
-let again: { force: boolean } | undefined;
-let timer: ReturnType<typeof setTimeout> | undefined;
+/** The sender runs two lanes at once, each in order: Talk turns on their own, so a turn is never
+ * held behind a long file upload or a message waiting for its next try; everything else on the other. */
+type LaneName = 'turn' | 'main';
+interface Lane {
+  name: LaneName;
+  draining: Promise<void> | undefined;
+  again: { force: boolean } | undefined;
+  timer: ReturnType<typeof setTimeout> | undefined;
+}
+const lanes: Lane[] = (['turn', 'main'] as const).map((name) => ({ name, draining: undefined, again: undefined, timer: undefined }));
 let generation = 0;
 
 /** Writes one thing he did to the outbox and wakes the sender; resolves once it is written, not once it is sent. */
@@ -116,37 +127,42 @@ export async function ackSent(): Promise<void> {
   await outboxRepo.pruneAcked(Date.now() - KEEP_ACKED_MS);
 }
 
-function wakeAt(at: number): void {
-  clearTimeout(timer);
-  timer = setTimeout(() => kickOutbox(), Math.max(0, at - Date.now()));
+function wakeAt(lane: Lane, at: number): void {
+  clearTimeout(lane.timer);
+  lane.timer = setTimeout(() => kickLane(lane, false), Math.max(0, at - Date.now()));
 }
 
-async function drain(force: boolean): Promise<void> {
+async function drain(lane: Lane, force: boolean): Promise<void> {
   const mine = generation;
   await ackSent();
   for (;;) {
-    const row = await outboxRepo.head();
+    const row = await outboxRepo.head(lane.name);
     if (!row || mine !== generation) return;
-    if (!force && row.nextAt !== undefined && row.nextAt > Date.now()) return wakeAt(row.nextAt);
+    if (!force && row.nextAt !== undefined && row.nextAt > Date.now()) return wakeAt(lane, row.nextAt);
     force = false;
     const options = deliverOptions(getKey());
     if (!options) {
       // Locked, or the Mayor not yet known: the next live state or key change wakes the sender; this is the fallback.
       // The row has now waited, so the status line says so.
       if (row.attempts === 0) await outboxRepo.update(row.id as number, { attempts: 1 });
-      wakeAt(Date.now() + retryDelay(row.attempts + 1));
+      wakeAt(lane, Date.now() + retryDelay(row.attempts + 1));
       return;
     }
     let delivered: Delivered;
     try {
       delivered = await deliverRow(row, options);
-    } catch {
-      // Out of reach or refused: the row keeps its place, and nothing behind it goes ahead of it.
+    } catch (err) {
       if (mine !== generation) return;
+      if (isPermanentRefusal(err)) {
+        // Refused for good (a 4xx): it is marked failed with the backend's words, waits for Retry or Discard, and the rows behind it go on.
+        await outboxRepo.update(row.id as number, { state: 'failed', failure: err.message, attempts: row.attempts + 1, nextAt: undefined });
+        continue;
+      }
+      // Out of reach or a passing trouble: the row keeps its place, and nothing behind it in its lane goes ahead of it.
       const attempts = row.attempts + 1;
       const nextAt = Date.now() + retryDelay(attempts);
       await outboxRepo.update(row.id as number, { attempts, nextAt });
-      return wakeAt(nextAt);
+      return wakeAt(lane, nextAt);
     }
     if (mine !== generation) return;
     await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, attempts: row.attempts + 1, nextAt: undefined });
@@ -154,26 +170,42 @@ async function drain(force: boolean): Promise<void> {
   }
 }
 
-/** Wakes the sender: one pass at a time. `force` skips the wait a failed row set itself (the network is back). */
-export function kickOutbox(force = false): void {
-  if (draining) {
-    again = { force: force || (again?.force ?? false) };
+/** Wakes one lane: one pass at a time. */
+function kickLane(lane: Lane, force: boolean): void {
+  if (lane.draining) {
+    lane.again = { force: force || (lane.again?.force ?? false) };
     return;
   }
-  const run = drain(force)
+  const run = drain(lane, force)
     .catch((err: unknown) => console.warn('The outbox could not be read:', err))
     .finally(() => {
-      if (draining === run) draining = undefined;
-      const next = again;
-      again = undefined;
-      if (next) kickOutbox(next.force);
+      if (lane.draining === run) lane.draining = undefined;
+      const next = lane.again;
+      lane.again = undefined;
+      if (next) kickLane(lane, next.force);
     });
-  draining = run;
+  lane.draining = run;
+}
+
+/** Wakes the sender: one pass at a time in each lane. `force` skips the wait a failed row set itself (the network is back). */
+export function kickOutbox(force = false): void {
+  for (const lane of lanes) kickLane(lane, force);
+}
+
+/** Retry on a refused row: back in the queue in its old place, and tried at once. */
+export async function retryRow(id: number): Promise<void> {
+  await outboxRepo.requeue(id);
+  kickOutbox(true);
+}
+
+/** Discard on a refused row: forgotten, so the card or bubble it was on is as it was before. */
+export async function discardRow(id: number): Promise<void> {
+  await outboxRepo.remove(id);
 }
 
 /** Resolves once the sender has gone quiet (a test's seam; the app never waits on it). */
 export async function settledOutbox(): Promise<void> {
-  while (draining) await draining;
+  while (lanes.some((lane) => lane.draining)) await Promise.all(lanes.map((lane) => lane.draining));
 }
 
 /** Starts the sender for this page: resumes the queue now, and again whenever the phone may be back in reach. Resolves to its stop. */
@@ -205,8 +237,10 @@ export function startOutbox(): () => void {
 /** Forgets what this page holds in memory, as a reload does: the rows in Dexie stay. A test's seam. */
 export function forgetOutboxState(): void {
   generation++;
-  clearTimeout(timer);
-  timer = undefined;
-  draining = undefined;
-  again = undefined;
+  for (const lane of lanes) {
+    clearTimeout(lane.timer);
+    lane.timer = undefined;
+    lane.draining = undefined;
+    lane.again = undefined;
+  }
 }

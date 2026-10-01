@@ -64,6 +64,23 @@ export class BackendUnreachableError extends Error {
   }
 }
 
+/** The backend answered and said no, with its own words and HTTP status. A 4xx (other than 408 and
+ * 429) is a permanent refusal: sending the same thing again gets the same answer (mw-jrx0s.21). */
+export class RefusedError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+    this.name = 'RefusedError';
+  }
+}
+
+/** Whether `err` is the backend refusing for good: a 4xx other than a request timeout (408) or too many requests (429).
+ * A lost connection, a timeout, a gateway error and any 5xx are not: they are tried again, in their place. */
+export function isPermanentRefusal(err: unknown): err is RefusedError {
+  return err instanceof RefusedError && err.status >= 400 && err.status < 500 && err.status !== 408 && err.status !== 429;
+}
+
 export interface ApiFetchOptions {
   /** This phone's unlocked raw master key. Omitted for an unauthenticated call. */
   unlockedKey?: Uint8Array;
@@ -106,11 +123,11 @@ async function refusalReason(response: Response): Promise<string | undefined> {
  * names no reason) is a licence problem; any other refusal of a signed call is
  * about the proof, and says so. */
 function refusalError(reason: string | undefined, signed: boolean): Error {
-  if (!signed || reason === undefined || reason === 'no_licence') return new Error('Licence required');
+  if (!signed || reason === undefined || reason === 'no_licence') return new RefusedError('Licence required', 401);
   if (reason === 'nonce') {
-    return new Error("The backend twice rejected this phone's one-time sign-in code. Nothing was lost; try again.");
+    return new RefusedError("The backend twice rejected this phone's one-time sign-in code. Nothing was lost; try again.", 401);
   }
-  return new Error("The backend did not accept this phone's proof of who it is. Try again.");
+  return new RefusedError("The backend did not accept this phone's proof of who it is. Try again.", 401);
 }
 
 /**

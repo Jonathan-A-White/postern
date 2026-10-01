@@ -7,7 +7,7 @@
 // once, so it shows in its thread before the event stream echoes it back.
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { encodeRecordScript } from 'spell-forge-bsv';
-import { apiFetch, ApiTimeoutError, BackendUnreachableError, withTimeout } from './apiAuth';
+import { apiFetch, ApiTimeoutError, BackendUnreachableError, RefusedError, withTimeout } from './apiAuth';
 import { encryptMessage, type MessageClass } from './messages';
 import { readErrorMessage, sendTextMessage } from './send';
 import type { ChainVia } from './spendable';
@@ -50,7 +50,7 @@ async function postDirect(scriptHex: string, options: DeliverOptions): Promise<s
   if (response.status === 502 || response.status === 503 || response.status === 504) {
     throw new BackendUnreachableError(await readErrorMessage(response, 'The backend refused the message.'));
   }
-  if (!response.ok) throw new Error(await readErrorMessage(response, 'The backend refused the message.'));
+  if (!response.ok) throw new RefusedError(await readErrorMessage(response, 'The backend refused the message.'), response.status);
   const body = (await withTimeout(response.json(), true)) as { txid?: unknown };
   if (typeof body.txid !== 'string') throw new Error('The backend took the message but named no id.');
   return body.txid;

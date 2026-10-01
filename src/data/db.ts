@@ -145,9 +145,11 @@ export interface ShareRow {
 
 /** mw-jrx0s.10: one thing he did that is on its way to the Mayor, written before anything is sent.
  * `pending` until a backend or the chain has taken it, `sent` (with its `txid`) until its own record
- * or event is seen coming back, then `acked`. Rows go out oldest first, one at a time. */
+ * or event is seen coming back, then `acked`. Rows go out oldest first, one at a time (Talk turns in a
+ * lane of their own). `failed` (mw-jrx0s.21) is a row the backend refused for good: it waits for Retry or
+ * Discard, and the rows behind it go on. */
 export type OutboxKind = 'answer' | 'action' | 'turn' | 'message' | 'call';
-export type OutboxState = 'pending' | 'sent' | 'acked';
+export type OutboxState = 'pending' | 'sent' | 'acked' | 'failed';
 
 export interface OutboxRow {
   id?: number;
@@ -167,6 +169,8 @@ export interface OutboxRow {
   nextAt?: number;
   txid?: string;
   state: OutboxState;
+  /** What the backend said, when it refused the row for good (`state` is `failed`). */
+  failure?: string;
 }
 
 export interface VaultRow {

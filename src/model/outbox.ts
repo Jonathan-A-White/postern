@@ -20,21 +20,26 @@ export function isPending(row: OutboxRow): boolean {
   return row.state === 'pending';
 }
 
+/** Whether the row has not gone and is still his to settle: waiting to go, or refused and waiting for Retry or Discard (mw-jrx0s.21). */
+export function isUnsent(row: OutboxRow): boolean {
+  return row.state === 'pending' || row.state === 'failed';
+}
+
 /** His answer to a question on `bead` asked at `sinceMs` that has not yet gone. */
 export function pendingAnswer(rows: OutboxRow[], bead: string, sinceMs: number): OutboxRow | undefined {
-  return rows.find((row) => row.kind === 'answer' && row.bead === bead && isPending(row) && row.created >= sinceMs);
+  return rows.find((row) => row.kind === 'answer' && row.bead === bead && isUnsent(row) && row.created >= sinceMs);
 }
 
 /** His one-tap `action` on `bead` that has not yet gone. */
 export function pendingAction(rows: OutboxRow[], bead: string, action: string): OutboxRow | undefined {
-  return rows.find((row) => row.kind === 'action' && row.bead === bead && isPending(row) && (row.payload.action as { action?: string } | undefined)?.action === action);
+  return rows.find((row) => row.kind === 'action' && row.bead === bead && isUnsent(row) && (row.payload.action as { action?: string } | undefined)?.action === action);
 }
 
 /** His Talk turn `talkId`/`turn` that has not yet gone. */
 export function pendingTurn(rows: OutboxRow[], talkId: string, turn: number): OutboxRow | undefined {
   return rows.find((row) => {
     const sent = row.payload.turn as { talk?: { id?: string; turn?: number } } | undefined;
-    return row.kind === 'turn' && isPending(row) && sent?.talk?.id === talkId && sent.talk.turn === turn;
+    return row.kind === 'turn' && isUnsent(row) && sent?.talk?.id === talkId && sent.talk.turn === turn;
   });
 }
 
@@ -68,6 +73,8 @@ export function pendingMessageItems(rows: OutboxRow[], have: MessageRow[], inThr
       text: messageWords(row),
       pending: true,
       source: 'message' as const,
+      outboxId: row.id as number,
+      ...(row.state === 'failed' ? { failure: row.failure ?? 'The backend refused it.' } : {}),
       ...(row.txid ? { txid: row.txid } : {}),
       ...(typeof row.payload.re === 'string' ? { re: row.payload.re } : {}),
     }));

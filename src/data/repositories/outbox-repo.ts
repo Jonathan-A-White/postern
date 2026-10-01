@@ -17,9 +17,13 @@ export const outboxRepo = {
     return db.outbox.orderBy('id').filter((row) => row.state !== 'acked').toArray();
   },
 
-  /** The oldest row not yet taken by a backend or the chain. */
-  async head(): Promise<OutboxRow | undefined> {
-    return db.outbox.where('state').equals('pending').first();
+  /** The oldest row of a lane not yet taken by a backend or the chain: Talk turns are one lane, everything else the other (mw-jrx0s.21). A failed row is not pending, so the row behind it is the head. */
+  async head(lane: 'turn' | 'main'): Promise<OutboxRow | undefined> {
+    return db.outbox
+      .where('state')
+      .equals('pending')
+      .filter((row) => (row.kind === 'turn') === (lane === 'turn'))
+      .first();
   },
 
   async sent(): Promise<OutboxRow[]> {
@@ -28,6 +32,16 @@ export const outboxRepo = {
 
   async update(id: number, patch: Partial<OutboxRow>): Promise<void> {
     await db.outbox.update(id, patch);
+  },
+
+  /** Discard: forgets one row (a refused one he does not want sent). */
+  async remove(id: number): Promise<void> {
+    await db.outbox.delete(id);
+  },
+
+  /** Retry: puts a refused row back in the queue, in its old place, as if it had never been tried. */
+  async requeue(id: number): Promise<void> {
+    await db.outbox.update(id, { state: 'pending', attempts: 0, nextAt: undefined, failure: undefined });
   },
 
   /** Forgets acked rows that were acked before `before` (ms since the epoch of their creation). */

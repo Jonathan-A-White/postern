@@ -3,7 +3,7 @@
 // message left out, and a voice note's transcript folded under it. And one
 // search box finds beads, comments and messages.
 import { describe, it, expect } from 'vitest';
-import { mergeConversation, previewText, speakerOfComment } from '../../src/model/conversation';
+import { answersGiven, mergeConversation, previewText, speakerOfComment } from '../../src/model/conversation';
 import { beadIdQuery, search } from '../../src/model/search';
 import { encodeQuestion, encodeReply } from '../../src/services/questions';
 import { encodeThreadedMessage } from '../../src/services/threads';
@@ -193,5 +193,24 @@ describe('search', () => {
 
   it('requires every word', () => {
     expect(search('ping banana', { beads: view.beads, details: [], messages: [] })).toEqual([]);
+  });
+});
+
+describe('answersGiven (mw-f758y.32)', () => {
+  const ask = (bead: string, ts: number) => row(encodeQuestion({ bead, q: 'Which?', rec: '', options: ['A', 'B'] }), { class: 'decision-needed', ts });
+  const answer = (bead: string, text: string, ts: number) => row(encodeReply({ bead, answer: text }), { direction: 'sent', ts });
+
+  it('pairs each question with the answer he sent after it, before the same bead asked again', () => {
+    const items = mergeConversation([ask('b', 100), answer('b', 'A', 160), ask('b', 300), answer('b', 'B', 360), ask('b', 500)]);
+    const given = answersGiven(items);
+    const questions = items.filter((item) => item.kind === 'question');
+    expect(given.get(questions[0].id)).toMatchObject({ answer: 'A', at: 160_000 });
+    expect(given.get(questions[1].id)).toMatchObject({ answer: 'B', at: 360_000 });
+    expect(given.has(questions[2].id)).toBe(false);
+  });
+
+  it("ignores another bead's answer and an answer older than the question", () => {
+    const items = mergeConversation([answer('b', 'A', 50), ask('b', 100), answer('other', 'B', 160)]);
+    expect(answersGiven(items).size).toBe(0);
   });
 });

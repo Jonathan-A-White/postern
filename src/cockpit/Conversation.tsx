@@ -3,17 +3,18 @@
 // marked as theirs; each with who and when, Markdown rendered, a question with
 // its answers tappable in place, a voice note playable with what was heard in
 // it, an image shown, a file openable, and the Mayor's words readable aloud.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { Markdown } from '../markdown';
-import { attachmentLabel, type ConversationItem } from '../model/conversation';
+import { answersGiven, attachmentLabel, type ConversationItem, type GivenAnswer } from '../model/conversation';
 import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
 import { useLive } from '../services/live';
 import { speak } from '../services/speech';
 import { useUnlockedKey } from './hooks';
 import { VoicePlayer } from './VoicePlayer';
-import { sendAnswer, useSend } from './send';
+import { sendAnswer } from './send';
+import { useOneTap } from './oneTap';
 import type { Attachment } from '../services/threads';
 
 function dayLabel(at: number): string {
@@ -160,40 +161,69 @@ function OptionLabel({ option }: { option: string }) {
   );
 }
 
-function QuestionBlock({ item }: { item: ConversationItem }) {
-  const { busy, run } = useSend();
+/** A question is answered once: his tap sends one answer, then the options go dead and the card says what he
+ * answered and when. The answer he sent (the app's own record of it) is the truth, so it reads the same after a
+ * reload; a send that failed leaves the options tappable and says so. */
+function QuestionBlock({ item, given }: { item: ConversationItem; given?: GivenAnswer }) {
   const question = item.question;
+  const tapped = useOneTap(question?.bead ?? '', `answer:${item.id}`);
+  const [failed, setFailed] = useState(false);
   if (!question) return null;
+  const answered = given ?? (tapped.said ? { answer: tapped.said.label, at: tapped.said.at } : undefined);
+  const dead = answered !== undefined || tapped.waiting;
   const stacked = question.options.some((option) => option.length >= SHORT_OPTION);
+
+  async function choose(option: string) {
+    if (dead) return;
+    setFailed(false);
+    const sent = await tapped.tap(() => sendAnswer(question!.bead, option), `Answered: ${option}`, option);
+    if (sent === undefined) setFailed(true);
+  }
+
   return (
-    <div className={cx('mt-2 flex gap-2', stacked ? 'flex-col' : 'flex-wrap')}>
-      {question.options.map((option) => (
-        <Button
-          key={option}
-          size="sm"
-          wrap={stacked}
-          variant={option === question.rec ? 'primary' : 'secondary'}
-          disabled={busy}
-          onClick={() => void run(() => sendAnswer(question.bead, option), `Answered: ${option}`)}
-        >
-          {stacked ? (
-            <span className="min-w-0">
-              <OptionLabel option={option} />
-              {option === question.rec && <span className="ml-1.5 text-[10.5px] font-normal opacity-75">rec.</span>}
-            </span>
-          ) : (
-            <>
-              {option}
-              {option === question.rec && <span className="text-[10.5px] opacity-75">rec.</span>}
-            </>
-          )}
-        </Button>
-      ))}
-    </div>
+    <>
+      <div className={cx('mt-2 flex gap-2', stacked ? 'flex-col' : 'flex-wrap')}>
+        {question.options.map((option) => (
+          <Button
+            key={option}
+            size="sm"
+            wrap={stacked}
+            variant={option === question.rec ? 'primary' : 'secondary'}
+            disabled={dead}
+            onClick={() => void choose(option)}
+          >
+            {stacked ? (
+              <span className="min-w-0">
+                <OptionLabel option={option} />
+                {option === question.rec && <span className="ml-1.5 text-[10.5px] font-normal opacity-75">rec.</span>}
+              </span>
+            ) : (
+              <>
+                {option}
+                {option === question.rec && <span className="text-[10.5px] opacity-75">rec.</span>}
+              </>
+            )}
+          </Button>
+        ))}
+      </div>
+      {answered && (
+        <p role="status" className="mt-2 inline-flex min-w-0 items-start gap-1.5 text-[13px] text-muted">
+          <Icon name="check" size={15} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 break-words">
+            Answered: {answered.answer} {clockTime(new Date(answered.at))}
+          </span>
+        </p>
+      )}
+      {failed && !dead && (
+        <p role="alert" className="mt-2 text-[13px] text-danger">
+          Your answer did not send. Tap an option to try again.
+        </p>
+      )}
+    </>
   );
 }
 
-function Bubble({ item, onQuote, onReply }: { item: ConversationItem; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
+function Bubble({ item, given, onQuote, onReply }: { item: ConversationItem; given?: GivenAnswer; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
   const mine = item.speaker === 'you';
   const builder = item.speaker === 'builder' || item.speaker === 'factory' || item.speaker === 'other';
   if (item.kind === 'action' || item.kind === 'answer') {
@@ -223,7 +253,7 @@ function Bubble({ item, onQuote, onReply }: { item: ConversationItem; onQuote?: 
             <span className="font-semibold">Heard:</span> {item.transcript}
           </p>
         )}
-        {item.kind === 'question' && <QuestionBlock item={item} />}
+        {item.kind === 'question' && <QuestionBlock item={item} given={given} />}
       </div>
       <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-faint">
         <span>{clockTime(new Date(item.at))}</span>
@@ -278,6 +308,7 @@ export function Conversation({
     seen.current = count;
   }, [count, scrollOnOpen]);
 
+  const given = useMemo(() => answersGiven(items), [items]);
   if (count === 0) return <div className={className}>{empty}</div>;
   const days = items.map((item) => dayLabel(item.at));
   return (
@@ -294,7 +325,7 @@ export function Conversation({
                 <span className="h-px flex-1 bg-line" />
               </div>
             )}
-            <Bubble item={item} onQuote={onQuote} onReply={onReply} />
+            <Bubble item={item} given={given.get(item.id)} onQuote={onQuote} onReply={onReply} />
             {footer?.(item)}
           </div>
         );

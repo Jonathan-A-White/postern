@@ -4,7 +4,7 @@ Feature: A tapped question goes dead at once, and a new question reads as new (m
     Given a question card with the options "Yes" and "No"
     When he taps "Yes"
     Then every option and "Answer in words" is disabled
-    And the card says "You answered 'Yes'"
+    And the card says "Answered: Yes" and the time as HH:MM
 
   Scenario: mw-tbx1n.10: the bead's page no longer offers an answered question
     Given a question on a bead that he answered a minute after it was asked

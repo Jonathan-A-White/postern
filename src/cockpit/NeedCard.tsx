@@ -17,6 +17,8 @@ import { orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/n
 import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
+import { useAnswers } from './hooks';
+import { clockTime } from '../services/age';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
 
@@ -59,7 +61,11 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   // until the view drops it. One state per question, so a later question on the bead is not held by this one.
   const asks = need.kind === 'question' && need.bead !== '';
   const answerTap = useOneTap(asks ? need.bead : '', `answer:${need.since}`);
-  const answered = asks && answerTap.waiting;
+  // What he sent is on this phone's own record too: the card stays dead across a reload and a view refetch.
+  const sentRow = useAnswers().find((row) => row.bead === need.bead && row.ts * 1000 >= Date.parse(need.since));
+  const answered = asks && (answerTap.waiting || sentRow !== undefined);
+  const saidWhat = answerTap.said ? { label: answerTap.said.label, at: answerTap.said.at } : sentRow ? { label: sentRow.answer, at: sentRow.ts * 1000 } : undefined;
+  const [notSent, setNotSent] = useState(false);
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -79,7 +85,10 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const openThread: Route = { view: 'talk', thread: threadKey(thread) ?? GENERAL };
 
   async function choose(option: string) {
-    if (asks) await answerTap.tap(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread }, option);
+    if (asks) {
+      setNotSent(false);
+      if ((await answerTap.tap(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread }, option)) === undefined) setNotSent(true);
+    }
     else if (need.kind === 'question') await run(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread });
     else if (need.kind === 'approve') await oneTap.tap(() => sendAction({ action: 'release', bead: need.bead }), `Released ${need.bead}`);
     else if (need.kind === 'verify') await oneTap.tap(() => sendAction({ action: 'verified', bead: need.bead }), `Marked ${need.bead} verified`);
@@ -89,10 +98,12 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   async function sendReply() {
     const text = reply.trim();
     if (!text) return;
+    setNotSent(false);
     const sent =
       need.kind === 'question'
         ? await (asks ? answerTap.tap(() => sendAnswer(need.bead, text), { text: `Answered ${need.bead}`, open: openThread }, text) : run(() => sendAnswer(need.bead, text), { text: `Answered ${need.bead}`, open: openThread }))
         : await run(() => sendToThread(thread, text), { text: `Sent to the Mayor in ${threadName}`, open: openThread });
+    if (asks && sent === undefined) setNotSent(true);
     if (sent) {
       setReply('');
       setReplying(false);
@@ -194,11 +205,18 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
 
       {tapAction && oneTap.waiting && !released && <WaitingNote />}
 
-      {answered && answerTap.said && (
+      {answered && saidWhat && (
         <p role="status" className="inline-flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
           <Icon name="check" size={15} className="shrink-0" />
-          <span className="min-w-0 truncate">You answered '{answerTap.said.label}'</span>
-          <TimeAgo at={answerTap.said.at} className="shrink-0 text-faint" />
+          <span className="min-w-0 truncate">
+            Answered: {saidWhat.label} {clockTime(new Date(saidWhat.at))}
+          </span>
+        </p>
+      )}
+
+      {asks && notSent && !answered && (
+        <p role="alert" className="text-[13px] text-danger">
+          Your answer did not send. Tap an option to try again.
         </p>
       )}
 

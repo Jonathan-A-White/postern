@@ -36,6 +36,8 @@ export interface ConversationItem {
   text: string;
   question?: QuestionBody;
   answer?: string;
+  /** The bead an 'answer' item answers on (its reply record's `bead`). */
+  answerBead?: string;
   action?: GovernorAction;
   /** The files this message carries, in order: one or more, on an 'attachment' item. */
   attachments?: Attachment[];
@@ -168,7 +170,7 @@ export function itemFromMessage(row: MessageRow): ConversationItem & { transcrip
   const action = decodeAction(text);
   if (action) return { ...base, kind: 'action', text: describeAction(action), action };
   const reply = decodeReply(text);
-  if (reply) return { ...base, kind: 'answer', text: reply.answer, answer: reply.answer };
+  if (reply) return { ...base, kind: 'answer', text: reply.answer, answer: reply.answer, answerBead: reply.bead };
   const body = decodeThreadedMessage(text);
   if (body.role === 'transcript' && body.re) {
     return { ...base, kind: 'text', text: body.text, transcriptOf: body.re };
@@ -261,4 +263,24 @@ export function mergeConversation(rows: MessageRow[], comments: BeadComment[] = 
   });
 
   return items.sort((a, b) => a.at - b.at);
+}
+
+/** What he answered a question card, and when (ms): read from the answers this phone sent. */
+export interface GivenAnswer {
+  answer: string;
+  at: number;
+}
+
+/** For each question item, his answer to it: the first answer he sent on its bead after it was asked
+ * and before the same bead asked again. The sent records are the truth, so this survives a reload. */
+export function answersGiven(items: ConversationItem[]): Map<string, GivenAnswer> {
+  const given = new Map<string, GivenAnswer>();
+  const questions = items.filter((item) => item.kind === 'question' && item.question);
+  for (const item of questions) {
+    const bead = item.question!.bead;
+    const nextAsked = questions.find((other) => other !== item && other.question!.bead === bead && other.at > item.at)?.at ?? Infinity;
+    const reply = items.find((other) => other.kind === 'answer' && other.speaker === 'you' && other.answerBead === bead && other.at >= item.at && other.at < nextAsked);
+    if (reply?.answer !== undefined) given.set(item.id, { answer: reply.answer, at: reply.at });
+  }
+  return given;
 }

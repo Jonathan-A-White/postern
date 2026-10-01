@@ -9,6 +9,7 @@ import { vaultRepo } from './data/repositories';
 import type { VaultRow } from './data/db';
 import { resumeSession } from './services/keySession';
 import { startLive, stopLive } from './services/live';
+import { startOutbox } from './services/outbox';
 import { useUnlockedKey } from './cockpit/hooks';
 import { Shell, Screen } from './cockpit/Shell';
 import { Loading, Unlock, Welcome } from './cockpit/Gate';
@@ -85,6 +86,9 @@ export function App() {
     if (key) startLive(key);
     else stopLive();
   }, [key]);
+
+  // What he did and has not yet gone (mw-jrx0s.10) is sent on open, and again when the phone is back in reach.
+  useEffect(() => startOutbox(), []);
 
   // A notification tapped while the app is open (src/sw.ts) says where to go.
   useEffect(() => {

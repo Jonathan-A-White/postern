@@ -12,6 +12,7 @@ import { useLive } from '../services/live';
 import { hostsToMoveTo, useStandby } from '../services/standby';
 import { MoveHomeButtons } from './MoveHome';
 import { RingBanner } from './RingBanner';
+import { OutboxNote } from './OutboxNote';
 import { liveLabel } from './liveLabel';
 import { useAnswers, useMessages, useViewIndex, useWide } from './hooks';
 import { needsByWaiter, unsettledNeeds } from '../model/needs';
@@ -195,6 +196,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       <div className="flex min-w-0 flex-1 flex-col">
         <HomeDown />
         <RingBanner />
+        <OutboxNote />
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
         {!wide && <TabBar current={top} />}
       </div>

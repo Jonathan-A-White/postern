@@ -2,21 +2,23 @@
 // (plans/0021 decisions 7, 10–12): answers, actions, comments and files, each
 // encrypted to the pinned Mayor and delivered directly. Files go up first
 // (docs/protocol.md §8), then go as one message, the caption its text.
+// An answer, an action, a message, a Talk turn and a Call me are written to the
+// phone's outbox first and these return at once (mw-jrx0s.10): src/services/outbox.ts
+// sends them in order, with retries, and the screens show each pending until it has gone.
 import { useState } from 'react';
-import { deliverAction, deliverAnswer, deliverMoveHome, deliverThreaded, writeBehind, type Delivered } from '../services/deliver';
+import { deliverAction, deliverMoveHome, type Delivered } from '../services/deliver';
 import { ApiTimeoutError } from '../services/apiAuth';
 import { deliverOptions } from '../services/live';
 import { getKey } from '../services/keySession';
-import { attachmentMime, MAX_ATTACHMENT_BYTES, uploadAttachment } from '../services/attachments';
-import { answersRepo } from '../data/repositories';
+import { attachmentMime, MAX_ATTACHMENT_BYTES } from '../services/attachments';
+import { enqueue, packBytes, type QueuedMessage } from '../services/outbox';
 import type { GovernorAction } from '../model/conversation';
 import type { HandsStep } from '../model/hands';
 import { buildApproval, stepUp } from '../services/hands';
 import type { HomeHost } from '../services/standby';
-import { deliverTurn } from '../services/talk';
-import { deliverCallLater, deliverCallRequest } from '../services/call';
+import { deliverCallLater } from '../services/call';
 import type { TalkTurn } from '../model/talkLine';
-import type { Attachment, ThreadRef } from '../services/threads';
+import { threadKey, type ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
 import { navigate } from '../router';
 import type { Route } from '../nav/route';
@@ -29,28 +31,30 @@ function options() {
   return opts;
 }
 
-export async function sendAnswer(bead: string, answer: string): Promise<Delivered> {
-  const delivered = await deliverAnswer(bead, answer, options());
-  writeBehind(answersRepo.save({ bead, answer, txid: delivered.txid }), 'your answer');
-  return delivered;
+/** What a send that was written to the outbox hands back: its row's id. It has not gone yet. */
+export interface Queued {
+  id: number;
 }
 
-/** A one-tap action (docs/protocol.md §13). It is remembered like an answer, so
- * the need it settles leaves the queue at once rather than at the next view. */
-export async function sendAction(action: GovernorAction): Promise<Delivered> {
-  const delivered = await deliverAction(action, options());
-  writeBehind(answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid }), 'your action');
-  return delivered;
+/** His answer to a question on `bead` (docs/protocol.md §6), queued: `answer` is what the card says he tapped. */
+export async function sendAnswer(bead: string, answer: string): Promise<Queued> {
+  return { id: await enqueue({ kind: 'answer', bead, payload: { answer }, label: answer }) };
 }
 
-/** Sends one turn of the Talk line (docs/protocol.md §20): class `talk`, straight to the backend. */
-export function sendTurn(turn: TalkTurn): Promise<Delivered> {
-  return deliverTurn(turn, options());
+/** A one-tap action (docs/protocol.md §13), queued. Once it has gone it is remembered like an
+ * answer, so the need it settles leaves the queue at once rather than at the next view. */
+export async function sendAction(action: GovernorAction): Promise<Queued> {
+  return { id: await enqueue({ kind: 'action', bead: action.bead, payload: { action }, label: action.action }) };
 }
 
-/** Leaves the Mayor a Call me request (docs/protocol.md §21): class `call`, straight to the backend. `at` is Unix seconds. */
-export function sendCallRequest(text: string, at: number): Promise<Delivered> {
-  return deliverCallRequest(text, at, options());
+/** Queues one turn of the Talk line (docs/protocol.md §20): class `talk`, straight to the backend once it answers. */
+export async function sendTurn(turn: TalkTurn): Promise<Queued> {
+  return { id: await enqueue({ kind: 'turn', payload: { turn }, label: turn.text }) };
+}
+
+/** Queues a Call me request (docs/protocol.md §21): class `call`. `at` is Unix seconds. */
+export async function sendCallRequest(text: string, at: number): Promise<Queued> {
+  return { id: await enqueue({ kind: 'call', payload: { text, at }, label: text }) };
 }
 
 /** Tells the Mayor he is putting a ring off (docs/protocol.md §21): class `call`, naming the ring. */
@@ -85,19 +89,14 @@ export function refuseFile(file: { name: string; type: string; size: number }): 
   return undefined;
 }
 
-/** Sends text and files to a thread as ONE message (docs/protocol.md §8): one
+/** Queues text and files for a thread as ONE message (docs/protocol.md §8): one
  * file as `attachment`, two or more as `attachments` in the order given, the
- * text as its caption. Every file is uploaded first, so a failed upload sends
- * nothing. */
-export async function sendToThread(thread: ThreadRef | undefined, text: string, files: OutgoingFile[] = [], re?: string): Promise<Delivered[]> {
-  const opts = options();
-  const attachments: Attachment[] = [];
-  for (const file of files) {
-    const mime = attachmentMime(file.type);
-    if (!mime) throw new Error(`${file.name}: not a type Postern carries.`);
-    attachments.push(await uploadAttachment({ bytes: file.bytes, mime, senderKey: opts.key, recipientPublicKeyHex: opts.mayorKey }));
-  }
-  return [await deliverThreaded({ thread, text, attachments, re }, opts)];
+ * text as its caption. The files are kept whole in the outbox and uploaded first
+ * when the message's turn comes, so nothing is sent until every file is up. */
+export async function sendToThread(thread: ThreadRef | undefined, text: string, files: OutgoingFile[] = [], re?: string): Promise<Queued[]> {
+  for (const file of files) if (!attachmentMime(file.type)) throw new Error(`${file.name}: not a type Postern carries.`);
+  const payload: QueuedMessage = { text, files: files.map(({ name, type, bytes }) => ({ name, type, data: packBytes(bytes) })), ...(thread !== undefined ? { thread } : {}), ...(re !== undefined ? { re } : {}) };
+  return [{ id: await enqueue({ kind: 'message', bead: thread && 'bead' in thread ? thread.bead : '', payload: payload as unknown as Record<string, unknown>, thread: threadKey(thread) }) }];
 }
 
 export const MAY_HAVE_GONE = 'May have gone: check the channel before sending again';

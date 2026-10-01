@@ -7,7 +7,9 @@
 // is not trusted: the mic counts as open only when it says so (onstart/onaudiostart),
 // its errors are passed on, a stop() that never gets an onend gives up after
 // STOP_TIMEOUT_MS, and an on-device attempt the phone cannot do is retried once in
-// network mode within the same hold.
+// network mode within the same hold. The recogniser also ends itself while the finger
+// is down (Android Chrome on a pause or a no-speech/network blip): until stop() the
+// hold goes on, the recogniser is started again and the earlier words are kept.
 
 export type ListenMode = 'on-device' | 'cloud';
 
@@ -111,6 +113,12 @@ function errorFor(code: string): ListenError {
   return { kind, message, code };
 }
 
+/** Errors that only mean this stretch of listening ended (a pause, a blip): the hold carries on. */
+const TRANSIENT_ERRORS = new Set(['no-speech', 'network', 'aborted']);
+
+/** How many times in a row the recogniser is started again, with nothing heard in between, before the hold gives up. */
+export const MAX_IDLE_RESTARTS = 5;
+
 /** What an on-device attempt can fail with when the phone lacks the speech pack or service for it. */
 const ON_DEVICE_FAILURES = new Set(['language-not-supported', 'service-not-allowed']);
 
@@ -181,6 +189,11 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   }
 
   let text = '';
+  // The words from the stretches of listening before the recogniser last restarted.
+  let carried = '';
+  // The last transient error: reported only if the hold ends with nothing heard.
+  let transient = null as ListenError | null;
+  let idleRestarts = 0;
   let error = null as ListenError | null;
   let outcome = null as ListenResult | null;
   let announced = false;
@@ -200,8 +213,9 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   const finish = () => {
     if (outcome) return;
     clearTimeout(timer);
-    outcome = error ? { ok: false, text, error } : { ok: true, text, mode };
-    if (!error) options.onFinal?.(text);
+    const failure = error ?? (text ? null : transient);
+    outcome = failure ? { ok: false, text, error: failure } : { ok: true, text, mode };
+    if (!failure) options.onFinal?.(text);
     settle(outcome);
   };
 
@@ -211,12 +225,18 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     recognizer.onstart = recognizer.onaudiostart = () => live() && announce();
     recognizer.onresult = (event) => {
       if (!live()) return;
-      text = transcript(event.results);
+      text = [carried, transcript(event.results)].filter(Boolean).join(' ');
+      transient = null;
+      idleRestarts = 0;
       announce();
       options.onInterim?.(text);
     };
     recognizer.onerror = (event) => {
       if (!live() || outcome) return;
+      if (!stopping && TRANSIENT_ERRORS.has(event.error)) {
+        transient = errorFor(event.error);
+        return;
+      }
       if (mode === 'on-device' && !retried && !stopping && !outcome && !text && ON_DEVICE_FAILURES.has(event.error)) {
         retried = true;
         const previous = { recognizer: current, mode, announced };
@@ -238,7 +258,27 @@ export function startListening(options: ListenOptions = {}): ListenStart {
       error = errorFor(event.error);
       options.onError?.(error);
     };
-    recognizer.onend = () => live() && finish();
+    recognizer.onend = () => {
+      if (!live() || outcome) return;
+      if (!stopping && !error) {
+        // He is still holding: the recogniser ended by itself, so start it again and keep what was heard.
+        if (idleRestarts < MAX_IDLE_RESTARTS) {
+          try {
+            carried = text;
+            recognizer.start();
+            idleRestarts++;
+            return;
+          } catch {
+            // cannot restart: settle with what was heard
+          }
+        }
+        if (!text) {
+          error = transient ?? errorFor('no-speech');
+          options.onError?.(error);
+        }
+      }
+      finish();
+    };
   };
 
   attach(current);

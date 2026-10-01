@@ -16,6 +16,24 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he lets go of the talk button
     Then one turn is sent saying "great I see the mic button now" as turn 1
 
+  Scenario: AC-1: a no-speech error from the recogniser while he is still holding does not end the hold (mw-j0f2d.19)
+    Given the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    And the recogniser fails with "no-speech"
+    Then the talk button reads "Release to send"
+    And the screen does not say "No speech was heard."
+
+  Scenario: AC-1: a recogniser that ends by itself while he holds is started again and his earlier words are kept (mw-j0f2d.19)
+    Given the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    And the recogniser hears "first part" so far
+    And the recogniser ends by itself
+    And the recogniser then hears "second part" so far
+    Then the talk button reads "Release to send"
+    And the live transcript reads exactly "first part second part"
+    When he lets go of the talk button
+    Then one turn is sent saying "first part second part" as turn 1
+
   Scenario: AC-1: releasing vibrates and sends his words as a turn
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "What landed today?" and lets go

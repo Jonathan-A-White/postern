@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { isListenSupported, startListening, STOP_TIMEOUT_MS } from '../../src/services/listen';
+import { isListenSupported, startListening, MAX_IDLE_RESTARTS, STOP_TIMEOUT_MS } from '../../src/services/listen';
 
 interface FakeAlt {
   transcript: string;
@@ -398,7 +398,7 @@ describe('listen', () => {
       install();
       const onError = vi.fn();
       startListening({ onError });
-      FakeRecognizer.instances[0].onerror?.({ error: 'network' });
+      FakeRecognizer.instances[0].onerror?.({ error: 'audio-capture' });
       expect(FakeRecognizer.instances).toHaveLength(1);
       expect(onError).toHaveBeenCalledTimes(1);
     });
@@ -420,6 +420,121 @@ describe('listen', () => {
       FakeRecognizer.instances[0].onerror?.({ error: 'language-not-supported' });
       expect(onFallback).not.toHaveBeenCalled();
       expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: 'language-not-supported' }));
+    });
+  });
+
+  describe('while the hold is live and the recogniser ends or blips by itself (mw-j0f2d.19)', () => {
+    it.each(['no-speech', 'network', 'aborted'])('does not treat a %s error as the end of the hold', (code) => {
+      install();
+      const onError = vi.fn();
+      startListening({ onError });
+      FakeRecognizer.instances[0].onerror?.({ error: code });
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it('starts the recogniser again when it ends by itself, and keeps the earlier text', async () => {
+      install();
+      const onFinal = vi.fn();
+      const begin = startListening({ onFinal });
+      if (!begin.ok) throw new Error('expected listening to start');
+      const recognizer = FakeRecognizer.instances[0];
+      recognizer.say([result('first part', true)]);
+      recognizer.onend?.();
+      expect(recognizer.startFn).toHaveBeenCalledTimes(2);
+      expect(onFinal).not.toHaveBeenCalled();
+      recognizer.say([result('second part', false)]);
+      const outcome = await begin.session.stop();
+      expect(outcome).toEqual({ ok: true, text: 'first part second part', mode: 'on-device' });
+      expect(onFinal).toHaveBeenCalledTimes(1);
+      expect(onFinal).toHaveBeenCalledWith('first part second part');
+    });
+
+    it('shows the earlier and later text together while listening, each said once', () => {
+      install();
+      const onInterim = vi.fn();
+      startListening({ onInterim });
+      const recognizer = FakeRecognizer.instances[0];
+      recognizer.say([result('one', false), result('one two', false)]);
+      recognizer.onend?.();
+      recognizer.say([result('three', false), result('three four', false)]);
+      expect(onInterim).toHaveBeenLastCalledWith('one two three four');
+    });
+
+    it('carries on after a no-speech error ends the recogniser, and hears later speech', async () => {
+      install();
+      const onError = vi.fn();
+      const begin = startListening({ onError });
+      if (!begin.ok) throw new Error('expected listening to start');
+      const recognizer = FakeRecognizer.instances[0];
+      recognizer.onerror?.({ error: 'no-speech' });
+      recognizer.onend?.();
+      expect(recognizer.startFn).toHaveBeenCalledTimes(2);
+      recognizer.say([result('hello', false)]);
+      expect(await begin.session.stop()).toEqual({ ok: true, text: 'hello', mode: 'on-device' });
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it('still ends with the transient error when stop() comes and nothing was heard', async () => {
+      install();
+      const begin = startListening();
+      if (!begin.ok) throw new Error('expected listening to start');
+      FakeRecognizer.instances[0].onerror?.({ error: 'no-speech' });
+      const outcome = await begin.session.stop();
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) expect(outcome.error.kind).toBe('no-speech');
+    });
+
+    it('does not restart after stop()', async () => {
+      install();
+      const begin = startListening();
+      if (!begin.ok) throw new Error('expected listening to start');
+      await begin.session.stop();
+      expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not restart after a real error, which still ends the hold with its message', async () => {
+      for (const [code, kind] of [['not-allowed', 'permission-denied'], ['audio-capture', 'no-microphone']]) {
+        install();
+        const onError = vi.fn();
+        const begin = startListening({ onError });
+        if (!begin.ok) throw new Error('expected listening to start');
+        const recognizer = FakeRecognizer.instances[0];
+        recognizer.onerror?.({ error: code });
+        expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind, code, message: expect.any(String) }));
+        recognizer.onend?.();
+        expect(recognizer.startFn).toHaveBeenCalledTimes(1);
+        const outcome = await begin.session.stop();
+        expect(outcome.ok).toBe(false);
+      }
+    });
+
+    it(`gives up after ${MAX_IDLE_RESTARTS} restarts in a row with nothing heard, and says why`, () => {
+      install();
+      const onError = vi.fn();
+      startListening({ onError });
+      const recognizer = FakeRecognizer.instances[0];
+      for (let i = 0; i < MAX_IDLE_RESTARTS; i++) {
+        recognizer.onerror?.({ error: 'network' });
+        recognizer.onend?.();
+      }
+      expect(onError).not.toHaveBeenCalled();
+      recognizer.onerror?.({ error: 'network' });
+      recognizer.onend?.();
+      expect(recognizer.startFn).toHaveBeenCalledTimes(MAX_IDLE_RESTARTS + 1);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: 'network' }));
+    });
+
+    it('settles with what was heard when the recogniser cannot be started again', async () => {
+      install();
+      const begin = startListening();
+      if (!begin.ok) throw new Error('expected listening to start');
+      const recognizer = FakeRecognizer.instances[0];
+      recognizer.say([result('some words', false)]);
+      recognizer.startFn.mockImplementation(() => {
+        throw new Error('busy');
+      });
+      recognizer.onend?.();
+      expect(await begin.session.stop()).toEqual({ ok: true, text: 'some words', mode: 'on-device' });
     });
   });
 

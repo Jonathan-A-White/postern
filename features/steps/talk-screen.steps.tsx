@@ -266,6 +266,53 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario('AC-1: a no-speech error from the recogniser while he is still holding does not end the hold (mw-j0f2d.19)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', holdsButton);
+    And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
+    Then('the talk button reads {string}', async (_c, name: string) => {
+      await waitFor(() => expect(screen.getByRole('button', { name })).toBeInTheDocument());
+    });
+    And('the screen does not say {string}', (_c, text: string) => {
+      expect(screen.queryByText(text)).toBeNull();
+    });
+  });
+
+  Scenario('AC-1: a recogniser that ends by itself while he holds is started again and his earlier words are kept (mw-j0f2d.19)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    And('the recogniser hears {string} so far', async (_c, words: string) => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      await hear(words);
+    });
+    And('the recogniser ends by itself', async () => {
+      const before = recognizers.length;
+      act(() => {
+        recognizers.at(-1)?.onend?.();
+      });
+      await waitFor(() => expect(recognizers.length).toBe(before + 1));
+    });
+    And('the recogniser then hears {string} so far', async (_c, words: string) => {
+      await hear(words);
+    });
+    Then('the talk button reads {string}', async (_c, name: string) => {
+      await waitFor(() => expect(screen.getByRole('button', { name })).toBeInTheDocument());
+    });
+    And('the live transcript reads exactly {string}', async (_c, words: string) => {
+      await waitFor(() => expect(screen.getByTestId('live-transcript').textContent?.trim()).toBe(words));
+    });
+    When('he lets go of the talk button', async () => {
+      fireEvent.pointerUp(await talkButton('Release to send'));
+      await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
+    });
+    Then('one turn is sent saying {string} as turn 1', (_c, words: string) => {
+      expect(sendTurn).toHaveBeenCalledTimes(1);
+      expect(lastSent()).toMatchObject({ text: words, role: 'turn', talk: { turn: 1 } });
+    });
+  });
+
   Scenario('AC-1: releasing vibrates and sends his words as a turn', ({ Given, When, Then, And }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     When('he holds the talk button and says {string} and lets go', holdsAndSays);

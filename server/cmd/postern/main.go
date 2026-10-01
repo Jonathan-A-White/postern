@@ -161,14 +161,16 @@ func newApp(cfg config.Config) (*app, error) {
 }
 
 // buildFanout is the one fan-out for "a record was indexed": web push (silent
-// while this host is in standby), the event hub, the on-message hook when
-// configured (which runs in standby too: mw decides what to apply) for every
-// record but grist, and the on-grist hook for grist addressed to the mill.
+// while this host is in standby) for every record but talk, the event hub,
+// the on-message hook when configured (which runs in standby too: mw decides
+// what to apply) for every record but grist and talk, and the on-grist hook
+// for grist addressed to the mill. A talk record reaches the hub only
+// (docs/protocol.md §20).
 func buildFanout(cfg config.Config, home *standby.Monitor, pusher, hub notify.Notifier) notify.Fanout {
-	fanout := notify.Fanout{standby.Gate(home, pusher), hub}
+	fanout := notify.Fanout{notify.Only{Notifier: standby.Gate(home, pusher), Keep: func(rec index.Record) bool { return !isTalk(rec) }}, hub}
 	forMill := gristForMill(cfg.MillKey)
 	if cfg.OnMessage != "" {
-		fanout = append(fanout, notify.Only{Notifier: hook.New(cfg.OnMessage), Keep: func(rec index.Record) bool { return !isGrist(rec) }})
+		fanout = append(fanout, notify.Only{Notifier: hook.New(cfg.OnMessage), Keep: func(rec index.Record) bool { return !isGrist(rec) && !isTalk(rec) }})
 		log.Printf("on-message hook: %s", cfg.OnMessage)
 	}
 	if cfg.OnGrist != "" {
@@ -183,6 +185,13 @@ func buildFanout(cfg config.Config, home *standby.Monitor, pusher, hub notify.No
 func isGrist(rec index.Record) bool {
 	env, err := record.ParseEnvelope(rec.Payload)
 	return err == nil && env.Class == record.ClassGrist
+}
+
+// isTalk reports whether a record is a turn on the Talk line
+// (docs/protocol.md §20): no push and no hook runs for one.
+func isTalk(rec index.Record) bool {
+	env, err := record.ParseEnvelope(rec.Payload)
+	return err == nil && env.Class == record.ClassTalk
 }
 
 // gristForMill reports whether a record is a grist addressed to millKey

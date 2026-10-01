@@ -20,8 +20,8 @@ import (
 // main.go configures it with POSTERN_COLLECTIONS=postern and
 // POSTERN_APPS=spellforge-leaderboard-testnet=spellforge.
 
-// gatedMint is buildContractMintTransaction today, funded and signed by
-// issuer: [0] a License stand-in, [1] a Fuel stand-in, [2] spell-forge's
+// gatedMint is buildContractMintTransaction today, funded (fundingTx(issuer,
+// 0xf1)) and signed by issuer: [0] a License stand-in, [1] a Fuel stand-in, [2] spell-forge's
 // 6-push M (mw-jeswf.3: a 32-byte commitment c(0), an empty manifest, then
 // {collection, holder, wrapKey, wrap}) naming holder in collection.
 func gatedMint(issuer *btcec.PrivateKey, collection, holder string) string {
@@ -52,6 +52,7 @@ func newSpellforgeServer(t *testing.T) gristServer {
 		t.Fatal(err)
 	}
 	chain := &chainFake{history: map[string][]woc.HistoryEntry{}, txs: map[string]string{}}
+	chain.put(fundingTx(issuer, 0xf1))
 	chain.add(issuerAddress, gatedMint(issuer, collection, purchaserAddress))
 
 	apps := map[string]string{collection: "spellforge"}

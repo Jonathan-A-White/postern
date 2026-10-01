@@ -132,7 +132,7 @@ function Harness() {
 }
 
 let sequence = 0;
-async function mayorSays(text: string, role: TalkTurn['role'], model?: string): Promise<void> {
+async function mayorSays(text: string, role: TalkTurn['role'], model?: string, links?: string[]): Promise<void> {
   const sent = sendTurn.mock.calls.at(-1)?.[0] as TalkTurn;
   sequence += 1;
   const txid = `direct:${String(sequence).padStart(64, '0')}`;
@@ -146,7 +146,7 @@ async function mayorSays(text: string, role: TalkTurn['role'], model?: string): 
     from: '02'.padEnd(66, '0'),
     ts: 1_760_000_000 + sequence,
     ciphertext: '',
-    plaintext: encodeTurn({ talk: sent.talk, text, role, ...(model ? { model } : {}) }),
+    plaintext: encodeTurn({ talk: sent.talk, text, role, ...(model ? { model } : {}), ...(links ? { links } : {}) }),
     direction: 'received',
     read: true,
   });
@@ -348,6 +348,40 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the phone speaks {string}', async (_c, text: string) => {
       await waitFor(() => expect(speak).toHaveBeenCalled());
       expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
+    });
+  });
+
+  Scenario("AC-1: an answer's bead links show as chips under its text and tapping one opens the bead page (mw-j0f2d.18)", ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string} with the link {string}', async (_c, text: string, model: string, link: string) => mayorSays(text, 'answer', model, [link]));
+    Then('the answer shows one link chip {string} under its text', async (_c, id: string) => {
+      await waitFor(() => expect(within(screen.getByTestId('talk-answer')).getAllByRole('link')).toHaveLength(1));
+      const chip = within(screen.getByTestId('talk-answer')).getByRole('link');
+      expect(chip).toHaveTextContent(id);
+      expect(chip).toHaveAttribute('href', formatRoute({ view: 'bead', id }));
+      const text = screen.getByTestId('talk-answer').querySelector('p');
+      expect(text?.compareDocumentPosition(chip)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    And('the phone speaks {string}', async (_c, text: string) => {
+      await waitFor(() => expect(speak).toHaveBeenCalled());
+      expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
+    });
+    When('he taps the link chip {string}', (_c, id: string) => {
+      fireEvent.click(within(screen.getByTestId('talk-answer')).getByRole('link', { name: id }));
+    });
+    Then('the bead page of {string} is open', async (_c, id: string) => {
+      await waitFor(() => expect(parseRoute(window.location.search)).toEqual({ view: 'bead', id }));
+    });
+  });
+
+  Scenario('AC-3: an answer without links shows no chips (mw-j0f2d.18)', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    Then('the answer shows no link chips', async () => {
+      await waitFor(() => expect(screen.getByTestId('talk-answer')).toHaveTextContent('Three things landed.'));
+      expect(within(screen.getByTestId('talk-answer')).queryAllByRole('link')).toHaveLength(0);
     });
   });
 

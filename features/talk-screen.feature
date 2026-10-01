@@ -53,6 +53,21 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the screen shows "Three things landed." as the answer
     And the phone speaks "Three things landed."
 
+  Scenario: AC-1: an answer's bead links show as chips under its text and tapping one opens the bead page (mw-j0f2d.18)
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet" with the link "mw-x.1"
+    Then the answer shows one link chip "mw-x.1" under its text
+    And the phone speaks "Three things landed."
+    When he taps the link chip "mw-x.1"
+    Then the bead page of "mw-x.1" is open
+
+  Scenario: AC-3: an answer without links shows no chips (mw-j0f2d.18)
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet"
+    Then the answer shows no link chips
+
   Scenario: AC-1: an answer scrolls the turn list down to the newest item (mw-j0f2d.13)
     Given the Talk line is open with a believable speech recogniser
     And the turn list is longer than the screen and he is reading its end

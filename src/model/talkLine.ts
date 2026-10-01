@@ -16,6 +16,8 @@ export interface TalkTurn {
   model?: string;
   /** True on a turn whose previous answer he cut off before it finished speaking. */
   cut?: boolean;
+  /** Bead ids an answer points at: shown as chips under its text, never spoken. */
+  links?: string[];
 }
 
 export type TalkPhase = 'idle' | 'listening' | 'sending' | 'waiting' | 'speaking';
@@ -35,7 +37,7 @@ export interface TalkLineState {
   /** When his turn went out (ms), while `waiting`; a holding answer does not reset it. */
   sentAt?: number;
   /** What is being spoken; `holding` ones are followed by the real answer. */
-  speaking?: { text: string; holding: boolean };
+  speaking?: { text: string; holding: boolean; links?: string[] };
   /** Why the line went back to idle without an answer. */
   error?: string;
   /** The turn that failed to send, kept with his words so `retry` can send it again. */
@@ -113,16 +115,18 @@ function idle(state: TalkLineState, patch: Partial<TalkLineState> = {}): TalkLin
   };
 }
 
+const linksOf = (turn: TalkTurn): { links?: string[] } => (turn.links?.length ? { links: turn.links } : {});
+
 function incoming(state: TalkLineState, turn: TalkTurn): TalkLineState {
   if (!state.talk || turn.talk.id !== state.talk.id) return state;
   if (turn.role === 'end') return talkLine(state, { type: 'end' });
   if (turn.talk.turn !== state.talk.turn) return state;
   const answering = state.phase === 'waiting' || (state.phase === 'speaking' && state.speaking?.holding === true);
   if (turn.role === 'answer' && answering) {
-    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: false }, answeredBy: turn.model ?? state.answeredBy, error: undefined };
+    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: false, ...linksOf(turn) }, answeredBy: turn.model ?? state.answeredBy, error: undefined };
   }
   if (turn.role === 'holding' && state.phase === 'waiting') {
-    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: true }, answeredBy: turn.model ?? state.answeredBy };
+    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: true, ...linksOf(turn) }, answeredBy: turn.model ?? state.answeredBy };
   }
   return state;
 }

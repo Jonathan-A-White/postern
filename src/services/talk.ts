@@ -16,6 +16,7 @@ export function encodeTurn(turn: TalkTurn): string {
     role: turn.role,
     ...(turn.model ? { model: turn.model } : {}),
     ...(turn.cut ? { cut: true } : {}),
+    ...(turn.links?.length ? { links: turn.links } : {}),
   });
 }
 
@@ -35,12 +36,14 @@ export function decodeTurn(plaintext: string | undefined): TalkTurn | undefined 
   if (typeof talk.id !== 'string' || talk.id === '' || typeof talk.turn !== 'number' || !Number.isInteger(talk.turn)) return undefined;
   if (typeof candidate.text !== 'string') return undefined;
   if (typeof candidate.role !== 'string' || !ROLES.includes(candidate.role as TalkRole)) return undefined;
+  const links = Array.isArray(candidate.links) ? candidate.links.filter((id): id is string => typeof id === 'string' && id !== '') : [];
   return {
     talk: { id: talk.id, turn: talk.turn },
     text: candidate.text,
     role: candidate.role as TalkRole,
     ...(typeof candidate.model === 'string' && candidate.model ? { model: candidate.model } : {}),
     ...(candidate.cut === true ? { cut: true } : {}),
+    ...(links.length ? { links } : {}),
   };
 }
 

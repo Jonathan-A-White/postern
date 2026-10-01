@@ -5,7 +5,11 @@
 // mint or a revoke funds and broadcasts exactly as a message does (mw-yjxcw.3).
 import { outpointKey, filterUtxosExcludingPending, reconcilePendingSpends, type Utxo } from 'spell-forge-bsv';
 import { apiFetch, type ApiFetchOptions } from './apiAuth';
+import { fetchUtxosFromWhatsOnChain } from './whatsonchain';
 import { pendingSpendsRepo } from '../data/repositories';
+
+/** Where coins are listed and a transaction broadcast: the backend's /api routes, or WhatsOnChain itself when the backend cannot be reached (docs/protocol.md §21). */
+export type ChainVia = 'backend' | 'whatsonchain';
 
 export async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
@@ -16,17 +20,22 @@ export async function readErrorMessage(response: Response, fallback: string): Pr
   }
 }
 
-/**
- * The address's coins the backend lists, less those a pending send of ours already
- * spent, plus the change those sends produced even when the list omits it, without
- * duplicates. `now` stamps the pending-spend reconciliation.
- */
-export async function loadSpendableUtxos(address: string, apiOptions: ApiFetchOptions, now = new Date()): Promise<Utxo[]> {
+async function listUtxosThroughBackend(address: string, apiOptions: ApiFetchOptions): Promise<Utxo[]> {
   const utxosResponse = await apiFetch(`/utxos/${address}`, undefined, apiOptions);
   if (!utxosResponse.ok) {
     throw new Error(await readErrorMessage(utxosResponse, 'Could not fetch spendable coins.'));
   }
-  const { utxos: rawUtxos } = (await utxosResponse.json()) as { utxos: Utxo[] };
+  return ((await utxosResponse.json()) as { utxos: Utxo[] }).utxos;
+}
+
+/**
+ * The address's coins the backend lists, less those a pending send of ours already
+ * spent, plus the change those sends produced even when the list omits it, without
+ * duplicates. `now` stamps the pending-spend reconciliation. `via` says who lists the
+ * coins: the backend by default, WhatsOnChain when the backend is out of reach.
+ */
+export async function loadSpendableUtxos(address: string, apiOptions: ApiFetchOptions, now = new Date(), via: ChainVia = 'backend'): Promise<Utxo[]> {
+  const rawUtxos = via === 'whatsonchain' ? await fetchUtxosFromWhatsOnChain(address, apiOptions.fetchImpl) : await listUtxosThroughBackend(address, apiOptions);
 
   // WhatsOnChain keeps listing an outpoint as unspent for a while after a mempool
   // transaction of ours has already spent it (mw-1589l.28): exclude what we remember

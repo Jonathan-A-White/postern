@@ -20,9 +20,9 @@ import { groupPosts } from '../model/postThreads';
 import { RepliesRow } from './RepliesRow';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
-import { settingsRepo } from '../data/repositories';
+import { messagesRepo, settingsRepo } from '../data/repositories';
 import { parseThreadKey, type ThreadRef } from '../services/threads';
-import { markThreadSeen } from '../services/seen';
+import { announceSeen, markThreadSeen } from '../services/seen';
 import { GENERAL, summariseThreads, titleFor, type ThreadSummary } from '../model/threads';
 
 function ThreadRow({ thread, active, onToggleArchive }: { thread: ThreadSummary; active: boolean; onToggleArchive: (thread: ThreadSummary) => void }) {
@@ -219,7 +219,9 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
 
   // A reply from another channel is read once its thread is open.
   useEffect(() => {
-    for (const item of items) if (item.unread) void messagesRepo.markRead(item.id);
+    for (const item of items) {
+      if (item.unread) void messagesRepo.markRead(item.id).then(() => (item.txid ? announceSeen([item.txid]) : undefined));
+    }
   }, [items]);
 
   return (

@@ -11,7 +11,9 @@ import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
 import { useLive } from '../services/live';
 import { speak } from '../services/speech';
-import { useUnlockedKey } from './hooks';
+import { useOutbox, useUnlockedKey } from './hooks';
+import { pendingAnswer } from '../model/outbox';
+import { PendingMark } from './PendingMark';
 import { VoicePlayer } from './VoicePlayer';
 import { sendAnswer } from './send';
 import { useOneTap } from './oneTap';
@@ -168,8 +170,11 @@ function QuestionBlock({ item, given }: { item: ConversationItem; given?: GivenA
   const question = item.question;
   const tapped = useOneTap(question?.bead ?? '', `answer:${item.id}`);
   const [failed, setFailed] = useState(false);
+  const outbox = useOutbox();
   if (!question) return null;
-  const answered = given ?? (tapped.said ? { answer: tapped.said.label, at: tapped.said.at } : undefined);
+  // An answer still in the outbox (mw-jrx0s.10) is dead and says so too: it is marked pending until it has gone.
+  const queued = pendingAnswer(outbox, question.bead, item.at);
+  const answered = given ?? (tapped.said ? { answer: tapped.said.label, at: tapped.said.at } : queued ? { answer: queued.label ?? '', at: queued.created } : undefined);
   const dead = answered !== undefined || tapped.waiting;
   const stacked = question.options.some((option) => option.length >= SHORT_OPTION);
 
@@ -212,6 +217,7 @@ function QuestionBlock({ item, given }: { item: ConversationItem; given?: GivenA
           <span className="min-w-0 break-words">
             Answered: {answered.answer} {clockTime(new Date(answered.at))}
           </span>
+          {queued && <PendingMark />}
         </p>
       )}
       {failed && !dead && (
@@ -257,6 +263,7 @@ function Bubble({ item, given, onQuote, onReply }: { item: ConversationItem; giv
       </div>
       <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-faint">
         <span>{clockTime(new Date(item.at))}</span>
+        {item.pending && <PendingMark />}
         {item.unread && <span className="font-semibold text-accent">· new</span>}
         {item.speaker !== 'you' && item.text && (
           <button type="button" aria-label="Read aloud" className="rounded p-0.5 hover:text-fg" onClick={() => speak(item.text)}>

@@ -17,7 +17,9 @@ import { orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/n
 import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
-import { useAnswers } from './hooks';
+import { useAnswers, useOutbox } from './hooks';
+import { pendingAnswer } from '../model/outbox';
+import { PendingMark } from './PendingMark';
 import { clockTime } from '../services/age';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
@@ -65,10 +67,15 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const sentRow = useAnswers().find((row) => row.bead === need.bead && row.ts * 1000 >= Date.parse(need.since));
   // An answer the factory has heard (a card_answered event, §22, on the view's copy) is dead too, whichever device sent it.
   const heard = need.answered;
-  const answered = asks && (answerTap.waiting || sentRow !== undefined || heard !== undefined);
+  // An answer still in the outbox (mw-jrx0s.10) is dead and says so too: it is marked pending until it has gone.
+  const outbox = useOutbox();
+  const pendingRow = asks ? pendingAnswer(outbox, need.bead, Date.parse(need.since)) : undefined;
+  const answered = asks && (answerTap.waiting || sentRow !== undefined || heard !== undefined || pendingRow !== undefined);
   const saidWhat = answerTap.said
     ? { label: answerTap.said.label, at: answerTap.said.at }
-    : sentRow
+    : pendingRow
+      ? { label: pendingRow.label ?? '', at: pendingRow.created }
+      : sentRow
       ? { label: sentRow.answer, at: sentRow.ts * 1000 }
       : heard
         ? { label: heard.option, at: Date.parse(heard.at) }
@@ -211,7 +218,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
         </p>
       )}
 
-      {tapAction && oneTap.waiting && !released && <WaitingNote />}
+      {tapAction && oneTap.waiting && !released && <WaitingNote pending={oneTap.pending} />}
 
       {answered && saidWhat && (
         <p role="status" className="inline-flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
@@ -219,6 +226,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
           <span className="min-w-0 truncate">
             {saidWhat.label ? `Answered: ${saidWhat.label}` : 'Answered'} {clockTime(new Date(saidWhat.at))}
           </span>
+          {pendingRow && <PendingMark />}
         </p>
       )}
 

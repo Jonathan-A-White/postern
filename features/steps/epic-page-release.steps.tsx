@@ -1,12 +1,13 @@
 // features/steps/epic-page-release.steps.tsx — runs features/epic-page-release.feature (mw-gq6.157):
 // an epic's bead page offers the Map's 'Release N held' for the stories held under it.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
 import { forgetTaps } from '../../src/cockpit/oneTap';
+import { forgetOutboxState } from '../../src/services/outbox';
 import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { deliverAction } from '../../src/services/deliver';
@@ -44,8 +45,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   BeforeEachScenario(async () => {
     cleanup();
     forgetTaps();
+    forgetOutboxState();
     vi.mocked(deliverAction).mockClear();
-    await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.settings.clear()]);
+    await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.settings.clear(), db.outbox.clear()]);
   });
 
   const offers = async (_c: unknown, label: string) => {
@@ -62,7 +64,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await userEvent.click(await screen.findByRole('button', { name: label }));
     });
     Then('the release for the epic is sent', async () => {
-      expect(deliverAction).toHaveBeenCalledWith({ action: 'release', bead: EPIC }, expect.anything());
+      await waitFor(() => expect(deliverAction).toHaveBeenCalledWith({ action: 'release', bead: EPIC }, expect.anything()));
     });
   });
 

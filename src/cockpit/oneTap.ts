@@ -7,7 +7,8 @@
 // "sent" until a view newer than the tap says otherwise, and back to idle at
 // once if the send failed.
 import { useSyncExternalStore } from 'react';
-import { useAnswers, useViewIndex } from './hooks';
+import { useAnswers, useOutbox, useViewIndex } from './hooks';
+import { pendingAction } from '../model/outbox';
 import { actionRemembered } from './remembered';
 import { useSend, type SuccessToast } from './send';
 
@@ -64,7 +65,9 @@ export function useOneTap(bead: string, action: string) {
   const sentTs = sentAt.get(key);
   const published = Date.parse(viewWrittenAt ?? '');
   const sentSinceView = sentTs !== undefined && (Number.isNaN(published) || sentTs > published);
-  const waiting = sending.has(key) || sentSinceView || actionRemembered(answers, bead, action, viewWrittenAt);
+  // An action still in the outbox (mw-jrx0s.10) keeps the button dead, across a reload too.
+  const queued = pendingAction(useOutbox(), bead, action);
+  const waiting = sending.has(key) || sentSinceView || actionRemembered(answers, bead, action, viewWrittenAt) || queued !== undefined;
 
   /** `label` is what the tap said (the option he chose); `said` hands it back while the tap is waiting. */
   async function tap<T>(task: () => Promise<T>, success?: string | SuccessToast, label = ''): Promise<T | undefined> {
@@ -77,5 +80,5 @@ export function useOneTap(bead: string, action: string) {
     }
     return result;
   }
-  return { waiting, tap, said: waiting ? tapped.get(key) : undefined };
+  return { waiting, tap, said: waiting ? tapped.get(key) : undefined, pending: queued !== undefined };
 }

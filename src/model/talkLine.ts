@@ -61,12 +61,13 @@ export type TalkLineEvent =
 /** How long the line waits for an answer; the aim is about 8 s, so this is generous. */
 export const TALK_TIMEOUT_MS = 30_000;
 export const NO_ANSWER_IN_TIME = 'The Mayor did not answer in time.';
-export const COULD_NOT_SEND = 'Could not send. Try again.';
+/** A turn is queued on the phone and sent when a backend answers; this is what he is told only if the phone itself cannot keep it. */
+export const NOT_KEPT = 'Could not keep that on this phone. Try again.';
 
 /**
  * The most of one turn's words the line sends, as the bytes the text takes inside the turn's
  * JSON (an escaped quote counts two). A record's payload may be at most 10,240 bytes
- * (spell-forge-bsv's encodeRecordScript throws past it, which was the 'Could not send' of
+ * (spell-forge-bsv's encodeRecordScript throws past it, which was the send failure of
  * mw-j0f2d.15): the envelope, the BRC-78 header and base64 leave room for about 7,250 bytes
  * of turn JSON, whose own fields take a hundred and some. 7,000 keeps a margin; it is about
  * 1,100 spoken words, several minutes of talk. A turn over it is cut and ends with "...".
@@ -162,7 +163,7 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
     case 'sendFailed': {
       // His words stay: `retry` sends this very turn again, under the same number.
       if (state.phase !== 'sending' || !state.talk || !state.outgoing) return state;
-      return idle(state, { unsent: state.outgoing, error: event.message ?? COULD_NOT_SEND });
+      return idle(state, { unsent: state.outgoing, error: event.message ?? NOT_KEPT });
     }
     case 'retry':
       if (state.phase !== 'idle' || !state.unsent) return state;

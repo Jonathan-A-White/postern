@@ -11,6 +11,7 @@ import { answersRepo, beadDetailsRepo, viewRepo } from '../../src/data/repositor
 import { formatRoute } from '../../src/nav/route';
 import { fixtureView } from '../support/cockpit-fixture';
 import { deliverAction } from '../../src/services/deliver';
+import { forgetOutboxState } from '../../src/services/outbox';
 
 vi.mock('../../src/services/deliver', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/deliver')>()),
@@ -33,7 +34,8 @@ async function storeView(writtenAt: number): Promise<void> {
 describe('BeadScreen offers Release and Hold only while they still apply', () => {
   beforeEach(async () => {
     vi.mocked(deliverAction).mockClear();
-    await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear()]);
+    forgetOutboxState();
+    await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.outbox.clear()]);
   });
   afterEach(() => cleanup());
   afterAll(() => cleanup());
@@ -42,7 +44,7 @@ describe('BeadScreen offers Release and Hold only while they still apply', () =>
     await storeView(Date.now() - 60_000);
     render(<BeadScreen id={DEFERRED} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Release' }));
-    expect(deliverAction).toHaveBeenCalledWith({ action: 'release', bead: DEFERRED }, expect.anything());
+    await waitFor(() => expect(deliverAction).toHaveBeenCalledWith({ action: 'release', bead: DEFERRED }, expect.anything()));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Release' })).toBeNull());
   });
 

@@ -8,7 +8,7 @@ import type { KeyboardEvent, PointerEvent } from 'react';
 import { Button, Chip, Icon, cx } from '../ui';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
-import { useAnsweredRing, useCallLine } from './hooks';
+import { useAnsweredRing, useCallLine, useOutbox } from './hooks';
 import { sendCallRequest } from './send';
 import { useRoute } from '../router';
 import { settingsRepo } from '../data/repositories';
@@ -16,7 +16,9 @@ import { now } from '../services/clock';
 import { callSent as waitingCall, clockHHMM, ringNote } from '../model/call';
 import { beadHref } from '../nav/route';
 import { formatSeconds, showsCutTag } from '../model/talkScreen';
-import type { TalkPhase } from '../model/talkLine';
+import { pendingTurn } from '../model/outbox';
+import { PendingMark } from './PendingMark';
+import { NOT_KEPT, type TalkPhase } from '../model/talkLine';
 import type { TalkLogEntry } from '../model/talkScreen';
 
 /** How far from the end of the list still counts as reading the end. */
@@ -199,7 +201,7 @@ function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
         onChange={(event) => setText(event.target.value)}
         className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-[15px]"
       />
-      {failed && <p className="text-[12.5px] text-danger">Could not send. Try again.</p>}
+      {failed && <p className="text-[12.5px] text-danger">{NOT_KEPT}</p>}
       <span className="flex justify-end gap-2">
         <Button type="button" variant="ghost" disabled={sending} onClick={onClose}>
           Cancel
@@ -223,6 +225,8 @@ export function TalkLineScreen() {
   const [calling, setCalling] = useState(false);
   const callRows = useCallLine();
   const callSent = waitingCall(callRows);
+  const outbox = useOutbox();
+  const callWaiting = outbox.some((row) => row.kind === 'call' && row.state === 'pending');
   const route = useRoute();
   const calledFrom = route.view === 'line' ? route.call : undefined;
   const answered = useAnsweredRing();
@@ -262,6 +266,7 @@ export function TalkLineScreen() {
                     {entry.said}
                   </p>
                   <span className="flex gap-1.5">
+                    {line.talk && pendingTurn(outbox, line.talk.id, entry.turn) && <PendingMark />}
                     {showsCutTag(entry) && <Chip>cut the last answer</Chip>}
                     {entry.asked && <Chip>asked for {entry.asked}</Chip>}
                   </span>
@@ -328,6 +333,11 @@ export function TalkLineScreen() {
           {listening && micOpen && talk.mode === 'on-device' && <p className="text-[11.5px] text-faint">Speech is recognised on this phone.</p>}
         </div>
         <PresenceMark here={talk.here} />
+        {callWaiting && (
+          <p data-testid="call-pending" className="flex items-center justify-center gap-1.5 text-center text-[11.5px] text-faint">
+            Call request <PendingMark />
+          </p>
+        )}
         {callSent !== undefined && (
           <p data-testid="call-sent" className="text-center text-[11.5px] text-faint">
             {callSent.onChain ? `Sent on chain ${clockHHMM(callSent.at)}, txid ${callSent.txid.slice(0, 8)}…` : `Call sent ${clockHHMM(callSent.at)}`}

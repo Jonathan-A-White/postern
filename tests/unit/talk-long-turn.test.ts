@@ -1,4 +1,4 @@
-// A long hold must always send (mw-j0f2d.15). The cause of 'Could not send. Try again.' was
+// A long hold must always send (mw-j0f2d.15). The cause of the old 'Could not send' was
 // the record's size limit: spell-forge-bsv's encodeRecordScript throws when a record's payload
 // (the envelope with the base64 ciphertext) passes 10,240 bytes, which is about 7,250 bytes of
 // the turn's JSON. So a turn is cut at TURN_TEXT_MAX_BYTES with '...', and still goes.

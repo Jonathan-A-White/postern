@@ -7,10 +7,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
 import { NeedCard } from '../../src/cockpit/NeedCard';
-import { ToastHost } from '../../src/ui/toast';
 import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { forgetTaps } from '../../src/cockpit/oneTap';
+import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { fixtureView } from '../support/cockpit-fixture';
 import { deliverAction } from '../../src/services/deliver';
 import type { Need } from '../../src/model/view';
@@ -56,9 +56,13 @@ describe('a one-tap action sends once and shows it is waiting', () => {
   beforeEach(async () => {
     vi.mocked(deliverAction).mockReset();
     forgetTaps();
-    await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear()]);
+    forgetOutboxState();
+    await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.outbox.clear()]);
   });
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    forgetOutboxState();
+  });
   afterAll(() => cleanup());
 
   it('sends once for a double tap in the same tick, and the card says it is waiting', async () => {
@@ -67,27 +71,27 @@ describe('a one-tap action sends once and shows it is waiting', () => {
     const release = screen.getByRole('button', { name: 'Release' });
     fireEvent.click(release);
     fireEvent.click(release);
-    expect(deliverAction).toHaveBeenCalledTimes(1);
-    expect(within(screen.getByTestId('need-card')).getByRole('status')).toHaveTextContent(/waiting for the factory/i);
+    await waitFor(() => expect(deliverAction).toHaveBeenCalledTimes(1));
+    expect(within(screen.getByTestId('need-card')).getByRole('status')).toHaveTextContent(/Tapped|waiting for the factory/i);
     expect(screen.queryByRole('button', { name: 'Release' })).toBeNull();
     await act(async () => send.finish());
+    await act(async () => settledOutbox());
+    await waitFor(() => expect(within(screen.getByTestId('need-card')).getByRole('status')).toHaveTextContent(/waiting for the factory/i));
     expect(deliverAction).toHaveBeenCalledTimes(1);
+    expect(await db.outbox.count()).toBe(1);
   });
 
-  it('shows the failure and gives the button back when the send fails', async () => {
+  it('keeps the tap, marked pending, and the card dead when the send is refused', async () => {
     const send = slowSend();
-    render(
-      <>
-        <NeedCard need={approveNeed('mw-tap.2')} />
-        <ToastHost />
-      </>,
-    );
+    render(<NeedCard need={approveNeed('mw-tap.2')} />);
     fireEvent.click(screen.getByRole('button', { name: 'Release' }));
-    expect(within(screen.getByTestId('need-card')).getByRole('status')).toHaveTextContent(/waiting for the factory/i);
+    await waitFor(() => expect(deliverAction).toHaveBeenCalledTimes(1));
     await act(async () => send.fail('The backend refused the message.'));
-    expect(await screen.findByText('The backend refused the message.')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Release' })).toBeEnabled());
-    expect(within(screen.getByTestId('need-card')).queryByText(/waiting for the factory/i)).toBeNull();
+    await act(async () => settledOutbox());
+    // Nothing is thrown at him and the button does not come back: the tap waits in the outbox for its next try.
+    await waitFor(() => expect(within(screen.getByTestId('need-card')).getByTestId('pending-mark')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Release' })).toBeNull();
+    expect(await db.outbox.toArray()).toMatchObject([{ kind: 'action', state: 'pending', attempts: 1 }]);
   });
 
   it('tapping Verified on the bead page settles the card and the action button together', async () => {
@@ -98,7 +102,7 @@ describe('a one-tap action sends once and shows it is waiting', () => {
     const card = await screen.findByRole('button', { name: 'I checked it: it works' });
     fireEvent.click(card);
     fireEvent.click(action);
-    expect(deliverAction).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(deliverAction).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('button', { name: 'Verified' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'I checked it: it works' })).toBeNull();
     expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0);
@@ -116,6 +120,7 @@ describe('a one-tap action sends once and shows it is waiting', () => {
     const send = slowSend();
     render(<BeadScreen id={VERIFY} />);
     fireEvent.click(await screen.findByRole('button', { name: 'I checked it: it works' }));
+    await waitFor(() => expect(deliverAction).toHaveBeenCalledTimes(1));
     await act(async () => send.finish());
     await waitFor(() => expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0));
 

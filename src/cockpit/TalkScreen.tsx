@@ -14,7 +14,8 @@ import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
 import { TopicForm } from './TopicForm';
 import { topicKey } from './topicKey';
-import { useBeadComments, useBeadDetail, useMessages, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { useBeadComments, useBeadDetail, useMessages, useOutbox, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { pendingMessageItems } from '../model/outbox';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { groupPosts } from '../model/postThreads';
 import { RepliesRow } from './RepliesRow';
@@ -148,7 +149,12 @@ function ChannelPane({ threadKey }: { threadKey: string }) {
   const rows = useThreadMessages(storeKey);
   const bead = ref && 'bead' in ref ? ref.bead : undefined;
   const { detail } = useBeadDetail(bead);
-  const threads = useMemo(() => groupPosts(mergeConversation(rows, detail?.comments ?? [])), [rows, detail]);
+  const outbox = useOutbox();
+  // His messages still on their way (mw-jrx0s.10) read as his own, marked pending.
+  const threads = useMemo(
+    () => groupPosts([...mergeConversation(rows, detail?.comments ?? []), ...pendingMessageItems(outbox, rows, (thread) => thread === storeKey)]),
+    [rows, detail, outbox, storeKey],
+  );
   const posts = useMemo(() => threads.map((thread) => thread.root), [threads]);
   const byRoot = useMemo(() => new Map(threads.map((thread) => [thread.root.id, thread])), [threads]);
   const remember = useScrollMemory('channel');
@@ -190,12 +196,14 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
   const storeKey = threadKey === GENERAL ? undefined : threadKey;
   const rows = useThreadMessages(storeKey);
   const all = useMessages();
+  const outbox = useOutbox();
   const bead = ref && 'bead' in ref ? ref.bead : undefined;
   const { detail } = useBeadDetail(bead);
   const thread = useMemo(() => {
     const wanted = rootTxid.toLowerCase();
-    return groupPosts(mergeConversation(all, detail?.comments ?? [])).find((candidate) => candidate.root.txid?.toLowerCase() === wanted);
-  }, [all, detail, rootTxid]);
+    const waiting = pendingMessageItems(outbox, all, () => true);
+    return groupPosts([...mergeConversation(all, detail?.comments ?? []), ...waiting]).find((candidate) => candidate.root.txid?.toLowerCase() === wanted);
+  }, [all, detail, rootTxid, outbox]);
   const items = useMemo(() => (thread ? [thread.root, ...thread.replies] : []), [thread]);
   const remember = useScrollMemory('replies');
   const [quote, setQuote] = useState<{ speaker: string; text: string } | null>(null);

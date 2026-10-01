@@ -4,8 +4,8 @@
 // fetching on its own.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { liveQuery } from 'dexie';
-import type { AnswerRow, ArchiveChoices, BeadDetailRow, MessageRow, ViewRow } from '../data/db';
-import { answersRepo, beadDetailsRepo, messagesRepo, settingsRepo, viewRepo } from '../data/repositories';
+import type { AnswerRow, ArchiveChoices, BeadDetailRow, MessageRow, OutboxRow, ViewRow } from '../data/db';
+import { answersRepo, beadDetailsRepo, messagesRepo, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
 import { decodeBeadDetail, decodeView, type BeadComment, type BeadDetail } from '../model/view';
 import { indexView, type ViewIndex } from '../model/tree';
 import { getKey, onKeyChange } from '../services/keySession';
@@ -84,6 +84,11 @@ export function useThreadArchive(): ArchiveChoices {
 /** Every answer and action he has sent, for settling the Needs-you queue at once. */
 export function useAnswers(): AnswerRow[] {
   return useLiveQuery(() => answersRepo.getAll(), [], [] as AnswerRow[]);
+}
+
+/** Everything he did that has not yet been seen coming back (mw-jrx0s.10): pending and sent rows, oldest first. */
+export function useOutbox(): OutboxRow[] {
+  return useLiveQuery(() => outboxRepo.open(), [], [] as OutboxRow[]);
 }
 
 export type DetailStatus = 'idle' | 'loading' | 'ok' | 'missing' | 'unsupported' | 'error';

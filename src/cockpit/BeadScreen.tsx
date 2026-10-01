@@ -13,7 +13,8 @@ import { Composer } from './Composer';
 import { RepliesRow } from './RepliesRow';
 import { NeedCard } from './NeedCard';
 import { StepUnderComment } from './HandsSteps';
-import { useAnswers, useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { useAnswers, useBeadDetail, useOutbox, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { pendingMessageItems } from '../model/outbox';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
@@ -282,7 +283,9 @@ export function BeadScreen({ id }: { id: string }) {
   const threadId = id;
   const threadKey = `bead:${id}`;
   const rows = useThreadMessages(threadKey);
-  const items = useMemo(() => mergeConversation(rows, detail?.comments ?? []), [rows, detail]);
+  const outbox = useOutbox();
+  // His messages still on their way (mw-jrx0s.10) read as his own, marked pending.
+  const items = useMemo(() => [...mergeConversation(rows, detail?.comments ?? []), ...pendingMessageItems(outbox, rows, (thread) => thread === threadKey)], [rows, detail, outbox, threadKey]);
   // Posts once, each with one 'N replies' row: its replies are read in its thread on Talk.
   const threads = useMemo(() => groupPosts(items), [items]);
   const posts = useMemo(() => threads.map((thread) => thread.root), [threads]);

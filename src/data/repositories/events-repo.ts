@@ -23,6 +23,11 @@ export const eventsRepo = {
     return db.events.where('seq').above(seq).sortBy('seq');
   },
 
+  /** Whether an event naming `txid` (a card_answered's answer record, say) is held. */
+  async hasDetail(txid: string): Promise<boolean> {
+    return (await db.events.where('detail').equals(txid).first()) !== undefined;
+  },
+
   async cursor(): Promise<number> {
     const row = await db.settings.get(CURSOR_SETTING_KEY);
     return typeof row?.value === 'number' ? row.value : 0;

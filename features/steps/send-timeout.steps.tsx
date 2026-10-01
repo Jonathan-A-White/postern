@@ -13,6 +13,7 @@ import { dismissAllToasts } from '../../src/ui/toastStore';
 import { db } from '../../src/data/db';
 import { messagesRepo } from '../../src/data/repositories';
 import { API_TIMEOUT_MS } from '../../src/services/apiAuth';
+import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
 const held = vi.hoisted(() => ({ key: new Uint8Array(Array.from({ length: 32 }, (_, i) => i + 1)), mayorKey: '' }));
@@ -45,7 +46,8 @@ async function fresh(answer: (url: string, init?: RequestInit) => Promise<Respon
   dismissAllToasts();
   vi.useRealTimers();
   vi.restoreAllMocks();
-  await db.messages.clear();
+  forgetOutboxState();
+  await Promise.all([db.messages.clear(), db.outbox.clear()]);
   posted = 0;
   if (fakeTimers) vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   vi.stubGlobal(
@@ -77,10 +79,20 @@ async function tapSend(): Promise<void> {
   });
 }
 
+/** Lets the phone's own storage (real macrotasks, which the fake timers leave alone) do what it has been asked. */
+async function letStorageRun(): Promise<void> {
+  await act(async () => {
+    for (let i = 0; i < 40; i++) await new Promise((resolve) => setImmediate(resolve));
+  });
+}
+
 async function pass30Seconds(): Promise<void> {
+  // The sender reads the outbox before it posts: let it get to the wait before the clock moves.
+  await letStorageRun();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS);
   });
+  await letStorageRun();
 }
 
 const feature = await loadFeature('features/send-timeout.feature');
@@ -93,57 +105,58 @@ describeFeature(feature, ({ Scenario }) => {
     vi.restoreAllMocks();
   });
 
-  Scenario('AC-1: a POST that never answers ends the spinner and says the message may have gone', ({ Given, And, When, Then }) => {
+  const waiting = async (words: string) => {
+    await act(async () => settledOutbox());
+    const rows = await db.outbox.toArray();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: 'message', state: 'pending', attempts: 1 });
+    expect(JSON.stringify(rows[0].payload)).toContain(words);
+  };
+
+  Scenario('AC-1: a POST that never answers does not hold the composer; the message stays pending and is tried again', ({ Given, And, When, Then }) => {
     Given('the backend takes the challenge but never answers the message', () =>
       fresh((url) => (isChallengeRequest(url) ? challengeResponse() : never()), true),
     );
     And('he has typed "Is the deploy done?"', () => type('Is the deploy done?'));
     When('he taps Send', tapSend);
-    Then('Send is busy', () => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    Then('the composer is free again without any time passing', async () => {
+      await letStorageRun();
+      expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled();
+    });
+    And('the box is empty', () => {
+      expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('');
     });
     When('30 seconds pass', pass30Seconds);
-    Then('Send is ready again', () => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
-    });
-    And('he is told "May have gone: check the channel before sending again"', () => {
-      expect(screen.getByText('May have gone: check the channel before sending again')).toBeInTheDocument();
-      expect(screen.queryByText(/Not sent/)).toBeNull();
-    });
-    And('the text "Is the deploy done?" is still in the box', () => {
-      expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('Is the deploy done?');
+    Then('the message "Is the deploy done?" is still in the outbox, pending, after a failed try', () => waiting('Is the deploy done?'));
+    And('he is told nothing', () => {
+      expect(screen.queryByText(/May have gone|Not sent|Could not/)).toBeNull();
     });
   });
 
-  Scenario('mw-t64a3.14: a send whose fetch is aborted at the timeout says it may have gone, never the abort text', ({ Given, And, When, Then }) => {
+  Scenario('mw-t64a3.14: a send whose fetch is aborted at the timeout is tried again, and the abort text is never shown', ({ Given, And, When, Then }) => {
     Given('the backend takes the challenge and the browser aborts the message request at the timeout', () =>
       fresh((url, init) => (isChallengeRequest(url) ? challengeResponse() : neverUntilAborted(init)), true),
     );
     And('he has typed "Is the deploy done?"', () => type('Is the deploy done?'));
     When('he taps Send', tapSend);
     And('30 seconds pass', pass30Seconds);
-    Then('he is told "May have gone: check the channel before sending again"', () => {
-      expect(screen.getByText('May have gone: check the channel before sending again')).toBeInTheDocument();
-    });
+    Then('the message "Is the deploy done?" is still in the outbox, pending, after a failed try', () => waiting('Is the deploy done?'));
     And('he is never shown "signal is aborted without reason"', () => {
       expect(screen.queryByText(/aborted/)).toBeNull();
     });
   });
 
-  Scenario('AC-2: a challenge that never answers says the message was not sent', ({ Given, And, When, Then }) => {
+  Scenario('AC-2: a challenge that never answers leaves the message pending', ({ Given, And, When, Then }) => {
     Given('the backend never answers the challenge', () => fresh(() => never(), true));
     And('he has typed "Is the deploy done?"', () => type('Is the deploy done?'));
     When('he taps Send', tapSend);
     And('30 seconds pass', pass30Seconds);
-    Then('Send is ready again', () => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+    Then('the message "Is the deploy done?" is still in the outbox, pending, after a failed try', () => waiting('Is the deploy done?'));
+    And('he is told nothing', () => {
+      expect(screen.queryByText(/May have gone|Not sent|Could not/)).toBeNull();
     });
-    And('he is told "Not sent: try again"', () => {
-      expect(screen.getByText('Not sent: try again')).toBeInTheDocument();
+    And('nothing was posted to the backend', () => {
       expect(posted).toBe(0);
-    });
-    And('the text "Is the deploy done?" is still in the box', () => {
-      expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('Is the deploy done?');
     });
   });
 
@@ -158,7 +171,7 @@ describeFeature(feature, ({ Scenario }) => {
     When('he taps Send', tapSend);
     Then('Send is ready again without any time passing', async () => {
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Message' })).toHaveValue(''));
-      expect(messagesRepo.put).toHaveBeenCalled();
+      await waitFor(() => expect(messagesRepo.put).toHaveBeenCalled());
     });
     And('the box is empty', () => {
       expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('');
@@ -177,8 +190,8 @@ describeFeature(feature, ({ Scenario }) => {
     And('the box is empty', () => {
       expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('');
     });
-    And('one message was posted to the backend', () => {
-      expect(posted).toBe(1);
+    And('one message was posted to the backend', async () => {
+      await waitFor(() => expect(posted).toBe(1));
     });
   });
 });

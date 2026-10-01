@@ -103,7 +103,7 @@ Feature: Talk line turns are records of their own, and the line is a small state
     And he releases with the words "Hello"
     And the send fails
     Then the line is idle
-    And the line says "Could not send. Try again."
+    And the line says "Could not keep that on this phone. Try again."
     When he holds the button again for talk "talk-14"
     And he then releases with the words "Hello again"
     Then the turn to send is turn 1 of "talk-14" saying "Hello again" with no cut
@@ -114,7 +114,7 @@ Feature: Talk line turns are records of their own, and the line is a small state
     And he releases with the words "Hello there"
     And the send fails
     Then the line is idle
-    And the line says "Could not send. Try again."
+    And the line says "Could not keep that on this phone. Try again."
     And the line still holds the unsent words "Hello there"
     When he asks to try again
     Then the turn to send is turn 1 of "talk-30" saying "Hello there" with no cut

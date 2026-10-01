@@ -22,22 +22,32 @@ const SIZES: Record<ButtonSize, string> = {
   lg: 'h-12 px-5 text-base gap-2 rounded-xl',
 };
 
+/** The sizes of a `wrap` button: no fixed height, so a long label wraps and the button grows. */
+const WRAP_SIZES: Record<ButtonSize, string> = {
+  sm: 'h-auto min-h-8 py-1.5 px-3 text-sm gap-1.5 rounded-lg',
+  md: 'h-auto min-h-10 py-2 px-4 text-[15px] gap-2 rounded-xl',
+  lg: 'h-auto min-h-12 py-2.5 px-5 text-base gap-2 rounded-xl',
+};
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   icon?: IconName;
   busy?: boolean;
+  /** A long label: the button is as wide as its box, the words wrap, and it grows taller instead of wider. */
+  wrap?: boolean;
 }
 
-export function Button({ variant = 'secondary', size = 'md', icon, busy, className, children, disabled, ...props }: ButtonProps) {
+export function Button({ variant = 'secondary', size = 'md', icon, busy, wrap, className, children, disabled, ...props }: ButtonProps) {
   return (
     <button
       type="button"
       className={cx(
-        'inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-[filter,background-color,border-color,color] duration-150 select-none',
+        'inline-flex items-center transition-[filter,background-color,border-color,color] duration-150 select-none',
+        wrap ? 'w-full min-w-0 justify-start text-left break-words whitespace-normal' : 'shrink-0 justify-center whitespace-nowrap',
         'disabled:cursor-not-allowed disabled:opacity-45',
         VARIANTS[variant],
-        SIZES[size],
+        wrap ? WRAP_SIZES[size] : SIZES[size],
         className,
       )}
       disabled={disabled || busy}
@@ -106,9 +116,11 @@ export interface ChipProps extends HTMLAttributes<HTMLSpanElement> {
   tone?: Tone;
   icon?: IconName;
   mono?: boolean;
+  /** Let a long text wrap inside the chip instead of being cut off with an ellipsis. */
+  wrap?: boolean;
 }
 
-export function Chip({ tone = 'neutral', icon, mono, className, children, ...props }: ChipProps) {
+export function Chip({ tone = 'neutral', icon, mono, wrap, className, children, ...props }: ChipProps) {
   return (
     <span
       className={cx(
@@ -119,8 +131,8 @@ export function Chip({ tone = 'neutral', icon, mono, className, children, ...pro
       )}
       {...props}
     >
-      {icon && <Icon name={icon} size={12} strokeWidth={2.2} />}
-      <span className="truncate">{children}</span>
+      {icon && <Icon name={icon} size={12} strokeWidth={2.2} className="shrink-0" />}
+      <span className={wrap ? 'min-w-0 break-words' : 'min-w-0 truncate'}>{children}</span>
     </span>
   );
 }

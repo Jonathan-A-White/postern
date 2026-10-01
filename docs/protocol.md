@@ -36,6 +36,10 @@ JSON shape that only postern understands:
 - `role` — optional, only on a `call` record (§21): `"request"`, `"ring"` or `"later"`,
   in the clear beside `class` so the backend can push a ring and nothing else of a call.
   Any other record ignores it.
+- `lane` — optional, only on an `events` record (§22): `"emergency"` in the clear beside
+  `class`, so the backend can push an emergency and nothing else of an events record. The
+  sealed plaintext names the lane too; this copy is the one the backend reads. Any other
+  record ignores it.
 - `to` / `from` — compressed secp256k1 public keys, hex, 33 bytes (66 hex chars).
   The same keys BRC-78 embeds inside the ciphertext itself (see below) — carried
   here too so a reader can tell who a message is for/from without decrypting it.
@@ -1381,15 +1385,23 @@ bead changing state, a landing, an alarm) reach Postern as one sealed record per
 of about 2 seconds, not one per event, and an emergency goes out unbatched. A batch is
 §1's envelope with `"class": "events"`, sent from the Mayor's key (the home) `to` the
 Governor's, delivered with `POST /api/messages` (§9) or put on chain (§4). It carries
-no `summary`, so no word of it is ever pushed, handed to a hook or logged.
+no `summary`, so no word of it is ever pushed, handed to a hook or logged. An emergency
+is pushed all the same, as a bare alarm with no word of it (below).
 
 ### What the backend does with an events record
 
 The same as with a Talk turn (§20) and a call record (§21), and for the same reason:
 an `events` record is indexed like any record, gets a `message` event on §10's stream
-(the one `seq` the client pages from) and **nothing else**: no web push and no
-on-message hook. The Governor's phone reads batches off the stream when it is open; a
-batch is never a reason to wake it.
+(the one `seq` the client pages from) and **nothing else**: no on-message hook, and no web
+push **unless it is an emergency**. The Governor's phone reads batches off the stream when
+it is open; an ordinary batch is never a reason to wake it.
+
+- **The class rule.** An `events` record is pushed when, and only when, its clear `lane`
+  (§1) is `"emergency"`; `normal`, `fallback`, no lane or any other value is not pushed.
+  An emergency push is `{class: "events", txid, ts, title: "Emergency"}`: its title is the
+  lane's name and it carries no body, because the detail is sealed in the record (a
+  `summary` on an events record is never a push body). The phone shows it as a notification
+  that stays until dealt with, tagged so a second emergency replaces the first.
 
 - **Direct.** `POST /api/messages` accepts the class from any cockpit key, as for any
   record (§9): `from` must be the key that signed the request, which is the Mayor's
@@ -1478,6 +1490,22 @@ heard (above) shows on the page at once, the view's copy being the newer when it
 is later than the fetched detail's. A card answered or a step run shows from the view and the
 detail the sync already applied. The Talk line needs no event of its own: a turn is a stored
 record (§20) that the line reads from the same store, whichever road brought it.
+
+### The emergency lane in the app
+
+`mw-jrx0s.13`. A batch whose `lane` is `emergency` is taken ahead of every other batch the
+sync holds: its events are kept by `seq`, applied to the stored view and heard by the screens
+**before** the ordinary batches, even out of `seq` order (a gap before it does not hold it
+back). The seqs it applied past the cursor are remembered (a setting), so the ordinary pass,
+which still moves the cursor over them, does not apply them a second time, and each event
+is still kept once by `seq`.
+
+A banner mounted in the shell, so on every screen, shows the newest emergency event's
+`detail` above everything else until he taps it. It reads the stored events (so it appears the
+moment the record is kept, and a reload does not lose it) and the newest emergency `seq` he has
+tapped away (a setting, so a cleared one stays cleared). A tap clears it, closes the push's
+notification if it is still up, and opens what the event is about: its `bead`'s page, or the
+Talk line (§20) when it names no bead.
 
 ### The chain road, while the backend is out of reach
 

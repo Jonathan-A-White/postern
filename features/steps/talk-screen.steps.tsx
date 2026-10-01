@@ -14,6 +14,7 @@ import { messagesRepo } from '../../src/data/repositories';
 import { formatRoute, parseRoute, topViewOf } from '../../src/nav/route';
 import { navigate, useRoute } from '../../src/router';
 import { lock, setKey } from '../../src/services/keySession';
+import { forgetSilentInputs } from '../../src/services/micInput';
 import { encodeTurn } from '../../src/services/talk';
 import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 
@@ -194,6 +195,7 @@ async function fresh(): Promise<void> {
   await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
   document.documentElement.lang = '';
   setInputs(undefined);
+  forgetSilentInputs();
   window.history.replaceState(null, '', '/?v=line');
   screenIs(390);
 }
@@ -372,6 +374,45 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the screen says it is listening on the phone\'s own microphone', async () => {
       await micOpens();
       await waitFor(() => expect(screen.getByTestId('mic-name')).toHaveTextContent("Listening on the phone's own microphone."));
+    });
+  });
+
+  Scenario('AC-1: earbuds whose microphone hears nothing are given up on, and the hold goes on on the phone\'s own microphone (mw-j0f2d.34)', ({ Given, When, Then, And }) => {
+    Given('the phone has the inputs {string} and {string}', (_c, a: string, b: string) => {
+      setInputs([
+        { deviceId: 'phone', label: a },
+        { deviceId: 'buds', label: b },
+      ]);
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    Then('the recogniser listens on the {string} input', async (_c, label: string) => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      expect((recognizers.at(-1)?.startedWith as { label: string }).label).toBe(label);
+    });
+    When('the recogniser ends with no speech and no words', async () => {
+      await recogniserFails('no-speech');
+      act(() => {
+        recognizers.at(-1)?.onend?.();
+      });
+    });
+    Then('the recogniser is started again on the default input', async () => {
+      await waitFor(() => expect(recognizers).toHaveLength(2));
+      expect(recognizers.at(-1)?.startedWith).toBeUndefined();
+    });
+    And('the screen says it is listening on the phone\'s own microphone', async () => {
+      await micOpens();
+      await waitFor(() => expect(screen.getByTestId('mic-name')).toHaveTextContent("Listening on the phone's own microphone."));
+    });
+    When('he says {string} and lets go', async (_c, words: string) => {
+      await hear(words);
+      fireEvent.pointerUp(await talkButton('Release to send'));
+      await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
+    });
+    Then('the turn sent is {string}', (_c, words: string) => {
+      expect(lastSent().text).toBe(words);
     });
   });
 

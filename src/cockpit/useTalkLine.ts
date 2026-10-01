@@ -141,17 +141,18 @@ export function useTalkLine() {
   }, [here, missed]);
 
   // The screen stays awake for as long as a talk is open, and a silent loop plays to try to keep
-  // the voice alive with the screen off.
+  // the voice alive with the screen off; but never while he holds the button, where a page playing
+  // audio can take the phone's microphone from the recogniser and end it over and over (mw-j0f2d.37).
   const open = line.talk !== undefined;
+  const holding = line.phase === 'listening';
   useEffect(() => {
     if (!open) return;
-    const release = holdAwake();
-    const quiet = holdVoiceAlive();
-    return () => {
-      release();
-      quiet();
-    };
+    return holdAwake();
   }, [open]);
+  useEffect(() => {
+    if (!open || holding) return;
+    return holdVoiceAlive();
+  }, [open, holding]);
 
   useEffect(
     () => () => {

@@ -69,7 +69,7 @@ describe('mergeConversation', () => {
     ];
     const items = mergeConversation([voice, transcript, reply], comments);
     expect(items.map((item) => item.text)).toEqual(['Claimed.', '', 'on it']);
-    expect(items[0]).toMatchObject({ speaker: 'builder', source: 'comment' });
+    expect(items[0]).toMatchObject({ speaker: 'factory', speakerLabel: 'Factory · desktop', source: 'comment' });
     expect(items[1]).toMatchObject({ speaker: 'you', kind: 'attachment', transcript: 'what was heard' });
     expect(items[2]).toMatchObject({ speaker: 'mayor', unread: true });
   });
@@ -127,7 +127,17 @@ describe('mergeConversation', () => {
     it('still shows the comment, once, when no message in the thread says the run', () => {
       const items = mergeConversation([], [runComment()]);
       expect(items).toHaveLength(1);
-      expect(items[0]).toMatchObject({ speaker: 'builder', source: 'comment', text: runText });
+      expect(items[0]).toMatchObject({ speaker: 'factory', speakerLabel: 'Factory · laptop', source: 'comment', text: runText });
+    });
+
+    it("shows a hands step's RAN comment by mw@desktop and its postern reply as one entry, labelled as the factory", () => {
+      const ranText = runText.replace('backend-x on laptop as user', 'whoami on desktop as root');
+      const comment = { at: new Date(1_760_000_399 * 1000).toISOString(), author: 'mw@desktop', text: ranText };
+      const reply = row(encodeThreadedMessage({ thread: { bead: 'b' }, text: ranText, re: `direct:${approval}` }), { ts: 1_760_000_400 });
+      const items = mergeConversation([reply], [comment]);
+      expect(items).toHaveLength(1);
+      expect(items.some((item) => item.speakerLabel.startsWith('Builder'))).toBe(false);
+      expect(mergeConversation([], [comment])[0].speakerLabel).toBe('Factory · desktop');
     });
 
     it('leaves a comment with other text, naming no txid of the thread, alone', () => {
@@ -144,7 +154,9 @@ describe('mergeConversation', () => {
 
   it('names who wrote a comment', () => {
     expect(speakerOfComment('root').speaker).toBe('mayor');
-    expect(speakerOfComment('mw@laptop')).toEqual({ speaker: 'builder', label: 'Builder · laptop' });
+    expect(speakerOfComment('mw@laptop')).toEqual({ speaker: 'factory', label: 'Factory · laptop' });
+    expect(speakerOfComment('builder@laptop')).toEqual({ speaker: 'builder', label: 'Builder · laptop' });
+    expect(speakerOfComment('builder')).toEqual({ speaker: 'builder', label: 'Builder' });
     expect(speakerOfComment('luke').label).toBe('luke');
   });
 });

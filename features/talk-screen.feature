@@ -330,3 +330,18 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When the Mayor is here and the phone comes back to the foreground
     Then the Talk line shows "Mayor here" in colour
     And the phone buzzes once for it
+
+  Scenario: AC-1: Call me sends a call request and the screen reads Call sent HH:MM (mw-a0ih0.1)
+    Given the time is 14:05 and the Talk line is open with a believable speech recogniser
+    When he taps the "Call me" button
+    Then the call field reads "Call me"
+    When he then taps the "Send" button
+    Then one call request saying "Call me" at "14:05" was sent
+    And the screen reads "Call sent 14:05"
+    And the call field is gone
+
+  Scenario: AC-2: Call sent stays until the Mayor rings or answers, and then goes (mw-a0ih0.1)
+    Given a call request was sent at 14:05 and the Talk line is open with a believable speech recogniser
+    Then the screen reads "Call sent 14:05"
+    When the Mayor rings saying "Back now" at "14:06"
+    Then the screen no longer reads Call sent

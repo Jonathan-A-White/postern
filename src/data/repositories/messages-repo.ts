@@ -1,8 +1,8 @@
 import { db, type MessageRow } from '../db';
 
-/** The Talk line's turns (docs/protocol.md §20) are records of their own: every list
- * of messages, every thread and every unread count below leaves them out. */
-const notTalk = (row: MessageRow) => row.class !== 'talk';
+/** The Talk line's turns (docs/protocol.md §20) and call records (§21) are records of their own:
+ * every list of messages, every thread and every unread count below leaves them out. */
+const notTalk = (row: MessageRow) => row.class !== 'talk' && row.class !== 'call';
 
 export const messagesRepo = {
   async getAll(): Promise<MessageRow[]> {
@@ -16,6 +16,11 @@ export const messagesRepo = {
 
   /** The Talk line's turns alone, oldest first. */
   async talkTurns(): Promise<MessageRow[]> {
+    return db.messages.orderBy('ts').filter((row) => row.class === 'talk').toArray();
+  },
+
+  /** The call records and the Talk line's turns, oldest first: what says whether a Call me has been answered. */
+  async callLine(): Promise<MessageRow[]> {
     return db.messages.orderBy('ts').filter((row) => !notTalk(row)).toArray();
   },
 

@@ -86,12 +86,12 @@ function jsonBytes(ch: string): number {
   return code < 0x10000 ? 3 : 4;
 }
 
-/** `text` as it is when it fits, otherwise cut at the cap, on a whole character, and ended with "...". */
-export function capTurnText(text: string): string {
+/** `text` as it is when it fits `maxBytes` (as JSON writes it), otherwise cut there, on a whole character, and ended with "...". */
+export function capText(text: string, maxBytes: number): string {
   let size = 0;
   for (const ch of text) size += jsonBytes(ch);
-  if (size <= TURN_TEXT_MAX_BYTES) return text;
-  const room = TURN_TEXT_MAX_BYTES - CUT_MARK.length;
+  if (size <= maxBytes) return text;
+  const room = maxBytes - CUT_MARK.length;
   let kept = '';
   size = 0;
   for (const ch of text) {
@@ -101,6 +101,9 @@ export function capTurnText(text: string): string {
   }
   return kept.trimEnd() + CUT_MARK;
 }
+
+/** His turn's words, cut at the turn cap. */
+export const capTurnText = (text: string): string => capText(text, TURN_TEXT_MAX_BYTES);
 
 export const initialTalkLine: TalkLineState = { phase: 'idle', cutPending: false };
 

@@ -15,6 +15,7 @@ import { formatRoute, parseRoute, topViewOf } from '../../src/nav/route';
 import { navigate, useRoute } from '../../src/router';
 import { lock, setKey } from '../../src/services/keySession';
 import { encodeTurn } from '../../src/services/talk';
+import { encodeCall, type CallRecord } from '../../src/services/call';
 import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 
 configure({ asyncUtilTimeout: 5000 });
@@ -23,9 +24,11 @@ const clock = vi.hoisted(() => ({ at: 1_000_000 }));
 vi.mock('../../src/services/clock', () => ({ now: () => clock.at }));
 
 const sendTurn = vi.fn();
+const sendCallRequest = vi.fn();
 vi.mock('../../src/cockpit/send', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/cockpit/send')>()),
   sendTurn: (...args: unknown[]) => sendTurn(...args),
+  sendCallRequest: (...args: unknown[]) => sendCallRequest(...args),
 }));
 
 // Whether the Mayor is here is what the backend's presence route says; a test sets it.
@@ -175,6 +178,31 @@ async function mayorSays(text: string, role: TalkTurn['role'], model?: string, l
   });
 }
 
+/** A call record as the phone stores it, sent by him or received from the Mayor, with its time in seconds. */
+let callSequence = 0;
+async function storeCall(call: CallRecord, direction: 'sent' | 'received', ts: number): Promise<void> {
+  callSequence += 1;
+  const txid = `direct:call${callSequence}`;
+  await messagesRepo.put({
+    id: `${txid}:0`,
+    txid,
+    vout: 0,
+    seq: direction === 'sent' ? Number.MAX_SAFE_INTEGER : callSequence,
+    class: 'call',
+    to: '03'.padEnd(66, '0'),
+    from: '02'.padEnd(66, '0'),
+    ts,
+    ciphertext: '',
+    plaintext: encodeCall(call),
+    direction,
+    read: true,
+  });
+}
+
+/** Seconds since the epoch of 14:`minute` UTC on 2026-10-01 (the tests run with TZ=UTC). */
+const at1405 = Date.UTC(2026, 9, 1, 14, 5) / 1000;
+const atMinute = (hhmm: string) => at1405 + (Number(hhmm.slice(3)) - 5) * 60;
+
 // A silence the recogniser lives through: the page's clock, moved on without waiting.
 let silentFor = 0;
 const realNow = Date.now.bind(Date);
@@ -190,6 +218,12 @@ async function fresh(): Promise<void> {
   clock.at = 1_000_000;
   sendTurn.mockReset();
   sendTurn.mockResolvedValue({ txid: 'direct:x', channel: 'direct' });
+  // Delivering a request keeps a sent copy, as the real deliver does.
+  sendCallRequest.mockReset();
+  sendCallRequest.mockImplementation(async (text: string, at: number) => {
+    await storeCall({ role: 'request', text, at }, 'sent', at);
+    return { txid: 'direct:call', channel: 'direct' };
+  });
   for (const fake of [speak, cancel, vibrate, release, request]) fake.mockClear();
   await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
   document.documentElement.lang = '';
@@ -1083,6 +1117,51 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the Talk line shows {string} in colour', (c, words: string) => markShows(c, words, 'colour'));
     And('the phone buzzes once for it', async () => {
       await waitFor(() => expect(vibrate.mock.calls.length).toBe(buzzesBefore + 1));
+    });
+  });
+
+  // mw-a0ih0.1: Call me.
+  Scenario('AC-1: Call me sends a call request and the screen reads Call sent HH:MM (mw-a0ih0.1)', ({ Given, When, Then, And }) => {
+    Given('the time is 14:05 and the Talk line is open with a believable speech recogniser', async () => {
+      clock.at = at1405 * 1000;
+      await lineOpen();
+      setKey(new Uint8Array(32));
+    });
+    When('he taps the {string} button', async (_c, name: string) => {
+      fireEvent.click(await talkButton(name));
+    });
+    Then('the call field reads {string}', async (_c, words: string) => {
+      expect(await screen.findByRole('textbox', { name: 'What to tell the Mayor' })).toHaveValue(words);
+    });
+    When('he then taps the {string} button', async (_c, name: string) => {
+      fireEvent.click(await talkButton(name));
+    });
+    Then('one call request saying {string} at {string} was sent', async (_c, words: string, time: string) => {
+      await waitFor(() => expect(sendCallRequest).toHaveBeenCalledTimes(1));
+      expect(sendCallRequest).toHaveBeenCalledWith(words, atMinute(time));
+    });
+    And('the screen reads {string}', async (_c, words: string) => {
+      expect(await screen.findByTestId('call-sent')).toHaveTextContent(words);
+    });
+    And('the call field is gone', () => {
+      expect(screen.queryByRole('textbox', { name: 'What to tell the Mayor' })).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-2: Call sent stays until the Mayor rings or answers, and then goes (mw-a0ih0.1)', ({ Given, Then, When }) => {
+    Given('a call request was sent at 14:05 and the Talk line is open with a believable speech recogniser', async () => {
+      clock.at = at1405 * 1000;
+      await storeCall({ role: 'request', text: 'Call me', at: at1405 }, 'sent', at1405);
+      await lineOpen();
+    });
+    Then('the screen reads {string}', async (_c, words: string) => {
+      expect(await screen.findByTestId('call-sent')).toHaveTextContent(words);
+    });
+    When('the Mayor rings saying {string} at {string}', async (_c, words: string, time: string) => {
+      await storeCall({ role: 'ring', text: words, at: atMinute(time) }, 'received', atMinute(time));
+    });
+    Then('the screen no longer reads Call sent', async () => {
+      await waitFor(() => expect(screen.queryByTestId('call-sent')).not.toBeInTheDocument());
     });
   });
 });

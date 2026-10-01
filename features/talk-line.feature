@@ -151,3 +151,10 @@ Feature: Talk line turns are records of their own, and the line is a small state
     Then the channel list shows "Real message" and never "Spoken words"
     And the unread count is 1
     And Needs has no entry for the talk record
+
+  Scenario: AC-1: Call me sends a call request: a record of class call with the words and the time
+    Given the Mayor's key is known
+    When he delivers a call request saying "Call me" at 1790000000
+    Then one record of class "call" is posted to the Mayor
+    And the Mayor reads a request saying "Call me" at 1790000000
+    And no summary rides in the clear

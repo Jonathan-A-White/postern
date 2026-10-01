@@ -16,6 +16,7 @@ var MessageClasses = map[string]bool{
 	"move-home":       true,
 	ClassGrist:        true,
 	ClassTalk:         true,
+	ClassCall:         true,
 }
 
 // ClassGrist is an app's AI work for the factory, and the mill's answer to
@@ -26,6 +27,12 @@ const ClassGrist = "grist"
 // (docs/protocol.md §20): it reaches the event stream only, never a push or
 // a hook.
 const ClassTalk = "talk"
+
+// ClassCall is a call record between the Governor and the Mayor
+// (docs/protocol.md §21): his Call me request, the Mayor's ring and his Later
+// tap. The backend cannot tell which, since the role sits in the sealed
+// plaintext; like a talk turn it reaches the event stream and nothing else.
+const ClassCall = "call"
 
 // Envelope is docs/protocol.md §1's clear message payload. The backend never
 // decrypts Ct; it only checks the envelope's shape.

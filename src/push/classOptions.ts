@@ -35,8 +35,8 @@ export interface ClassNotificationSettings {
   quiet: boolean;
 }
 
-/** The classes that can reach him as a push: every class but `talk`, whose turns the backend never pushes (§20). */
-export type PushClass = Exclude<MessageClass, 'talk'>;
+/** The classes that can reach him as a push: every class but `talk`, whose turns the backend never pushes (§20), and `call`, whose ring the Mayor's host pushes in its own way (§21). */
+export type PushClass = Exclude<MessageClass, 'talk' | 'call'>;
 
 export type NotificationSettingsMap = Record<PushClass, ClassNotificationSettings>;
 
@@ -87,6 +87,7 @@ export const CLASS_URLS: Record<MessageClass, string> = {
   message: '/?v=talk',
   'move-home': '/?v=me',
   talk: '/?v=talk',
+  call: '/?v=line',
 };
 
 export interface NotificationText {

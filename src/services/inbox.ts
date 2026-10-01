@@ -126,8 +126,8 @@ export async function syncMessages(params: SyncMessagesParams): Promise<void> {
       plaintext,
       decryptFailed: existing?.decryptFailed ?? decrypted.decryptFailed,
       direction,
-      // A Talk turn is never unread: it is heard on the Talk line, not counted (§20).
-      read: existing?.read ?? payload.class === 'talk',
+      // A Talk turn or a call record is never unread: it is heard on the Talk line, not counted (§20, §21).
+      read: existing?.read ?? (payload.class === 'talk' || payload.class === 'call'),
       thread: existing?.thread ?? threadKey(threadOf(payload.class, plaintext)),
     });
   }

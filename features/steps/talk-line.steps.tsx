@@ -15,6 +15,7 @@ import { db, type MessageRow } from '../../src/data/db';
 import { decryptMessage, type MessagePayload } from '../../src/services/messages';
 import { settledWrites } from '../../src/services/deliver';
 import { decodeTurn, deliverTurn, encodeTurn } from '../../src/services/talk';
+import { decodeCall, deliverCallRequest } from '../../src/services/call';
 import { initialTalkLine, talkLine, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
@@ -161,6 +162,38 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the Mayor reads the turn he made', () => {
       expect(decodeTurn(decryptMessage(payloadOfPost(), MAYOR.toHex()))).toEqual(turn);
+    });
+    And('no summary rides in the clear', () => {
+      expect(payloadOfPost()).not.toHaveProperty('summary');
+    });
+  });
+
+  Scenario('AC-1: Call me sends a call request: a record of class call with the words and the time', ({ Given, When, Then, And }) => {
+    Given("the Mayor's key is known", () => {
+      posts = [];
+    });
+    When('he delivers a call request saying {string} at {number}', async (_c, text: string, at: number) => {
+      const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        if (isChallengeRequest(String(url))) return challengeResponse();
+        posts.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ txid: `direct:${'e'.repeat(64)}` }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      });
+      await deliverCallRequest(text, Number(at), { key: HIM_KEY, mayorKey: MAYOR.toPublicKey().toString(), direct: true, fetchImpl: fetchImpl as unknown as typeof fetch });
+      await settledWrites();
+    });
+    const payloadOfPost = (): MessagePayload => {
+      const script = decodeRecordScript(Script.fromHex(posts[0].scriptHex));
+      return JSON.parse(Utils.toUTF8(Array.from(script!.payloadBytes))) as MessagePayload;
+    };
+    Then('one record of class {string} is posted to the Mayor', (_c, cls: string) => {
+      expect(posts).toHaveLength(1);
+      const payload = payloadOfPost();
+      expect(payload.class).toBe(cls);
+      expect(payload.to).toBe(MAYOR.toPublicKey().toString());
+      expect(payload.from).toBe(HIM_PUB);
+    });
+    And('the Mayor reads a request saying {string} at {number}', (_c, text: string, at: number) => {
+      expect(decodeCall(decryptMessage(payloadOfPost(), MAYOR.toHex()))).toEqual({ role: 'request', text, at: Number(at) });
     });
     And('no summary rides in the clear', () => {
       expect(payloadOfPost()).not.toHaveProperty('summary');

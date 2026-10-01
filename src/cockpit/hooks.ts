@@ -61,6 +61,11 @@ export function useTalkTurns(): MessageRow[] {
   return useLiveQuery(() => messagesRepo.talkTurns(), [], [] as MessageRow[]);
 }
 
+/** The call records and Talk-line turns, oldest first (docs/protocol.md §21): what says whether a Call me has been answered. */
+export function useCallLine(): MessageRow[] {
+  return useLiveQuery(() => messagesRepo.callLine(), [], [] as MessageRow[]);
+}
+
 export function useThreadMessages(threadKey: string | undefined): MessageRow[] {
   return useLiveQuery(() => messagesRepo.inThread(threadKey), [threadKey], [] as MessageRow[]);
 }

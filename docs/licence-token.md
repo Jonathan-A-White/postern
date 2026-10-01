@@ -15,7 +15,8 @@ A key counts for app `spellforge` when, read from WhatsOnChain testnet:
    and `"holder"`: the key's testnet P2PKH address. Extra payload fields (the gated
    mint's `wrapKey`, `wrap`) are ignored.
 2. One of the mint's inputs is unlocked by a P2PKH scriptSig pushing
-   `POSTERN_ISSUER_KEY`.
+   `POSTERN_ISSUER_KEY` and spends an output P2PKH to hash160 of that key (since
+   mw-gq6.175: the chain's own script check is what proves the signature).
 3. The token, the mint's **output 0**, has not been moved away by a typed **TR** record
    in a transaction spending its current outpoint, and the issuer has not revoked it
    (a signed W `{"kind":"revoke","origin":"<mint txid>:0"}` in the issuer's history).
@@ -75,14 +76,13 @@ The issuer's SIGHASH_ALL signature commits to every output, so output 0 is what 
 own builder made; recognising the License covenant would tie the Go backend to one
 compiled artifact's bytes and break at every artifact version. A mint whose output 0
 is not a License only lets its holder keep a licence through spends without a TR,
-which the issuer's Revoke ends. **But the signature is not checked today:** `signedBy`
-looks only for a scriptSig *pushing* the issuer's key, so a transaction spending a
-non-P2PKH output (say `OP_2DROP OP_1`) with `<junk> <issuer key>`, paying 1 sat to its
-own address, passes the backend's check as issued, for `postern` too. The fix is one
-narrow read per candidate mint or revoke: fetch the spent output's transaction and
-require that input to spend a P2PKH locked to hash160(issuer key), so the chain's own
-script check proves the signature. Its own story (it touches every issued-licence
-test); flagged to the Mayor.
+which the issuer's Revoke ends. Until mw-gq6.175 the backend looked only for a
+scriptSig *pushing* the issuer's key, so a transaction spending a non-P2PKH output
+(say `OP_2DROP OP_1`) with `<junk> <issuer key>`, paying 1 sat to the issuer's
+address, would have passed as issued, for `postern` too. Now the input pushing the
+key must also spend an output P2PKH to hash160(issuer key), read from the histories
+already fetched or by one read of the spent transaction per candidate mint or
+revoke, so the chain's own script check proves the signature.
 
 **(d) The 5-minute cache: fine for grist.** A revoke or transfer takes up to
 `licenceCacheTTL` (5 min) to close the door, and up to an hour longer (the checker's

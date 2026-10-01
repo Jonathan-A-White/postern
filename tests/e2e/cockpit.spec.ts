@@ -86,6 +86,8 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
 
   await page.goto('/?v=me');
   await expect(page.getByRole('heading', { name: 'Me', exact: true })).toBeVisible();
+  // mw-gq6.196: the built app names its version, the UTC build time and the short commit.
+  await expect(page.getByText(/^Postern v\d+\.\d+\.\d+ · \d{4}-\d{2}-\d{2} \d{2}:\d{2}Z · ([0-9a-f]{7,}|dev)$/)).toBeVisible();
   await shot(page, 'cockpit-me');
 });
 

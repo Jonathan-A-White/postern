@@ -26,17 +26,19 @@ function repliedTo(row: MessageRow): string | undefined {
   return body.re !== undefined && body.role === undefined ? body.re : undefined;
 }
 
-/** The txid of the root of the reply thread this message belongs to: the post its
- * `re` chain ends at among the rows `find` knows of the same channel, or the
- * message's own txid when it answers nothing the phone holds (§14 keeps it a root). */
-function rootTxidOf(row: MessageRow, find: (txid: string) => MessageRow | undefined): string {
+/** The root of the reply thread this message belongs to: the post its `re` chain
+ * ends at among the rows `find` knows of, in whatever channel the post lives (a
+ * reply sent with no channel to a post of a bead's channel belongs to that post's
+ * thread, mw-gq6.170), or the message itself when it answers nothing the phone
+ * holds (§14 keeps it a root). */
+function rootOf(row: MessageRow, find: (txid: string) => MessageRow | undefined): MessageRow {
   const seen = new Set([row.txid.toLowerCase()]);
   let current = row;
   for (;;) {
     const target = repliedTo(current);
     const next = target === undefined ? undefined : find(target);
-    if (!next || next.thread !== row.thread) return current.txid;
-    if (seen.has(next.txid.toLowerCase())) return row.txid;
+    if (!next) return current;
+    if (seen.has(next.txid.toLowerCase())) return row;
     seen.add(next.txid.toLowerCase());
     current = next;
   }
@@ -45,15 +47,16 @@ function rootTxidOf(row: MessageRow, find: (txid: string) => MessageRow | undefi
 /** The thread's URL for a message the phone has already decrypted (or given up
  * on: the general thread), or undefined while its thread is still unknown. A
  * reply in any channel opens the reply thread of its post, the route 'N replies'
- * opens; `rows` are the messages the chain of `re` is followed through. */
+ * opens, in the post's own channel; `rows` are the messages the chain of `re` is
+ * followed through. */
 export function threadUrlOfMessage(row: MessageRow | undefined, rows: MessageRow[] = []): string | undefined {
   if (!row) return undefined;
   if (row.plaintext !== undefined && repliedTo(row) !== undefined) {
     const byTxid = new Map(rows.map((other) => [other.txid.toLowerCase(), other]));
-    const root = rootTxidOf(row, (txid) => byTxid.get(txid.toLowerCase()));
+    const root = rootOf(row, (txid) => byTxid.get(txid.toLowerCase()));
     // In a bead's or a named channel a `re` naming nothing of it leaves the message a post (§14): its channel opens.
     // (General keeps opening the message as the root of its own thread, as mw-gq6.160 settled.)
-    if (root.toLowerCase() !== row.txid.toLowerCase() || !row.thread) return `/${formatRoute({ view: 'talk', thread: row.thread ?? 'general', root })}`;
+    if (root !== row || !row.thread) return `/${formatRoute({ view: 'talk', thread: root.thread ?? 'general', root: root.txid })}`;
   }
   if (row.thread) return `/${threadHrefFor(row.thread)}`;
   if (row.plaintext !== undefined || row.decryptFailed) return `/${threadHrefFor(undefined)}`;

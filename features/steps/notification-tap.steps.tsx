@@ -39,6 +39,8 @@ const POST = `direct:${'a1'.repeat(32)}`;
 function generalRow(txid: string, body: object | string): MessageRow {
   return { ...messageOn('x'), id: `${txid}:0`, txid, thread: undefined, plaintext: typeof body === 'string' ? body : JSON.stringify(body) };
 }
+const postIn = (thread: string) => ({ ...generalRow(POST, 'the post'), thread });
+const threadOfPost = (thread: string) => ({ view: 'talk', thread, root: POST }) as const;
 const replyRow = () => generalRow(TXID, { text: 'the answer', re: POST });
 const replyThread = { view: 'talk', thread: 'general', root: POST } as const;
 
@@ -187,6 +189,62 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the app moves to the reply thread of the General post', async () => {
       await waitFor(() => expect(parseRoute(window.location.search)).toEqual(replyThread));
+    });
+  });
+
+  Scenario("mw-gq6.170 AC-9: a push for a reply with no channel whose re names a post in a bead's channel opens that post's thread there", ({ Given, And, When, Then }) => {
+    Given("the phone already holds a post in the channel of bead {string} and the Mayor's reply to it in Factory", async (_ctx, bead: string) => {
+      await messagesRepo.put(postIn(`bead:${bead}`));
+      await messagesRepo.put(replyRow());
+    });
+    And("the Mayor's message push for that reply arrives", () => arrive('message'));
+    When('he taps the notification', tap);
+    Then('the app opens at the reply thread of the post in the channel of bead {string}', (_ctx, bead: string) => {
+      expect(parseRoute(new URL(tappedUrl!, 'https://postern.allmymind.org').search)).toEqual(threadOfPost(`bead:${bead}`));
+    });
+  });
+
+  Scenario('mw-gq6.170 AC-10: the same for a post in a named channel', ({ Given, And, When, Then }) => {
+    Given("the phone already holds a post in the named channel {string} and the Mayor's reply to it in Factory", async (_ctx, name: string) => {
+      await messagesRepo.put(postIn(`topic:${name}`));
+      await messagesRepo.put(replyRow());
+    });
+    And("the Mayor's message push for that reply arrives", () => arrive('message'));
+    When('he taps the notification', tap);
+    Then('the app opens at the reply thread of the post in the named channel {string}', (_ctx, name: string) => {
+      expect(parseRoute(new URL(tappedUrl!, 'https://postern.allmymind.org').search)).toEqual(threadOfPost(`topic:${name}`));
+    });
+  });
+
+  Scenario('mw-gq6.170 AC-11: a push for a reply whose post is not on the phone opens the reply as its own post in Factory, as before', ({ Given, And, When, Then }) => {
+    Given("the phone already holds the Mayor's reply in Factory to a post it does not hold", async () => {
+      await messagesRepo.put(replyRow());
+    });
+    And("the Mayor's message push for that reply arrives", () => arrive('message'));
+    When('he taps the notification', tap);
+    Then('the app opens at the reply thread of the reply itself in Factory', () => {
+      expect(parseRoute(new URL(tappedUrl!, 'https://postern.allmymind.org').search)).toEqual({ view: 'talk', thread: 'general', root: TXID });
+    });
+  });
+
+  Scenario('mw-gq6.170 AC-12: the notice screen moves to the post\'s thread in the other channel once the reply arrives', ({ Given, And, When, Then }) => {
+    Given('the phone holds a post in the channel of bead {string}', async (_ctx, bead: string) => {
+      await messagesRepo.put(postIn(`bead:${bead}`));
+    });
+    And("the Mayor's message push arrives for a reply the phone does not hold yet", () => arrive('message'));
+    When('he taps the notification', tap);
+    And('the app opens where the notification pointed', () => {
+      window.history.replaceState(null, '', tappedUrl!);
+      const route = parseRoute(window.location.search);
+      expect(route).toMatchObject({ view: 'notice', tx: TXID });
+      if (route.view !== 'notice') return;
+      render(<NoticeScreen tx={route.tx} cls={route.cls} />);
+    });
+    And('the reply arrives and decrypts', async () => {
+      await messagesRepo.put(replyRow());
+    });
+    Then('the app moves to the reply thread of the post in the channel of bead {string}', async (_ctx, bead: string) => {
+      await waitFor(() => expect(parseRoute(window.location.search)).toEqual(threadOfPost(`bead:${bead}`)));
     });
   });
 

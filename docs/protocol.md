@@ -1219,6 +1219,11 @@ What `ct` seals to the recipient:
   example `"sonnet"`), or the model that answered. Absent means unchanged.
 - `cut` — optional: `true` on a turn whose previous answer the Governor cut off with a
   tap before it finished speaking. Absent means `false`.
+- `links` — optional, on an `answer` or `holding` turn: an array of bead ids (for example
+  `["mw-j0f2d.36"]`), written by `mw talk say --link`. The Talk screen shows each id as a
+  tappable chip under the answer; a tap opens that bead's page. The ids are never spoken
+  (the voice drops bead ids before speaking). Empty entries and non-strings are
+  dropped; absent means no chips.
 
 ### What a talk is about
 

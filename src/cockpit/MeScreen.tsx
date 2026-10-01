@@ -15,12 +15,11 @@ import { acceptOfferedMayorKey, fingerprint } from '../services/me';
 import { isPushSubscribed, pushSupported, rememberPushSubscribed, subscribeToPush } from '../services/push';
 import { publicKeyHexFromMasterKey } from '../services/vault';
 import { settingsRepo } from '../data/repositories';
-import { DEFAULT_NOTIFICATION_SETTINGS, MESSAGE_CLASSES, type ClassNotificationSettings, type NotificationSettingsMap } from '../push/classOptions';
-import type { MessageClass } from '../data/db';
+import { DEFAULT_NOTIFICATION_SETTINGS, MESSAGE_CLASSES, type ClassNotificationSettings, type NotificationSettingsMap, type PushClass } from '../push/classOptions';
 import { formatRoute } from '../nav/route';
 import { toast } from '../ui/toastStore';
 
-const CLASS_LABELS: Record<MessageClass, string> = {
+const CLASS_LABELS: Record<PushClass, string> = {
   'decision-needed': 'Decisions',
   landing: 'Landings',
   alarm: 'Alarms',
@@ -70,7 +69,7 @@ function Notifications() {
     }
   }
 
-  function toggle(messageClass: MessageClass, switchKey: keyof ClassNotificationSettings, checked: boolean) {
+  function toggle(messageClass: PushClass, switchKey: keyof ClassNotificationSettings, checked: boolean) {
     if (!settings) return;
     const next = { ...settings, [messageClass]: { ...settings[messageClass], [switchKey]: checked } };
     setSettings(next);

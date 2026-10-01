@@ -5,10 +5,10 @@ export interface SettingRow {
   value: unknown;
 }
 
-// docs/protocol.md's message classes. Defined here (not in src/services/messages.ts,
+// docs/protocol.md's message classes (`talk`, §20, is the Talk line's turns: never a channel, an unread or a Need). Defined here (not in src/services/messages.ts,
 // which re-exports it) so this file — the leaf data layer — never has to import from
 // the service layer.
-export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm' | 'move-home';
+export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm' | 'move-home' | 'talk';
 
 export interface MessageRow {
   /** `${txid}:${vout}` — the record's own on-chain outpoint. */

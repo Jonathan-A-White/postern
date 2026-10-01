@@ -14,18 +14,17 @@
 //  - files shared from another app (the manifest's share_target) are parked in
 //    IndexedDB and the app opens on the Share screen to place them.
 import { precacheAndRoute } from 'workbox-precaching';
-import { notificationSpecForClass } from './push/classOptions';
+import { notificationSpecForClass, type PushClass } from './push/classOptions';
 import { resolveTapUrl, type TapData } from './push/tapTarget';
 import { settingsRepo } from './data/repositories/settings-repo';
 import { sharesRepo } from './data/repositories/view-repo';
-import type { MessageClass } from './data/db';
 
 declare const self: ServiceWorkerGlobalScope;
 
 precacheAndRoute(self.__WB_MANIFEST);
 
 interface PushPayload {
-  class: MessageClass;
+  class: PushClass;
   txid?: string;
   ts: number;
   title?: string;

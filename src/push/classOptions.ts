@@ -16,7 +16,7 @@ export interface NotificationOptions {
   requireInteraction?: boolean;
   silent?: boolean;
   body?: string;
-  data: { txid: string; class: MessageClass; url: string };
+  data: { txid: string; class: PushClass; url: string };
 }
 
 export interface NotificationSpec {
@@ -35,9 +35,12 @@ export interface ClassNotificationSettings {
   quiet: boolean;
 }
 
-export type NotificationSettingsMap = Record<MessageClass, ClassNotificationSettings>;
+/** The classes that can reach him as a push: every class but `talk`, whose turns the backend never pushes (§20). */
+export type PushClass = Exclude<MessageClass, 'talk'>;
 
-const TITLES: Record<MessageClass, string> = {
+export type NotificationSettingsMap = Record<PushClass, ClassNotificationSettings>;
+
+const TITLES: Record<PushClass, string> = {
   'decision-needed': 'Decision needed',
   landing: 'Landing to verify',
   alarm: 'Alarm',
@@ -47,12 +50,12 @@ const TITLES: Record<MessageClass, string> = {
 
 // The classes the Mayor sends him and he can be notified of; move-home only ever
 // goes the other way, so it has no settings row.
-export const MESSAGE_CLASSES = (Object.keys(TITLES) as MessageClass[]).filter((messageClass) => messageClass !== 'move-home');
+export const MESSAGE_CLASSES = (Object.keys(TITLES) as PushClass[]).filter((messageClass) => messageClass !== 'move-home');
 
 // The vibrate pattern each class uses when its `vibrate` switch is on. Kept
 // distinct from the switch itself so turning vibrate on for a class that
 // defaults to it off (landing) still has a pattern to use.
-const VIBRATE_PATTERNS: Record<MessageClass, number[]> = {
+const VIBRATE_PATTERNS: Record<PushClass, number[]> = {
   'decision-needed': [200, 100, 200],
   landing: [150],
   alarm: [300, 100, 300, 100, 300],
@@ -83,6 +86,7 @@ export const CLASS_URLS: Record<MessageClass, string> = {
   alarm: '/?v=needs',
   message: '/?v=talk',
   'move-home': '/?v=me',
+  talk: '/?v=talk',
 };
 
 export interface NotificationText {
@@ -98,14 +102,14 @@ export interface NotificationText {
  * finds the message and moves to its thread once the app can decrypt it; a push
  * with no record behind it is the watchdog's alarm, which carries what it said
  * and lands on the alarm itself. */
-function tapUrl(messageClass: MessageClass, txid: string, text: NotificationText): string {
+function tapUrl(messageClass: PushClass, txid: string, text: NotificationText): string {
   if (txid) return `/${formatRoute({ view: 'notice', tx: txid, cls: messageClass })}`;
   if (messageClass === 'alarm') return `/${formatRoute({ view: 'alarm', title: text.title, body: text.body, ts: text.ts })}`;
   return CLASS_URLS[messageClass] ?? '/';
 }
 
 export function notificationSpecForClass(
-  messageClass: MessageClass,
+  messageClass: PushClass,
   txid: string,
   settings: ClassNotificationSettings = DEFAULT_NOTIFICATION_SETTINGS[messageClass],
   text: NotificationText = {},

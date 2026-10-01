@@ -81,6 +81,7 @@ export function summariseThreads(
   const rowsByKey = new Map<string, MessageRow[]>();
   byKey.set(GENERAL, { key: GENERAL, ...titleFor(GENERAL, index), unread: 0, archived: false });
   for (const row of messages) {
+    if (row.class === 'talk') continue; // a Talk-line turn is no channel's post (§20)
     const key = row.thread ?? GENERAL;
     const summary = byKey.get(key) ?? { key, ...titleFor(key, index), unread: 0, archived: false };
     if (!summary.last || row.ts >= summary.last.ts) summary.last = row;

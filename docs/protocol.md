@@ -1208,6 +1208,24 @@ What `ct` seals to the recipient:
 - `cut` — optional: `true` on a turn whose previous answer the Governor cut off with a
   tap before it finished speaking. Absent means `false`.
 
+### What a talk is about
+
+A talk opened from a card, a hands step, a thread or a Prompts row carries an optional
+`about` on its **first** turn (`turn` 1) so the Mayor hears what the talk concerns:
+
+```json
+"about": { "kind": "prompt", "id": "top5", "title": "/top5" }
+```
+
+- `kind` — `bead` (a card or a hands step: `id` is the bead's id), `channel` (a thread:
+  `id` is the channel, such as `topic:garden`) or `prompt` (a Prompts row: `id` is the
+  prompt's name, §23).
+- `id` and `title` — both required; `title` is what the screen showed (the card's title, the
+  channel's name, `/top5`). A turn whose `about` lacks a key or has another `kind` is read
+  as having none.
+- Later turns of the same talk carry no `about`. He can clear it before speaking; a talk
+  without one is as before. `mw talk wait` prints it as `about: bead mw-xxx <title>`.
+
 ### Presence: is the Mayor here
 
 The Governor, 2026-10-01: he wants to see, very subtly, when the Mayor is there and
@@ -1553,3 +1571,72 @@ their own queues and catch up once they can reach the chain.
   read has just succeeded, the connection badge reads **Live from the chain**, so he sees
   the app is current without the backend. A read that fails (WhatsOnChain unreachable too)
   puts the badge back to **Reconnecting…** or **Offline**.
+
+## 23. Saved prompts
+
+`mw-nqur1n` (stage 1). A saved prompt is a named piece of text with the options it takes.
+The **backend is the definitive store**: one JSON file (`prompts.json`) under `POSTERN_DATA`,
+so the app and the Mayor read the same list. The Mayor saves one with `mw prompt save`; the
+app only reads them.
+
+### The record
+
+```json
+{
+  "name": "top5",
+  "summary": "The five things that most want him",
+  "signature": [
+    { "flag": "--duration", "type": "duration", "default": "30m", "required": false, "help": "how far back to look" }
+  ],
+  "body": "List the five ...",
+  "updatedAt": "2026-10-01T16:00:00Z",
+  "updatedBy": "<the key that last wrote it>"
+}
+```
+
+- `name` — 1 to 32 characters of `a-z`, `0-9` and `-`.
+- `signature` — the options it takes (an empty array, never absent, when none). Each option has
+  `flag` (begins `--`, no spaces, not given twice), `type` (`duration`, `string`, `int` or `bool`),
+  an optional `default` (a string that parses as its type; empty means none), `required`
+  and `help`. The signature is what a call is checked against.
+- `body` — the prompt itself. `updatedAt` and `updatedBy` are stamped by the server on every
+  write, whatever the request says.
+
+### The routes
+
+Contract in `docs/api.md` and `server/README.md`.
+
+| Route | Does | Which keys |
+|---|---|---|
+| `GET /api/prompts` | every prompt, sorted by name, as an array | any licensed key, and the Mayor's key without a licence |
+| `GET /api/prompts/{name}` | one prompt; `404` if none | the same |
+| `PUT /api/prompts/{name}` | replaces the whole prompt of that name; `400` with a one-line reason for a bad name, flag, type or default, or a body naming another prompt; `413` over 256 KiB | cockpit keys only (the home's) |
+| `DELETE /api/prompts/{name}` | `204`, or `404` if none | cockpit keys only |
+
+`GET /api/prompts` carries an `ETag`; a request with a matching `If-None-Match` is `304` with
+no body. The app keeps the last list and its ETag in its own store, so the Prompts screen
+still shows with no network; a backend without the route (`501` or older) leaves what is kept.
+
+### The call text
+
+A call is an **ordinary message** (§1, class `message`) whose text begins `/`:
+
+```
+/<name> --flag value --other "a value with spaces" --switch
+```
+
+Words split on whitespace; single or double quotes keep a value whole. A `bool` option on its
+own means `true` (`true` or `false` after it says so). The app checks it against the
+signature before Send and refuses, with one inline line, an unknown prompt, an option the
+prompt lacks, one given twice, a value that does not fit its type, a missing required
+option or an unclosed quote. It fills no defaults: the text he typed is what goes out, and the
+Mayor's side applies defaults (`mw prompt run <name> --flag value`). Text whose first character
+is not `/` is never a call. `mw postern inbox` recognises a call, records it on the thread, and
+tells the Mayor `Prompt: /top5 --duration 15m`; an unknown prompt is answered at once in the
+thread.
+
+### The Edit channel
+
+Edit on a prompt opens the named channel `prompt:<name>` (for example `prompt:top5`), an
+ordinary text conversation (§1) with the Mayor about that prompt; the screen shows the current
+body. It changes nothing by itself: the Mayor saves the revised prompt with `PUT`.

@@ -9,6 +9,17 @@ the factory on the desktop. BSV gives it identity and a licence gate; messages t
 end-to-end encrypted over a live connection (docs/protocol.md §9–§16). Plan:
 vault `plans/0021-cockpit-plan.md`; demo: `docs/demo-cockpit.md`. Map: mw-f758y.
 
+## Saved prompts
+
+The **Prompts** screen (on Me, and from the Talk line) lists the Mayor's saved prompts with
+their name, summary and options. **Run** opens the composer with `/name ` filled in; **Edit**
+opens the channel `prompt:<name>`, a text conversation with the Mayor about it. In the composer,
+typing `/` offers the prompts by name; choosing one inserts it, and a call such as
+`/top5 --duration 15m` is checked against the prompt's options before Send (an unknown prompt
+or a bad option shows an error and Send stays off). A good call goes as an ordinary message.
+A **Talk** button on every card, hands step, thread and Prompts row opens the Talk line about
+that thing. Protocol: docs/protocol.md §20 and §23.
+
 ## Screenshots
 
 A Builder runs `npm run shots` on demand (never in the gate) to capture every `tests/e2e/` spec's

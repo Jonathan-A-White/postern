@@ -146,22 +146,47 @@ function AttachmentList({ attachments, direction }: { attachments: Attachment[];
   );
 }
 
+/** Options this short stay a row of pills; any longer one stacks them all as full-width wrapped buttons. */
+const SHORT_OPTION = 40;
+
+/** 'A: words' as a bold 'A:' and the words; any other option is its own text. */
+function OptionLabel({ option }: { option: string }) {
+  const lettered = /^([A-Za-z0-9]{1,2}:)\s+([\s\S]*)$/.exec(option);
+  if (!lettered) return <>{option}</>;
+  return (
+    <>
+      <strong className="font-bold">{lettered[1]}</strong> {lettered[2]}
+    </>
+  );
+}
+
 function QuestionBlock({ item }: { item: ConversationItem }) {
   const { busy, run } = useSend();
   const question = item.question;
   if (!question) return null;
+  const stacked = question.options.some((option) => option.length >= SHORT_OPTION);
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
+    <div className={cx('mt-2 flex gap-2', stacked ? 'flex-col' : 'flex-wrap')}>
       {question.options.map((option) => (
         <Button
           key={option}
           size="sm"
+          wrap={stacked}
           variant={option === question.rec ? 'primary' : 'secondary'}
           disabled={busy}
           onClick={() => void run(() => sendAnswer(question.bead, option), `Answered: ${option}`)}
         >
-          {option}
-          {option === question.rec && <span className="text-[10.5px] opacity-75">rec.</span>}
+          {stacked ? (
+            <span className="min-w-0">
+              <OptionLabel option={option} />
+              {option === question.rec && <span className="ml-1.5 text-[10.5px] font-normal opacity-75">rec.</span>}
+            </span>
+          ) : (
+            <>
+              {option}
+              {option === question.rec && <span className="text-[10.5px] opacity-75">rec.</span>}
+            </>
+          )}
         </Button>
       ))}
     </div>
@@ -174,7 +199,7 @@ function Bubble({ item, onQuote, onReply }: { item: ConversationItem; onQuote?: 
   if (item.kind === 'action' || item.kind === 'answer') {
     return (
       <div className={cx('flex', mine ? 'justify-end' : 'justify-start')}>
-        <Chip tone={item.kind === 'answer' ? 'needs' : 'done'} icon={item.kind === 'answer' ? 'check' : 'release'}>
+        <Chip wrap tone={item.kind === 'answer' ? 'needs' : 'done'} icon={item.kind === 'answer' ? 'check' : 'release'}>
           {item.kind === 'answer' ? `${item.speakerLabel} answered: ${item.text}` : item.text}
         </Chip>
       </div>

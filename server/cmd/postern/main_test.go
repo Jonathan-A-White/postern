@@ -99,6 +99,10 @@ func TestAppServesTheV2RoutesBehindTheLicenceProof(t *testing.T) {
 		{http.MethodGet, "/api/view"},
 		{http.MethodGet, "/api/beads/mw-abc"},
 		{http.MethodGet, "/api/me"},
+		{http.MethodGet, "/api/prompts"},
+		{http.MethodGet, "/api/prompts/sweep"},
+		{http.MethodPut, "/api/prompts/sweep"},
+		{http.MethodDelete, "/api/prompts/sweep"},
 	} {
 		req, _ := http.NewRequest(route.method, server.URL+route.path, nil)
 		resp, err := http.DefaultClient.Do(req)

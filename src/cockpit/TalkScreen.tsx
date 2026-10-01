@@ -223,7 +223,7 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
           />
         </div>
       </div>
-      {thread && <Composer thread={ref} re={thread.root.txid} textOnly placeholder="Reply…" quote={quote} onClearQuote={() => setQuote(null)} />}
+      {thread && <Composer thread={ref} re={thread.root.txid} placeholder="Reply…" quote={quote} onClearQuote={() => setQuote(null)} />}
     </>
   );
 }

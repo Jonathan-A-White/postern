@@ -2,7 +2,7 @@
 // (plans/0021 decisions 10–12): words, a voice note recorded right here, photos
 // from the camera, images, PDFs and text files from the picker, a paste, a
 // drop, or files shared in from another app. Whatever he quotes rides at the
-// top of what he sends. Files go one message each, the words on the last.
+// top of what he sends. All the files go as one message, the words its caption.
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { Icon, IconButton, cx } from '../ui';
 import { useWide } from './hooks';
@@ -42,11 +42,9 @@ export interface ComposerProps {
   autoFocus?: boolean;
   /** The txid this message answers: it goes out as a reply in that message's thread (docs/protocol.md §14). */
   re?: string;
-  /** Words only: no files, photos or voice notes (a reply in a General thread is a plain message). */
-  textOnly?: boolean;
 }
 
-export function Composer({ thread, placeholder = 'Message the Mayor…', quote, onClearQuote, autoFocus, re, textOnly }: ComposerProps) {
+export function Composer({ thread, placeholder = 'Message the Mayor…', quote, onClearQuote, autoFocus, re }: ComposerProps) {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<Pending[]>([]);
   const [recording, setRecording] = useState(false);
@@ -60,14 +58,13 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const wide = useWide();
 
   useEffect(() => {
-    if (textOnly) return;
     const shared = takePendingShare();
     if (!shared) return;
     void Promise.all(shared.files.map((file) => toPending(new Blob([file.bytes], { type: file.type }), file.name))).then((pending) => {
       setFiles((current) => [...current, ...pending]);
       if (shared.text) setText((current) => current || shared.text || '');
     });
-  }, [textOnly]);
+  }, []);
 
   useEffect(() => {
     if (!recording) return;
@@ -84,10 +81,6 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   }, [text]);
 
   async function addFiles(list: FileList | File[]) {
-    if (textOnly) {
-      toast('A reply in a thread carries words only.', 'error');
-      return;
-    }
     const accepted: Pending[] = [];
     for (const file of Array.from(list)) {
       const refusal = refuseFile(file);
@@ -217,8 +210,8 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           </div>
         ) : (
           <>
-            {!textOnly && <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />}
-            {!textOnly && <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} className="lg:hidden" />}
+            <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />
+            <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} className="lg:hidden" />
             <textarea
               ref={textarea}
               value={text}
@@ -235,7 +228,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
         )}
         {recording ? (
           <IconButton icon="stop" label="Stop recording" tone="danger" size="lg" onClick={() => void stopRecording()} />
-        ) : canSend || textOnly ? (
+        ) : canSend ? (
           <IconButton icon="send" label="Send" tone="accent" size="lg" disabled={busy || !canSend} onClick={() => void send()} />
         ) : (
           <IconButton icon="mic" label="Record a voice note" size="lg" disabled={!canRecord()} onClick={() => void startRecording()} className={cx(!canRecord() && 'opacity-40')} />

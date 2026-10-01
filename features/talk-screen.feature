@@ -8,6 +8,14 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When the recogniser hears "What landed" so far
     Then the live transcript reads "What landed"
 
+  Scenario: AC-1: an Android phone that sends each growing hypothesis as a new result shows and sends the phrase once (mw-j0f2d.12)
+    Given the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    And the recogniser hears each growing hypothesis of "great I see the mic button now" as a new result
+    Then the live transcript reads exactly "great I see the mic button now"
+    When he lets go of the talk button
+    Then one turn is sent saying "great I see the mic button now" as turn 1
+
   Scenario: AC-1: releasing vibrates and sends his words as a turn
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "What landed today?" and lets go

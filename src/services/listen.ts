@@ -114,11 +114,26 @@ function errorFor(code: string): ListenError {
 /** What an on-device attempt can fail with when the phone lacks the speech pack or service for it. */
 const ON_DEVICE_FAILURES = new Set(['language-not-supported', 'service-not-allowed']);
 
+/** True when `next` is `previous` grown by more words: the same phrase said further, not a new one. */
+function extendsPhrase(previous: string, next: string): boolean {
+  const before = previous.toLowerCase();
+  const after = next.toLowerCase();
+  return after.startsWith(before) && (after.length === before.length || after[before.length] === ' ');
+}
+
+/**
+ * The words so far. Desktop Chrome updates one result in place and adds a new one for each
+ * utterance, so the results are joined in order. Android Chrome sends every growing hypothesis
+ * as a new result, each the whole phrase so far: a result that extends the one before replaces
+ * it, so the phrase is said once.
+ */
 function transcript(results: ArrayLike<RecognitionResult>): string {
   const parts: string[] = [];
   for (let i = 0; i < results.length; i++) {
     const text = results[i][0]?.transcript.trim();
-    if (text) parts.push(text);
+    if (!text) continue;
+    if (parts.length > 0 && extendsPhrase(parts[parts.length - 1], text)) parts[parts.length - 1] = text;
+    else parts.push(text);
   }
   return parts.join(' ');
 }

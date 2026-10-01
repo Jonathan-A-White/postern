@@ -129,6 +129,50 @@ describe('listen', () => {
     expect(onFinal).toHaveBeenCalledWith('hello there how are');
   });
 
+  it('joins separate final results in order, the way desktop Chrome delivers them', async () => {
+    install();
+    const onInterim = vi.fn();
+    const begin = startListening({ onInterim });
+    if (!begin.ok) throw new Error('expected listening to start');
+    const recognizer = FakeRecognizer.instances[0];
+    recognizer.say([result('hello there', true)]);
+    recognizer.say([result('hello there', true), result('how are you', true)]);
+    recognizer.say([result('hello there', true), result('how are you', true), result('today', false)]);
+    expect(onInterim.mock.calls.map((call) => call[0])).toEqual(['hello there', 'hello there how are you', 'hello there how are you today']);
+    const outcome = await begin.session.stop();
+    expect(outcome).toEqual({ ok: true, text: 'hello there how are you today', mode: 'on-device' });
+  });
+
+  it('says the phrase once when each growing hypothesis arrives as a new result, as on Android Chrome', async () => {
+    install();
+    const onInterim = vi.fn();
+    const onFinal = vi.fn();
+    const begin = startListening({ onInterim, onFinal });
+    if (!begin.ok) throw new Error('expected listening to start');
+    const recognizer = FakeRecognizer.instances[0];
+    const words = ['great', 'great I', 'great I see', 'great I see the', 'great I see the mic', 'great I see the mic button', 'great I see the mic button now'];
+    const results: FakeResult[] = [];
+    for (const [i, hypothesis] of words.entries()) {
+      results.push(result(hypothesis, i === words.length - 1));
+      recognizer.say([...results]);
+    }
+    expect(onInterim.mock.calls.map((call) => call[0])).toEqual(words);
+    const outcome = await begin.session.stop();
+    expect(outcome).toEqual({ ok: true, text: 'great I see the mic button now', mode: 'on-device' });
+    expect(onFinal).toHaveBeenCalledWith('great I see the mic button now');
+  });
+
+  it('keeps a later utterance after the cumulative ones, and does not merge a word that merely starts the same', async () => {
+    install();
+    const begin = startListening();
+    if (!begin.ok) throw new Error('expected listening to start');
+    const recognizer = FakeRecognizer.instances[0];
+    recognizer.say([result('I', false), result('I see', false), result('I see it', true), result('it is', false), result('it is fine', false)]);
+    recognizer.say([result('I', false), result('I see', false), result('I see it', true), result('it is', false), result('it is fine', false), result('item', false)]);
+    const outcome = await begin.session.stop();
+    expect(outcome).toEqual({ ok: true, text: 'I see it it is fine item', mode: 'on-device' });
+  });
+
   it('gives an empty text when nothing was said', async () => {
     install();
     const outcome = await started().stop();

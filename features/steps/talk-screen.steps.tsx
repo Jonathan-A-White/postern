@@ -101,6 +101,17 @@ const hear = (text: string) =>
     recognizers.at(-1)?.onresult?.({ results: [[{ transcript: text }]] });
   });
 
+/** Android Chrome: every growing hypothesis is a new result, each the whole phrase so far. */
+const hearGrowing = (phrase: string) =>
+  act(() => {
+    const words = phrase.split(' ');
+    const results: unknown[] = [];
+    for (let i = 1; i <= words.length; i++) {
+      results.push([{ transcript: words.slice(0, i).join(' ') }]);
+      recognizers.at(-1)?.onresult?.({ results: [...results] });
+    }
+  });
+
 function screenIs(widthPx: number): void {
   vi.stubGlobal('matchMedia', (query: string) => {
     const min = /min-width:\s*(\d+)px/.exec(query);
@@ -228,6 +239,28 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('the recogniser hears {string} so far', async (_c, words: string) => hear(words));
     Then('the live transcript reads {string}', async (_c, words: string) => {
       await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
+    });
+  });
+
+  Scenario('AC-1: an Android phone that sends each growing hypothesis as a new result shows and sends the phrase once (mw-j0f2d.12)', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    And('the recogniser hears each growing hypothesis of {string} as a new result', async (_c, phrase: string) => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      await hearGrowing(phrase);
+    });
+    Then('the live transcript reads exactly {string}', async (_c, words: string) => {
+      await waitFor(() => expect(screen.getByTestId('live-transcript').textContent?.trim()).toBe(words));
+    });
+    When('he lets go of the talk button', async () => {
+      fireEvent.pointerUp(await talkButton('Release to send'));
+      await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
+    });
+    Then('one turn is sent saying {string} as turn 1', (_c, words: string) => {
+      expect(sendTurn).toHaveBeenCalledTimes(1);
+      expect(lastSent()).toMatchObject({ text: words, role: 'turn', talk: { turn: 1 } });
     });
   });
 

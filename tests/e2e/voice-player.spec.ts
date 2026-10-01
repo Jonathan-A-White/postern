@@ -9,6 +9,12 @@ import { shot } from './shot';
 
 test.use({ serviceWorkers: 'block' });
 
+// The Play button only exists once the note's blob is fetched and decrypted, and
+// the page has booted first: on a loaded laptop (load 50 on 20 cores) that is
+// well over Playwright's 5 s default, so each stage that needs real work waits
+// for what it needs, with room (mw-gq6.205).
+const SLOW_STAGE = 30_000;
+
 /** A 30 s, 8 kHz, 8-bit mono WAV of a quiet tone. */
 function toneWav(seconds: number): Uint8Array {
   const rate = 8000;
@@ -33,6 +39,7 @@ function toneWav(seconds: number): Uint8Array {
 }
 
 test('a voice note can be paused once it is playing', async ({ page }) => {
+  test.slow();
   const mnemonic = createMnemonic();
   const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
   await stubBackend(page, governor, { bytes: toneWav(30), mime: 'audio/wav' });
@@ -41,16 +48,21 @@ test('a voice note can be paused once it is playing', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Recovery phrase').fill(mnemonic);
   await page.getByRole('button', { name: 'Unlock' }).click();
-  await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible({ timeout: SLOW_STAGE });
 
   await page.goto('/?v=bead&id=mw-f758y.30.2');
+  // First the note itself: its audio element exists (blob opened) and has read
+  // its metadata, then the button that plays it.
+  const audio = page.locator('audio');
+  await expect(audio).toBeAttached({ timeout: SLOW_STAGE });
+  await expect.poll(() => audio.evaluate((el: HTMLAudioElement) => el.readyState), { timeout: SLOW_STAGE }).toBeGreaterThanOrEqual(1);
   const play = page.getByRole('button', { name: 'Play voice note' });
-  await expect(play).toBeVisible();
+  await expect(play).toBeVisible({ timeout: SLOW_STAGE });
   await play.click();
 
   const pause = page.getByRole('button', { name: 'Pause voice note' });
-  await expect(pause).toBeVisible();
-  await expect.poll(() => page.locator('audio').evaluate((el: HTMLAudioElement) => el.currentTime)).toBeGreaterThan(0.2);
+  await expect(pause).toBeVisible({ timeout: SLOW_STAGE });
+  await expect.poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime), { timeout: SLOW_STAGE }).toBeGreaterThan(0.2);
   await page.getByTestId('voice-player').scrollIntoViewIfNeeded();
   await shot(page, 'voice-player-playing');
 

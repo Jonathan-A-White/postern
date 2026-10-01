@@ -46,6 +46,8 @@ type addressedPayload struct {
 	Summary string `json:"summary"`
 	// Role is a call record's clear role (docs/protocol.md §21): only a "ring" is pushed.
 	Role string `json:"role"`
+	// Lane is an events record's clear lane (docs/protocol.md §22): only an "emergency" is pushed.
+	Lane string `json:"lane"`
 }
 
 // directPrefix is api.DirectPrefix: the start of every directly delivered
@@ -59,6 +61,10 @@ const (
 	ringClass = "call"
 	ringRole  = "ring"
 	ringTitle = "The Mayor is calling"
+
+	eventsClass    = "events"
+	emergencyLane  = "emergency"
+	emergencyTitle = "Emergency"
 )
 
 // maxSummaryRunes is the longest summary a push carries (docs/protocol.md §1).
@@ -141,7 +147,14 @@ func parseAddressed(txid string, payload json.RawMessage) (addressedPayload, Pay
 	if addressed.To == "" || addressed.Class == "" {
 		return addressed, Payload{}, false
 	}
+	if addressed.Class == eventsClass && addressed.Lane != emergencyLane {
+		return addressed, Payload{}, false // an events record is pushed only in the emergency lane (§22)
+	}
 	push := Payload{Class: addressed.Class, TxID: txid, Ts: addressed.Ts}
+	if addressed.Class == eventsClass {
+		push.Title = emergencyTitle // its words are sealed: the push names the lane and nothing else
+		return addressed, push, true
+	}
 	if addressed.Class == ringClass {
 		// A call record is pushed only when it is the Mayor's ring, named so in the clear;
 		// its reason, when it rides as a direct record's summary, is the body.

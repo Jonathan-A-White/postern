@@ -13,10 +13,12 @@
 //    the open app if there is one;
 //  - the Mayor's ring (class call, docs/protocol.md §21) rings like an incoming call:
 //    Answer opens the Talk line, Later leaves a missed call on it (src/push/classOptions.ts);
+//  - an emergency events record (class events, docs/protocol.md §22) is pushed too, at once and until
+//    dealt with (src/push/classOptions.ts); the app's banner shows what it was;
 //  - files shared from another app (the manifest's share_target) are parked in
 //    IndexedDB and the app opens on the Share screen to place them.
 import { precacheAndRoute } from 'workbox-precaching';
-import { notificationSpecForClass, notificationSpecForRing, type PushClass } from './push/classOptions';
+import { notificationSpecForClass, notificationSpecForEmergency, notificationSpecForRing, type PushClass } from './push/classOptions';
 import { resolveTapUrl, type TapData } from './push/tapTarget';
 import { settingsRepo } from './data/repositories/settings-repo';
 import { sharesRepo } from './data/repositories/view-repo';
@@ -26,7 +28,7 @@ declare const self: ServiceWorkerGlobalScope;
 precacheAndRoute(self.__WB_MANIFEST);
 
 interface PushPayload {
-  class: PushClass | 'call';
+  class: PushClass | 'call' | 'events';
   txid?: string;
   ts: number;
   title?: string;
@@ -87,6 +89,12 @@ async function onPush(payload: PushPayload): Promise<void> {
     await self.registration.showNotification(ring.title, ring.options);
     return;
   }
+  // An emergency events record (§22) shows at once: the banner in an open app comes from the record, not from this push.
+  if (payload.class === 'events') {
+    const emergency = notificationSpecForEmergency(payload.txid ?? '', { title: payload.title });
+    await self.registration.showNotification(emergency.title, emergency.options);
+    return;
+  }
   // A message already on a window he is looking at needs no notification, whatever its class.
   if (payload.txid) {
     const showing = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).filter(isShowingTheApp);
@@ -142,7 +150,8 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
   // Answer, or a tap on the ring itself, opens the Talk line with the ring named; no thread is looked up for it.
-  const ringUrl = data?.class === 'call' ? data.url : undefined;
+  // An emergency opens the app at its own url, where the banner waits.
+  const ringUrl = data?.class === 'call' || data?.class === 'events' ? data.url : undefined;
   event.waitUntil(ringUrl ? openAt(ringUrl) : resolveTapUrl(data).then(openAt));
 });
 

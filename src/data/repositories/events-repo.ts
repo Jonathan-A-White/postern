@@ -3,6 +3,12 @@ import { db, type EventRow } from '../db';
 /** The last event seq projected onto the view, in the settings table. */
 const CURSOR_SETTING_KEY = 'events-cursor';
 
+/** The seqs an emergency record applied ahead of the ordinary order (mw-jrx0s.13), so the ordinary pass skips them. */
+const EARLY_SETTING_KEY = 'events-early';
+
+/** The newest emergency seq he has tapped away: the banner shows only a later one. */
+const CLEARED_SETTING_KEY = 'emergency-cleared';
+
 /** mw-jrx0s.7: the factory's events (docs/protocol.md §22), kept once each by seq. */
 export const eventsRepo = {
   /** Keeps every event whose seq is not held yet; resolves with those, in seq order.
@@ -35,5 +41,36 @@ export const eventsRepo = {
 
   async setCursor(seq: number): Promise<void> {
     await db.settings.put({ key: CURSOR_SETTING_KEY, value: seq });
+  },
+
+  /** The seqs applied ahead of the cursor by an emergency record and not yet passed by it. */
+  async early(): Promise<Set<number>> {
+    const row = await db.settings.get(EARLY_SETTING_KEY);
+    return new Set(Array.isArray(row?.value) ? row.value.filter((seq): seq is number => typeof seq === 'number') : []);
+  },
+
+  async setEarly(seqs: Iterable<number>): Promise<void> {
+    await db.settings.put({ key: EARLY_SETTING_KEY, value: [...seqs] });
+  },
+
+  /** The newest held event of an emergency record (§22) that he has not tapped away. */
+  async latestEmergency(): Promise<EventRow | undefined> {
+    const cleared = await eventsRepo.emergencyCleared();
+    const newest = await db.events
+      .orderBy('seq')
+      .reverse()
+      .filter((event) => event.lane === 'emergency')
+      .first();
+    return newest && newest.seq > cleared ? newest : undefined;
+  },
+
+  async emergencyCleared(): Promise<number> {
+    const row = await db.settings.get(CLEARED_SETTING_KEY);
+    return typeof row?.value === 'number' ? row.value : 0;
+  },
+
+  /** His tap: every emergency up to `seq` is dealt with. */
+  async clearEmergency(seq: number): Promise<void> {
+    if (seq > (await eventsRepo.emergencyCleared())) await db.settings.put({ key: CLEARED_SETTING_KEY, value: seq });
   },
 };

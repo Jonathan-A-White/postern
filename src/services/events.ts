@@ -42,33 +42,68 @@ async function questionsAndAnswers(events: FactoryEvent[]): Promise<{ questions:
   return { questions, answers };
 }
 
-/** Keeps each batch's events once by seq and applies those past the cursor to the stored
- * view, in seq order, whatever order the batches came in; moves the cursor to the last. */
-export async function projectBatches(batches: EventBatch[]): Promise<ProjectedBatches> {
-  const none: ProjectedBatches = { applied: [], refetch: false, details: [] };
-  if (batches.length === 0) return none;
-  const cursor = await eventsRepo.cursor();
-  for (const batch of [...batches].sort((a, b) => a.from - b.from)) await eventsRepo.addNew(batch.events);
-  const pending = await eventsRepo.after(cursor);
-  if (pending.length === 0) return none;
-
-  // A gap: the next event held is not the one after the cursor, or the seqs jump. The
-  // events are applied all the same; the view fetched after them fills in what was missed.
-  const gap = pending.some((event, i) => event.seq !== (i === 0 ? cursor : pending[i - 1].seq) + 1);
-  const { questions, answers } = await questionsAndAnswers(pending);
+/** Applies `events` (in the order given) to the stored view; `refetch` and `details` as projectEvents says. */
+async function applyToView(events: FactoryEvent[]): Promise<{ held: boolean; projection: Projection | undefined }> {
+  const { questions, answers } = await questionsAndAnswers(events);
   let projection: Projection | undefined;
   const held = await viewRepo.update((plaintext) => {
     try {
-      projection = projectEvents(decodeView(plaintext), pending, { question: (txid) => questions.get(txid), answer: (txid) => answers.get(txid) });
+      projection = projectEvents(decodeView(plaintext), events, { question: (txid) => questions.get(txid), answer: (txid) => answers.get(txid) });
     } catch {
       return undefined;
     }
     return JSON.stringify(projection.view);
   });
-  await eventsRepo.setCursor(pending[pending.length - 1].seq);
-  publishEvents(pending);
-  const projected = projection as Projection | undefined;
-  return { applied: pending, refetch: gap || !held || !projected || projected.refetch, details: projected?.details ?? [] };
+  return { held: Boolean(held), projection: projection as Projection | undefined };
+}
+
+/** Keeps each batch's events once by seq and applies those past the cursor to the stored
+ * view, in seq order, whatever order the batches came in; moves the cursor to the last.
+ * An emergency batch (§22) goes first: it is kept and applied, and heard, before any other
+ * batch, out of seq order if need be; its seqs are recorded so the ordinary pass, which
+ * still moves the cursor over them, does not apply them a second time. */
+export async function projectBatches(batches: EventBatch[]): Promise<ProjectedBatches> {
+  const none: ProjectedBatches = { applied: [], refetch: false, details: [] };
+  if (batches.length === 0) return none;
+  const cursor = await eventsRepo.cursor();
+  const result: ProjectedBatches = { applied: [], refetch: false, details: [] };
+  const merge = (applied: FactoryEvent[], held: boolean, projection: Projection | undefined) => {
+    result.applied.push(...applied);
+    result.refetch = result.refetch || !held || !projection || projection.refetch;
+    for (const id of projection?.details ?? []) if (!result.details.includes(id)) result.details.push(id);
+  };
+
+  const emergency = batches.filter((batch) => batch.lane === 'emergency');
+  const early = await eventsRepo.early();
+  if (emergency.length > 0) {
+    const fresh = await eventsRepo.addNew(emergency.flatMap((batch) => batch.events));
+    if (fresh.length > 0) {
+      const { held, projection } = await applyToView(fresh);
+      for (const event of fresh) if (event.seq > cursor) early.add(event.seq);
+      await eventsRepo.setEarly(early);
+      publishEvents(fresh);
+      merge(fresh, held, projection);
+    }
+  }
+
+  for (const batch of [...batches].filter((b) => b.lane !== 'emergency').sort((a, b) => a.from - b.from)) await eventsRepo.addNew(batch.events);
+  const pending = await eventsRepo.after(cursor);
+  if (pending.length === 0) return result.applied.length > 0 ? result : none;
+
+  // A gap: the next event held is not the one after the cursor, or the seqs jump. The
+  // events are applied all the same; the view fetched after them fills in what was missed.
+  const gap = pending.some((event, i) => event.seq !== (i === 0 ? cursor : pending[i - 1].seq) + 1);
+  const ordinary = pending.filter((event) => !early.has(event.seq));
+  if (ordinary.length > 0) {
+    const { held, projection } = await applyToView(ordinary);
+    publishEvents(ordinary);
+    merge(ordinary, held, projection);
+  }
+  const last = pending[pending.length - 1].seq;
+  await eventsRepo.setCursor(last);
+  if (early.size > 0) await eventsRepo.setEarly([...early].filter((seq) => seq > last));
+  result.refetch = result.refetch || gap;
+  return result;
 }
 
 export interface SyncEventsOptions {

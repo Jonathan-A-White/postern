@@ -66,3 +66,16 @@ func TestParseEnvelopeRejectsAnythingElse(t *testing.T) {
 		})
 	}
 }
+
+// An events record's clear lane (docs/protocol.md §22) is read like a call record's role.
+func TestParseEnvelopeReadsAnEventsRecordsClearLane(t *testing.T) {
+	events := strings.Replace(vector1, `"class":"message"`, `"class":"events","lane":"emergency"`, 1)
+	env, err := ParseEnvelope([]byte(events))
+	if err != nil || env.Lane != LaneEmergency {
+		t.Fatalf("lane = %q, err %v, want %q", env.Lane, err, LaneEmergency)
+	}
+	notAString := strings.Replace(vector1, `"class":"message"`, `"class":"events","lane":5`, 1)
+	if env, err := ParseEnvelope([]byte(notAString)); err != nil || env.Lane != "" {
+		t.Fatalf("a lane that is not a string: lane %q, err %v, want no lane and no error", env.Lane, err)
+	}
+}

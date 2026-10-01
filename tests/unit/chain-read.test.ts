@@ -83,7 +83,7 @@ describe('reading the chain', () => {
   it('stores and decrypts a record for this phone, and says what was new', async () => {
     const tx = ring();
     const chain = fakeAnchorChain([tx]);
-    const rows = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: chain.fetchImpl });
+    const { rows } = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: chain.fetchImpl });
     expect(rows).toHaveLength(1);
     const stored = await messagesRepo.get(`${tx.txid}:0`);
     expect(stored).toMatchObject({ class: 'call', direction: 'received', read: true });
@@ -95,7 +95,7 @@ describe('reading the chain', () => {
     const seen = new Set<string>();
     await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl });
     const firstCalls = chain.calls.filter((url) => url.endsWith('/hex')).length;
-    const again = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl });
+    const again = (await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).rows;
     expect(firstCalls).toBe(1);
     expect(chain.calls.filter((url) => url.endsWith('/hex'))).toHaveLength(1);
     expect(again).toEqual([]);
@@ -107,14 +107,14 @@ describe('reading the chain', () => {
       id: `${tx.txid}:0`, txid: tx.txid, vout: 0, seq: 7, class: 'call', to: PHONE_PUB, from: MAYOR_PUB, ts: 1, ciphertext: 'x',
       plaintext: 'already here', direction: 'received', read: true, thread: 'call',
     });
-    const rows = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: fakeAnchorChain([tx]).fetchImpl });
+    const { rows } = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: fakeAnchorChain([tx]).fetchImpl });
     expect(rows).toEqual([]);
     expect((await messagesRepo.get(`${tx.txid}:0`))?.seq).toBe(7);
   });
 
   it('keeps no record that names neither this phone as sender nor as recipient', async () => {
     const stranger = recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: publicKeyOf('99'.repeat(32)), class: 'message', plaintext: 'hi', ts: 5 });
-    const rows = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: fakeAnchorChain([stranger]).fetchImpl });
+    const { rows } = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: fakeAnchorChain([stranger]).fetchImpl });
     expect(rows).toEqual([]);
     expect(await messagesRepo.getAll()).toEqual([]);
   });
@@ -123,9 +123,9 @@ describe('reading the chain', () => {
     const txs = Array.from({ length: 30 }, (_, i) => recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: PHONE_PUB, class: 'message', plaintext: `m${i}`, ts: 100 + i }));
     const chain = fakeAnchorChain(txs);
     const seen = new Set<string>();
-    const first = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl });
+    const first = (await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).rows;
     expect(first).toHaveLength(20);
-    const second = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl });
+    const second = (await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).rows;
     expect(second).toHaveLength(10);
   });
 
@@ -136,6 +136,29 @@ describe('reading the chain', () => {
     chain.down = true;
     await expect(readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).rejects.toThrow();
     chain.down = false;
-    expect(await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).toHaveLength(1);
+    expect((await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).rows).toHaveLength(1);
+  });
+
+  describe('events records (§22)', () => {
+    const batch = { from: 4, to: 4, lane: 'normal', events: [{ seq: 4, ts: 1_790_000_000, kind: 'bead_changed', bead: 'mw-x.1', actor: 'mw', from: 'open', to: 'claimed', detail: 'status' }] };
+    const events = (senderHex: string) =>
+      recordTransaction({ senderHex, recipientPublicKeyHex: PHONE_PUB, class: 'events', plaintext: JSON.stringify(batch), ts: 1_790_000_000 });
+
+    it("hands back the pinned Mayor's batch, decrypted, and keeps no message for it", async () => {
+      const read = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, mayorKey: MAYOR_PUB, seen: new Set(), fetchImpl: fakeAnchorChain([events(MAYOR)]).fetchImpl });
+      expect(read.rows).toEqual([]);
+      expect(read.events).toHaveLength(1);
+      expect(read.events[0]).toMatchObject({ from: 4, to: 4, lane: 'normal' });
+      expect(read.events[0].events[0]).toMatchObject({ seq: 4, kind: 'bead_changed', bead: 'mw-x.1' });
+      expect(await messagesRepo.getAll()).toEqual([]);
+    });
+
+    it('reads a batch from any other key as nothing, and so with no Mayor pinned', async () => {
+      const stranger = events('99'.repeat(32));
+      const strangerRead = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, mayorKey: MAYOR_PUB, seen: new Set(), fetchImpl: fakeAnchorChain([stranger]).fetchImpl });
+      expect(strangerRead.events).toEqual([]);
+      const unpinned = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: fakeAnchorChain([events(MAYOR)]).fetchImpl });
+      expect(unpinned.events).toEqual([]);
+    });
   });
 });

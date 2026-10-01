@@ -11,6 +11,7 @@ import { RingBanner } from '../../src/cockpit/RingBanner';
 import { TalkLineScreen } from '../../src/cockpit/TalkLineScreen';
 import { db } from '../../src/data/db';
 import { encodeCall } from '../../src/services/call';
+import { CHAIN_POLL_MS } from '../../src/services/chainRead';
 import { getLiveState, startLive, stopLive } from '../../src/services/live';
 import { dismissIncomingRing } from '../../src/services/ringIn';
 import { fakeAnchorChain, publicKeyOf, recordTransaction, type FakeAnchorChain } from '../../tests/support/chain-record';
@@ -110,7 +111,7 @@ async function outOfReach(): Promise<void> {
     await vi.advanceTimersByTimeAsync(0);
   });
   await flush();
-  await advance(29_900);
+  await advance(CHAIN_POLL_MS - 100);
   callsBeforePoll = net.attempts;
   await advance(200);
 }

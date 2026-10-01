@@ -24,6 +24,8 @@ import { navigate } from '../router';
 import { useScrollMemory } from '../nav/scrollMemory';
 import { messagesRepo, settingsRepo } from '../data/repositories';
 import { parseThreadKey, type ThreadRef } from '../services/threads';
+import { promptOfChannel } from '../services/prompts';
+import { PromptNote } from './PromptNote';
 import { announceSeen, markThreadSeen } from '../services/seen';
 import { GENERAL, summariseThreads, titleFor, type ThreadSummary } from '../model/threads';
 
@@ -143,7 +145,7 @@ function openReplies(channel: string, rootTxid: string) {
 
 /** One channel: each post once, with one row for its replies. A bead's channel
  * merges the bead's own comments, which are always posts. */
-function ChannelPane({ threadKey }: { threadKey: string }) {
+function ChannelPane({ threadKey, prefill }: { threadKey: string; prefill?: string }) {
   const ref: ThreadRef | undefined = parseThreadKey(threadKey);
   const storeKey = threadKey === GENERAL ? undefined : threadKey;
   const rows = useThreadMessages(storeKey);
@@ -159,6 +161,7 @@ function ChannelPane({ threadKey }: { threadKey: string }) {
   const byRoot = useMemo(() => new Map(threads.map((thread) => [thread.root.id, thread])), [threads]);
   const remember = useScrollMemory('channel');
   const [quote, setQuote] = useState<{ speaker: string; text: string } | null>(null);
+  const promptName = ref && 'topic' in ref ? promptOfChannel(ref.topic) : undefined;
 
   useEffect(() => {
     void markThreadSeen(storeKey);
@@ -178,11 +181,11 @@ function ChannelPane({ threadKey }: { threadKey: string }) {
               const thread = byRoot.get(item.id);
               return thread && thread.replyCount > 0 ? <RepliesRow channel={threadKey} thread={thread} /> : null;
             }}
-            empty={<EmptyState icon="talk" title="Nothing said here yet">Say anything; the Mayor answers in its thread.</EmptyState>}
+            empty={promptName ? <PromptNote name={promptName} /> : <EmptyState icon="talk" title="Nothing said here yet">Say anything; the Mayor answers in its thread.</EmptyState>}
           />
         </div>
       </div>
-      <Composer thread={ref} quote={quote} onClearQuote={() => setQuote(null)} />
+      <Composer thread={ref} quote={quote} onClearQuote={() => setQuote(null)} prefill={prefill} autoFocus={!!prefill} />
     </>
   );
 }
@@ -235,11 +238,15 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
   );
 }
 
-function PaneFor({ threadKey, root }: { threadKey: string; root?: string }) {
-  return root ? <RepliesPane key={`${threadKey}:${root}`} threadKey={threadKey} rootTxid={root} /> : <ChannelPane key={threadKey} threadKey={threadKey} />;
+function PaneFor({ threadKey, root, prefill }: { threadKey: string; root?: string; prefill?: string }) {
+  return root ? (
+    <RepliesPane key={`${threadKey}:${root}`} threadKey={threadKey} rootTxid={root} />
+  ) : (
+    <ChannelPane key={`${threadKey}|${prefill ?? ''}`} threadKey={threadKey} prefill={prefill} />
+  );
 }
 
-export function TalkScreen({ thread, root }: { thread?: string; root?: string }) {
+export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: string; prefill?: string }) {
   const wide = useWide();
   // The channel list keeps its place whatever address opens beside it.
   const rememberList = useScrollMemory('channels', false);
@@ -301,7 +308,7 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
         <div className="flex min-h-0 flex-1">
           <div className="flex w-[360px] shrink-0 flex-col border-r border-line">{list}</div>
           <div className="flex min-w-0 flex-1 flex-col">
-            {current ? <PaneFor threadKey={current} root={root} /> : <EmptyState icon="talk" title="Pick a channel">Or start with Factory.</EmptyState>}
+            {current ? <PaneFor threadKey={current} root={root} prefill={prefill} /> : <EmptyState icon="talk" title="Pick a channel">Or start with Factory.</EmptyState>}
           </div>
         </div>
       </Screen>
@@ -311,7 +318,7 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
   if (current) {
     return (
       <Screen title={title} subtitle={subtitle} back={inReplies ? { view: 'talk', thread: current } : { view: 'talk' }} actions={threadActions} bare>
-        <PaneFor threadKey={current} root={root} />
+        <PaneFor threadKey={current} root={root} prefill={prefill} />
       </Screen>
     );
   }

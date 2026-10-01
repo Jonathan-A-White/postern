@@ -8,7 +8,7 @@
 // A 4xx the backend gives (other than 408 and 429) is final: the row is marked failed with the
 // backend's words and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
 // Talk turns are a lane of their own, so no upload or failing message holds one back.
-import { answersRepo, eventsRepo, messagesRepo, outboxRepo } from '../data/repositories';
+import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo } from '../data/repositories';
 import type { OutboxKind, OutboxRow } from '../data/db';
 import type { GovernorAction } from '../model/conversation';
 import { retryDelay } from '../model/outbox';
@@ -140,14 +140,18 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
     if (!row || mine !== generation) return;
     if (!force && row.nextAt !== undefined && row.nextAt > Date.now()) return wakeAt(lane, row.nextAt);
     force = false;
-    const options = deliverOptions(getKey());
-    if (!options) {
+    const base = deliverOptions(getKey());
+    if (!base) {
       // Locked, or the Mayor not yet known: the next live state or key change wakes the sender; this is the fallback.
       // The row has now waited, so the status line says so.
       if (row.attempts === 0) await outboxRepo.update(row.id as number, { attempts: 1 });
       wakeAt(lane, Date.now() + retryDelay(row.attempts + 1));
       return;
     }
+    // The row's id goes with every try; a row an older build wrote is given one now.
+    const clientId = row.clientId ?? newClientId();
+    if (row.clientId === undefined) await outboxRepo.update(row.id as number, { clientId });
+    const options = { ...base, clientId };
     let delivered: Delivered;
     try {
       delivered = await deliverRow(row, options);

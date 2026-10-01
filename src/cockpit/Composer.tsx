@@ -42,10 +42,12 @@ export interface ComposerProps {
   autoFocus?: boolean;
   /** The txid this message answers: it goes out as a reply in that message's thread (docs/protocol.md §14). */
   re?: string;
+  /** Words already in the box when it opens (Run on a prompt opens it saying '/name '); the caret waits after them. */
+  prefill?: string;
 }
 
-export function Composer({ thread, placeholder = 'Message the Mayor…', quote, onClearQuote, autoFocus, re }: ComposerProps) {
-  const [text, setText] = useState('');
+export function Composer({ thread, placeholder = 'Message the Mayor…', quote, onClearQuote, autoFocus, re, prefill }: ComposerProps) {
+  const [text, setText] = useState(prefill ?? '');
   const [files, setFiles] = useState<Pending[]>([]);
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -56,6 +58,15 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const { busy, run } = useSend();
   // On a phone the tab bar sits below the composer and keeps the bottom safe-area inset.
   const wide = useWide();
+
+  useEffect(() => {
+    const area = textarea.current;
+    if (!prefill || !area) return;
+    area.focus();
+    area.setSelectionRange(area.value.length, area.value.length);
+    // only when it opens: what he types after is his
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const shared = takePendingShare();

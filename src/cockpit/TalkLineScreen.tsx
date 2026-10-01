@@ -14,7 +14,7 @@ import { useRoute } from '../router';
 import { settingsRepo } from '../data/repositories';
 import { now } from '../services/clock';
 import { callSent as waitingCall, clockHHMM, ringNote } from '../model/call';
-import { beadHref } from '../nav/route';
+import { beadHref, formatRoute } from '../nav/route';
 import { formatSeconds, showsCutTag } from '../model/talkScreen';
 import { isUnsent, pendingTurn } from '../model/outbox';
 import type { OutboxRow } from '../data/db';
@@ -261,7 +261,18 @@ export function TalkLineScreen() {
   };
 
   return (
-    <Screen title="Talk" subtitle="A voice line to the Mayor" back={{ view: 'talk' }} bare>
+    <Screen
+      title="Talk"
+      subtitle="A voice line to the Mayor"
+      back={{ view: 'talk' }}
+      actions={
+        <a href={formatRoute({ view: 'prompts' })} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm text-muted hover:bg-raised hover:text-fg">
+          <Icon name="sparkle" size={16} />
+          Prompts
+        </a>
+      }
+      bare
+    >
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div ref={scroller} onScroll={onScroll} onWheel={onTouch} onTouchStart={onTouch} onPointerDown={onTouch} data-testid="talk-scroll" className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <ol className="mx-auto flex max-w-xl flex-col gap-4" data-testid="talk-log">

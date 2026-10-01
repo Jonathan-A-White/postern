@@ -209,6 +209,18 @@ export function MeScreen() {
           </Card>
         </section>
 
+        <section className="flex flex-col gap-2" aria-label="Prompts">
+          <SectionTitle>Prompts</SectionTitle>
+          <Card>
+            <a href={formatRoute({ view: 'prompts' })} className="flex items-center gap-3 px-4 py-3 text-[14px] hover:bg-raised/60">
+              <Icon name="sparkle" size={16} className="text-muted" />
+              <span className="flex-1">Prompts</span>
+              <span className="text-[13px] text-muted">Saved prompts: Run or Edit</span>
+              <Icon name="forward" size={15} className="text-faint" />
+            </a>
+          </Card>
+        </section>
+
         <section className="flex flex-col gap-2" aria-label="Home">
           <SectionTitle>Home</SectionTitle>
           <Card className="divide-y divide-line">

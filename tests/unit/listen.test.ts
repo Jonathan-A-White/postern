@@ -524,6 +524,49 @@ describe('listen', () => {
       expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: 'network' }));
     });
 
+    describe('a long pause while he thinks (mw-j0f2d.27)', () => {
+      afterEach(() => vi.useRealTimers());
+
+      it('keeps listening through many silent stretches, each ending by itself, and joins both halves into one turn', async () => {
+        vi.useFakeTimers();
+        install();
+        const onError = vi.fn();
+        const onFinal = vi.fn();
+        const begin = startListening({ onError, onFinal });
+        if (!begin.ok) throw new Error('expected listening to start');
+        const recognizer = FakeRecognizer.instances[0];
+        recognizer.say([result('twenty Mississippi', true)]);
+        // The phone ends the recogniser on every few seconds of silence; a minute of it is far more than MAX_IDLE_RESTARTS stretches.
+        for (let i = 0; i < MAX_IDLE_RESTARTS * 4; i++) {
+          vi.advanceTimersByTime(5000);
+          recognizer.onerror?.({ error: 'no-speech' });
+          recognizer.onend?.();
+        }
+        expect(onError).not.toHaveBeenCalled();
+        expect(recognizer.startFn).toHaveBeenCalledTimes(MAX_IDLE_RESTARTS * 4 + 1);
+        recognizer.say([result('and the rest', false)]);
+        const outcome = await begin.session.stop();
+        expect(outcome).toEqual({ ok: true, text: 'twenty Mississippi and the rest', mode: 'on-device' });
+        expect(onFinal).toHaveBeenCalledTimes(1);
+        expect(onFinal).toHaveBeenCalledWith('twenty Mississippi and the rest');
+      });
+
+      it('still gives up when the recogniser ends again at once, over and over, after silent stretches', () => {
+        vi.useFakeTimers();
+        install();
+        const onError = vi.fn();
+        startListening({ onError });
+        const recognizer = FakeRecognizer.instances[0];
+        vi.advanceTimersByTime(5000);
+        recognizer.onend?.();
+        for (let i = 0; i <= MAX_IDLE_RESTARTS; i++) {
+          recognizer.onerror?.({ error: 'network' });
+          recognizer.onend?.();
+        }
+        expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: 'network' }));
+      });
+    });
+
     it('settles with what was heard when the recogniser cannot be started again', async () => {
       install();
       const begin = startListening();

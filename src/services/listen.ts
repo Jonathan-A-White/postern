@@ -9,8 +9,9 @@
 // STOP_TIMEOUT_MS, and an on-device attempt the phone cannot do is retried once in
 // network mode within the same hold. The recogniser also ends itself while the finger
 // is down (Android Chrome on a pause or a no-speech/network blip): until stop() the
-// hold goes on, the recogniser is started again and the earlier words are kept. The
-// recogniser always gets a full language tag (en-US when none is given, a bare 'en'
+// hold goes on, the recogniser is started again and the earlier words are kept; only a
+// recogniser that keeps ending at once is given up on, never one that lasted through a pause
+// (mw-j0f2d.27). The recogniser always gets a full language tag (en-US when none is given, a bare 'en'
 // widened to it), and a language-not-supported error is retried once with en-US
 // before it is shown, because the phone's service rejects tags it has no pack for.
 // The recogniser listens on the phone's default microphone unless it is handed an audio
@@ -145,8 +146,15 @@ function errorFor(code: string): ListenError {
 /** Errors that only mean this stretch of listening ended (a pause, a blip): the hold carries on. */
 const TRANSIENT_ERRORS = new Set(['no-speech', 'network', 'aborted']);
 
-/** How many times in a row the recogniser is started again, with nothing heard in between, before the hold gives up. */
+/** How many times in a row a recogniser that ends at once (a failing loop, not a pause) is started again before the hold gives up. */
 export const MAX_IDLE_RESTARTS = 5;
+
+/**
+ * A stretch of listening that lasted this long ended because of silence, a pause while he thinks, not
+ * because something is failing: it does not count toward MAX_IDLE_RESTARTS. Android Chrome ends the
+ * recogniser after a few seconds of quiet, so a long pause is many such stretches in a row.
+ */
+export const MIN_LIVE_STRETCH_MS = 1500;
 
 /** What an on-device attempt can fail with when the phone lacks the speech pack or service for it. */
 const ON_DEVICE_FAILURES = new Set(['language-not-supported', 'service-not-allowed']);
@@ -224,6 +232,8 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   // The last transient error: reported only if the hold ends with nothing heard.
   let transient = null as ListenError | null;
   let idleRestarts = 0;
+  // When the recogniser was last started: how long it listened before it ended tells a pause from a failure.
+  let stretchStart = Date.now();
   let error = null as ListenError | null;
   let outcome = null as ListenResult | null;
   let announced = false;
@@ -255,6 +265,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   };
   /** Starts `recognizer` on the chosen input's track; a browser that refuses the track gets the default microphone instead. */
   const begin = (recognizer: Recognizer) => {
+    stretchStart = Date.now();
     if (input) {
       try {
         recognizer.start(input.track);
@@ -338,6 +349,8 @@ export function startListening(options: ListenOptions = {}): ListenStart {
       if (!live() || outcome) return;
       if (!stopping && !error) {
         // He is still holding: the recogniser ended by itself, so start it again and keep what was heard.
+        // A stretch that listened for a while only met his silence: it is a pause, not a failure, so it does not count.
+        if (Date.now() - stretchStart >= MIN_LIVE_STRETCH_MS) idleRestarts = 0;
         if (idleRestarts < MAX_IDLE_RESTARTS) {
           try {
             carried = text;

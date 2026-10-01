@@ -29,7 +29,7 @@ JSON shape that only postern understands:
 - `kind` — always `"msg"`.
 - `class` — one of `"message"`, `"decision-needed"`, `"landing"`, `"alarm"`
   (`mw-f758y.5`), `"move-home"` (§18), `"grist"` (an app's AI work for the
-  factory and its answer, §19), `"talk"` (a turn on the Talk line, §20), `"call"` (a call record, §21), or `"events"` (a batch of factory events, §22). Sits in the clear beside the ciphertext on purpose
+  factory and its answer, §19), `"talk"` (a turn on the Talk line, §20), `"call"` (a call record, §21), `"events"` (a batch of factory events, §22), `"card"` (a live card, §24) or `"card-update"` (a change to one, §24). Sits in the clear beside the ciphertext on purpose
   (`mw-f758y.9` Q1): a classified-push backend, or anyone else reading the chain,
   can act on the class (e.g. wake the Mayor for `alarm`) without holding either
   party's private key.
@@ -1656,3 +1656,66 @@ thread.
 Edit on a prompt opens the named channel `prompt:<name>` (for example `prompt:top5`), an
 ordinary text conversation (§1) with the Mayor about that prompt; the screen shows the current
 body. It changes nothing by itself: the Mayor saves the revised prompt with `PUT`.
+
+## 24. Live cards
+
+The Governor, 2026-10-01 (map `mw-6ww.56`, Q2 B and Q5 B): the Mayor's answer to a saved prompt
+(§23) can be one card that is alive: a numbered list in which every item links to the beads
+where he can go and do it, says what it waits for, and ticks itself off when that happens. The
+same card is updated in place, so coming back a few minutes later he finds a link where there
+was none. Two classes carry it, each §1's envelope from the Mayor's key `to` the Governor's,
+sealed as any message is, delivered by `POST /api/messages` (§9) or put on chain (§4). Neither
+is pushed or handed to a hook: like a Talk turn, each gets the `message` event only.
+
+### The card
+
+A `card` record's plaintext is JSON; the card's id is the record's own `txid`, which no
+plaintext can name:
+
+```json
+{
+  "title": "Top 5 for the next 30 minutes",
+  "prompt": "top5",
+  "thread": { "bead": "mw-abc" },
+  "items": [
+    { "n": 1, "text": "VERIFIED on the stream story", "links": ["mw-f758y.30.2"],
+      "expect": { "bead": "mw-f758y.30.2", "state": "verified" } }
+  ],
+  "subscribe": { "kinds": ["bead_changed"], "beads": ["mw-f758y.30.2"] }
+}
+```
+
+- `thread` — optional; the bead whose channel the card was sent to. Absent, the card is in
+  Factory.
+- `items[]` — `n` (from 1), `text`, `links` (bead ids: where to go), an optional `expect` (the
+  bead and the state that ticks the item: `open`, `landed`, `verified`, `closed` or `answered`),
+  and `done` and `done_at` (Unix seconds) once ticked. A card is sent with neither.
+- `subscribe` — the event kinds and beads the card listens to (§22).
+
+### The update
+
+A `card-update` record's plaintext names its card by `re` (the card's `txid`) and changes it:
+
+```json
+{ "re": "<card txid>", "items": [ { "n": 4, "text": "…", "links": [] } ],
+  "links": { "2": ["mw-f758y.30.5"] }, "tick": [1] }
+```
+
+`items` are added, or replace the item with the same `n`; `links` adds bead ids to an item;
+`tick` marks items done at the update's time. Updates apply in the order sent (record `seq`),
+whatever order they page in; one that pages in before its card waits for it.
+
+### What the app does with them
+
+`mw-nqur1n.11`. A card or update is kept as a message row (so a phone that was locked reads
+it once unlocked) but is never a message: no thread, unread count or search hit shows it, and
+only one received by this key is read. It is folded into the Dexie `cards` table, keyed by the
+card's `txid`: the record, its updates, and this phone's own ticks. The card shows in Needs you
+under You while any item is open (`Cards · N`), and in the thread named by `thread` (the bead's
+page and its channel), as a numbered list with each link a link to that bead's page.
+
+The card listens to its `subscribe` through `useEvents` (§22). An item with an `expect` is done,
+with the event's time, when a held event is the bead reaching that state (a `bead_changed` whose
+`to` is the state, or, for `landed` and `verified`, a later one), or a `card_answered` on the bead for
+`answered`, no earlier than the item was sent. That tick is the app's own: nothing is sent, and no
+view or record is fetched. A card with every item done leaves You and shows under `Done · N`.

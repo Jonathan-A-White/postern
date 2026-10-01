@@ -296,3 +296,35 @@ export function longThreadRecords(governorKey: PrivateKey, now: number, firstSeq
   }
   return records;
 }
+
+/** A live card (§24, mw-nqur1n.11) sent a few minutes ago with three items on the fixture's beads, an update
+ * that adds a link to item 2 and ticks item 1, and an events record saying the bead item 3 waits on is verified,
+ * so the app ticks that one itself. */
+export function liveCardRecords(governorKey: PrivateKey, now: number, firstSeq: number): FixtureRecord[] {
+  const governorPub = governorKey.toPublicKey().toString();
+  const seal = (messageClass: MessagePayload['class'], body: unknown, seq: number, minutesAgo: number): FixtureRecord => ({
+    seq,
+    txid: `direct:${hex64(seq)}`,
+    vout: 0,
+    payload: { ...encryptMessage({ text: JSON.stringify(body), class: messageClass, senderPrivateKeyHex: MAYOR.toHex(), recipientPublicKeyHex: governorPub }), ts: Math.floor((now - minutesAgo * 60_000) / 1000) },
+  });
+  const beads = ['mw-f758y.30.2', 'mw-f758y.30.4', 'mw-f758y.30.3'];
+  const card = seal(
+    'card',
+    {
+      title: 'Top 3 for this morning',
+      items: [
+        { n: 1, text: 'VERIFIED on the stream story', links: [beads[0]], expect: { bead: beads[0], state: 'verified' } },
+        { n: 2, text: 'Release the bead route', links: [beads[1]], expect: { bead: beads[1], state: 'open' } },
+        { n: 3, text: 'VERIFIED on the view writer', links: [beads[2]], expect: { bead: beads[2], state: 'verified' } },
+      ],
+      subscribe: { kinds: ['bead_changed'], beads },
+    },
+    firstSeq + 1,
+    5,
+  );
+  const update = seal('card-update', { re: card.txid, links: { 2: ['mw-f758y.30.5'] }, tick: [1] }, firstSeq + 2, 3);
+  const verified = { seq: 1, ts: new Date(now - 60_000).toISOString(), kind: 'bead_changed', bead: beads[2], actor: 'mw@laptop', from: 'landed', to: 'verified', detail: 'status', lane: 'normal' };
+  const events = seal('events', { from: 1, to: 1, lane: 'normal', events: [verified] }, firstSeq + 3, 1);
+  return [card, update, events];
+}

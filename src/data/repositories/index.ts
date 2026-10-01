@@ -7,3 +7,4 @@ export { pendingSpendsRepo } from './pending-spends-repo';
 export { viewRepo, beadDetailsRepo, sessionRepo, sharesRepo } from './view-repo';
 export { eventsRepo } from './events-repo';
 export { outboxRepo, newClientId } from './outbox-repo';
+export { cardsRepo } from './cards-repo';

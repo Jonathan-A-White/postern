@@ -9,6 +9,7 @@ import { apiFetch } from './apiAuth';
 import { decryptMessage, decryptMessageAsSender, type MessagePayload } from './messages';
 import { threadKey, threadOf } from './threads';
 import { decodeEventBatch, type EventBatch } from '../model/events';
+import { applyCardRow } from './cards';
 
 const CURSOR_SETTING_KEY = 'messages-cursor';
 
@@ -63,12 +64,14 @@ function tryDecrypt(
  * were already synced while it was locked. */
 export async function decryptPendingMessages(unlockedKey: Uint8Array): Promise<void> {
   const unlockedKeyHex = keyToHex(unlockedKey);
-  const rows = await messagesRepo.getAll();
+  const rows = await messagesRepo.getAllStored();
   for (const row of rows) {
     if (row.plaintext !== undefined || row.decryptFailed) continue;
     const payload: MessagePayload = { v: 1, kind: 'msg', class: row.class, to: row.to, from: row.from, ts: row.ts, ct: row.ciphertext };
     const decrypted = tryDecrypt(payload, unlockedKeyHex, row.direction);
-    await messagesRepo.put({ ...row, ...decrypted, thread: threadKey(threadOf(row.class, decrypted.plaintext)) });
+    const opened = { ...row, ...decrypted, thread: threadKey(threadOf(row.class, decrypted.plaintext)) };
+    await messagesRepo.put(opened);
+    await applyCardRow(opened);
   }
 }
 
@@ -114,11 +117,12 @@ export async function storeRecord(record: RecordToStore, publicKeyHex: string, u
     plaintext,
     decryptFailed: existing?.decryptFailed ?? decrypted.decryptFailed,
     direction,
-    // A Talk turn or a call record is never unread: it is heard on the Talk line, not counted (§20, §21).
-    read: existing?.read ?? (payload.class === 'talk' || payload.class === 'call'),
+    // A Talk turn, a call record or a live card is never unread: it is heard on the Talk line, not counted (§20, §21).
+    read: existing?.read ?? (payload.class === 'talk' || payload.class === 'call' || payload.class === 'card' || payload.class === 'card-update'),
     thread: existing?.thread ?? threadKey(threadOf(payload.class, plaintext)),
   };
   await messagesRepo.put(row);
+  await applyCardRow(row);
   return row;
 }
 

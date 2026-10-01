@@ -12,6 +12,7 @@ import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
 import { RepliesRow } from './RepliesRow';
 import { NeedCard } from './NeedCard';
+import { ThreadCards } from './LiveCard';
 import { StepUnderComment } from './HandsSteps';
 import { useAnswers, useBeadDetail, useBeadTitles, useOutbox, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { pendingMessageItems } from '../model/outbox';
@@ -346,7 +347,7 @@ export function BeadScreen({ id }: { id: string }) {
     </>
   );
 
-  const conversation = (
+  const messages = (
     <Conversation
       items={posts}
       onQuote={onQuote}
@@ -370,6 +371,12 @@ export function BeadScreen({ id }: { id: string }) {
         </p>
       }
     />
+  );
+  const conversation = (
+    <>
+      <ThreadCards threadKey={threadKey} />
+      {messages}
+    </>
   );
   const composer = <Composer thread={{ bead: id }} placeholder={`Say something about ${id}…`} quote={quote} onClearQuote={() => setQuote(null)} />;
   const actions = (

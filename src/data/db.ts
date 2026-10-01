@@ -30,10 +30,10 @@ export interface PromptsCache {
   at: number;
 }
 
-// docs/protocol.md's message classes (`talk`, §20, is the Talk line's turns and `call`, §21, its call records: never a channel, an unread or a Need). Defined here (not in src/services/messages.ts,
+// docs/protocol.md's message classes (`card` and `card-update`, §24, are a live card and its changes: kept as rows so a locked phone decrypts them later, but never a message in a list, an unread or a Need; `talk`, §20, is the Talk line's turns and `call`, §21, its call records: never a channel, an unread or a Need). Defined here (not in src/services/messages.ts,
 // which re-exports it) so this file — the leaf data layer — never has to import from
 // the service layer.
-export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm' | 'move-home' | 'talk' | 'call' | 'events';
+export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm' | 'move-home' | 'talk' | 'call' | 'events' | 'card' | 'card-update';
 
 export interface MessageRow {
   /** `${txid}:${vout}` — the record's own on-chain outpoint. */
@@ -140,6 +140,39 @@ export interface EventRow {
   lane: string;
 }
 
+/** One numbered item of a live card as the Mayor sent it (docs/protocol.md §24). `doneAt` is Unix seconds. */
+export interface StoredCardItem {
+  n: number;
+  text: string;
+  links: string[];
+  expect?: { bead: string; state: string };
+  done?: boolean;
+  doneAt?: number;
+}
+
+/** A card-update record (§24): items added or replaced by `n`, links added by item number, items ticked. */
+export interface StoredCardUpdate {
+  txid: string;
+  seq: number;
+  /** Unix seconds, from the record. */
+  ts: number;
+  items: StoredCardItem[];
+  links: Record<string, string[]>;
+  tick: number[];
+}
+
+/** mw-nqur1n.11: one live card, keyed by the txid of its `card` record. The row may hold updates
+ * before the card itself (they page in any order); `ticks` are this phone's own, item number to
+ * the event's time (ms): the app ticks an item when its expected event arrives, no record needed. */
+export interface CardRow {
+  id: string;
+  /** The thread it was sent to, as threadKey() writes it; absent is Factory. */
+  thread?: string;
+  card?: { title: string; prompt?: string; items: StoredCardItem[]; subscribe: { kinds: string[]; beads: string[] }; ts: number };
+  updates: StoredCardUpdate[];
+  ticks: Record<string, number>;
+}
+
 /** plans/0021: one bead's full detail (docs/protocol.md §12), decrypted, kept for
  * offline reading and for search over descriptions and comments. */
 export interface BeadDetailRow {
@@ -228,6 +261,7 @@ class PosternDB extends Dexie {
   shares!: Table<ShareRow, string>;
   events!: Table<EventRow, number>;
   outbox!: Table<OutboxRow, number>;
+  cards!: Table<CardRow, string>;
 
   constructor() {
     super('PosternDB');
@@ -322,6 +356,23 @@ class PosternDB extends Dexie {
       shares: 'id, createdAt',
       events: 'seq, kind, bead, detail',
       outbox: '++id, state, bead',
+    });
+
+    // mw-nqur1n.11: live cards (§24), by the txid of their card record.
+    this.version(11).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read, thread',
+      snapshot: 'id',
+      answers: 'bead',
+      pendingSpends: 'txid',
+      view: 'id',
+      beadDetails: 'id, fetchedAt',
+      session: 'id',
+      shares: 'id, createdAt',
+      events: 'seq, kind, bead, detail',
+      outbox: '++id, state, bead',
+      cards: 'id, thread',
     });
 
     // mw-jrx0s.22: an events record (§22) is never a message. An older build kept some as rows; every open removes them (sticky: a plain `ready` listener runs on the first open only).

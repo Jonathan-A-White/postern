@@ -54,13 +54,13 @@ src/
 │                        #   hooks.ts (Dexie live queries) and send.ts (what a tap delivers)
 ├── model/               # pure: the live view (§11/§12) and snapshot fallback, the tree and its
 │                        #   columns, graph layout, filters, search, conversations, needs, threads
-├── services/            # protocol and I/O: deliver (§9), live (§10 stream + polling), view (§11), events (§22, projected; useEvents),
+├── services/            # protocol and I/O: deliver (§9), live (§10 stream + polling), view (§11), events (§22, projected; useEvents), cards (§24: live cards folded from card/card-update records, ticked from held events),
 │                        #   outbox (the phone's outgoing queue: written first, sent in order, acked), beads (§12), me (§15, pinned Mayor), documents (seal/open), keySession +
 │                        #   session (daily unlock), blobs, recorder, messages/threads/questions (§1–§8)
 ├── ui/                  # design system: Icon set, primitives (Button, Chip, Card…), tokens, toasts
 ├── key/                 # KeyVault: create, restore, passkey, licence mint
 ├── data/
-│   ├── db.ts           # Dexie schema (v10): settings, vault, messages, view, beadDetails, session, shares, events, outbox…
+│   ├── db.ts           # Dexie schema (v11): settings, vault, messages, view, beadDetails, session, shares, events, outbox, cards…
 │   └── repositories/   # Repository pattern; barrel index.ts
 ├── sw.ts                # push per class, tap lands in place, share_target parking
 └── index.css            # Tailwind 4 + the design tokens (dark default, light by the phone's setting)

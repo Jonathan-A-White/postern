@@ -32,6 +32,12 @@ export interface FakeAnchorChain {
   txs: ChainRecord[];
   /** Makes every answer a failure (WhatsOnChain unreachable too). */
   down: boolean;
+  /** The raw transactions (by txid) whose hex WhatsOnChain fails to give (a 500). */
+  failHex: Set<string>;
+  /** When set, every raw-hex answer is this status (429: the free tier's limit). */
+  hexStatus?: number;
+  /** When set, the history answers are this status. */
+  historyStatus?: number;
 }
 
 function reply(status: number, body: unknown): Response {
@@ -41,15 +47,18 @@ function reply(status: number, body: unknown): Response {
 
 /** A WhatsOnChain that lists `txs` as the anchor address's confirmed history and serves their raw hex. */
 export function fakeAnchorChain(txs: ChainRecord[] = []): FakeAnchorChain {
-  const fake: FakeAnchorChain = { calls: [], txs, down: false, fetchImpl: undefined as unknown as typeof fetch };
+  const fake: FakeAnchorChain = { calls: [], txs, down: false, failHex: new Set(), fetchImpl: undefined as unknown as typeof fetch };
   fake.fetchImpl = (async (input: RequestInfo | URL) => {
     const url = String(input);
     fake.calls.push(url);
     if (fake.down) throw new TypeError('Failed to fetch');
     const base = `${chainConfig.providerBaseUrl}/address/${ANCHOR_ADDRESS}`;
+    if (fake.historyStatus && url.startsWith(base)) return reply(fake.historyStatus, 'busy');
     if (url === `${base}/unconfirmed/history`) return reply(200, { result: [] });
     if (url === `${base}/confirmed/history`) return reply(200, { result: fake.txs.map((tx, i) => ({ tx_hash: tx.txid, height: 100 + i })) });
     const raw = /\/tx\/([0-9a-f]{64})\/hex$/.exec(url);
+    if (raw && fake.hexStatus) return reply(fake.hexStatus, 'busy');
+    if (raw && fake.failHex.has(raw[1])) return reply(500, 'boom');
     const found = raw && fake.txs.find((tx) => tx.txid === raw[1]);
     if (found) return reply(200, found.hex);
     return reply(404, 'not found');

@@ -1,13 +1,15 @@
 // The phone reading the anchor address itself (docs/protocol.md §21): the WhatsOnChain history
 // adapter, a record found in a raw transaction, and the txid dedupe.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PrivateKey } from '@bsv/sdk';
 import { chainConfig } from 'spell-forge-bsv';
 import { db } from '../../src/data/db';
 import { messagesRepo } from '../../src/data/repositories';
 import { ANCHOR_ADDRESS } from '../../src/services/messages';
 import { encodeCall } from '../../src/services/call';
-import { fetchAnchorHistory, fetchRawTransaction, readChain, recordsInTransaction } from '../../src/services/chainRead';
+import {
+  CHAIN_MAX_BACKOFF_MS, CHAIN_POLL_MS, HEX_GAP_MS, MAX_TXS_PER_READ, fetchAnchorHistory, fetchRawTransaction, nextChainDelay, readChain, recordsInTransaction,
+} from '../../src/services/chainRead';
 import { fakeAnchorChain, publicKeyOf, recordTransaction } from '../support/chain-record';
 
 const PHONE = '45'.repeat(32);
@@ -31,6 +33,18 @@ function answering(routes: Record<string, { status: number; body: unknown }>): t
     return { ok: route.status < 300, status: route.status, text: async () => text, json: async () => JSON.parse(text) } as unknown as Response;
   }) as typeof fetch;
 }
+
+describe('how long the chain reader waits before its next read', () => {
+  it('starts at 5 s, doubles after each failed read up to 60 s, and goes back to 5 s after a clean one', () => {
+    expect(CHAIN_POLL_MS).toBe(5_000);
+    expect(CHAIN_MAX_BACKOFF_MS).toBe(60_000);
+    const delays = [CHAIN_POLL_MS];
+    for (let i = 0; i < 6; i++) delays.push(nextChainDelay(delays[i], false));
+    expect(delays).toEqual([5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000]);
+    expect(nextChainDelay(60_000, true)).toBe(5_000);
+    expect(nextChainDelay(20_000, true)).toBe(5_000);
+  });
+});
 
 describe('the WhatsOnChain history adapter', () => {
   it('lists unconfirmed transactions first, then confirmed ones newest first, each once', async () => {
@@ -119,14 +133,95 @@ describe('reading the chain', () => {
     expect(await messagesRepo.getAll()).toEqual([]);
   });
 
-  it('reads only the newest few transactions of a long history in one pass, the rest on the next', async () => {
-    const txs = Array.from({ length: 30 }, (_, i) => recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: PHONE_PUB, class: 'message', plaintext: `m${i}`, ts: 100 + i }));
+  it('reads only the throttle\'s share of a long history in one pass, the rest on the next', async () => {
+    const txs = Array.from({ length: 22 }, (_, i) => recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: PHONE_PUB, class: 'message', plaintext: `m${i}`, ts: 100 + i }));
     const chain = fakeAnchorChain(txs);
     const seen = new Set<string>();
-    const first = (await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).rows;
-    expect(first).toHaveLength(20);
-    const second = (await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).rows;
-    expect(second).toHaveLength(10);
+    const read = () => readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl, hexGapMs: 0 });
+    const first = (await read()).rows;
+    expect(first).toHaveLength(MAX_TXS_PER_READ);
+    expect(chain.calls.filter((url) => url.endsWith('/hex'))).toHaveLength(MAX_TXS_PER_READ);
+    const second = (await read()).rows;
+    expect(second).toHaveLength(MAX_TXS_PER_READ);
+    const third = (await read()).rows;
+    expect(third).toHaveLength(22 - 2 * MAX_TXS_PER_READ);
+    expect(seen.size).toBe(22);
+  });
+
+  it('spaces its hex fetches by the gap: at most about two a second', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const txs = Array.from({ length: 3 }, (_, i) => recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: PHONE_PUB, class: 'message', plaintext: `g${i}`, ts: 100 + i }));
+      const chain = fakeAnchorChain(txs);
+      const hexCalls = () => chain.calls.filter((url) => url.endsWith('/hex')).length;
+      const settle = async () => {
+        for (let i = 0; i < 8; i++) {
+          await vi.advanceTimersByTimeAsync(0);
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+      };
+      const done = readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: chain.fetchImpl });
+      await settle();
+      expect(hexCalls()).toBe(1);
+      await vi.advanceTimersByTimeAsync(HEX_GAP_MS - 1);
+      await settle();
+      expect(hexCalls()).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await settle();
+      expect(hexCalls()).toBe(2);
+      await vi.advanceTimersByTimeAsync(HEX_GAP_MS);
+      await settle();
+      expect((await done).rows).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the records it read when one hex fetch fails, and asks for the failed transaction again next time', async () => {
+    const txs = [0, 1, 2].map((i) => recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: PHONE_PUB, class: 'message', plaintext: `f${i}`, ts: 100 + i }));
+    const chain = fakeAnchorChain(txs);
+    const seen = new Set<string>();
+    chain.failHex.add(txs[1].txid); // the middle of the history (read second, newest first)
+    const read = () => readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl, hexGapMs: 0 });
+    const first = await read();
+    expect(first.rows).toHaveLength(2);
+    expect(first.failed).toBe(1);
+    expect(seen.has(txs[1].txid)).toBe(false);
+    expect(seen.has(txs[0].txid) && seen.has(txs[2].txid)).toBe(true);
+    chain.calls.length = 0;
+    chain.failHex.clear();
+    const second = await read();
+    expect(second.rows).toHaveLength(1);
+    expect(second.failed).toBe(0);
+    expect(chain.calls.filter((url) => url.endsWith('/hex'))).toEqual([`${chainConfig.providerBaseUrl}/tx/${txs[1].txid}/hex`]);
+  });
+
+  it('keeps the events batches it read when a later hex fetch fails', async () => {
+    const batch = { from: 4, to: 4, lane: 'normal', events: [{ seq: 4, ts: 1_790_000_000, kind: 'bead_changed', bead: 'mw-x.1', actor: 'mw', from: 'open', to: 'claimed', detail: 'status' }] };
+    const events = recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: PHONE_PUB, class: 'events', plaintext: JSON.stringify(batch), ts: 1_790_000_000 });
+    const later = ring();
+    const chain = fakeAnchorChain([events, later]); // `later` is newest, read first
+    chain.failHex.add(events.txid);
+    const first = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, mayorKey: MAYOR_PUB, seen: new Set(), fetchImpl: chain.fetchImpl, hexGapMs: 0 });
+    expect(first.rows).toHaveLength(1);
+    expect(first.failed).toBe(1);
+    const chain2 = fakeAnchorChain([later, events]); // events newest, read first, then a failure after it
+    chain2.failHex.add(later.txid);
+    const second = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, mayorKey: MAYOR_PUB, seen: new Set(), fetchImpl: chain2.fetchImpl, hexGapMs: 0 });
+    expect(second.events).toHaveLength(1);
+    expect(second.failed).toBe(1);
+  });
+
+  it('stops the read at a 429 rather than asking for more, and counts it failed', async () => {
+    const txs = [0, 1, 2].map((i) => recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: PHONE_PUB, class: 'message', plaintext: `t${i}`, ts: 100 + i }));
+    const chain = fakeAnchorChain(txs);
+    chain.hexStatus = 429;
+    const seen = new Set<string>();
+    const read = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl, hexGapMs: 0 });
+    expect(chain.calls.filter((url) => url.endsWith('/hex'))).toHaveLength(1);
+    expect(read.failed).toBe(1);
+    expect(read.rows).toEqual([]);
+    expect(seen.size).toBe(0);
   });
 
   it('forgets nothing it failed to read: a transaction WhatsOnChain would not give is asked for again', async () => {

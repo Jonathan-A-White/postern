@@ -15,8 +15,19 @@ import { messagesRepo } from '../data/repositories';
 /** How often the phone reads the chain while the backend is out of reach: often enough that the queue (§22) keeps flowing, rarely enough for WhatsOnChain's free tier. */
 export const CHAIN_POLL_MS = 5_000;
 
-/** The most transactions one read fetches the hex of, newest first: a long history is caught up over several reads, never in one burst at WhatsOnChain. */
-export const MAX_TXS_PER_READ = 20;
+/** The longest the phone waits between reads: each read that fails (an error, a 429) doubles the wait up to this, a clean read brings it back to CHAIN_POLL_MS. */
+export const CHAIN_MAX_BACKOFF_MS = 60_000;
+
+/** The wait before the next chain read: doubled (to the cap) after a read that failed, back to the base after a clean one. */
+export function nextChainDelay(current: number, clean: boolean): number {
+  return clean ? CHAIN_POLL_MS : Math.min(current * 2, CHAIN_MAX_BACKOFF_MS);
+}
+
+/** WhatsOnChain's free tier allows about 3 requests a second: the hex fetches of one read are spaced this far apart (about 2 a second). */
+export const HEX_GAP_MS = 500;
+
+/** The most transactions one read fetches the hex of, newest first (about 2 a second over one poll): a long history is caught up over several reads, never in one burst at WhatsOnChain. */
+export const MAX_TXS_PER_READ = 10;
 
 /** A row kept from the chain has no backend sequence number yet; the backend's own sync replaces this. */
 const NO_SEQ = Number.MAX_SAFE_INTEGER;
@@ -51,10 +62,19 @@ export async function fetchAnchorHistory(address: string = ANCHOR_ADDRESS, fetch
   return [...new Set(ids)];
 }
 
+/** WhatsOnChain refused or failed a request; `status` 429 means the free tier's limit was reached, so the read stops asking. */
+export class ChainBusyError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 /** One transaction's raw hex from WhatsOnChain. */
 export async function fetchRawTransaction(txid: string, fetchImpl: typeof fetch = fetch): Promise<string> {
   const response = await fetchImpl(`${chainConfig.providerBaseUrl}/tx/${txid}/hex`);
-  if (!response.ok) throw new Error(`WhatsOnChain could not give transaction ${txid.slice(0, 8)}… (it answered ${response.status}).`);
+  if (!response.ok) throw new ChainBusyError(`WhatsOnChain could not give transaction ${txid.slice(0, 8)}… (it answered ${response.status}).`, response.status);
   return (await response.text()).trim();
 }
 
@@ -90,6 +110,10 @@ export interface ReadChainParams {
   seen: Set<string>;
   address?: string;
   fetchImpl?: typeof fetch;
+  /** The wait between two hex fetches of the read (default HEX_GAP_MS); tests pass 0. */
+  hexGapMs?: number;
+  /** Stops the read between two transactions. */
+  signal?: AbortSignal;
 }
 
 export interface ChainRead {
@@ -97,32 +121,61 @@ export interface ChainRead {
   rows: MessageRow[];
   /** The events batches (§22) found in transactions not read before, sent by the pinned Mayor to this phone. */
   events: EventBatch[];
+  /** How many transactions could not be read this time (WhatsOnChain failed or refused, or a record could not be stored): they stay unseen and the next read asks again. The caller backs off when this is not 0. */
+  failed: number;
+}
+
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done);
+  });
 }
 
 /**
  * Reads the anchor address's recent history and keeps every record in a transaction not yet
  * `seen` that names this phone, decrypted. Resolves with the rows that were new (not already on
  * this phone from the backend or an earlier read) and the events batches found; throws if
- * WhatsOnChain cannot be reached.
+ * WhatsOnChain cannot list the history. At most MAX_TXS_PER_READ transactions are fetched, a gap
+ * apart. A transaction is `seen` only once its records are applied (or none is ours): one that
+ * fails is counted in `failed` and left unseen for the next read, and never costs the others
+ * of this read; a 429 ends the read there.
  */
 export async function readChain(params: ReadChainParams): Promise<ChainRead> {
   const fetchImpl = params.fetchImpl ?? fetch;
+  const gap = params.hexGapMs ?? HEX_GAP_MS;
   const unlockedKeyHex = Utils.toHex(Array.from(params.unlockedKey));
   const history = await fetchAnchorHistory(params.address, fetchImpl);
-  const read: ChainRead = { rows: [], events: [] };
+  const read: ChainRead = { rows: [], events: [], failed: 0 };
+  let fetched = 0;
   for (const txid of history.filter((id) => !params.seen.has(id)).slice(0, MAX_TXS_PER_READ)) {
-    const records = recordsInTransaction(await fetchRawTransaction(txid, fetchImpl));
-    for (const record of records) {
-      if (record.payload.class === 'events') {
-        const batch = eventBatchOf(record.payload, params, unlockedKeyHex);
-        if (batch) read.events.push(batch);
-        continue;
+    if (params.signal?.aborted) break;
+    if (fetched > 0) await pause(gap, params.signal);
+    if (params.signal?.aborted) break;
+    fetched += 1;
+    try {
+      const records = recordsInTransaction(await fetchRawTransaction(txid, fetchImpl));
+      for (const record of records) {
+        if (record.payload.class === 'events') {
+          const batch = eventBatchOf(record.payload, params, unlockedKeyHex);
+          if (batch) read.events.push(batch);
+          continue;
+        }
+        if (await messagesRepo.get(`${txid}:${record.vout}`)) continue;
+        const row = await storeRecord({ seq: NO_SEQ, txid, vout: record.vout, payload: record.payload }, params.publicKeyHex, unlockedKeyHex);
+        if (row) read.rows.push(row);
       }
-      if (await messagesRepo.get(`${txid}:${record.vout}`)) continue;
-      const row = await storeRecord({ seq: NO_SEQ, txid, vout: record.vout, payload: record.payload }, params.publicKeyHex, unlockedKeyHex);
-      if (row) read.rows.push(row);
+      params.seen.add(txid);
+    } catch (err) {
+      read.failed += 1;
+      if (err instanceof ChainBusyError && err.status === 429) break;
     }
-    params.seen.add(txid);
   }
   return read;
 }

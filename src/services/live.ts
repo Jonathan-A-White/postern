@@ -5,7 +5,7 @@
 // second. A backend without the stream is polled instead. Screens read its
 // state through useLive(); everything they show comes from Dexie, which this
 // keeps current. While the backend cannot be reached it also reads the anchor
-// address from the chain itself every 5 s (docs/protocol.md §21): a record
+// address from the chain itself every 5 s, backing off to 60 s when WhatsOnChain fails or refuses (docs/protocol.md §21): a record
 // found there is kept, a ring rings, and the backend is tried again at once.
 // The factory's events (§22) come in the message sync and are projected onto the
 // stored view (src/services/events.ts); once they flow, the stream's `view` event
@@ -15,7 +15,7 @@
 // until the backend returns and the view is fetched.
 import { useSyncExternalStore } from 'react';
 import { apiFetch } from './apiAuth';
-import { readChain, CHAIN_POLL_MS } from './chainRead';
+import { readChain, nextChainDelay, CHAIN_POLL_MS } from './chainRead';
 import { projectBatches, syncMessagesAndEvents } from './events';
 import type { EventBatch } from '../model/events';
 import { freshRings, ringInApp } from './ringIn';
@@ -102,18 +102,21 @@ async function applyChainEvents(batches: EventBatch[]): Promise<void> {
 }
 
 async function pollChain(signal: AbortSignal): Promise<void> {
+  let delay = CHAIN_POLL_MS;
   for (;;) {
-    await sleep(CHAIN_POLL_MS, signal);
+    await sleep(delay, signal);
     const session = current;
     if (signal.aborted || !session) return;
     let read;
     try {
-      read = await readChain({ publicKeyHex: publicKeyHexFromMasterKey(session.key), unlockedKey: session.key, mayorKey: state.mayorKey, seen: chainSeen });
+      read = await readChain({ publicKeyHex: publicKeyHexFromMasterKey(session.key), unlockedKey: session.key, mayorKey: state.mayorKey, seen: chainSeen, signal });
     } catch {
       if (!signal.aborted && state.chainLive) setState({ chainLive: false });
-      continue; // WhatsOnChain is out of reach too: the next read tries again
+      delay = nextChainDelay(delay, false);
+      continue; // WhatsOnChain is out of reach too (or refuses us): the next read waits longer
     }
     if (signal.aborted) return;
+    delay = nextChainDelay(delay, read.failed === 0); // a transaction that failed is a WhatsOnChain in trouble: back off, and ask for it again
     if (!state.chainLive) setState({ chainLive: true });
     if (read.events.length > 0) await applyChainEvents(read.events);
     if (read.rows.length === 0) continue; // events alone are no reason to hammer the backend: its own backoff finds it

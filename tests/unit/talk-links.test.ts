@@ -2,7 +2,7 @@
 // reach the log entry of its turn, and are never part of what is spoken.
 import { describe, expect, it } from 'vitest';
 import { decodeTurn, encodeTurn } from '../../src/services/talk';
-import { initialTalkLine, talkLine, type TalkLineEvent } from '../../src/model/talkLine';
+import { initialTalkLine, type TalkLineEvent } from '../../src/model/talkLine';
 import { initialTalkScreen, talkScreen, type TalkScreenState } from '../../src/model/talkScreen';
 
 const answer = (links?: unknown) =>

@@ -2,8 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { previewPort, reuseExistingPreview } from './tests/support/preview-port';
 
-const PREVIEW_PORT = 4319;
+// One preview server per worktree: see tests/support/preview-port.ts.
+const PREVIEW_PORT = previewPort(process.cwd());
 const PREVIEW_BASE_URL = `http://localhost:${PREVIEW_PORT}`;
 
 // This host's Chromium build needs libnspr4/libnss3/libasound2, which aren't
@@ -47,7 +49,7 @@ export default defineConfig({
   webServer: {
     command: `npm run preview -- --port ${PREVIEW_PORT} --strictPort`,
     url: PREVIEW_BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: reuseExistingPreview(),
     timeout: 60_000,
   },
 });

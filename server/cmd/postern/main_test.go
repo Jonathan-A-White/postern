@@ -441,6 +441,33 @@ func TestACallRecordReachesTheHubOnlyNoPushNoHook(t *testing.T) {
 	}
 }
 
+// An events record (docs/protocol.md §22) reaches the hub only: the Governor's
+// phone reads it off the stream, so nothing is pushed and no hook runs.
+func TestAnEventsRecordReachesTheHubOnlyNoPushNoHook(t *testing.T) {
+	const mayor = "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+	const governor = "023c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+	dir := t.TempDir()
+	onMessage := filepath.Join(dir, "on-message")
+	cfg := config.Config{MayorKey: mayor, OnMessage: "echo x >> " + onMessage, HomeCmd: "exit 0"}
+	mon := standby.New(cfg.HomeCmd)
+	mon.Check()
+	push, hub := &recordingNotifier{}, &recordingNotifier{}
+	fanout := buildFanout(cfg, mon, push, hub)
+	events := index.Record{Payload: []byte(`{"v":1,"kind":"msg","class":"events","to":"` + governor + `","from":"` + mayor + `","ts":1,"ct":"x"}`)}
+
+	fanout.RecordIndexed(events)
+	time.Sleep(500 * time.Millisecond)
+	if hub.n.Load() != 1 {
+		t.Fatalf("the hub was told about %d events records, want 1", hub.n.Load())
+	}
+	if push.n.Load() != 0 {
+		t.Fatalf("push was told about %d events records, want 0", push.n.Load())
+	}
+	if b, _ := os.ReadFile(onMessage); len(b) != 0 {
+		t.Fatalf("the on-message hook ran for an events record: %q", b)
+	}
+}
+
 func TestStartupNotesAMillKeyThatAlsoHoldsACockpitLicence(t *testing.T) {
 	const mill = "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
 	logged := func(held bool) string {

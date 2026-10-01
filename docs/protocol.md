@@ -29,7 +29,7 @@ JSON shape that only postern understands:
 - `kind` — always `"msg"`.
 - `class` — one of `"message"`, `"decision-needed"`, `"landing"`, `"alarm"`
   (`mw-f758y.5`), `"move-home"` (§18), `"grist"` (an app's AI work for the
-  factory and its answer, §19), `"talk"` (a turn on the Talk line, §20), or `"call"` (a call record, §21). Sits in the clear beside the ciphertext on purpose
+  factory and its answer, §19), `"talk"` (a turn on the Talk line, §20), `"call"` (a call record, §21), or `"events"` (a batch of factory events, §22). Sits in the clear beside the ciphertext on purpose
   (`mw-f758y.9` Q1): a classified-push backend, or anyone else reading the chain,
   can act on the class (e.g. wake the Mayor for `alarm`) without holding either
   party's private key.
@@ -498,9 +498,9 @@ The backend:
    80 runes, when it has one and is a `message`, `decision-needed`, `landing` or
    `alarm`; §1), a `message` event on §10's stream, and the
    on-message hook (`POSTERN_ON_MESSAGE`, `docs/api.md`). A `talk` record or a
-   `call` record gets the `message` event only (§20, §21), but for the Mayor's ring
-   (a `call` record whose clear `role` is `ring`), which is pushed too, titled
-   `The Mayor is calling`, its `summary` the body (§21).
+   `call` record or an `events` record gets the `message` event only (§20, §21, §22), but
+   for the Mayor's ring (a `call` record whose clear `role` is `ring`), which is pushed too,
+   titled `The Mayor is calling`, its `summary` the body (§21).
 
 A body over 256 KiB is refused `413`. The chain channel (§4) keeps working
 unchanged: a reader must accept both kinds of record, in `seq` order.
@@ -1331,3 +1331,84 @@ other class, the phone puts the record on chain itself:
   in place of **Call sent HH:MM**, until a ring or an answer arrives; the connection mark
   keeps saying the backend is reconnecting. The sent copy is kept under the transaction id,
   not a `direct:` id, and the backend's later echo of the same record lands on that row.
+
+## 22. Events
+
+The Governor, 2026-10-01 (map `mw-6ww.55`, Q2 B and Q3 B): the factory's events (a
+bead changing state, a landing, an alarm) reach Postern as one sealed record per batch
+of about 2 seconds, not one per event, and an emergency goes out unbatched. A batch is
+§1's envelope with `"class": "events"`, sent from the Mayor's key (the home) `to` the
+Governor's, delivered with `POST /api/messages` (§9) or put on chain (§4). It carries
+no `summary`, so no word of it is ever pushed, handed to a hook or logged.
+
+### What the backend does with an events record
+
+The same as with a Talk turn (§20) and a call record (§21), and for the same reason:
+an `events` record is indexed like any record, gets a `message` event on §10's stream
+(the one `seq` the client pages from) and **nothing else**: no web push and no
+on-message hook. The Governor's phone reads batches off the stream when it is open; a
+batch is never a reason to wake it.
+
+- **Direct.** `POST /api/messages` accepts the class from any cockpit key, as for any
+  record (§9): `from` must be the key that signed the request, which is the Mayor's
+  key when the Mayor posts it. The record is named `direct:<sha256 hex>` (§9).
+- **On chain.** The poller indexes the same record when it finds it at the anchor
+  address (§3, §4), once however often it sees the transaction: the index dedupes by
+  `txid`.
+
+### The events plaintext
+
+What `ct` seals to the recipient:
+
+```json
+{
+  "from": 4101,
+  "to": 4101,
+  "lane": "normal",
+  "events": [
+    {
+      "seq": 4101,
+      "ts": 1790000000,
+      "kind": "bead.state",
+      "bead": "mw-jrx0s.3",
+      "actor": "builder",
+      "from": "open",
+      "to": "in_progress",
+      "detail": "claimed"
+    }
+  ]
+}
+```
+
+The field names are those of millwright's `domain/events` `Batch` (millwright's
+`docs/events.md` did not exist when this section was written, so the story's names
+are used; if that document differs, it wins and this section follows it).
+
+- `from`, `to` — the first and last event `seq` in the batch, inclusive. They name the
+  batch's **seq range**.
+- `lane` — one of:
+  - `normal`: the ordinary batch, about 2 seconds of events, sent direct.
+  - `emergency`: an unbatched record for one event (or the few that cannot wait),
+    sent at once, outside the batching window.
+  - `fallback`: a batch re-sent on chain later, with the same seq range and events
+    as the record it repeats, because the direct line could not be reached.
+- `events` — the batch, in `seq` order; each is `{seq, ts, kind, bead, actor, from, to,
+  detail}`: `seq` the event's number in the factory's own event log, `ts` Unix
+  seconds, `kind` what happened, `bead` the bead concerned (or empty), `actor` who
+  or what did it, `from` and `to` the state or value it moved between (empty when
+  none) and `detail` a short free string. An event's `from` and `to` are the
+  event's own, not the batch's.
+
+A record's payload may not pass 10,240 bytes (as for a talk turn, §20), so a batch is
+cut to fit and the rest follows in the next batch.
+
+### Deduping: by seq, never by txid
+
+A `fallback` batch repeats a batch already sent, and that batch may also have arrived
+direct. The two copies are two index rows: a direct record's `txid` is
+`direct:<sha256>`, a chain copy's is the transaction id, and the backend's index dedupes
+by `txid` only. So the **reader** dedupes, by event `seq`: an event whose `seq` it
+already holds is dropped, whichever record, lane or `txid` it came in. The same chain
+transaction seen again by the poller is the same row and is never indexed twice. A
+reader also tolerates a gap or overlap between batches: the seq range says what a
+record claims to cover, and the event `seq`s are what is kept.

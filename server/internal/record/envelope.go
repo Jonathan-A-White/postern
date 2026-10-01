@@ -17,6 +17,7 @@ var MessageClasses = map[string]bool{
 	ClassGrist:        true,
 	ClassTalk:         true,
 	ClassCall:         true,
+	ClassEvents:       true,
 }
 
 // ClassGrist is an app's AI work for the factory, and the mill's answer to
@@ -38,6 +39,11 @@ const ClassCall = "call"
 
 // RoleRing is the clear `role` of the Mayor's call-back, the one call record that is pushed.
 const RoleRing = "ring"
+
+// ClassEvents is a batch of factory events from the Mayor's host to the
+// Governor (docs/protocol.md §22): like a talk turn it reaches the event
+// stream and nothing else, never a push or a hook.
+const ClassEvents = "events"
 
 // Envelope is docs/protocol.md §1's clear message payload. The backend never
 // decrypts Ct; it only checks the envelope's shape.

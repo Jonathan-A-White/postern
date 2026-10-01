@@ -379,3 +379,73 @@ func TestPollOnceUnconfirmedHeightIsZero(t *testing.T) {
 		t.Fatalf("records = %+v, want one record with height 0", records)
 	}
 }
+
+// An events record (docs/protocol.md §22) on chain is indexed once however
+// often the poller sees its txid, and told to the notifier once.
+func TestPollOnceIndexesAnEventsRecordOnce(t *testing.T) {
+	batch := buildRecordScript(1, []byte(`{"kind":"msg","class":"events","to":"aaa","ct":"x"}`))
+	fake := &fakeWOC{
+		history:    `[{"tx_hash":"tx1","height":100}]`,
+		txHex:      map[string]string{"tx1": buildRawTx([][]byte{batch})},
+		hexFetches: map[string]int{},
+	}
+	server := httptest.NewServer(fake.handler())
+	defer server.Close()
+
+	client := woc.NewClient(server.URL, woc.WithMinSpacing(0), woc.WithSleep(func(time.Duration) {}))
+	store, err := index.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("index.Open: %v", err)
+	}
+	defer store.Close()
+	notifier := &fakeNotifier{}
+	p := New(client, store, "mAnchor", WithNotifier(notifier))
+
+	for pass := 1; pass <= 3; pass++ {
+		if err := p.PollOnce(); err != nil {
+			t.Fatalf("PollOnce %d: %v", pass, err)
+		}
+	}
+	if records, _ := store.Since(0); len(records) != 1 || records[0].TxID != "tx1" {
+		t.Fatalf("index holds %+v after three polls, want tx1 once", records)
+	}
+	if n := len(notifier.calls()); n != 1 {
+		t.Fatalf("notifier told %d times, want 1", n)
+	}
+}
+
+// A batch that went direct first and is later re-sent on chain (the fallback
+// lane, docs/protocol.md §22) is a second row: a direct record's txid is
+// "direct:<sha256>", a chain copy's is the transaction id, and the index
+// dedupes by txid. The reader dedupes by seq range. Each copy is indexed once.
+func TestAFallbackChainCopyOfADirectEventsRecordIsOneMoreRowIndexedOnce(t *testing.T) {
+	batch := buildRecordScript(1, []byte(`{"kind":"msg","class":"events","to":"aaa","ct":"x"}`))
+	fake := &fakeWOC{
+		history:    `[{"tx_hash":"tx1","height":100}]`,
+		txHex:      map[string]string{"tx1": buildRawTx([][]byte{batch})},
+		hexFetches: map[string]int{},
+	}
+	server := httptest.NewServer(fake.handler())
+	defer server.Close()
+
+	client := woc.NewClient(server.URL, woc.WithMinSpacing(0), woc.WithSleep(func(time.Duration) {}))
+	store, err := index.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("index.Open: %v", err)
+	}
+	defer store.Close()
+	if _, created, err := store.AppendDirect(index.Record{TxID: "direct:abc", Payload: []byte(`{"kind":"msg","class":"events","to":"aaa","ct":"x"}`)}); err != nil || !created {
+		t.Fatalf("AppendDirect: created=%v err=%v", created, err)
+	}
+	p := New(client, store, "mAnchor")
+
+	for pass := 1; pass <= 2; pass++ {
+		if err := p.PollOnce(); err != nil {
+			t.Fatalf("PollOnce %d: %v", pass, err)
+		}
+	}
+	records, _ := store.Since(0)
+	if len(records) != 2 || records[0].TxID != "direct:abc" || records[1].TxID != "tx1" {
+		t.Fatalf("index holds %+v, want the direct copy then the chain copy, once each", records)
+	}
+}

@@ -125,3 +125,15 @@ func TestSummaryDoesNotChangeWhoIsAddressed(t *testing.T) {
 		t.Fatal("an empty payload was addressed")
 	}
 }
+
+// An events record (docs/protocol.md §22) is never summary-pushed, even if a
+// sender put a summary on it: its body stays out of any push.
+func TestAnEventsRecordsSummaryIsNeverAPushBody(t *testing.T) {
+	p, ok := recordPush("direct:ab", recordWithSummary(t, "events", "Answer: should never show"))
+	if !ok {
+		t.Fatal("events record not addressed")
+	}
+	if p.Body != "" {
+		t.Fatalf("events push body = %q, want none", p.Body)
+	}
+}

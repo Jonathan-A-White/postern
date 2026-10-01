@@ -1,0 +1,141 @@
+// The phone reading the anchor address itself (docs/protocol.md §21): the WhatsOnChain history
+// adapter, a record found in a raw transaction, and the txid dedupe.
+import { afterEach, describe, expect, it } from 'vitest';
+import { PrivateKey } from '@bsv/sdk';
+import { chainConfig } from 'spell-forge-bsv';
+import { db } from '../../src/data/db';
+import { messagesRepo } from '../../src/data/repositories';
+import { ANCHOR_ADDRESS } from '../../src/services/messages';
+import { encodeCall } from '../../src/services/call';
+import { fetchAnchorHistory, fetchRawTransaction, readChain, recordsInTransaction } from '../../src/services/chainRead';
+import { fakeAnchorChain, publicKeyOf, recordTransaction } from '../support/chain-record';
+
+const PHONE = '45'.repeat(32);
+const MAYOR = '77'.repeat(32);
+const PHONE_PUB = publicKeyOf(PHONE);
+const MAYOR_PUB = publicKeyOf(MAYOR);
+const phoneKey = new Uint8Array(PrivateKey.fromHex(PHONE).toArray());
+const base = `${chainConfig.providerBaseUrl}/address/${ANCHOR_ADDRESS}`;
+
+const ring = (at = 1_790_000_090) =>
+  recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: PHONE_PUB, class: 'call', plaintext: encodeCall({ role: 'ring', text: 'Back now: two landings.', at }), ts: at });
+
+afterEach(async () => {
+  await db.messages.clear();
+});
+
+function answering(routes: Record<string, { status: number; body: unknown }>): typeof fetch {
+  return (async (input: RequestInfo | URL) => {
+    const route = routes[String(input)] ?? { status: 404, body: 'not found' };
+    const text = typeof route.body === 'string' ? route.body : JSON.stringify(route.body);
+    return { ok: route.status < 300, status: route.status, text: async () => text, json: async () => JSON.parse(text) } as unknown as Response;
+  }) as typeof fetch;
+}
+
+describe('the WhatsOnChain history adapter', () => {
+  it('lists unconfirmed transactions first, then confirmed ones newest first, each once', async () => {
+    const fetchImpl = answering({
+      [`${base}/unconfirmed/history`]: { status: 200, body: { result: [{ tx_hash: 'c'.repeat(64), height: 0 }] } },
+      [`${base}/confirmed/history`]: {
+        status: 200,
+        body: { result: [{ tx_hash: 'a'.repeat(64), height: 10 }, { tx_hash: 'b'.repeat(64), height: 12 }, { tx_hash: 'c'.repeat(64), height: 13 }] },
+      },
+    });
+    expect(await fetchAnchorHistory(ANCHOR_ADDRESS, fetchImpl)).toEqual(['c', 'b', 'a'].map((ch) => ch.repeat(64)));
+  });
+
+  it('reads an address WhatsOnChain has never seen as no history', async () => {
+    const fetchImpl = answering({ [`${base}/unconfirmed/history`]: { status: 200, body: { result: [] } } });
+    expect(await fetchAnchorHistory(ANCHOR_ADDRESS, fetchImpl)).toEqual([]);
+  });
+
+  it('refuses a list that is not a list, and a failed answer, in plain words', async () => {
+    const odd = answering({ [`${base}/unconfirmed/history`]: { status: 200, body: { result: [] } }, [`${base}/confirmed/history`]: { status: 200, body: { oops: 1 } } });
+    await expect(fetchAnchorHistory(ANCHOR_ADDRESS, odd)).rejects.toThrow('not a list');
+    const failed = answering({ [`${base}/unconfirmed/history`]: { status: 500, body: 'boom' } });
+    await expect(fetchAnchorHistory(ANCHOR_ADDRESS, failed)).rejects.toThrow('500');
+  });
+
+  it('fetches a raw transaction by id and trims the hex', async () => {
+    const txid = 'd'.repeat(64);
+    const fetchImpl = answering({ [`${chainConfig.providerBaseUrl}/tx/${txid}/hex`]: { status: 200, body: '0100abcd\n' } });
+    expect(await fetchRawTransaction(txid, fetchImpl)).toBe('0100abcd');
+    await expect(fetchRawTransaction('e'.repeat(64), fetchImpl)).rejects.toThrow('404');
+  });
+});
+
+describe('a record in a raw transaction', () => {
+  it('is found in its output, and the anchor payment is not one', () => {
+    const tx = ring();
+    const found = recordsInTransaction(tx.hex);
+    expect(found).toHaveLength(1);
+    expect(found[0].vout).toBe(0);
+    expect(found[0].payload).toMatchObject({ kind: 'msg', class: 'call', to: PHONE_PUB, from: MAYOR_PUB });
+  });
+
+  it('finds nothing in a transaction that is not a record, or not a transaction', () => {
+    expect(recordsInTransaction('00')).toEqual([]);
+    expect(recordsInTransaction('not hex at all')).toEqual([]);
+  });
+});
+
+describe('reading the chain', () => {
+  it('stores and decrypts a record for this phone, and says what was new', async () => {
+    const tx = ring();
+    const chain = fakeAnchorChain([tx]);
+    const rows = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: chain.fetchImpl });
+    expect(rows).toHaveLength(1);
+    const stored = await messagesRepo.get(`${tx.txid}:0`);
+    expect(stored).toMatchObject({ class: 'call', direction: 'received', read: true });
+    expect(JSON.parse(stored!.plaintext!)).toMatchObject({ role: 'ring', text: 'Back now: two landings.' });
+  });
+
+  it('asks for a transaction once: a second read of the same history fetches no raw transaction', async () => {
+    const chain = fakeAnchorChain([ring()]);
+    const seen = new Set<string>();
+    await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl });
+    const firstCalls = chain.calls.filter((url) => url.endsWith('/hex')).length;
+    const again = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl });
+    expect(firstCalls).toBe(1);
+    expect(chain.calls.filter((url) => url.endsWith('/hex'))).toHaveLength(1);
+    expect(again).toEqual([]);
+  });
+
+  it('leaves alone a record the backend already delivered, and reports no new one', async () => {
+    const tx = ring();
+    await messagesRepo.put({
+      id: `${tx.txid}:0`, txid: tx.txid, vout: 0, seq: 7, class: 'call', to: PHONE_PUB, from: MAYOR_PUB, ts: 1, ciphertext: 'x',
+      plaintext: 'already here', direction: 'received', read: true, thread: 'call',
+    });
+    const rows = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: fakeAnchorChain([tx]).fetchImpl });
+    expect(rows).toEqual([]);
+    expect((await messagesRepo.get(`${tx.txid}:0`))?.seq).toBe(7);
+  });
+
+  it('keeps no record that names neither this phone as sender nor as recipient', async () => {
+    const stranger = recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: publicKeyOf('99'.repeat(32)), class: 'message', plaintext: 'hi', ts: 5 });
+    const rows = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen: new Set(), fetchImpl: fakeAnchorChain([stranger]).fetchImpl });
+    expect(rows).toEqual([]);
+    expect(await messagesRepo.getAll()).toEqual([]);
+  });
+
+  it('reads only the newest few transactions of a long history in one pass, the rest on the next', async () => {
+    const txs = Array.from({ length: 30 }, (_, i) => recordTransaction({ senderHex: MAYOR, recipientPublicKeyHex: PHONE_PUB, class: 'message', plaintext: `m${i}`, ts: 100 + i }));
+    const chain = fakeAnchorChain(txs);
+    const seen = new Set<string>();
+    const first = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl });
+    expect(first).toHaveLength(20);
+    const second = await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl });
+    expect(second).toHaveLength(10);
+  });
+
+  it('forgets nothing it failed to read: a transaction WhatsOnChain would not give is asked for again', async () => {
+    const tx = ring();
+    const chain = fakeAnchorChain([tx]);
+    const seen = new Set<string>();
+    chain.down = true;
+    await expect(readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).rejects.toThrow();
+    chain.down = false;
+    expect(await readChain({ publicKeyHex: PHONE_PUB, unlockedKey: phoneKey, seen, fetchImpl: chain.fetchImpl })).toHaveLength(1);
+  });
+});

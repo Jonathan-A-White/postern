@@ -23,7 +23,7 @@ interface ApiResponse {
   next: number;
 }
 
-function isMessagePayload(payload: unknown): payload is MessagePayload {
+export function isMessagePayload(payload: unknown): payload is MessagePayload {
   if (typeof payload !== 'object' || payload === null) return false;
   const p = payload as Record<string, unknown>;
   return (
@@ -71,6 +71,54 @@ export async function decryptPendingMessages(unlockedKey: Uint8Array): Promise<v
   }
 }
 
+export interface RecordToStore {
+  seq: number;
+  txid: string;
+  vout: number;
+  payload: MessagePayload;
+}
+
+/**
+ * Keeps one record that names this key as sender or recipient, decrypted if the key is
+ * unlocked, under its outpoint (`txid:vout`). A row already kept is updated in place, never
+ * duplicated. Resolves with the row, or `undefined` for a record that names neither side.
+ * Shared by the backend's feed (syncMessages) and the phone's own read of the chain
+ * (docs/protocol.md §21).
+ */
+export async function storeRecord(record: RecordToStore, publicKeyHex: string, unlockedKeyHex?: string): Promise<MessageRow | undefined> {
+  const payload = record.payload;
+  const isToMe = payload.to === publicKeyHex;
+  const isFromMe = payload.from === publicKeyHex;
+  if (!isToMe && !isFromMe) return undefined;
+
+  const id = `${record.txid}:${record.vout}`;
+  const existing = await messagesRepo.get(id);
+  const direction: MessageRow['direction'] = isFromMe ? 'sent' : 'received';
+
+  const decrypted = unlockedKeyHex ? tryDecrypt(payload, unlockedKeyHex, direction) : {};
+  const plaintext = existing?.plaintext ?? decrypted.plaintext;
+
+  const row: MessageRow = {
+    id,
+    txid: record.txid,
+    vout: record.vout,
+    seq: record.seq,
+    class: payload.class,
+    to: payload.to,
+    from: payload.from,
+    ts: payload.ts,
+    ciphertext: payload.ct,
+    plaintext,
+    decryptFailed: existing?.decryptFailed ?? decrypted.decryptFailed,
+    direction,
+    // A Talk turn or a call record is never unread: it is heard on the Talk line, not counted (§20, §21).
+    read: existing?.read ?? (payload.class === 'talk' || payload.class === 'call'),
+    thread: existing?.thread ?? threadKey(threadOf(payload.class, plaintext)),
+  };
+  await messagesRepo.put(row);
+  return row;
+}
+
 export interface SyncMessagesParams {
   /** This phone's own public key (hex) — the vault row's publicKeyHex. */
   publicKeyHex: string;
@@ -101,35 +149,7 @@ export async function syncMessages(params: SyncMessagesParams): Promise<void> {
 
   for (const record of body.records ?? []) {
     if (!isMessagePayload(record.payload)) continue;
-    const payload = record.payload;
-    const isToMe = payload.to === params.publicKeyHex;
-    const isFromMe = payload.from === params.publicKeyHex;
-    if (!isToMe && !isFromMe) continue;
-
-    const id = `${record.txid}:${record.vout}`;
-    const existing = await messagesRepo.get(id);
-    const direction: MessageRow['direction'] = isFromMe ? 'sent' : 'received';
-
-    const decrypted = unlockedKeyHex ? tryDecrypt(payload, unlockedKeyHex, direction) : {};
-    const plaintext = existing?.plaintext ?? decrypted.plaintext;
-
-    await messagesRepo.put({
-      id,
-      txid: record.txid,
-      vout: record.vout,
-      seq: record.seq,
-      class: payload.class,
-      to: payload.to,
-      from: payload.from,
-      ts: payload.ts,
-      ciphertext: payload.ct,
-      plaintext,
-      decryptFailed: existing?.decryptFailed ?? decrypted.decryptFailed,
-      direction,
-      // A Talk turn or a call record is never unread: it is heard on the Talk line, not counted (§20, §21).
-      read: existing?.read ?? (payload.class === 'talk' || payload.class === 'call'),
-      thread: existing?.thread ?? threadKey(threadOf(payload.class, plaintext)),
-    });
+    await storeRecord({ seq: record.seq, txid: record.txid, vout: record.vout, payload: record.payload }, params.publicKeyHex, unlockedKeyHex);
   }
 
   await settingsRepo.set(CURSOR_SETTING_KEY, body.next);

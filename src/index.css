@@ -227,7 +227,7 @@ html {
 }
 
 .markdown pre {
-  @apply my-2 overflow-x-auto rounded-lg bg-sunken p-3;
+  @apply my-2 overflow-x-auto rounded-lg bg-sunken p-3 pt-9;
 }
 
 .markdown-wrap pre {

@@ -12,6 +12,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { inAppHref } from '../router';
 import { remarkBeadLinks } from './beadLinks';
+import { CodeBlock } from '../ui/CodeBlock';
 import { Mermaid } from './Mermaid';
 
 function mermaidSource(children: ReactNode): string | null {
@@ -24,6 +25,13 @@ function mermaidSource(children: ReactNode): string | null {
     return null;
   }
   return String(child.props.children).replace(/\n$/, '');
+}
+
+function textOf(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (Array.isArray(node)) return node.map(textOf).join('');
+  if (isValidElement<{ children?: ReactNode }>(node)) return textOf(node.props.children);
+  return String(node);
 }
 
 const components: Components = {
@@ -39,12 +47,12 @@ const components: Components = {
         {children}
       </a>
     ),
-  pre: ({ children, ...props }) => {
+  pre: ({ children }) => {
     const source = mermaidSource(children);
     if (source !== null) {
       return <Mermaid source={source} />;
     }
-    return <pre {...props}>{children}</pre>;
+    return <CodeBlock text={textOf(children).replace(/\n$/, '')}>{children}</CodeBlock>;
   },
 };
 

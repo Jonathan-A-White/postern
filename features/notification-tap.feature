@@ -45,3 +45,11 @@ Feature: Tapping a push notification opens the app at what it is about (mw-f758y
     And the app opens where the notification pointed
     And the reply arrives and decrypts
     Then the app moves to the reply thread of the General post
+
+  Scenario: mw-gq6.163 AC-8: a reply tapped on a cold start waits for the app's own sync, however long it takes, and opens the reply thread
+    Given the Mayor's message push arrives for a reply the phone does not hold yet
+    When he taps the notification
+    And the app opens where the notification pointed
+    And more than 8 seconds pass before the app's sync brings in the reply and its post
+    Then the app is still finding the message
+    And the app moves to the reply thread of the General post

@@ -26,6 +26,9 @@ export interface LiveState {
   /** How many times the stream has come back after a drop; screens with
    * something that failed while it was down retry when this changes. */
   reconnects: number;
+  /** How many message syncs have finished, whether they worked or not; a screen
+   * waiting for a message to arrive counts these rather than a clock. */
+  syncs: number;
 }
 
 const POLL_MS = 20_000;
@@ -35,7 +38,7 @@ const STREAM_STALE_MS = 60_000;
 /** Two returns to the foreground closer than this are one. */
 const FOREGROUND_DEBOUNCE_MS = 3_000;
 
-let state: LiveState = { status: 'idle', me: null, reconnects: 0 };
+let state: LiveState = { status: 'idle', me: null, reconnects: 0, syncs: 0 };
 const listeners = new Set<() => void>();
 let current: { key: Uint8Array; abort: AbortController; interrupt?: AbortController } | null = null;
 let lastForeground = 0;
@@ -100,8 +103,9 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boole
       }
     }
     ok = errors.length === 0;
-    if (ok) setState({ lastHeard: Date.now(), error: undefined });
-    else setState({ error: errors.join('; ') });
+    const syncs = what.messages ? state.syncs + 1 : state.syncs;
+    if (ok) setState({ lastHeard: Date.now(), error: undefined, syncs });
+    else setState({ error: errors.join('; '), syncs });
   });
   return ok;
 }

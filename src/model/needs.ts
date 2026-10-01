@@ -105,16 +105,49 @@ export function answeredByComment(need: Need, comments: BeadComment[]): SaidAnsw
   return undefined;
 }
 
-function names(text: string, words: string): boolean {
-  const word = words.trim().toLowerCase();
-  if (word === '') return false;
-  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'u').test(text.toLowerCase());
+const EDGE_BEFORE = '(^|[^\\p{L}\\p{N}])';
+const EDGE_AFTER = '($|[^\\p{L}\\p{N}])';
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Where in `text` the regex first matches, past its leading edge character; -1 when it does not. */
+function indexOfWord(text: string, pattern: string, flags: string): number {
+  const found = new RegExp(pattern, flags).exec(text);
+  return found ? found.index + found[1].length : -1;
 }
 
-/** The option a typed `text` names, the longest when it names several; undefined when it names none. */
+/** Where `text` names `words` as a whole word run (any case); -1 when it does not. */
+function wholeAt(text: string, words: string): number {
+  const word = words.trim().toLowerCase();
+  return word === '' ? -1 : indexOfWord(text.toLowerCase(), `${EDGE_BEFORE}${escapeRegExp(word)}${EDGE_AFTER}`, 'u');
+}
+
+/**
+ * Where `text` names a lettered option ('A: It greyed out') by its letter; -1 when it does not. The letter names it
+ * standing alone in uppercase ('Do A', 'A please'), or in any case right after do / option / pick / choose / go with /
+ * answer; a lowercase lone 'a' elsewhere is the article.
+ */
+function letterAt(text: string, option: string): number {
+  const letter = /^\s*(\p{L})\s*:/u.exec(option)?.[1];
+  if (letter === undefined) return -1;
+  const capital = indexOfWord(text, `${EDGE_BEFORE}${escapeRegExp(letter.toUpperCase())}${EDGE_AFTER}`, 'u');
+  const cued = indexOfWord(text, `${EDGE_BEFORE}(?:do|option|pick|choose|go with|answer)[\\s:]+${escapeRegExp(letter)}${EDGE_AFTER}`, 'iu');
+  return [capital, cued].filter((at) => at >= 0).sort((a, b) => a - b)[0] ?? -1;
+}
+
+/**
+ * The option a typed `text` names, by its whole label or (for 'A: …') its letter; undefined when it names none.
+ * Among several named, the longest label wins; when a letter names one, the earliest in the text.
+ */
 export function optionNamed(need: Need, text: string): string | undefined {
-  return need.options.filter((option) => names(text, option)).sort((a, b) => b.length - a.length)[0];
+  const named = need.options.flatMap((option) => {
+    const whole = wholeAt(text, option);
+    const letter = letterAt(text, option);
+    const at = [whole, letter].filter((index) => index >= 0).sort((a, b) => a - b)[0];
+    return at === undefined ? [] : [{ option, at, byLetter: letter >= 0 && (whole < 0 || letter < whole) }];
+  });
+  if (named.some((hit) => hit.byLetter)) named.sort((a, b) => a.at - b.at || b.option.length - a.option.length);
+  else named.sort((a, b) => b.option.length - a.option.length);
+  return named[0]?.option;
 }
 
 /** Whether `soleQuestion` (no other question is open) or the words themselves tie a message in Factory to this card. */

@@ -1,7 +1,7 @@
 // features/steps/bead-links.steps.tsx — runs features/bead-links.feature (mw-tbx1n.11):
 // the Talk screen over a seeded Dexie, one message whose text names beads.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, configure, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, within, configure, fireEvent, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
@@ -14,6 +14,14 @@ configure({ asyncUtilTimeout: 5000 });
 let now = Date.now();
 let seeded: MessageRow[] = [];
 const spoken: string[] = [];
+let extraBeads: Array<{ id: string; title: string }> = [];
+
+function viewWith(at: number) {
+  const view = fixtureView(at);
+  const template = view.beads[0];
+  for (const { id, title } of extraBeads) view.beads.push({ ...template, id, title, parent: '', waits: [] });
+  return view;
+}
 
 class FakeUtterance {
   constructor(public text: string) {}
@@ -50,6 +58,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     now = Date.now();
     seeded = [];
     spoken.length = 0;
+    extraBeads = [];
     vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
     vi.stubGlobal('speechSynthesis', { speak: (u: FakeUtterance) => spoken.push(u.text), cancel: () => {}, getVoices: () => [] });
     await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
@@ -61,7 +70,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       seeded.push(generalMessage(text));
     });
     When('the general thread is opened', async () => {
-      await viewRepo.save({ plaintext: JSON.stringify(fixtureView(now)), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
+      await viewRepo.save({ plaintext: JSON.stringify(viewWith(now)), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
       for (const row of seeded) await messagesRepo.put(row);
       render(<TalkScreen thread="general" />);
       await screen.findByTestId('conversation');
@@ -79,7 +88,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       seeded.push(generalMessage(text));
     });
     When('the general thread is opened and Read aloud is tapped on the message', async () => {
-      await viewRepo.save({ plaintext: JSON.stringify(fixtureView(now)), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
+      await viewRepo.save({ plaintext: JSON.stringify(viewWith(now)), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
       for (const row of seeded) await messagesRepo.put(row);
       render(<TalkScreen thread="general" />);
       const conversation = await screen.findByTestId('conversation');
@@ -93,6 +102,33 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       for (const id of [a, b, c]) {
         expect(await within(conversation).findByRole('link', { name: id })).toHaveAttribute('href', `?v=bead&id=${id}`);
       }
+    });
+  });
+  Scenario("mw-gq6.224: the Read aloud control speaks a bead's short title in place of its id while the screen keeps the chip", ({ Given, When, Then, And }) => {
+    Given('the view holds bead {string} titled {string}', (_c, id: string, title: string) => {
+      extraBeads.push({ id, title });
+    });
+    And("the Mayor's message in the general thread is {string}", (_c, text: string) => {
+      seeded.push(generalMessage(text));
+    });
+    When('the general thread is opened and Read aloud is tapped on the message', async () => {
+      await viewRepo.save({ plaintext: JSON.stringify(viewWith(now)), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
+      for (const row of seeded) await messagesRepo.put(row);
+      render(<TalkScreen thread="general" />);
+      const conversation = await screen.findByTestId('conversation');
+      const button = await within(conversation).findByRole('button', { name: 'Read aloud' });
+      // The view row is read live; let it reach the screen before tapping.
+      await waitFor(() => {
+        fireEvent.click(button);
+        expect(spoken.at(-1)).toContain('A decision card');
+      });
+    });
+    Then('the phone speaks aloud {string}', (_c, text: string) => {
+      expect(spoken.at(-1)).toBe(text);
+    });
+    And('the message still shows link {string}', async (_c, id: string) => {
+      const conversation = screen.getByTestId('conversation');
+      expect(await within(conversation).findByRole('link', { name: id })).toHaveAttribute('href', `?v=bead&id=${id}`);
     });
   });
 });

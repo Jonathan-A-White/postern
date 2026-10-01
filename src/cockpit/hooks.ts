@@ -52,6 +52,12 @@ export function useViewIndex(): ViewState | undefined | null {
   }, [row]);
 }
 
+/** Every bead's title by id, for the speaker to say a bead's title in place of its id (mw-gq6.224). */
+export function useBeadTitles(): ReadonlyMap<string, string> {
+  const view = useViewIndex();
+  return useMemo(() => new Map([...(view?.index.byId ?? [])].map(([id, bead]) => [id, bead.title])), [view]);
+}
+
 /** The newest emergency event (§22) he has not tapped away; undefined when there is none. */
 export function useEmergency(): EventRow | undefined {
   return useLiveQuery(() => eventsRepo.latestEmergency(), [], undefined);

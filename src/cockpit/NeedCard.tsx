@@ -19,7 +19,7 @@ import { answeredByComment, answeredInWords, orderedOptions, releaseState, waits
 import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
-import { useAnswers, useOutbox, useStoredComments, useThreadMessages } from './hooks';
+import { useAnswers, useBeadTitles, useOutbox, useStoredComments, useThreadMessages } from './hooks';
 import { pendingAnswer } from '../model/outbox';
 import { OutboxMark } from './OutboxMark';
 import { clockTime } from '../services/age';
@@ -58,6 +58,7 @@ function questionWords(text: string): { headline: string; rest: string } {
 }
 
 export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardProps) {
+  const titles = useBeadTitles();
   const meta = NEED_META[need.kind];
   const { busy, run } = useSend();
   // An approval or a verification is one signed transaction: one tap, then it waits for the view.
@@ -310,7 +311,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
             Open
           </a>
         )}
-        <IconButton icon="speaker" label="Read aloud" size="sm" className="ml-auto" onClick={() => speak(spokenText(need))} />
+        <IconButton icon="speaker" label="Read aloud" size="sm" className="ml-auto" onClick={() => speak(spokenText(need), { titles })} />
       </div>
     </article>
   );

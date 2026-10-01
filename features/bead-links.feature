@@ -10,3 +10,10 @@ Feature: Every bead id in a message or card is a link (mw-tbx1n.11)
     When the general thread is opened and Read aloud is tapped on the message
     Then the phone speaks aloud "Running now. Next lands."
     And the message still shows links "mw-nqur1n.10", "mw-j0f2d.30" and "mw-gq6.222"
+
+  Scenario: mw-gq6.224: the Read aloud control speaks a bead's short title in place of its id while the screen keeps the chip
+    Given the view holds bead "mw-gq6.222" titled "[bug] A decision card answered in words never goes dead: the matcher needs the label"
+    And the Mayor's message in the general thread is "Landed: mw-gq6.222"
+    When the general thread is opened and Read aloud is tapped on the message
+    Then the phone speaks aloud "Landed: A decision card answered in words never goes dead"
+    And the message still shows link "mw-gq6.222"

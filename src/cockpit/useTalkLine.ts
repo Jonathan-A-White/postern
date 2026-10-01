@@ -16,7 +16,7 @@ import { holdAwake } from '../services/wakeLock';
 import { holdVoiceAlive } from '../services/silentLoop';
 import { announceAnswer, clearAnnouncement } from '../services/talkAnswerNotice';
 import { sendTurn } from './send';
-import { useTalkTurns } from './hooks';
+import { useBeadTitles, useTalkTurns } from './hooks';
 import { useMayorHere } from './useMayorHere';
 
 function buzz(ms: number): void {
@@ -45,6 +45,12 @@ export function useTalkLine() {
   const hold = useRef<object | null>(null);
   const handled = useRef(new Set<string>());
   const sending = useRef<TalkTurn | undefined>(undefined);
+  // Bead titles for the voice (mw-gq6.224): read through a ref so a view refresh never restarts speech.
+  const titles = useRef<ReadonlyMap<string, string>>(new Map());
+  const beadTitles = useBeadTitles();
+  useEffect(() => {
+    titles.current = beadTitles;
+  }, [beadTitles]);
   const supported = isListenSupported();
   // Whether the Mayor's wait is connected, as the last poll said; the wait's timing reads it each tick.
   const here = useMayorHere();
@@ -92,7 +98,7 @@ export function useTalkLine() {
     if (spoken === undefined) return;
     let current = true;
     let fallback: ReturnType<typeof setTimeout> | undefined;
-    if (canSpeak()) speak(spoken, { onEnd: () => current && feed({ type: 'spoken' }) });
+    if (canSpeak()) speak(spoken, { titles: titles.current, onEnd: () => current && feed({ type: 'spoken' }) });
     else fallback = setTimeout(() => feed({ type: 'spoken' }), 0);
     return () => {
       current = false;

@@ -527,7 +527,10 @@ delivered to `POST /api/messages` — goes through one `notify.Fanout`
 (`server/internal/notify`): the push notifier, a `message` event on
 `GET /api/events`, and the on-message hook. A repeat delivery of a stored record
 goes through none of them. A `talk` record (`docs/protocol.md` §20) or a `call`
-record (§21) gets the `message` event only: no push, and no hook of either kind.
+record (§21) gets the `message` event only: no push, and no hook of either kind. The one
+exception is a `call` record whose clear `role` is `ring` (the Mayor's call-back): it is
+pushed as well, with the title `The Mayor is calling` and, for a direct record, its
+`summary` as the body.
 
 ## The push notifier
 
@@ -551,11 +554,19 @@ record with no `to`/`class` (a License mint/transfer record, for instance) or a
 answers `410 Gone` has its subscription dropped from the store.
 
 A push may also carry two optional fields, `title` and `body`, which the service
-worker shows when present. A record's push never has a `title`, and has a `body`
-only from a direct record's `summary`:
+worker shows when present. A record's push never has a `title`, but for a ring, and
+has a `body` only from a direct record's `summary`:
 
 ```json
 { "class": "decision-needed", "txid": "direct:9c1e...", "ts": 1758700000, "body": "Answer: Pick the colour" }
+```
+
+A ring, a `call` record whose clear `role` is `ring` (`docs/protocol.md` §21), is pushed
+with `"class": "call"` and the title `The Mayor is calling`; a direct ring's `summary`
+is its `body`, and a chain ring has no body:
+
+```json
+{ "class": "call", "txid": "direct:5d0a...", "ts": 1758700000, "title": "The Mayor is calling", "body": "Back now: two landings." }
 ```
 
 A push with no record behind it (the watchdog's, below) has no `txid`:

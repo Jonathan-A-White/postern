@@ -33,6 +33,9 @@ JSON shape that only postern understands:
   (`mw-f758y.9` Q1): a classified-push backend, or anyone else reading the chain,
   can act on the class (e.g. wake the Mayor for `alarm`) without holding either
   party's private key.
+- `role` — optional, only on a `call` record (§21): `"request"`, `"ring"` or `"later"`,
+  in the clear beside `class` so the backend can push a ring and nothing else of a call.
+  Any other record ignores it.
 - `to` / `from` — compressed secp256k1 public keys, hex, 33 bytes (66 hex chars).
   The same keys BRC-78 embeds inside the ciphertext itself (see below) — carried
   here too so a reader can tell who a message is for/from without decrypting it.
@@ -45,7 +48,8 @@ JSON shape that only postern understands:
   ciphertext (the class tag, timestamp, and both public keys already travel in the
   clear in the fields above).
 - `summary` — optional, a string of at most 80 runes: a bead title and an act
-  (`"Answer: <title>"`), never a word of the message itself. It sits in the clear
+  (`"Answer: <title>"`), never a word of the message itself, but for the Mayor's ring
+  (§21), whose summary is its short reason, the line he chose to show. It sits in the clear
   beside `ct`, so it is public to anyone who reads the record. A sender puts it only
   on a direct record (§9), never a chain one; the backend turns it into the web
   push's body (§9 item 6). A record without one is unchanged.
@@ -494,7 +498,9 @@ The backend:
    80 runes, when it has one and is a `message`, `decision-needed`, `landing` or
    `alarm`; §1), a `message` event on §10's stream, and the
    on-message hook (`POSTERN_ON_MESSAGE`, `docs/api.md`). A `talk` record or a
-   `call` record gets the `message` event only (§20, §21).
+   `call` record gets the `message` event only (§20, §21), but for the Mayor's ring
+   (a `call` record whose clear `role` is `ring`), which is pushed too, titled
+   `The Mayor is calling`, its `summary` the body (§21).
 
 A body over 256 KiB is refused `413`. The chain channel (§4) keeps working
 unchanged: a reader must accept both kinds of record, in `seq` order.
@@ -1213,20 +1219,47 @@ The Governor, 2026-10-01 (map `mw-a0ih0`): the Talk line answers within seconds 
 the Mayor is here, but the Mayor is sometimes away between waits. A **call** is the
 note he leaves then, and the Mayor's way of calling back. A call record is §1's
 envelope with `"class": "call"`, delivered with `POST /api/messages` (§9): his go `to`
-the Mayor's key, the Mayor's `to` his. It carries no `summary`, so no word of it is
-ever pushed, handed to a hook or logged.
+the Mayor's key, the Mayor's `to` his. His request and his later carry no `summary`, so no
+word of them is ever pushed, handed to a hook or logged; the Mayor's ring carries its reason
+as the clear `summary` of a direct record, and that is the only word of a call that is
+pushed (below).
 
 ### What the backend does with a call record
 
-The same as with a Talk turn (§20) and for the same reason: a `call` record reaches
-§10's event stream (a `message` event) and nothing else, and runs no hook. The role is in
-the sealed plaintext, so the backend cannot tell a request from a ring; it never pushes a
-call record itself.
+The same as with a Talk turn (§20) for every call record but a ring: it reaches §10's event
+stream (a `message` event) and nothing else, and runs no hook. The role is in the sealed
+plaintext, so the backend knows it only from a **clear `role`** the sender may put in the
+envelope beside `class` and `ct` (`"role": "ring"`, `"request"` or `"later"`); a call
+record with no clear role, or any role but `ring`, is never pushed, handed to a hook or
+logged.
 
 - A **request** needs no push: the Mayor's `mw talk wait` is a reader of §10's stream and
   prints it the moment it is indexed.
-- A **ring** is meant to reach his phone, and is pushed by the Mayor's host rather than
-  the backend (the ring's story wires that push).
+- A **ring** is pushed to his phone. The backend does it when the record's clear `role` is
+  `ring` and `to` is a key with a subscription: the push is the §9 item 6 push, with
+  `class` `call`, the record's `txid` and `ts`, the title `The Mayor is calling` and, for a
+  direct record, the ring's reason as the body. The reason rides as the record's clear
+  `summary` (§1: at most 80 runes, the same rule as a decision's), so it is public to anyone
+  who reads a direct record in transit, and **a ring sent on chain carries no reason in its
+  push**: the title alone rings, and the reason shows once the phone has decrypted the
+  record. The ring still runs no hook. A ring that is never pushed (the backend in
+  standby, no subscription) is still read on the Talk line.
+
+### How the phone rings
+
+A ring's push is not an ordinary notification (src/push/classOptions.ts): its tag is
+`mayor-call` (a second ring replaces the first and re-alerts), it stays until he deals with
+it (`requireInteraction`), it is never `silent`, and it carries two buttons, **Answer** and
+**Later**, and a long vibration pattern, ten pulses of 600 ms 400 ms apart. The app sets no
+volume and never reads the phone's ring mode: Android plays the sound, the vibration or
+nothing as the phone's ring, vibrate or silent mode says. A Web Notification cannot loop
+forever, so the pattern plays once per ring; a second `mayor-call` push rings again.
+
+- **Answer**, or a tap on the notification itself, opens `/?v=line&call=<txid>`: the Talk
+  line, which reads **The Mayor called HH:MM: <reason>** above the hold button.
+- **Later** sends the `later` record below, through an open window of the app (the key is in
+  the app, never in the service worker), or, with no window open, keeps the tap in IndexedDB
+  and sends it at the next unlocked open. It closes the notification and opens nothing.
 
 ### The call plaintext
 
@@ -1260,6 +1293,11 @@ bytes: at most 2,000 bytes of text as JSON writes it, ending `...`.
 After he sends a request the Talk line screen reads **Call sent HH:MM** (the phone's
 24-hour local time of `at`) under the presence mark, until a ring from the Mayor or an
 answer on the Talk line arrives after it; then the note goes.
+
+The Mayor's newest ring leaves a note above the hold button, with the ring's `at` as
+HH:MM and its `text`: **The Mayor called HH:MM: <text>** once he opened the line from that
+ring's Answer, **Missed call HH:MM: <text>** for any ring he did not answer (Later, a
+swipe, a locked phone). The note stays until a turn he sends at or after the ring's `at`.
 
 ### When the backend cannot be reached
 

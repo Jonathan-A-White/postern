@@ -112,9 +112,10 @@ must be set to this value for the two sides to agree on what the poller watches.
 One P2PKH-funded transaction, the same shape `spell-forge-bsv`'s `write-record.ts`
 already builds for version-1 records (`buildRecordTransaction`), but built directly
 against `docs/api.md`'s `/api/utxos` and `/api/broadcast` rather than through a
-`ChainProvider`, since the PWA does not talk to WhatsOnChain directly (the one exception
-is §21's Call me with the backend out of reach, which builds this same transaction and
-lists coins and broadcasts at WhatsOnChain):
+`ChainProvider`, since the PWA does not talk to WhatsOnChain directly (the exceptions
+are §21's, with the backend out of reach: a Call me builds this same transaction and
+lists coins and broadcasts at WhatsOnChain, and the phone reads the anchor address's
+records back from WhatsOnChain itself):
 
 1. One P2PKH input per UTXO returned by `GET /api/utxos/{address}` for the sender's
    own address (excluding any 1-satoshi UTXO — that's a token, not fee money, same
@@ -1331,6 +1332,43 @@ other class, the phone puts the record on chain itself:
   in place of **Call sent HH:MM**, until a ring or an answer arrives; the connection mark
   keeps saying the backend is reconnecting. The sent copy is kept under the transaction id,
   not a `direct:` id, and the backend's later echo of the same record lands on that row.
+
+### The phone reads the chain itself
+
+The Mayor can answer a Call me, or ring, while the phone cannot reach the backend (the
+backend's push, §21's ring, needs the backend too). So while the live status (§10) is
+`reconnecting` or `offline`, the phone reads the anchor address (§3) from WhatsOnChain
+itself, with no backend:
+
+- **When.** Every 30 seconds, the first read 30 seconds after the status first reads
+  `reconnecting` or `offline` (a drop that mends in seconds never asks WhatsOnChain). It
+  stops the moment the event stream is back (status `live`), and starts again at the next
+  drop. A read that fails, WhatsOnChain being out of reach too, is tried again at the next
+  tick.
+- **What it reads.** `GET <provider>/address/<anchor>/unconfirmed/history` and
+  `GET <provider>/address/<anchor>/confirmed/history` (`{ "result": [{ "tx_hash", "height" }] }`;
+  a bare list is read too; a 404 on the confirmed history is none), at the same `<provider>` as
+  the rest of §21. Only the newest page is read: a ring is recent. Each transaction not yet
+  read this session is fetched with `GET <provider>/tx/<txid>/hex`, at most 20 a read, newest
+  first, the rest on later reads. A transaction is read once, so the 1-sat anchor payments and
+  the records for other keys cost one fetch each, not one per tick.
+- **What it keeps.** Each output that is a §1 record (§4's script, version `1`) whose `to`
+  or `from` is his key goes through the same decrypt (§2) and the same store as a record from
+  `GET /api/messages`, under `txid:vout`. A record already on the phone, from the backend or an
+  earlier read, is left as it is and counts as nothing new; the backend's own sync, once it is
+  back, replaces a record kept here by its own copy of the same `txid:vout`, so nothing shows
+  twice. Its sequence number is unknown until then.
+- **A ring rings.** A new `call` record from the Mayor whose plaintext role is `ring` (§21's
+  plaintext) and whose `at` is within the last 10 minutes rings in the app: if notifications are
+  allowed and the app's service worker is registered, the ring notification of "How the phone
+  rings" (Answer, Later, the long vibration, tag `mayor-call`), its body the ring's `text`, which
+  the phone has just decrypted; otherwise a banner over the screen, **The Mayor is calling**,
+  with the reason, **Answer** (opens the Talk line on that ring, as the notification's Answer
+  does) and **Dismiss**, and the same vibration pattern played once. An older ring is kept and
+  does not ring: it reads **Missed call HH:MM: <reason>** on the Talk line, as any unanswered ring.
+- **The line reopens.** Any record newly kept from the chain cuts the stream's reconnect wait
+  short, so the phone tries the backend at once (§10's stream, and the sync after it) rather
+  than at the end of its backoff. If it connects, the status goes `live` and the chain read stops.
 
 ## 22. Events
 

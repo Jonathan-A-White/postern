@@ -263,6 +263,63 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  const postWithFactoryReply = (channel: string, text: string, reply: string) => {
+    const root = say(text, { thread: channel });
+    say(reply, { re: root.txid });
+  };
+  const subtitleSays = async (_ctx: unknown, title: string, subtitle: string) => {
+    expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(subtitle)).toBeInTheDocument());
+  };
+
+  Scenario("mw-gq6.170 Q1: a reply sent with no channel to a post in a bead's channel shows under that post in the post's channel", ({ Given, When, Then, And }) => {
+    let tapped = '';
+    Given('a post {string} in the channel of bead {string} with the reply {string} sent in Factory', (_ctx, text: string, bead: string, reply: string) => postWithFactoryReply(beadChannel(bead), text, reply));
+    When('the notification for the reply {string} is tapped', async (_ctx, reply: string) => {
+      for (const row of seeded) await messagesRepo.put(row);
+      tapped = await resolveTapUrl({ txid: byText.get(reply)!.txid, class: 'message' });
+    });
+    Then('the app opens the thread of {string} in the channel of bead {string}', (_ctx, text: string, bead: string) => {
+      expect(parseRoute(new URL(tapped, 'https://postern.allmymind.org').search)).toEqual({ view: 'talk', thread: beadChannel(bead), root: byText.get(text)!.txid });
+    });
+    When('that thread opens', () => open(tapped));
+    Then('the screen is titled {string} and says {string}', subtitleSays);
+    And('the thread shows {string} and {string} in that order', (_ctx, a: string, b: string) => threadShows(a, b));
+    And('the composer says {string}', composerSays);
+  });
+
+  Scenario('mw-gq6.170 Q2: the same for a named channel', ({ Given, When, Then, And }) => {
+    let tapped = '';
+    Given('a post {string} in the named channel {string} with the reply {string} sent in Factory', (_ctx, text: string, name: string, reply: string) => postWithFactoryReply(namedChannel(name), text, reply));
+    When('the notification for the reply {string} is tapped', async (_ctx, reply: string) => {
+      for (const row of seeded) await messagesRepo.put(row);
+      tapped = await resolveTapUrl({ txid: byText.get(reply)!.txid, class: 'message' });
+    });
+    Then('the app opens the thread of {string} in the named channel {string}', (_ctx, text: string, name: string) => {
+      expect(parseRoute(new URL(tapped, 'https://postern.allmymind.org').search)).toEqual({ view: 'talk', thread: namedChannel(name), root: byText.get(text)!.txid });
+    });
+    When('that thread opens', () => open(tapped));
+    Then('the screen is titled {string} and says {string}', subtitleSays);
+    And('the thread shows {string} and {string} in that order', (_ctx, a: string, b: string) => threadShows(a, b));
+  });
+
+  Scenario('mw-gq6.170 Q3: a Thread link that names a post by Factory but the post lives in a bead\'s channel still opens that post with its reply', ({ Given, When, Then, And }) => {
+    Given('a post {string} in the channel of bead {string} with the reply {string} sent in Factory', (_ctx, text: string, bead: string, reply: string) => postWithFactoryReply(beadChannel(bead), text, reply));
+    When('the Factory thread of {string} opens', (_ctx, text: string) => open(`/?v=talk&t=general&r=${encodeURIComponent(byText.get(text)!.txid)}`));
+    Then('the screen is titled {string} and says {string}', subtitleSays);
+    And('the thread shows {string} and {string} in that order', (_ctx, a: string, b: string) => threadShows(a, b));
+  });
+
+  Scenario('mw-gq6.170 Q4: a Thread link to a post that is not on the phone keeps the empty state', ({ Given, When, Then }) => {
+    Given('a reply {string} in Factory that names a post not on the phone', (_ctx, reply: string) => {
+      say(reply, { re: `direct:${'f'.repeat(64)}` });
+    });
+    When('the Factory thread of a post that is not on the phone opens', () => open(`/?v=talk&t=general&r=${encodeURIComponent(`direct:${'f'.repeat(64)}`)}`));
+    Then('the thread says {string}', async (_ctx, text: string) => {
+      expect(await screen.findByText(text)).toBeInTheDocument();
+    });
+  });
+
   Scenario("mw-909ci.4: a picture with re is a reply in the post's thread and a transcript is not", ({ Given, When, Then, And }) => {
     Given('a post {string} in the named channel {string} with the picture reply {string} and the transcript {string}', (_ctx, text: string, name: string, picture: string, transcript: string) => {
       const root = say(text, { thread: namedChannel(name) });

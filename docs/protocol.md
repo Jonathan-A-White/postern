@@ -755,7 +755,11 @@ transcript (`role: "transcript"`) and a grist answer (§19, its own record kind)
 are annotations, not replies, and keep their rendering. The app groups a
 channel's conversation this way with `groupPosts` in `src/model/postThreads.ts`;
 a thread opens at `?v=talk&t=<channel>&r=<root txid>`, and a push for a reply
-opens that URL. A message that carries `re` is always sent as the
+opens that URL. A reply whose `re` names a post that lives in another channel
+(one sent with no channel to a bead's or a named channel's post sits in General)
+is still that post's reply: the app resolves the root across channels, the tap
+and the Thread screen open the post in its own channel with the reply under it,
+and only a root the phone does not hold keeps the reply a root of its own. A message that carries `re` is always sent as the
 JSON `{ "text": …, "re": "direct:…" }` (§6), never as bare text. A picture can be a reply:
 `{ "text": …, "attachment": {…}, "re": "direct:…" }` (or `attachments`) is a reply in
 that post's thread exactly as a text reply is, and so is a voice note with `re`;

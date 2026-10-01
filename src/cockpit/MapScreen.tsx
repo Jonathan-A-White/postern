@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, Chip, EmptyState, Icon, SectionTitle, Segmented, Spinner, cx } from '../ui';
 import { Screen } from './Shell';
 import { FactoryPulse } from './FactoryPulse';
+import { OpenLists } from './OpenLists';
 import { BeadCard, BeadRow, EpicCard, ProgressBar } from './BeadCards';
 import { Graph } from './Graph';
 import { FilterBar } from './FilterBar';
@@ -107,6 +108,7 @@ function FactoryLevel({ index, filter, setFilter }: { index: ViewIndex; filter: 
   return (
     <div className="flex flex-col gap-5">
       <FactoryPulse index={index} />
+      <OpenLists index={index} />
       <FilterBar filter={filter} onChange={setFilter} rigs={rigs} hosts={hosts} />
       {!isEmptyFilter(filter) ? (
         <section className="flex flex-col gap-2" aria-label="Matching work">

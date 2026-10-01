@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Banner, Button, EmptyState, IconButton, SectionTitle, Segmented, Spinner, TimeAgo } from '../ui';
 import { Screen } from './Shell';
 import { FactoryPulse } from './FactoryPulse';
+import { OpenLists } from './OpenLists';
 import { NeedCard } from './NeedCard';
 import { useAnswers, useMessages, useUnlockedKey, useViewIndex } from './hooks';
 import type { MessageRow } from '../data/db';
@@ -139,6 +140,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
         <NotifyPrompt />
 
         {index && <FactoryPulse index={index} />}
+        {index && <OpenLists index={index} />}
 
         {view === undefined && (
           <div className="flex justify-center py-16 text-muted">

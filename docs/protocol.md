@@ -117,7 +117,7 @@ One P2PKH-funded transaction, the same shape `spell-forge-bsv`'s `write-record.t
 already builds for version-1 records (`buildRecordTransaction`), but built directly
 against `docs/api.md`'s `/api/utxos` and `/api/broadcast` rather than through a
 `ChainProvider`, since the PWA does not talk to WhatsOnChain directly (the exceptions
-are §21's, with the backend out of reach: a Call me builds this same transaction and
+are §21's, with the backend out of reach: a text post (a Call me among them) builds this same transaction and
 lists coins and broadcasts at WhatsOnChain, and the phone reads the anchor address's
 records back from WhatsOnChain itself):
 
@@ -1350,17 +1350,20 @@ swipe, a locked phone). The note stays until a turn he sends at or after the rin
 
 ### When the backend cannot be reached
 
-A Call me must still leave when the direct line is down. For a `call` record, and for no
-other class, the phone puts the record on chain itself:
+A Call me, and every typed post, must still leave when the direct line is down. For a text
+post of any class (a Call me, a message, an answer, an action, a Talk turn), the phone puts the
+record on chain itself. **A post that carries a picture or any other file is not put on
+chain**: the file goes up through the backend (§8), so the post waits in the phone's outbox
+and goes the usual way once the backend answers:
 
 - **When.** The live status is `offline` (the phone already knows; it then skips the direct
   post), or the `POST /api/messages` of §9 fails as a network failure: no connection, no
   answer within the API timeout, no sign-in code from `GET /api/challenge`, or a 502, 503
   or 504 from the gateway in front of the backend. A 404 or 405 (a backend without direct
   delivery) keeps today's rule for every class: the funded transaction goes through the
-  backend's own `/api/utxos` and `/api/broadcast`. Every other class (a message, an answer,
-  an action, a Talk turn) keeps today's rule on a network failure too: it fails, and he
-  taps again.
+  backend's own `/api/utxos` and `/api/broadcast`. A refusal in the backend's own words (any
+  other 4xx) is final for every class and is not retried on chain. A post with a file waits
+  in the outbox on a network failure and is tried again.
 - **How.** The same §4 transaction to the same §3 anchor address: output 0 the record,
   output 1 the 1-sat anchor payment, output 2 change. Its coins come from WhatsOnChain's
   `GET <provider>/address/<address>/unspent` (a bare list of `tx_hash`, `tx_pos`, `value`,
@@ -1375,8 +1378,9 @@ other class, the phone puts the record on chain itself:
   a minute once the backend is back.
 - **What it costs.** One small transaction: the miner fee at `chainConfig.feeRateSatPerKb`
   (a few satoshis for a record this size) plus the 1-sat anchor payment, from his own
-  coins. Testnet today. A call sent on chain is final: it cannot be taken back.
-- **What he sees.** The Talk line screen reads **Sent on chain HH:MM, txid <first 8 hex>…**
+  coins. Testnet today. A post sent on chain is final: it cannot be taken back.
+- **What he sees.** A typed post's bubble reads **Sent on chain HH:MM** in place of its plain
+  time, because its sent copy is kept under a transaction id and not a `direct:` id. The Talk line screen reads **Sent on chain HH:MM, txid <first 8 hex>…**
   in place of **Call sent HH:MM**, until a ring or an answer arrives; the connection mark
   keeps saying the backend is reconnecting. The sent copy is kept under the transaction id,
   not a `direct:` id, and the backend's later echo of the same record lands on that row.

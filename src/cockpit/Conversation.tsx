@@ -280,7 +280,7 @@ function Bubble({ item, given, until, onQuote, onReply }: { item: ConversationIt
         {item.kind === 'question' && <QuestionBlock item={item} given={given} until={until} />}
       </div>
       <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-faint">
-        <span>{clockTime(new Date(item.at))}</span>
+        <span>{item.onChain ? `Sent on chain ${clockTime(new Date(item.at))}` : clockTime(new Date(item.at))}</span>
         {item.pending && (item.failure !== undefined && item.outboxId !== undefined ? <FailedNote id={item.outboxId} failure={item.failure} /> : <PendingMark />)}
         {item.unread && <span className="font-semibold text-accent">· new</span>}
         {item.speaker !== 'you' && item.text && (

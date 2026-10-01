@@ -17,12 +17,13 @@ afterEach(async () => {
 });
 
 describe('a gateway error from the backend', () => {
-  it('sends a Call me on chain, and still fails a message with the backend\'s own words', async () => {
+  it('sends a Call me on chain, and still fails a refusal with the backend\'s own words', async () => {
     const down = backendDownWoc();
+    let refuse = false;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (isChallengeRequest(url)) return challengeResponse();
-      if (url.endsWith('/messages')) return new Response(JSON.stringify({ error: 'bad gateway' }), { status: 502 });
+      if (url.endsWith('/messages')) return new Response(JSON.stringify({ error: 'bad gateway' }), { status: refuse ? 400 : 502 });
       return down.fetchImpl(input, init);
     }) as unknown as typeof fetch;
 
@@ -30,6 +31,7 @@ describe('a gateway error from the backend', () => {
     expect(call.channel).toBe('chain');
     expect(down.broadcasts).toHaveLength(1);
 
+    refuse = true;
     await expect(deliver('hello', 'message', { ...base, fetchImpl })).rejects.toThrow('bad gateway');
     expect(down.broadcasts).toHaveLength(1);
   });

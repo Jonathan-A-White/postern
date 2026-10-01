@@ -76,6 +76,7 @@ export function pendingMessageItems(rows: OutboxRow[], have: MessageRow[], inThr
       outboxId: row.id as number,
       ...(row.state === 'failed' ? { failure: row.failure ?? 'The backend refused it.' } : {}),
       ...(row.txid ? { txid: row.txid } : {}),
+      ...(row.txid && !row.txid.startsWith('direct:') ? { onChain: true } : {}),
       ...(typeof row.payload.re === 'string' ? { re: row.payload.re } : {}),
     }));
 }

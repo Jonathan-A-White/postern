@@ -188,9 +188,15 @@ Feature: Talk line turns are records of their own, and the line is a small state
     And the Mayor reads that record as a request saying "Call me" at 1790000000
     And this phone keeps its sent copy under the chain id
 
-  Scenario: AC-3: a message does not fall back to chain on a network error (mw-a0ih0.4)
+  Scenario: AC-3: a typed post goes on chain when the backend cannot be reached (mw-a0ih0.12)
     Given the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin
-    When he tries to deliver a message saying "Hello"
+    When he delivers a message saying "Hello"
+    Then the message went on chain and its sent row reads "Sent on chain"
+    And WhatsOnChain was sent one section 4 transaction with the record, the anchor payment and change
+
+  Scenario: AC-3: a post with a picture does not go on chain, it waits (mw-a0ih0.12)
+    Given the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin
+    When he tries to deliver a message with a picture while the phone is offline
     Then the delivery fails and WhatsOnChain was never asked
 
   Scenario: AC-3: a Call me while the phone knows it is offline goes on chain without trying the backend (mw-a0ih0.4)

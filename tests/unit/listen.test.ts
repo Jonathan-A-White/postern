@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { isListenSupported, startListening, MAX_IDLE_RESTARTS, STOP_TIMEOUT_MS } from '../../src/services/listen';
+import { DEFAULT_LANG, isListenSupported, recognizerLang, startListening, MAX_IDLE_RESTARTS, STOP_TIMEOUT_MS } from '../../src/services/listen';
 
 interface FakeAlt {
   transcript: string;
@@ -551,5 +551,73 @@ describe('listen', () => {
     const second = await session.stop();
     expect(second).toEqual(first);
     expect(FakeRecognizer.instances[0].stopFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the recogniser language (mw-j0f2d.24)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('is a full tag: en-US when none is given, a bare en widened, any other tag kept', () => {
+    expect(recognizerLang(undefined)).toBe('en-US');
+    expect(recognizerLang('')).toBe('en-US');
+    expect(recognizerLang('en')).toBe('en-US');
+    expect(recognizerLang('en_GB')).toBe('en-GB');
+    expect(recognizerLang('fr-CA')).toBe('fr-CA');
+    expect(DEFAULT_LANG).toBe('en-US');
+  });
+
+  it('starts the recogniser in en-US when no language is given, and in a bare en widened to en-US', () => {
+    install();
+    startListening();
+    startListening({ lang: 'en' });
+    expect(FakeRecognizer.instances.map((r) => r.lang)).toEqual(['en-US', 'en-US']);
+  });
+
+  it('retries once with en-US on language-not-supported before the message is shown', async () => {
+    install(CloudOnlyRecognizer);
+    const onError = vi.fn();
+    const onFallback = vi.fn();
+    const begin = startListening({ lang: 'fr-FR', onError, onFallback });
+    if (!begin.ok) throw new Error('expected listening to start');
+    FakeRecognizer.instances[0].onerror?.({ error: 'language-not-supported' });
+    expect(FakeRecognizer.instances).toHaveLength(2);
+    expect(FakeRecognizer.instances[1].lang).toBe('en-US');
+    expect(FakeRecognizer.instances[1].startFn).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+    expect(onFallback).not.toHaveBeenCalled();
+    FakeRecognizer.instances[1].onerror?.({ error: 'language-not-supported' });
+    expect(FakeRecognizer.instances).toHaveLength(2);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: 'language-not-supported' }));
+  });
+
+  it('works through the retry: words heard by the en-US recogniser are the result', async () => {
+    install(CloudOnlyRecognizer);
+    const begin = startListening({ lang: 'fr-FR' });
+    if (!begin.ok) throw new Error('expected listening to start');
+    FakeRecognizer.instances[0].onerror?.({ error: 'language-not-supported' });
+    FakeRecognizer.instances[1].say([result('hello there', false)]);
+    expect(await begin.session.stop()).toEqual({ ok: true, text: 'hello there', mode: 'cloud' });
+  });
+
+  it('does not retry with en-US when the recogniser already asked for it', () => {
+    install(CloudOnlyRecognizer);
+    const onError = vi.fn();
+    startListening({ onError });
+    FakeRecognizer.instances[0].onerror?.({ error: 'language-not-supported' });
+    expect(FakeRecognizer.instances).toHaveLength(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('tries en-US after the on-device attempt also fails, keeping the order: cloud first, then en-US', () => {
+    install();
+    const onError = vi.fn();
+    startListening({ lang: 'fr-FR', onError });
+    const seen = () => FakeRecognizer.instances.map((r) => [r.lang, r.processLocally]);
+    FakeRecognizer.instances[0].onerror?.({ error: 'language-not-supported' });
+    FakeRecognizer.instances[1].onerror?.({ error: 'language-not-supported' });
+    expect(seen()).toEqual([['fr-FR', true], ['fr-FR', false], ['en-US', false]]);
+    expect(onError).not.toHaveBeenCalled();
+    FakeRecognizer.instances[2].onerror?.({ error: 'language-not-supported' });
+    expect(onError).toHaveBeenCalledTimes(1);
   });
 });

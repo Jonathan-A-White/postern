@@ -235,7 +235,7 @@ export function TalkLineScreen() {
               Try again
             </Button>
           )}
-          <Button variant="ghost" disabled={line.talk === undefined || line.phase === 'sending'} onClick={talk.end}>
+          <Button variant="ghost" disabled={!talk.canEnd} onClick={talk.end}>
             End talk
           </Button>
         </div>

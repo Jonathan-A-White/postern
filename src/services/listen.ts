@@ -9,7 +9,20 @@
 // STOP_TIMEOUT_MS, and an on-device attempt the phone cannot do is retried once in
 // network mode within the same hold. The recogniser also ends itself while the finger
 // is down (Android Chrome on a pause or a no-speech/network blip): until stop() the
-// hold goes on, the recogniser is started again and the earlier words are kept.
+// hold goes on, the recogniser is started again and the earlier words are kept. The
+// recogniser always gets a full language tag (en-US when none is given, a bare 'en'
+// widened to it), and a language-not-supported error is retried once with en-US
+// before it is shown, because the phone's service rejects tags it has no pack for.
+
+/** The language the recogniser is asked for when the page names none, and the one it falls back to. */
+export const DEFAULT_LANG = 'en-US';
+
+/** A full tag for the recogniser: nothing or a bare 'en' becomes en-US; any other tag is kept as given. */
+export function recognizerLang(lang: string | undefined): string {
+  const tag = lang?.trim().replace(/_/g, '-');
+  if (!tag || tag.toLowerCase() === 'en') return DEFAULT_LANG;
+  return tag;
+}
 
 export type ListenMode = 'on-device' | 'cloud';
 
@@ -157,11 +170,11 @@ function askOnDevice(recognizer: Recognizer): boolean {
   }
 }
 
-function configure(Ctor: RecognizerConstructor, lang: string | undefined, onDevice: boolean): { recognizer: Recognizer; mode: ListenMode } {
+function configure(Ctor: RecognizerConstructor, lang: string, onDevice: boolean): { recognizer: Recognizer; mode: ListenMode } {
   const recognizer = new Ctor();
   recognizer.continuous = true;
   recognizer.interimResults = true;
-  if (lang) recognizer.lang = lang;
+  recognizer.lang = lang;
   if (onDevice) return { recognizer, mode: askOnDevice(recognizer) ? 'on-device' : 'cloud' };
   if ('processLocally' in recognizer) {
     try {
@@ -180,10 +193,11 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     return { ok: false, error: { kind: 'not-supported', message: 'This browser cannot turn speech into text.' } };
   }
 
+  let lang = recognizerLang(options.lang);
   let current: Recognizer;
   let mode: ListenMode;
   try {
-    ({ recognizer: current, mode } = configure(Ctor, options.lang, true));
+    ({ recognizer: current, mode } = configure(Ctor, lang, true));
   } catch (err) {
     return { ok: false, error: { kind: 'other', message: err instanceof Error ? err.message : 'Listening could not start.' } };
   }
@@ -198,6 +212,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   let outcome = null as ListenResult | null;
   let announced = false;
   let retried = false;
+  let langRetried = false;
   let stopping = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let settle: (result: ListenResult) => void = () => {};
@@ -217,6 +232,28 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     outcome = failure ? { ok: false, text, error: failure } : { ok: true, text, mode };
     if (!failure) options.onFinal?.(text);
     settle(outcome);
+  };
+
+  /** Replaces the recogniser with a new one for `next` (same hold, in cloud mode unless `onDevice`; `fallback` tells the caller it fell back from on-device); false when it could not start, leaving the old one in place. */
+  const restart = (next: string, onDevice: boolean, fallback: boolean): boolean => {
+    const previous = { recognizer: current, mode, announced, lang };
+    try {
+      const fresh = configure(Ctor, next, onDevice);
+      current = fresh.recognizer;
+      mode = fresh.mode;
+      announced = false;
+      lang = next;
+      attach(current);
+      current.start();
+      if (fallback) options.onFallback?.();
+      return true;
+    } catch {
+      current = previous.recognizer;
+      mode = previous.mode;
+      announced = previous.announced;
+      lang = previous.lang;
+      return false;
+    }
   };
 
   /** Starts `recognizer` as the one this hold listens through; the one it replaces goes quiet. */
@@ -239,21 +276,11 @@ export function startListening(options: ListenOptions = {}): ListenStart {
       }
       if (mode === 'on-device' && !retried && !stopping && !outcome && !text && ON_DEVICE_FAILURES.has(event.error)) {
         retried = true;
-        const previous = { recognizer: current, mode, announced };
-        try {
-          const next = configure(Ctor, options.lang, false);
-          current = next.recognizer;
-          mode = next.mode;
-          announced = false;
-          attach(current);
-          current.start();
-          options.onFallback?.();
-          return;
-        } catch {
-          current = previous.recognizer;
-          mode = previous.mode;
-          announced = previous.announced;
-        }
+        if (restart(lang, false, true)) return;
+      }
+      if (event.error === 'language-not-supported' && !langRetried && !stopping && !text && lang !== DEFAULT_LANG) {
+        langRetried = true;
+        if (restart(DEFAULT_LANG, false, false)) return;
       }
       error = errorFor(event.error);
       options.onError?.(error);

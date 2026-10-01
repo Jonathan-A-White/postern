@@ -8,6 +8,7 @@ import type { KeyboardEvent, PointerEvent } from 'react';
 import { Button, Chip, Icon, cx } from '../ui';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
+import { beadHref } from '../nav/route';
 import { formatSeconds, showsCutTag } from '../model/talkScreen';
 import type { TalkPhase } from '../model/talkLine';
 import type { TalkLogEntry } from '../model/talkScreen';
@@ -173,6 +174,19 @@ export function TalkLineScreen() {
                 {entry.answer !== undefined && (
                   <div data-testid="talk-answer" className="mr-auto flex max-w-[88%] flex-col gap-1">
                     <p className="rounded-2xl border border-line bg-surface px-3.5 py-2 text-[15px] break-words">{entry.answer}</p>
+                    {entry.links && entry.links.length > 0 && (
+                      <span className="flex flex-wrap gap-1.5" data-testid="talk-links">
+                        {entry.links.map((id) => (
+                          <a
+                            key={id}
+                            href={beadHref(id)}
+                            className="inline-flex min-h-8 max-w-full items-center rounded-lg border border-line bg-surface px-2.5 py-1 font-mono text-[12.5px] text-fg hover:border-line-strong"
+                          >
+                            <span className="truncate">{id}</span>
+                          </a>
+                        ))}
+                      </span>
+                    )}
                     <span className="flex flex-wrap gap-1.5 text-[11.5px] text-muted">
                       {entry.answeredBy && <Chip tone="working">{entry.answeredBy}</Chip>}
                       {entry.firstWordsMs !== undefined && <span className="tabular-nums">first words in {formatSeconds(entry.firstWordsMs)}</span>}

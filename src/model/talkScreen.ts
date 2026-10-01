@@ -18,6 +18,8 @@ export interface TalkLogEntry {
   answer?: string;
   /** The Mayor's real answer has come (a holding answer does not count). */
   answered?: boolean;
+  /** Bead ids the latest answer points at, shown as chips and never spoken. */
+  links?: string[];
   /** The model the answer says it came from. */
   answeredBy?: string;
   /** From his release to the first of the Mayor's words reaching the phone (ms). */
@@ -47,13 +49,14 @@ export function showsCutTag(entry: Pick<TalkLogEntry, 'cut' | 'answered'>): bool
   return entry.cut && entry.answered !== true;
 }
 
-function withAnswer(log: TalkLogEntry[], turn: number, text: string, holding: boolean, answeredBy: string | undefined, at: number): TalkLogEntry[] {
+function withAnswer(log: TalkLogEntry[], turn: number, speaking: { text: string; holding: boolean; links?: string[] }, answeredBy: string | undefined, at: number): TalkLogEntry[] {
   return log.map((entry) =>
     entry.turn === turn
       ? {
           ...entry,
-          answer: text,
-          answered: entry.answered === true || !holding,
+          answer: speaking.text,
+          links: speaking.links,
+          answered: entry.answered === true || !speaking.holding,
           answeredBy: answeredBy ?? entry.answeredBy,
           firstWordsMs: entry.firstWordsMs ?? at - entry.releasedAt,
         }
@@ -78,7 +81,7 @@ export function talkScreen(state: TalkScreenState, { event, at }: TalkScreenActi
       }
       break;
     case 'incoming':
-      if (line.phase === 'speaking' && line.speaking && line.talk) log = withAnswer(log, line.talk.turn, line.speaking.text, line.speaking.holding, line.answeredBy, at);
+      if (line.phase === 'speaking' && line.speaking && line.talk) log = withAnswer(log, line.talk.turn, line.speaking, line.answeredBy, at);
       break;
   }
   return { line, log };

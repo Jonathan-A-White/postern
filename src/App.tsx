@@ -16,6 +16,7 @@ import { NeedsScreen } from './cockpit/NeedsScreen';
 import { MapScreen } from './cockpit/MapScreen';
 import { BeadScreen } from './cockpit/BeadScreen';
 import { TalkScreen } from './cockpit/TalkScreen';
+import { TalkLineScreen } from './cockpit/TalkLineScreen';
 import { SearchScreen } from './cockpit/SearchScreen';
 import { MeScreen } from './cockpit/MeScreen';
 import { ShareScreen } from './cockpit/ShareScreen';
@@ -33,6 +34,8 @@ function Place({ route }: { route: Route }) {
       return <BeadScreen key={route.id} id={route.id} />;
     case 'talk':
       return <TalkScreen thread={route.thread} root={route.root} />;
+    case 'line':
+      return <TalkLineScreen />;
     case 'search':
       return <SearchScreen q={route.q} />;
     case 'me':

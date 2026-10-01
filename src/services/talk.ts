@@ -48,3 +48,9 @@ export function decodeTurn(plaintext: string | undefined): TalkTurn | undefined 
 export function deliverTurn(turn: TalkTurn, options: DeliverOptions): Promise<Delivered> {
   return deliver(encodeTurn(turn), 'talk', options);
 }
+
+/** A fresh id for a new talk. */
+export function newTalkId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}

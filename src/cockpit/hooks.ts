@@ -56,6 +56,11 @@ export function useMessages(): MessageRow[] {
   return useLiveQuery(() => messagesRepo.getAllOldestFirst(), [], [] as MessageRow[]);
 }
 
+/** The Talk line's turns, oldest first (class `talk`, docs/protocol.md §20). */
+export function useTalkTurns(): MessageRow[] {
+  return useLiveQuery(() => messagesRepo.talkTurns(), [], [] as MessageRow[]);
+}
+
 export function useThreadMessages(threadKey: string | undefined): MessageRow[] {
   return useLiveQuery(() => messagesRepo.inThread(threadKey), [threadKey], [] as MessageRow[]);
 }

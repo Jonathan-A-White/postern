@@ -13,6 +13,8 @@ import type { GovernorAction } from '../model/conversation';
 import type { HandsStep } from '../model/hands';
 import { buildApproval, stepUp } from '../services/hands';
 import type { HomeHost } from '../services/standby';
+import { deliverTurn } from '../services/talk';
+import type { TalkTurn } from '../model/talkLine';
 import type { Attachment, ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
 import { navigate } from '../router';
@@ -38,6 +40,11 @@ export async function sendAction(action: GovernorAction): Promise<Delivered> {
   const delivered = await deliverAction(action, options());
   writeBehind(answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid }), 'your action');
   return delivered;
+}
+
+/** Sends one turn of the Talk line (docs/protocol.md §20): class `talk`, straight to the backend. */
+export function sendTurn(turn: TalkTurn): Promise<Delivered> {
+  return deliverTurn(turn, options());
 }
 
 /** Asks the Mayor's host to make `host` the factory's home (docs/protocol.md §18).

@@ -101,13 +101,13 @@ Feature: The Governor's cockpit (plans/0021)
     Then one release action for "mw-f758y.31" is sent
     And the approval says it was sent and is waiting for the factory, with no Release button to tap
 
-  Scenario: mw-t64a3.3: a failed send says so on the card and gives the button back
+  Scenario: mw-t64a3.3: a refused send keeps the tap pending on the card and sends it again
     Given the factory is live and his key is unlocked
     And the backend refuses the next message
     When the cockpit opens
     And "Release" is tapped on the approval
-    Then a toast says "The backend refused the message."
-    And the approval offers "Release" again
+    Then the approval is marked pending with no Release button to tap
+    And the release for "mw-f758y.31" goes out on the next try
 
   Scenario: mw-t64a3.3: one tap on Verified on the bead's page sends once and cannot be tapped again
     Given the factory is live and his key is unlocked

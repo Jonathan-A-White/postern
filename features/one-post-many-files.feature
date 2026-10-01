@@ -13,12 +13,14 @@ Feature: Several files sent together are one post (mw-909ci.3)
     Then one message was delivered
     And its plaintext has "attachment" and no "attachments"
 
-  Scenario: a failed upload of the second file sends nothing
+  Scenario: a failed upload of the second file sends nothing yet, and a later try uploads only that file
     Given two images and the caption "the two screens"
     And the second upload fails
     When they are sent together to the general thread
-    Then the send failed
+    Then the message waits in the outbox for another try
     And no message was delivered
+    When the sender tries again
+    Then only the second file is uploaded again and one message is delivered
 
   Scenario: a message whose attachments array holds a malformed entry reads as plain text
     Given a received message whose attachments array holds a good entry and a malformed one

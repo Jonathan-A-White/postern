@@ -1,31 +1,31 @@
-Feature: A send never spins for ever, and he always knows whether it went (mw-t64a3.7)
+Feature: A send never spins for ever; what cannot go yet waits on the phone and goes later (mw-t64a3.7, mw-jrx0s.10)
 
-  Scenario: AC-1: a POST that never answers ends the spinner and says the message may have gone
+  Scenario: AC-1: a POST that never answers does not hold the composer; the message stays pending and is tried again
     Given the backend takes the challenge but never answers the message
     And he has typed "Is the deploy done?"
     When he taps Send
-    Then Send is busy
+    Then the composer is free again without any time passing
+    And the box is empty
     When 30 seconds pass
-    Then Send is ready again
-    And he is told "May have gone: check the channel before sending again"
-    And the text "Is the deploy done?" is still in the box
+    Then the message "Is the deploy done?" is still in the outbox, pending, after a failed try
+    And he is told nothing
 
-  Scenario: mw-t64a3.14: a send whose fetch is aborted at the timeout says it may have gone, never the abort text
+  Scenario: mw-t64a3.14: a send whose fetch is aborted at the timeout is tried again, and the abort text is never shown
     Given the backend takes the challenge and the browser aborts the message request at the timeout
     And he has typed "Is the deploy done?"
     When he taps Send
     And 30 seconds pass
-    Then he is told "May have gone: check the channel before sending again"
+    Then the message "Is the deploy done?" is still in the outbox, pending, after a failed try
     And he is never shown "signal is aborted without reason"
 
-  Scenario: AC-2: a challenge that never answers says the message was not sent
+  Scenario: AC-2: a challenge that never answers leaves the message pending
     Given the backend never answers the challenge
     And he has typed "Is the deploy done?"
     When he taps Send
     And 30 seconds pass
-    Then Send is ready again
-    And he is told "Not sent: try again"
-    And the text "Is the deploy done?" is still in the box
+    Then the message "Is the deploy done?" is still in the outbox, pending, after a failed try
+    And he is told nothing
+    And nothing was posted to the backend
 
   Scenario: AC-3: a local cache write that never settles does not hold the spinner
     Given the backend takes the message and answers 200

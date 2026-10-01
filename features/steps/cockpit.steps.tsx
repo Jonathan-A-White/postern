@@ -14,6 +14,7 @@ import { App } from '../../src/App';
 import { db } from '../../src/data/db';
 import { sharesRepo, vaultRepo } from '../../src/data/repositories';
 import { lock, setKey } from '../../src/services/keySession';
+import { forgetOutboxState } from '../../src/services/outbox';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { stopLive } from '../../src/services/live';
 import { decryptMessage, encryptMessage, type MessagePayload } from '../../src/services/messages';
@@ -113,11 +114,12 @@ async function fresh(options: BackendOptions = {}): Promise<void> {
   lock();
   vi.unstubAllGlobals();
   forgetTaps();
+  forgetOutboxState();
   sendGate?.open();
   sendGate = undefined;
   refuseNext = false;
   delivered = [];
-  await Promise.all([db.vault.clear(), db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear(), db.answers.clear(), db.shares.clear(), db.session.clear()]);
+  await Promise.all([db.vault.clear(), db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear(), db.answers.clear(), db.shares.clear(), db.session.clear(), db.outbox.clear()]);
   await vaultRepo.save({ mode: 'phrase', ciphertext: new ArrayBuffer(48), iv: new Uint8Array(12), salt: new Uint8Array(16), publicKeyHex: HIM_PUB });
   await stubBackend(options);
 }
@@ -428,7 +430,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
     Then('a toast says "Sent to the Mayor in Factory"', async () => {
       expect(await toastSaying('Sent to the Mayor in Factory')).toBeInTheDocument();
-      expect(delivered).toHaveLength(1);
+      await waitFor(() => expect(delivered).toHaveLength(1));
     });
     When('"Open" is tapped on the toast', async () => {
       await userEvent.click(within(await toastSaying('Sent to the Mayor in Factory')).getByRole('button', { name: 'Open' }));
@@ -486,13 +488,14 @@ describeFeature(feature, ({ Scenario }) => {
     });
     And('the approval says it was sent and is waiting for the factory, with no Release button to tap', async () => {
       const approval = screen.getByRole('article', { name: 'Release: Cockpit screens' });
-      expect(within(approval).getByRole('status')).toHaveTextContent(/waiting for the factory/i);
+      // While the backend holds the message the tap is pending in the outbox; once it has taken it, the need leaves the queue.
+      expect(within(approval).getByRole('status')).toHaveTextContent(/Tapped|waiting for the factory/i);
       expect(within(approval).queryByRole('button', { name: 'Release' })).toBeNull();
       await letTheSendFinish('mw-f758y.31');
     });
   });
 
-  Scenario('mw-t64a3.3: a failed send says so on the card and gives the button back', ({ Given, When, And, Then }) => {
+  Scenario('mw-t64a3.3: a refused send keeps the tap pending on the card and sends it again', ({ Given, When, And, Then }) => {
     Given('the factory is live and his key is unlocked', liveAndUnlocked);
     And('the backend refuses the next message', () => {
       refuseNext = true;
@@ -505,13 +508,15 @@ describeFeature(feature, ({ Scenario }) => {
       const approval = await screen.findByRole('article', { name: 'Release: Cockpit screens' });
       await userEvent.click(within(approval).getByRole('button', { name: 'Release' }));
     });
-    Then('a toast says "The backend refused the message."', async () => {
-      expect(await screen.findByText('The backend refused the message.')).toBeInTheDocument();
-    });
-    And('the approval offers "Release" again', async () => {
+    Then('the approval is marked pending with no Release button to tap', async () => {
       const approval = screen.getByRole('article', { name: 'Release: Cockpit screens' });
-      await waitFor(() => expect(within(approval).getByRole('button', { name: 'Release' })).toBeEnabled());
-      expect(within(approval).queryByRole('status')).toBeNull();
+      await waitFor(() => expect(within(approval).getByTestId('pending-mark')).toBeInTheDocument());
+      expect(within(approval).queryByRole('button', { name: 'Release' })).toBeNull();
+      expect(screen.queryByText('The backend refused the message.')).toBeNull();
+    });
+    And('the release for "mw-f758y.31" goes out on the next try', async () => {
+      await waitFor(() => expect(delivered).toHaveLength(1), { timeout: 5000 });
+      expect(JSON.parse(delivered[0])).toEqual({ action: 'release', bead: 'mw-f758y.31' });
     });
   });
 

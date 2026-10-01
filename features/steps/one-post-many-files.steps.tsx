@@ -2,7 +2,7 @@
 // (mw-909ci.3): the real sendToThread, plaintext codec, Conversation and Talk
 // list; the upload, the delivery and the blob download are doubles.
 import '@testing-library/react/dont-cleanup-after-each';
-import { cleanup, render, screen, within, configure } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within, configure } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Conversation } from '../../src/cockpit/Conversation';
@@ -12,6 +12,7 @@ import { db, type MessageRow } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { mergeConversation } from '../../src/model/conversation';
 import { lock, setKey } from '../../src/services/keySession';
+import { forgetOutboxState, kickOutbox, settledOutbox } from '../../src/services/outbox';
 import { decodeThreadedMessage, encodeThreadedMessage, type ThreadedBody } from '../../src/services/threads';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 
@@ -103,12 +104,14 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     caption = '';
     sendError = undefined;
     plaintext = '';
-    await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
+    forgetOutboxState();
+    await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear(), db.outbox.clear()]);
   });
 
   const send = async () => {
     try {
       await sendToThread(undefined, caption, files);
+      await act(async () => settledOutbox());
     } catch (err) {
       sendError = err;
     }
@@ -120,8 +123,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       caption = text;
     });
     When('they are sent together to the general thread', send);
-    Then('one message was delivered', () => {
-      expect(doubles.delivered).toHaveLength(1);
+    Then('one message was delivered', async () => {
+      await waitFor(() => expect(doubles.delivered).toHaveLength(1));
     });
     And('its plaintext has "attachments" with both hashes in order and the caption as its text', () => {
       const body = delivered();
@@ -145,8 +148,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       caption = text;
     });
     When('they are sent together to the general thread', send);
-    Then('one message was delivered', () => {
-      expect(doubles.delivered).toHaveLength(1);
+    Then('one message was delivered', async () => {
+      await waitFor(() => expect(doubles.delivered).toHaveLength(1));
     });
     And('its plaintext has "attachment" and no "attachments"', () => {
       const body = delivered();
@@ -156,7 +159,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('a failed upload of the second file sends nothing', ({ Given, And, When, Then }) => {
+  Scenario('a failed upload of the second file sends nothing yet, and a later try uploads only that file', ({ Given, And, When, Then }) => {
     Given('two images and the caption {string}', (_c, text: string) => {
       files = [image(1), image(2)];
       caption = text;
@@ -165,11 +168,24 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       doubles.failUpload = 2;
     });
     When('they are sent together to the general thread', send);
-    Then('the send failed', () => {
-      expect(sendError).toBeInstanceOf(Error);
+    Then('the message waits in the outbox for another try', async () => {
+      expect(sendError).toBeUndefined();
+      expect(await db.outbox.toArray()).toMatchObject([{ kind: 'message', state: 'pending', attempts: 1 }]);
     });
     And('no message was delivered', () => {
       expect(doubles.delivered).toHaveLength(0);
+    });
+    When('the sender tries again', async () => {
+      await act(async () => {
+        kickOutbox(true);
+        await settledOutbox();
+      });
+    });
+    Then('only the second file is uploaded again and one message is delivered', async () => {
+      await waitFor(() => expect(doubles.delivered).toHaveLength(1));
+      // the first try uploaded the first file and failed on the second; the second try uploaded the second alone
+      expect(doubles.uploads).toBe(3);
+      expect(delivered().attachments as { hash: string }[]).toHaveLength(2);
     });
   });
 

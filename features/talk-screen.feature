@@ -202,14 +202,14 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Given the Talk line is open with a believable speech recogniser
     And sending a turn will fail
     When he holds the talk button and says "Hello" and lets go
-    Then the screen says "Could not send. Try again."
+    Then the screen says "Could not keep that on this phone. Try again."
     And the talk button reads "Hold to talk"
 
   Scenario: AC-1: a failed send keeps his words on the screen and Try again resends them
     Given the Talk line is open with a believable speech recogniser
     And sending a turn will fail
     When he holds the talk button and says "Hello there" and lets go
-    Then the screen says "Could not send. Try again."
+    Then the screen says "Could not keep that on this phone. Try again."
     And his words "Hello there" are still on the screen
     When sending a turn works again
     And he taps "Try again"

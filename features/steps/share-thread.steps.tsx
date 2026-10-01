@@ -255,9 +255,9 @@ describeFeature(feature, ({ Scenario }) => {
     And('the Thread shows {string}, its 2 replies and one reply holding two images', async (_ctx, post: string) => {
       const conversation = await screen.findByTestId('conversation');
       await waitFor(() => expect(within(conversation).getAllByTestId('message')).toHaveLength(4));
-      const bubbles = within(conversation).getAllByTestId('message');
-      expect(bubbles[0].textContent).toContain(post);
-      expect(await within(bubbles[3]).findAllByAltText('Attached image')).toHaveLength(2);
+      // Until the backend takes it the reply is a pending bubble of his own; then it is the stored record, with both images.
+      await waitFor(() => expect(within(within(conversation).getAllByTestId('message')[3]).getAllByAltText('Attached image')).toHaveLength(2));
+      expect(within(conversation).getAllByTestId('message')[0].textContent).toContain(post);
     });
     When('Back is tapped', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Back' }));

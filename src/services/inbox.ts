@@ -138,8 +138,9 @@ export interface SyncMessagesResult {
   events: EventBatch[];
 }
 
-/** An events record's batch, when it is the pinned Mayor's to this key and decrypts and parses; else undefined. */
-function eventBatchOf(payload: MessagePayload, params: SyncMessagesParams, unlockedKeyHex: string | undefined): EventBatch | undefined {
+/** An events record's batch, when it is the pinned Mayor's to this key and decrypts and parses; else undefined.
+ * Shared by the backend's feed and the phone's own read of the chain (§21, §22). */
+export function eventBatchOf(payload: MessagePayload, params: Pick<SyncMessagesParams, 'publicKeyHex' | 'mayorKey'>, unlockedKeyHex: string | undefined): EventBatch | undefined {
   if (!unlockedKeyHex || !params.mayorKey || payload.from !== params.mayorKey || payload.to !== params.publicKeyHex) return undefined;
   try {
     return decodeEventBatch(decryptMessage(payload, unlockedKeyHex));

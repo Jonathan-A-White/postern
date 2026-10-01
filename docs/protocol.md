@@ -1340,8 +1340,8 @@ backend's push, §21's ring, needs the backend too). So while the live status (�
 `reconnecting` or `offline`, the phone reads the anchor address (§3) from WhatsOnChain
 itself, with no backend:
 
-- **When.** Every 30 seconds, the first read 30 seconds after the status first reads
-  `reconnecting` or `offline` (a drop that mends in seconds never asks WhatsOnChain). It
+- **When.** Every 5 seconds, the first read 5 seconds after the status first reads
+  `reconnecting` or `offline` (a drop that mends in a moment never asks WhatsOnChain). It
   stops the moment the event stream is back (status `live`), and starts again at the next
   drop. A read that fails, WhatsOnChain being out of reach too, is tried again at the next
   tick.
@@ -1465,3 +1465,36 @@ not cursor + 1), with no view yet, or when an event says something only the home
 (a new or reopened bead, a hold, a landing, a story closed, a question it does not hold).
 Once a batch has been applied in the session, §10's `view` event waits 10 seconds and
 fetches the view only if no batch came within 10 seconds of it.
+
+### The chain road, while the backend is out of reach
+
+`mw-jrx0s.9`. The phone's own read of the chain (§21, "The phone reads the chain itself")
+carries the factory's events too, so the queue keeps flowing with the backend down: the
+Governor's words, 2026-10-01 (Q2 B on `mw-6ww.55`), the front end and the back end work on
+their own queues and catch up once they can reach the chain.
+
+- **Which records.** An `events` record (§1, class `events`) in a transaction the read has
+  not seen, sent by the pinned Mayor (§15) `to` this phone's key, is decrypted (§2) and
+  parsed as §22's plaintext. It is not kept as a message. Any other sender, or no Mayor
+  pinned yet, and the record is ignored.
+- **The same decoder.** The batch goes to the very projector the backend's feed uses ("What
+  the app does with a batch"): kept once by `seq`, applied past the cursor in `seq` order to
+  the stored view. A batch seen on both roads, the chain and the backend, therefore applies
+  once, whichever arrives first and whatever its `txid` (`direct:<sha256>` or a transaction
+  id).
+- **A gap is tolerated.** A `direct`-lane batch is never on chain (only a `fallback` batch
+  is, later), so the chain road shows gaps. The phone applies what it reads and does **not**
+  fetch the view or a bead's detail for a gap, nor for an event that says something only the
+  home can build: they all need the backend, which is out of reach, and a refetch
+  attempted per batch would only be a storm of failures. The next successful sync after the
+  backend returns (§10's `hello` fetches messages and the view) fills the gap in.
+- **No hurry for the backend.** Events found on the chain alone do not cut the stream's
+  reconnect wait short; a message or a ring does (§21).
+- **When the backend returns.** The stream comes back (status `live`), the chain read stops
+  at once, and the ordinary paging (`GET /api/messages?since=`, §10) resumes from the
+  backend's own cursor. Its events records past the events cursor apply as usual; those
+  the chain road already applied are dropped by `seq`.
+- **What the screen says.** While the status is `reconnecting` or `offline` and a chain
+  read has just succeeded, the connection badge reads **Live from the chain**, so he sees
+  the app is current without the backend. A read that fails (WhatsOnChain unreachable too)
+  puts the badge back to **Reconnecting…** or **Offline**.

@@ -2,16 +2,18 @@
 // for the time the backend cannot be reached: the address's recent history from WhatsOnChain, each
 // transaction's raw hex, the postern record in it, and the same decrypt and store the backend's
 // feed goes through (inbox.ts). A record kept here is found again by the backend's own sync later
-// under the same `txid:vout`, so nothing is shown twice.
+// under the same `txid:vout`, so nothing is shown twice. An `events` record (§22) is no message:
+// its batch is handed back, decrypted, for the same projector the backend's feed goes through.
 import { Transaction, Utils } from '@bsv/sdk';
 import { chainConfig, decodeRecordScript } from 'spell-forge-bsv';
 import type { MessageRow } from '../data/db';
-import { isMessagePayload, storeRecord } from './inbox';
+import type { EventBatch } from '../model/events';
+import { eventBatchOf, isMessagePayload, storeRecord } from './inbox';
 import { ANCHOR_ADDRESS, type MessagePayload } from './messages';
 import { messagesRepo } from '../data/repositories';
 
-/** How often the phone reads the chain while the backend is out of reach. */
-export const CHAIN_POLL_MS = 30_000;
+/** How often the phone reads the chain while the backend is out of reach: often enough that the queue (§22) keeps flowing, rarely enough for WhatsOnChain's free tier. */
+export const CHAIN_POLL_MS = 5_000;
 
 /** The most transactions one read fetches the hex of, newest first: a long history is caught up over several reads, never in one burst at WhatsOnChain. */
 export const MAX_TXS_PER_READ = 20;
@@ -82,30 +84,45 @@ export interface ReadChainParams {
   /** This phone's own public key (hex). */
   publicKeyHex: string;
   unlockedKey: Uint8Array;
+  /** The pinned Mayor (§15): the one key whose events records (§22) are read. */
+  mayorKey?: string;
   /** The transactions already read this session: each is fetched once. A transaction that failed to read is left out of it, so the next read tries again. */
   seen: Set<string>;
   address?: string;
   fetchImpl?: typeof fetch;
 }
 
+export interface ChainRead {
+  /** The messages that were new: not already on this phone from the backend or an earlier read. */
+  rows: MessageRow[];
+  /** The events batches (§22) found in transactions not read before, sent by the pinned Mayor to this phone. */
+  events: EventBatch[];
+}
+
 /**
  * Reads the anchor address's recent history and keeps every record in a transaction not yet
  * `seen` that names this phone, decrypted. Resolves with the rows that were new (not already on
- * this phone from the backend or an earlier read); throws if WhatsOnChain cannot be reached.
+ * this phone from the backend or an earlier read) and the events batches found; throws if
+ * WhatsOnChain cannot be reached.
  */
-export async function readChain(params: ReadChainParams): Promise<MessageRow[]> {
+export async function readChain(params: ReadChainParams): Promise<ChainRead> {
   const fetchImpl = params.fetchImpl ?? fetch;
   const unlockedKeyHex = Utils.toHex(Array.from(params.unlockedKey));
   const history = await fetchAnchorHistory(params.address, fetchImpl);
-  const fresh: MessageRow[] = [];
+  const read: ChainRead = { rows: [], events: [] };
   for (const txid of history.filter((id) => !params.seen.has(id)).slice(0, MAX_TXS_PER_READ)) {
     const records = recordsInTransaction(await fetchRawTransaction(txid, fetchImpl));
     for (const record of records) {
+      if (record.payload.class === 'events') {
+        const batch = eventBatchOf(record.payload, params, unlockedKeyHex);
+        if (batch) read.events.push(batch);
+        continue;
+      }
       if (await messagesRepo.get(`${txid}:${record.vout}`)) continue;
       const row = await storeRecord({ seq: NO_SEQ, txid, vout: record.vout, payload: record.payload }, params.publicKeyHex, unlockedKeyHex);
-      if (row) fresh.push(row);
+      if (row) read.rows.push(row);
     }
     params.seen.add(txid);
   }
-  return fresh;
+  return read;
 }

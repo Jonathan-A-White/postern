@@ -4,6 +4,8 @@ import type { LiveState } from '../services/live';
 import { relativeTime } from '../services/age';
 
 export function liveLabel(live: LiveState, now: number = Date.now()): { text: string; tone: 'working' | 'needs' | 'blocked' | 'neutral' } {
+  // The backend is out of reach but the phone is reading the anchor address itself (§22).
+  if (live.chainLive && (live.status === 'reconnecting' || live.status === 'offline')) return { text: 'Live from the chain', tone: 'needs' };
   switch (live.status) {
     case 'live':
       return { text: 'Live', tone: 'working' };

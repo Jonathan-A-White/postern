@@ -5,15 +5,19 @@
 // second. A backend without the stream is polled instead. Screens read its
 // state through useLive(); everything they show comes from Dexie, which this
 // keeps current. While the backend cannot be reached it also reads the anchor
-// address from the chain itself every 30 s (docs/protocol.md §21): a record
+// address from the chain itself every 5 s (docs/protocol.md §21): a record
 // found there is kept, a ring rings, and the backend is tried again at once.
 // The factory's events (§22) come in the message sync and are projected onto the
 // stored view (src/services/events.ts); once they flow, the stream's `view` event
-// is only the recovery path, for when no events batch follows it.
+// is only the recovery path, for when no events batch follows it. The events found
+// on the chain while the backend is out of reach go through the same projector (a
+// batch seen on both roads applies once, by seq); a gap on that road is tolerated
+// until the backend returns and the view is fetched.
 import { useSyncExternalStore } from 'react';
 import { apiFetch } from './apiAuth';
 import { readChain, CHAIN_POLL_MS } from './chainRead';
-import { syncMessagesAndEvents } from './events';
+import { projectBatches, syncMessagesAndEvents } from './events';
+import type { EventBatch } from '../model/events';
 import { freshRings, ringInApp } from './ringIn';
 import { fetchMe, LEGACY, NoLicenceError, reconcileMayorKey, type Me } from './me';
 import { refreshView } from './view';
@@ -29,6 +33,8 @@ export interface LiveState {
   offeredMayorKey?: string;
   /** When the phone last heard from the backend, ms since the epoch. */
   lastHeard?: number;
+  /** The backend cannot be reached but the phone is reading the anchor address itself (§21, §22): the queue is flowing from the chain. */
+  chainLive?: boolean;
   error?: string;
   /** How many times the stream has come back after a drop; screens with
    * something that failed while it was down retry when this changes. */
@@ -79,7 +85,20 @@ function watchChainWhileDown(): void {
   } else if (!backendOutOfReach() && chainWatch) {
     chainWatch.abort();
     chainWatch = null;
+    if (state.chainLive) setState({ chainLive: false });
   }
+}
+
+/** The events the chain read found (§22), projected like the backend's: a gap is tolerated until the backend returns, whose view then fills it in. */
+async function applyChainEvents(batches: EventBatch[]): Promise<void> {
+  await queue(async () => {
+    try {
+      const projected = await projectBatches(batches);
+      if (projected.applied.length > 0) lastProjected = Date.now();
+    } catch {
+      // the backend's own feed brings the batch again when it is back
+    }
+  });
 }
 
 async function pollChain(signal: AbortSignal): Promise<void> {
@@ -87,15 +106,19 @@ async function pollChain(signal: AbortSignal): Promise<void> {
     await sleep(CHAIN_POLL_MS, signal);
     const session = current;
     if (signal.aborted || !session) return;
-    let rows;
+    let read;
     try {
-      rows = await readChain({ publicKeyHex: publicKeyHexFromMasterKey(session.key), unlockedKey: session.key, seen: chainSeen });
+      read = await readChain({ publicKeyHex: publicKeyHexFromMasterKey(session.key), unlockedKey: session.key, mayorKey: state.mayorKey, seen: chainSeen });
     } catch {
+      if (!signal.aborted && state.chainLive) setState({ chainLive: false });
       continue; // WhatsOnChain is out of reach too: the next read tries again
     }
-    if (rows.length === 0) continue;
-    for (const ring of freshRings(rows, Date.now() / 1000)) await ringInApp(ring);
-    // Whatever is on chain, the backend may be back: cut the backoff short and try it now.
+    if (signal.aborted) return;
+    if (!state.chainLive) setState({ chainLive: true });
+    if (read.events.length > 0) await applyChainEvents(read.events);
+    if (read.rows.length === 0) continue; // events alone are no reason to hammer the backend: its own backoff finds it
+    for (const ring of freshRings(read.rows, Date.now() / 1000)) await ringInApp(ring);
+    // A message or a ring is on chain, so the backend may be back: cut the backoff short and try it now.
     if (!signal.aborted) session.interrupt?.abort();
   }
 }

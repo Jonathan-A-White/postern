@@ -44,12 +44,22 @@ type addressedPayload struct {
 	Class   string `json:"class"`
 	Ts      int64  `json:"ts"`
 	Summary string `json:"summary"`
+	// Role is a call record's clear role (docs/protocol.md §21): only a "ring" is pushed.
+	Role string `json:"role"`
 }
 
 // directPrefix is api.DirectPrefix: the start of every directly delivered
 // record's txid. push cannot import api (api imports push), so the value is
 // kept here; a chain txid is 64 hex and never starts with it.
 const directPrefix = "direct:"
+
+// ringClass and ringRole name the one call record that is pushed (docs/protocol.md §21),
+// and ringTitle is the title that push carries.
+const (
+	ringClass = "call"
+	ringRole  = "ring"
+	ringTitle = "The Mayor is calling"
+)
 
 // maxSummaryRunes is the longest summary a push carries (docs/protocol.md §1).
 const maxSummaryRunes = 80
@@ -132,6 +142,18 @@ func parseAddressed(txid string, payload json.RawMessage) (addressedPayload, Pay
 		return addressed, Payload{}, false
 	}
 	push := Payload{Class: addressed.Class, TxID: txid, Ts: addressed.Ts}
+	if addressed.Class == ringClass {
+		// A call record is pushed only when it is the Mayor's ring, named so in the clear;
+		// its reason, when it rides as a direct record's summary, is the body.
+		if addressed.Role != ringRole {
+			return addressed, Payload{}, false
+		}
+		push.Title = ringTitle
+		if strings.HasPrefix(txid, directPrefix) {
+			push.Body = clipSummary(addressed.Summary)
+		}
+		return addressed, push, true
+	}
 	if strings.HasPrefix(txid, directPrefix) && summaryPushed(addressed.Class) {
 		push.Body = clipSummary(addressed.Summary)
 	}

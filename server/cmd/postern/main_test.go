@@ -650,3 +650,28 @@ func TestAppAtHomeIgnoresPeers(t *testing.T) {
 		t.Fatalf("the peer saw %q at home", seen())
 	}
 }
+
+func TestFanoutPushesARingButNotARequestOrATalkTurn(t *testing.T) {
+	const gov = "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+	const mayor = "023c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+	push := &txidNotifier{}
+	fanout := buildFanout(config.Config{}, nil, push, events.NewHub())
+	record := func(class, role string) index.Record {
+		extra := ""
+		if role != "" {
+			extra = `,"role":"` + role + `"`
+		}
+		return index.Record{TxID: "direct:" + class + role, Payload: []byte(`{"v":1,"kind":"msg","class":"` + class + `"` + extra + `,"to":"` + gov + `","from":"` + mayor + `","ts":1,"ct":"x"}`)}
+	}
+	fanout.RecordIndexed(record("call", "request"))
+	fanout.RecordIndexed(record("talk", ""))
+	fanout.RecordIndexed(record("call", "ring"))
+	if got := push.txids; len(got) != 1 || got[0] != "direct:callring" {
+		t.Fatalf("pushed %v, want only the ring", got)
+	}
+}
+
+// txidNotifier remembers the txid of every record it is told about.
+type txidNotifier struct{ txids []string }
+
+func (r *txidNotifier) RecordIndexed(rec index.Record) { r.txids = append(r.txids, rec.TxID) }

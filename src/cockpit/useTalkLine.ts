@@ -7,6 +7,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { initialTalkLine, endTurn, talkLine, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
 import { initialTalkScreen, talkScreen } from '../model/talkScreen';
 import { isListenSupported, startListening, type ListenMode, type ListenSession } from '../services/listen';
+import { canChooseInput, openBluetoothInput } from '../services/micInput';
 import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import { decodeTurn, newTalkId } from '../services/talk';
 import { now } from '../services/clock';
@@ -28,6 +29,8 @@ export function useTalkLine() {
   // 'starting' until the recogniser says the mic is open; 'fellBack' once on-device failed and the hold went on in cloud mode.
   const [mic, setMic] = useState<'starting' | 'ready'>('starting');
   const [fellBack, setFellBack] = useState(false);
+  // The label of the Bluetooth input the hold listens on; nothing means the phone's default microphone.
+  const [input, setInput] = useState<string | undefined>();
   const listening = useRef<ListenSession | null>(null);
   // Names the hold the recogniser's callbacks belong to; cleared when the hold ends, so a late event is ignored.
   const hold = useRef<object | null>(null);
@@ -114,6 +117,8 @@ export function useTalkLine() {
       lang: typeof document === 'undefined' ? undefined : document.documentElement.lang,
       onInterim: setTranscript,
       onStart: () => hold.current === thisHold && setMic('ready'),
+      openInput: canChooseInput() ? openBluetoothInput : undefined,
+      onInput: (label) => hold.current === thisHold && setInput(label),
       onFallback: () => {
         if (hold.current !== thisHold) return;
         setMode('cloud');
@@ -139,6 +144,7 @@ export function useTalkLine() {
     setMode(started.session.mode);
     setMic('starting');
     setFellBack(false);
+    setInput(undefined);
     setTranscript('');
     feed({ type: 'hold', talkId: line.talk?.id ?? newTalkId() });
   }
@@ -194,6 +200,7 @@ export function useTalkLine() {
     mode,
     mic,
     fellBack,
+    input,
     supported,
     press,
     release,

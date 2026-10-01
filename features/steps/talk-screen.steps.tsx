@@ -38,6 +38,7 @@ interface FakeRecognizer {
   onerror: ((event: { error: string }) => void) | null;
   started: boolean;
   stopped: boolean;
+  startedWith: unknown;
 }
 let recognizers: FakeRecognizer[] = [];
 // How the next recognisers behave: a real one says it started, and ends when stopped.
@@ -54,8 +55,10 @@ class Recognizer implements FakeRecognizer {
   onerror: FakeRecognizer['onerror'] = null;
   started = false;
   stopped = false;
-  start() {
+  startedWith: unknown = undefined;
+  start(track?: unknown) {
     this.started = true;
+    this.startedWith = track;
     recognizers.push(this);
     if (behaviour.opensMic) queueMicrotask(() => this.onaudiostart?.());
   }
@@ -90,6 +93,21 @@ function installBrowser(listens: boolean): void {
   Object.defineProperty(window, 'speechSynthesis', { value: { speak, cancel, getVoices: () => [] }, configurable: true, writable: true });
   Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true, writable: true });
   Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true, writable: true });
+}
+
+/** The phone's audio inputs: none listed (a browser that cannot choose), or these, whose tracks are returned when opened. */
+const inputTrack = { label: '', stop: vi.fn() };
+function setInputs(inputs: { deviceId: string; label: string }[] | undefined): void {
+  inputTrack.stop.mockClear();
+  const mediaDevices = inputs && {
+    enumerateDevices: () => Promise.resolve(inputs.map((input) => ({ ...input, kind: 'audioinput' }))),
+    getUserMedia: (constraints: { audio: { deviceId?: { exact: string } } | boolean }) => {
+      const wanted = typeof constraints.audio === 'object' ? constraints.audio.deviceId?.exact : undefined;
+      const track = { ...inputTrack, label: inputs.find((input) => input.deviceId === wanted)?.label ?? 'default' };
+      return Promise.resolve({ getAudioTracks: () => [track], getTracks: () => [track] });
+    },
+  };
+  Object.defineProperty(navigator, 'mediaDevices', { value: mediaDevices, configurable: true, writable: true });
 }
 
 const recogniserFails = (code: string) =>
@@ -162,6 +180,7 @@ async function fresh(): Promise<void> {
   for (const fake of [speak, cancel, vibrate, release, request]) fake.mockClear();
   await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
   document.documentElement.lang = '';
+  setInputs(undefined);
   window.history.replaceState(null, '', '/?v=line');
   screenIs(390);
 }
@@ -243,6 +262,82 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('the recogniser hears {string} so far', async (_c, words: string) => hear(words));
     Then('the live transcript reads {string}', async (_c, words: string) => {
       await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
+    });
+  });
+
+  Scenario('AC-1: with his car\'s Bluetooth microphone among the inputs the hold listens on it and the screen names it (mw-j0f2d.26)', ({ Given, When, Then, And }) => {
+    Given('the phone has the inputs {string} and {string}', (_c, a: string, b: string) => {
+      setInputs([
+        { deviceId: 'phone', label: a },
+        { deviceId: 'car', label: b },
+      ]);
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    Then('the recogniser listens on the {string} input', async (_c, label: string) => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      expect((recognizers.at(-1)?.startedWith as { label: string }).label).toBe(label);
+    });
+    And('the screen says it is listening on {string}', async (_c, label: string) => {
+      await waitFor(() => expect(screen.getByTestId('mic-name')).toHaveTextContent(`Bluetooth microphone: ${label}`));
+    });
+    When('he says {string} and lets go', async (_c, words: string) => {
+      await hear(words);
+      fireEvent.pointerUp(await talkButton('Release to send'));
+      await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
+    });
+    Then('the turn sent is {string}', (_c, words: string) => {
+      expect(lastSent().text).toBe(words);
+    });
+    And('the car\'s microphone is let go', () => {
+      expect(inputTrack.stop).toHaveBeenCalled();
+    });
+  });
+
+  Scenario('AC-1: with only the phone\'s own inputs the hold uses the default microphone and the screen says so (mw-j0f2d.26)', ({ Given, When, Then, And }) => {
+    Given('the phone has the inputs {string} and {string}', (_c, a: string, b: string) => {
+      setInputs([
+        { deviceId: 'a', label: a },
+        { deviceId: 'b', label: b },
+      ]);
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    Then('the recogniser listens on the default input', async () => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      expect(recognizers.at(-1)?.startedWith).toBeUndefined();
+    });
+    And('the screen says it is listening on the phone\'s own microphone', async () => {
+      await waitFor(() => expect(screen.getByTestId('mic-name')).toHaveTextContent("Listening on the phone's own microphone."));
+    });
+  });
+
+  Scenario('AC-1: a car input the recogniser cannot capture from falls back to the phone\'s own microphone (mw-j0f2d.26)', ({ Given, When, Then, And }) => {
+    Given('the phone has the inputs {string} and {string}', (_c, a: string, b: string) => {
+      setInputs([
+        { deviceId: 'phone', label: a },
+        { deviceId: 'car', label: b },
+      ]);
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    And('the recogniser finds no capture device on the car input', async () => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      await recogniserFails('audio-capture');
+    });
+    Then('the recogniser is started again on the default input', async () => {
+      await waitFor(() => expect(recognizers).toHaveLength(2));
+      expect(recognizers.at(-1)?.startedWith).toBeUndefined();
+    });
+    And('the screen says it is listening on the phone\'s own microphone', async () => {
+      await micOpens();
+      await waitFor(() => expect(screen.getByTestId('mic-name')).toHaveTextContent("Listening on the phone's own microphone."));
     });
   });
 

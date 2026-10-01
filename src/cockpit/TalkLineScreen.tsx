@@ -129,6 +129,11 @@ function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean): st
   }
 }
 
+/** Which microphone the hold is on: the Bluetooth input chosen (his car's, say), or the phone's default. */
+function micName(input: string | undefined): string {
+  return input ? `Listening on the Bluetooth microphone: ${input}.` : "Listening on the phone's own microphone.";
+}
+
 export function TalkLineScreen() {
   const talk = useTalkLine();
   const { line } = talk;
@@ -223,6 +228,11 @@ export function TalkLineScreen() {
               {talk.fellBack
                 ? 'Speech on this phone is not available, so your browser sends the audio to its speech service.'
                 : 'Your browser sends the audio to its speech service.'}
+            </p>
+          )}
+          {listening && micOpen && (
+            <p data-testid="mic-name" className="text-[11.5px] text-faint">
+              {micName(talk.input)}
             </p>
           )}
           {listening && micOpen && talk.mode === 'on-device' && <p className="text-[11.5px] text-faint">Speech is recognised on this phone.</p>}

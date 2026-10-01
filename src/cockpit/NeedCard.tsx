@@ -63,8 +63,16 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const answerTap = useOneTap(asks ? need.bead : '', `answer:${need.since}`);
   // What he sent is on this phone's own record too: the card stays dead across a reload and a view refetch.
   const sentRow = useAnswers().find((row) => row.bead === need.bead && row.ts * 1000 >= Date.parse(need.since));
-  const answered = asks && (answerTap.waiting || sentRow !== undefined);
-  const saidWhat = answerTap.said ? { label: answerTap.said.label, at: answerTap.said.at } : sentRow ? { label: sentRow.answer, at: sentRow.ts * 1000 } : undefined;
+  // An answer the factory has heard (a card_answered event, §22, on the view's copy) is dead too, whichever device sent it.
+  const heard = need.answered;
+  const answered = asks && (answerTap.waiting || sentRow !== undefined || heard !== undefined);
+  const saidWhat = answerTap.said
+    ? { label: answerTap.said.label, at: answerTap.said.at }
+    : sentRow
+      ? { label: sentRow.answer, at: sentRow.ts * 1000 }
+      : heard
+        ? { label: heard.option, at: Date.parse(heard.at) }
+        : undefined;
   const [notSent, setNotSent] = useState(false);
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
@@ -209,7 +217,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
         <p role="status" className="inline-flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
           <Icon name="check" size={15} className="shrink-0" />
           <span className="min-w-0 truncate">
-            Answered: {saidWhat.label} {clockTime(new Date(saidWhat.at))}
+            {saidWhat.label ? `Answered: ${saidWhat.label}` : 'Answered'} {clockTime(new Date(saidWhat.at))}
           </span>
         </p>
       )}

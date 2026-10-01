@@ -7,10 +7,13 @@
 // keeps current. While the backend cannot be reached it also reads the anchor
 // address from the chain itself every 30 s (docs/protocol.md §21): a record
 // found there is kept, a ring rings, and the backend is tried again at once.
+// The factory's events (§22) come in the message sync and are projected onto the
+// stored view (src/services/events.ts); once they flow, the stream's `view` event
+// is only the recovery path, for when no events batch follows it.
 import { useSyncExternalStore } from 'react';
 import { apiFetch } from './apiAuth';
 import { readChain, CHAIN_POLL_MS } from './chainRead';
-import { syncMessages } from './inbox';
+import { syncMessagesAndEvents } from './events';
 import { freshRings, ringInApp } from './ringIn';
 import { fetchMe, LEGACY, NoLicenceError, reconcileMayorKey, type Me } from './me';
 import { refreshView } from './view';
@@ -41,11 +44,16 @@ const MAX_BACKOFF_MS = 30_000;
 const STREAM_STALE_MS = 60_000;
 /** Two returns to the foreground closer than this are one. */
 const FOREGROUND_DEBOUNCE_MS = 3_000;
+/** Once events flow, how long a `view` event waits for an events batch to make fetching the view needless. */
+const VIEW_GRACE_MS = 10_000;
 
 let state: LiveState = { status: 'idle', me: null, reconnects: 0, syncs: 0 };
 const listeners = new Set<() => void>();
 let current: { key: Uint8Array; abort: AbortController; interrupt?: AbortController } | null = null;
 let lastForeground = 0;
+/** When this session last applied an events batch (ms), 0 before the first. */
+let lastProjected = 0;
+let viewWait: ReturnType<typeof setTimeout> | undefined;
 
 function setState(patch: Partial<LiveState>): void {
   state = { ...state, ...patch };
@@ -132,14 +140,17 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boole
   let ok = false;
   await queue(async () => {
     const errors: string[] = [];
+    let viewFetched = false;
     if (what.messages) {
       try {
-        await syncMessages({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key });
+        const synced = await syncMessagesAndEvents({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key, mayorKey: state.mayorKey, live: hasFeature('view') });
+        if (synced.applied > 0) lastProjected = Date.now();
+        viewFetched = synced.refetched;
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err));
       }
     }
-    if (what.view) {
+    if (what.view && !viewFetched) {
       try {
         await refreshView({ key, mayorKey: state.mayorKey, live: hasFeature('view') });
       } catch (err) {
@@ -152,6 +163,22 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boole
     else setState({ error: errors.join('; '), syncs });
   });
   return ok;
+}
+
+/** The stream says the view changed. Before any events batch this session it is fetched
+ * at once, as ever; once events flow, the batch that follows within VIEW_GRACE_MS has
+ * already changed the stored copy, and the view is fetched only if none does. */
+function onViewEvent(key: Uint8Array): void {
+  if (lastProjected === 0) {
+    void syncAll(key, { view: true });
+    return;
+  }
+  if (viewWait !== undefined) return;
+  const heard = Date.now();
+  viewWait = setTimeout(() => {
+    viewWait = undefined;
+    if (current?.key === key && lastProjected < heard - VIEW_GRACE_MS) void syncAll(key, { view: true });
+  }, VIEW_GRACE_MS);
 }
 
 /** Parses the text of one server-sent event block ("event: x\ndata: {...}"). */
@@ -189,7 +216,7 @@ async function listen(key: Uint8Array, signal: AbortSignal): Promise<void> {
       setState({ lastHeard: Date.now() });
       if (parsed?.event === 'hello') void syncAll(key, { messages: true, view: true });
       else if (parsed?.event === 'message') void syncAll(key, { messages: true });
-      else if (parsed?.event === 'view') void syncAll(key, { view: true });
+      else if (parsed?.event === 'view') onViewEvent(key);
       split = buffer.indexOf('\n\n');
     }
   }
@@ -280,6 +307,9 @@ export function stopLive(): void {
   current = null;
   chainSeen.clear();
   lastForeground = 0;
+  lastProjected = 0;
+  clearTimeout(viewWait);
+  viewWait = undefined;
   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibilityChange);
   if (typeof window !== 'undefined') window.removeEventListener('pageshow', onForeground);
   setState({ status: 'idle' });

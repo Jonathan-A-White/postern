@@ -6,19 +6,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { Markdown } from '../markdown';
-import { answersGiven, attachmentLabel, type ConversationItem, type GivenAnswer } from '../model/conversation';
+import { answersGiven, askedAgainAt, attachmentLabel, type ConversationItem, type GivenAnswer } from '../model/conversation';
+import { answeredQuestion, needOfQuestion } from '../model/needs';
 import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
 import { useLive } from '../services/live';
 import { speak } from '../services/speech';
-import { useOutbox, useUnlockedKey } from './hooks';
+import { useAnswers, useOutbox, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { pendingAnswer } from '../model/outbox';
 import { FailedNote, OutboxMark } from './OutboxMark';
 import { PendingMark } from './PendingMark';
 import { VoicePlayer } from './VoicePlayer';
 import { sendAnswer } from './send';
 import { useOneTap } from './oneTap';
-import type { Attachment } from '../services/threads';
+import { threadKey, type Attachment } from '../services/threads';
 
 function dayLabel(at: number): string {
   const date = new Date(at);
@@ -166,16 +167,31 @@ function OptionLabel({ option }: { option: string }) {
 
 /** A question is answered once: his tap sends one answer, then the options go dead and the card says what he
  * answered and when. The answer he sent (the app's own record of it) is the truth, so it reads the same after a
- * reload; a send that failed leaves the options tappable and says so. */
-function QuestionBlock({ item, given }: { item: ConversationItem; given?: GivenAnswer }) {
+ * reload; a send that failed leaves the options tappable and says so. His words naming an option and the
+ * factory's ANSWER comment count too (mw-gq6.214), as on Needs you, whether or not they sit in this thread.
+ * `until` is when the bead asked again (ms), where the words for this question end. */
+function QuestionBlock({ item, given, until }: { item: ConversationItem; given?: GivenAnswer; until?: number }) {
   const question = item.question;
   const tapped = useOneTap(question?.bead ?? '', `answer:${item.id}`);
   const [failed, setFailed] = useState(false);
   const outbox = useOutbox();
+  const asks = question !== undefined && question.bead !== '';
+  const inBeadThread = useThreadMessages(asks ? threadKey({ bead: question.bead }) : undefined);
+  const inFactory = useThreadMessages(undefined);
+  const comments = useStoredComments(asks ? question.bead : '');
+  const sent = useAnswers();
+  const view = useViewIndex();
+  // Words in Factory that name no bead answer this card only when it is the one question open.
+  const open = view?.index.view.needs.filter((need) => need.kind === 'question' && need.bead !== '') ?? [];
+  const soleQuestion = open.length === 1 && open[0].bead === question?.bead;
+  const inWords = useMemo(
+    () => (question && asks ? answeredQuestion(needOfQuestion(question, item.at), { sent, comments, messages: [...inBeadThread, ...inFactory], outbox, soleQuestion }, until) : undefined),
+    [question, asks, item.at, sent, comments, inBeadThread, inFactory, outbox, soleQuestion, until],
+  );
   if (!question) return null;
   // An answer still in the outbox (mw-jrx0s.10) is dead and says so too: it is marked pending until it has gone.
   const queued = pendingAnswer(outbox, question.bead, item.at);
-  const answered = given ?? (tapped.said ? { answer: tapped.said.label, at: tapped.said.at } : queued ? { answer: queued.label ?? '', at: queued.created } : undefined);
+  const answered = given ?? (tapped.said ? { answer: tapped.said.label, at: tapped.said.at } : queued ? { answer: queued.label ?? '', at: queued.created } : inWords ? { answer: inWords.label, at: inWords.at } : undefined);
   const dead = answered !== undefined || tapped.waiting;
   const stacked = question.options.some((option) => option.length >= SHORT_OPTION);
 
@@ -230,7 +246,7 @@ function QuestionBlock({ item, given }: { item: ConversationItem; given?: GivenA
   );
 }
 
-function Bubble({ item, given, onQuote, onReply }: { item: ConversationItem; given?: GivenAnswer; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
+function Bubble({ item, given, until, onQuote, onReply }: { item: ConversationItem; given?: GivenAnswer; until?: number; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
   const mine = item.speaker === 'you';
   const builder = item.speaker === 'builder' || item.speaker === 'factory' || item.speaker === 'other';
   if (item.kind === 'action' || item.kind === 'answer') {
@@ -260,7 +276,7 @@ function Bubble({ item, given, onQuote, onReply }: { item: ConversationItem; giv
             <span className="font-semibold">Heard:</span> {item.transcript}
           </p>
         )}
-        {item.kind === 'question' && <QuestionBlock item={item} given={given} />}
+        {item.kind === 'question' && <QuestionBlock item={item} given={given} until={until} />}
       </div>
       <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-faint">
         <span>{clockTime(new Date(item.at))}</span>
@@ -317,6 +333,7 @@ export function Conversation({
   }, [count, scrollOnOpen]);
 
   const given = useMemo(() => answersGiven(items), [items]);
+  const askedAgain = useMemo(() => askedAgainAt(items), [items]);
   if (count === 0) return <div className={className}>{empty}</div>;
   const days = items.map((item) => dayLabel(item.at));
   return (
@@ -333,7 +350,7 @@ export function Conversation({
                 <span className="h-px flex-1 bg-line" />
               </div>
             )}
-            <Bubble item={item} given={given.get(item.id)} onQuote={onQuote} onReply={onReply} />
+            <Bubble item={item} given={given.get(item.id)} until={askedAgain.get(item.id)} onQuote={onQuote} onReply={onReply} />
             {footer?.(item)}
           </div>
         );

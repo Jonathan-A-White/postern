@@ -5,6 +5,7 @@ import type { AnswerRow, MessageRow, OutboxRow } from '../data/db';
 import { decodeReply } from '../services/questions';
 import { decodeThreadedMessage } from '../services/threads';
 import { isEpic, type ViewIndex } from './tree';
+import type { QuestionBody } from '../services/questions';
 import type { BeadComment, Need, WaitsFor } from './view';
 
 export function unsettledNeeds(needs: Need[], answers: AnswerRow[]): Need[] {
@@ -148,4 +149,27 @@ export function answeredInWords(need: Need, messages: MessageRow[], outbox: Outb
     consider(row.payload.text, row.thread, row.created);
   }
   return found.sort((a, b) => a.at - b.at)[0];
+}
+
+/** The card a question post in a thread stands for, asked at `at` (ms), so the evidence Needs you reads can be read for it. */
+export function needOfQuestion(question: QuestionBody, at: number): Need {
+  return { kind: 'question', bead: question.bead ?? '', epic: '', title: '', since: new Date(at).toISOString(), text: question.q, recommended: question.rec, options: question.options, blocks: 0, steps: [] };
+}
+
+/** What a question post in a thread has been answered with, by anything this phone holds but a tap in this session:
+ * the answer it sent, the factory's ANSWER comment, or his words naming an option (as Needs you reads them, mw-gq6.199).
+ * Only what came before `until` (ms, when the bead asked again) counts. */
+export function answeredQuestion(
+  need: Need,
+  evidence: { sent: AnswerRow[]; comments: BeadComment[]; messages: MessageRow[]; outbox: OutboxRow[]; soleQuestion: boolean },
+  until = Infinity,
+): SaidAnswer | undefined {
+  if (need.kind !== 'question' || need.bead === '') return undefined;
+  const since = Date.parse(need.since);
+  const sent = evidence.sent.find((row) => row.bead === need.bead && row.ts * 1000 >= since && row.ts * 1000 < until);
+  if (sent) return { label: sent.answer, at: sent.ts * 1000 };
+  const comments = evidence.comments.filter((comment) => !(Date.parse(comment.at) >= until));
+  const messages = evidence.messages.filter((row) => row.ts * 1000 < until);
+  const outbox = evidence.outbox.filter((row) => row.created < until);
+  return answeredByComment(need, comments) ?? answeredInWords(need, messages, outbox, evidence.soleQuestion);
 }

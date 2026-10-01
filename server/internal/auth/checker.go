@@ -74,6 +74,8 @@ type CachedChecker struct {
 	mu       sync.Mutex
 	cache    map[string]checkerEntry
 	inflight map[string]*walkCall
+
+	background sync.WaitGroup // background refreshes started and not yet finished
 }
 
 // CachedCheckerOption configures a CachedChecker constructed by
@@ -161,7 +163,7 @@ func (c *CachedChecker) HeldCollections(pubKeyHex string) ([]string, error) {
 	if ok {
 		c.mu.Unlock()
 		if refresh != nil {
-			go c.refresh(pubKeyHex, address, refresh)
+			c.refreshInBackground(pubKeyHex, address, refresh)
 		}
 		return collections, nil
 	}
@@ -192,7 +194,7 @@ func (c *CachedChecker) CachedCollections(pubKeyHex string) ([]string, bool) {
 	}
 	c.mu.Unlock()
 	if refresh != nil {
-		go c.refresh(pubKeyHex, address, refresh)
+		c.refreshInBackground(pubKeyHex, address, refresh)
 	}
 	return collections, ok
 }
@@ -249,6 +251,23 @@ func (c *CachedChecker) run(key, address string, call *walkCall) {
 	}
 	call.collections, call.err = collections, err
 	close(call.done)
+}
+
+// refreshInBackground runs refresh on its own goroutine, counted so Wait can
+// wait for it.
+func (c *CachedChecker) refreshInBackground(key, address string, call *walkCall) {
+	c.background.Add(1)
+	go func() {
+		defer c.background.Done()
+		c.refresh(key, address, call)
+	}()
+}
+
+// Wait blocks until every background refresh started so far has finished,
+// answers file written included. Production never needs it; a test that
+// keeps answers in a temp directory calls it before the directory goes.
+func (c *CachedChecker) Wait() {
+	c.background.Wait()
 }
 
 // refresh is the background walk behind a stale answer; a failure is logged

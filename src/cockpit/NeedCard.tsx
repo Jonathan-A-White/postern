@@ -9,6 +9,8 @@ import { Markdown } from '../markdown';
 import { NEED_META, VERIFY_BUTTON } from './labels';
 import { beadHref, type Route } from '../nav/route';
 import { GENERAL, titleFor } from '../model/threads';
+import type { TalkAbout } from '../model/talkLine';
+import { navigate } from '../router';
 import { threadKey } from '../services/threads';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { speak } from '../services/speech';
@@ -32,6 +34,11 @@ export interface NeedCardProps {
   index?: ViewIndex;
   /** The bead's status from its loaded detail, fresher than the view's; the view's is used without it. */
   status?: string;
+}
+
+/** What a Talk from this card is about: its bead, or the Factory channel for a card with none. */
+function aboutNeed(need: Need): TalkAbout {
+  return need.bead ? { kind: 'bead', id: need.bead, title: need.title || need.bead } : { kind: 'channel', id: GENERAL, title: need.title || titleFor(GENERAL).title };
 }
 
 function spokenText(need: Need): string {
@@ -215,7 +222,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
         </ul>
       )}
 
-      {hasSteps && <HandsSteps bead={need.bead} steps={need.steps} waitsOn={notReady ? waitsOnLinks(need, index, beadHref) : undefined} />}
+      {hasSteps && <HandsSteps bead={need.bead} title={need.title} steps={need.steps} waitsOn={notReady ? waitsOnLinks(need, index, beadHref) : undefined} />}
 
       {stale && !waiting && !compact && need.bead && <StaleChoice bead={need.bead} />}
 
@@ -294,6 +301,9 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
             {need.kind === 'question' ? 'Answer in words' : 'Reply'}
           </Button>
         )}
+        <Button variant="ghost" size="sm" icon="mic" onClick={() => navigate({ view: 'line', about: aboutNeed(need) })}>
+          Talk
+        </Button>
         {need.bead && (
           <a href={beadHref(need.bead)} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm text-muted hover:bg-raised hover:text-fg">
             <Icon name="forward" size={16} />

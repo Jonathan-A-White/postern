@@ -27,6 +27,7 @@ import { parseThreadKey, type ThreadRef } from '../services/threads';
 import { promptOfChannel } from '../services/prompts';
 import { PromptNote } from './PromptNote';
 import { announceSeen, markThreadSeen } from '../services/seen';
+import type { TalkAbout } from '../model/talkLine';
 import { GENERAL, summariseThreads, titleFor, type ThreadSummary } from '../model/threads';
 
 function ThreadRow({ thread, active, onToggleArchive }: { thread: ThreadSummary; active: boolean; onToggleArchive: (thread: ThreadSummary) => void }) {
@@ -246,6 +247,11 @@ function PaneFor({ threadKey, root, prefill }: { threadKey: string; root?: strin
   );
 }
 
+/** What a Talk from a thread's header is about: the bead of a bead thread, else the channel (its key and name). */
+function aboutThread(key: string, title: string): TalkAbout {
+  return key.startsWith('bead:') ? { kind: 'bead', id: key.slice(5), title } : { kind: 'channel', id: key, title };
+}
+
 export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: string; prefill?: string }) {
   const wide = useWide();
   // The channel list keeps its place whatever address opens beside it.
@@ -278,6 +284,7 @@ export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: 
         <IconButton icon="archive" label={currentThread.archived ? 'Unarchive channel' : 'Archive channel'} onClick={() => toggleArchive(currentThread)} />
       )}
       {bead && <IconButton icon="forward" label="Open the bead" onClick={() => navigate(beadHref(bead))} />}
+      {current && <IconButton icon="mic" label="Talk" onClick={() => navigate({ view: 'line', about: aboutThread(current, channel?.title ?? current) })} />}
     </>
   );
 

@@ -36,6 +36,9 @@ function PromptRow({ prompt }: { prompt: Prompt }) {
         <Button size="sm" icon="talk" onClick={() => navigate({ view: 'talk', thread: topicKey(promptChannel(prompt.name)) })}>
           Edit
         </Button>
+        <Button size="sm" variant="ghost" icon="mic" onClick={() => navigate({ view: 'line', about: { kind: 'prompt', id: prompt.name, title: `/${prompt.name}` } })}>
+          Talk
+        </Button>
       </div>
     </li>
   );

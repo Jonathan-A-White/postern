@@ -5,7 +5,8 @@
 // Mayor. What ran says so, with its exit code. A step whose bead waits on an open
 // bead offers neither: it says what it waits on, each a link to that bead.
 import { useState } from 'react';
-import { Button, Chip, CodeBlock, Icon, TimeAgo, cx } from '../ui';
+import { Button, Chip, CodeBlock, Icon, IconButton, TimeAgo, cx } from '../ui';
+import { navigate } from '../router';
 import type { HandsStep } from '../model/hands';
 import type { WaitsOn } from '../model/needs';
 import { approveHandsStep, sendToThread, useSend } from './send';
@@ -82,7 +83,7 @@ export function StepRun({ bead, step, waitsOn, approvedAt, onApproved }: { bead:
   );
 }
 
-function StepCard({ bead, step, waitsOn }: { bead: string; step: HandsStep; waitsOn?: WaitsOn[] }) {
+function StepCard({ bead, title, step, waitsOn }: { bead: string; title: string; step: HandsStep; waitsOn?: WaitsOn[] }) {
   const [approvedAt, setApprovedAt] = useState<number>();
   const [showWayBack, setShowWayBack] = useState(false);
   const root = step.as === 'root';
@@ -109,6 +110,7 @@ function StepCard({ bead, step, waitsOn }: { bead: string; step: HandsStep; wait
             approved, running…
           </Chip>
         )}
+        <IconButton icon="mic" label="Talk" size="sm" className="ml-auto" onClick={() => navigate({ view: 'line', about: { kind: 'bead', id: bead, title } })} />
       </div>
       {step.ran && !ranOk && step.ran.why && (
         <div className="flex flex-col gap-0.5" role="alert">
@@ -132,12 +134,13 @@ function StepCard({ bead, step, waitsOn }: { bead: string; step: HandsStep; wait
 }
 
 /** `waitsOn` set (even empty) means the bead cannot be acted on yet: the steps show, nothing to tap. */
-export function HandsSteps({ bead, steps, waitsOn }: { bead: string; steps: HandsStep[]; waitsOn?: WaitsOn[] }) {
+/** `title` is the bead's, for the line a step's Talk opens (it is about the bead). */
+export function HandsSteps({ bead, title, steps, waitsOn }: { bead: string; title?: string; steps: HandsStep[]; waitsOn?: WaitsOn[] }) {
   if (steps.length === 0) return null;
   return (
     <ol className="flex flex-col gap-2" aria-label="Steps for your hands">
       {steps.map((step) => (
-        <StepCard key={`${step.id}:${step.sha256}`} bead={bead} step={step} waitsOn={waitsOn} />
+        <StepCard key={`${step.id}:${step.sha256}`} bead={bead} title={title || bead} step={step} waitsOn={waitsOn} />
       ))}
     </ol>
   );

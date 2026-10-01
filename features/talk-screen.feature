@@ -378,3 +378,9 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the screen reads "Missed call 14:06: Back now: two landings." above the hold button
     When he holds the button, says "Tell me" and lets go
     Then the ring note is gone
+
+  Scenario: AC-6: an answer that arrives by the sync with its talk turn event shows on the open line (mw-jrx0s.8)
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "What landed today?" and lets go
+    And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
+    Then the screen shows "Three things landed." as the answer

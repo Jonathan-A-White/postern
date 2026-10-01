@@ -18,6 +18,10 @@ import { forgetSilentInputs } from '../../src/services/micInput';
 import { encodeTurn } from '../../src/services/talk';
 import { deliverCallRequest, encodeCall, type CallRecord } from '../../src/services/call';
 import { PrivateKey, Utils } from '@bsv/sdk';
+import { syncMessagesAndEvents } from '../../src/services/events';
+import { encryptMessage } from '../../src/services/messages';
+import { MAYOR } from '../../tests/support/cockpit-fixture';
+import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-woc';
 import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 
@@ -263,6 +267,27 @@ const places = async () => {
   const nav = await screen.findByRole('navigation', { name: 'Places' });
   expect(within(nav).getAllByRole('link').map((link) => link.textContent?.replace(/^\d+/, ''))).toEqual(['Needs you', 'Map', 'Channels', 'Search', 'Me']);
 };
+
+/** The Mayor's answer as the message sync pages it, with the `events` record that names it (§22), and nothing else a backend serves. */
+async function syncAnswer(text: string): Promise<void> {
+  const sent = lastSent();
+  const gov = PrivateKey.fromHex('44'.repeat(32));
+  const turn = encryptMessage({ text: encodeTurn({ talk: sent.talk, text, role: 'answer', model: 'sonnet' }), class: 'talk', senderPrivateKeyHex: MAYOR.toHex(), recipientPublicKeyHex: gov.toPublicKey().toString() });
+  const txid = '5a'.repeat(32);
+  const talkTurn = { seq: 1, ts: '2026-10-01T12:01:00Z', kind: 'talk_turn', bead: '', actor: 'mw@laptop', from: 'turn', to: 'answer', detail: txid, lane: 'normal' };
+  const events = encryptMessage({ text: JSON.stringify({ from: 1, to: 1, lane: 'normal', events: [talkTurn] }), class: 'events', senderPrivateKeyHex: MAYOR.toHex(), recipientPublicKeyHex: gov.toPublicKey().toString() });
+  const records = [
+    { seq: 1, txid, vout: 0, payload: turn },
+    { seq: 2, txid: '5b'.repeat(32), vout: 0, payload: events },
+  ];
+  const backend = async (input: RequestInfo | URL): Promise<Response> => {
+    const url = String(input);
+    if (isChallengeRequest(url)) return challengeResponse();
+    if (url.includes('/messages')) return new Response(JSON.stringify({ records, next: 2 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response('not found', { status: 404 });
+  };
+  await syncMessagesAndEvents({ publicKeyHex: gov.toPublicKey().toString(), unlockedKey: new Uint8Array(Utils.toArray(gov.toHex(), 'hex')), mayorKey: MAYOR.toPublicKey().toString(), live: false, fetchImpl: backend });
+}
 
 const feature = await loadFeature('features/talk-screen.feature');
 
@@ -583,6 +608,17 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('he holds the talk button and says {string} and lets go', holdsAndSays);
     Then('the screen says the Mayor is thinking', async () => {
       expect(await screen.findByText('The Mayor is thinking…')).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-6: an answer that arrives by the sync with its talk turn event shows on the open line (mw-jrx0s.8)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('a sync pages the Mayor\'s answer {string} and the event for that talk turn', async (_c, text: string) => {
+      await syncAnswer(text);
+    });
+    Then('the screen shows {string} as the answer', async (_c, text: string) => {
+      await waitFor(() => expect(screen.getByTestId('talk-answer')).toHaveTextContent(text));
     });
   });
 

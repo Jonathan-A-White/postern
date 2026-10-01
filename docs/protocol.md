@@ -735,7 +735,8 @@ valid for a reader.
 - `role` — `"transcript"` marks the text as what the Mayor's host heard in the
   voice note `re` names.
 
-**Replies in every channel.** A plain text message whose `re` names another
+**Replies in every channel.** A message, whether plain text or carrying files
+(`attachment` or `attachments`, §8) with or without a caption, whose `re` names another
 message *in the same channel* (General, a bead's thread or a named topic) is a
 *reply* in that message's thread. The thread's root is the named message, or, if
 that message is itself a reply, its own root: threads are one level deep, however
@@ -748,7 +749,10 @@ are annotations, not replies, and keep their rendering. The app groups a
 channel's conversation this way with `groupPosts` in `src/model/postThreads.ts`;
 a thread opens at `?v=talk&t=<channel>&r=<root txid>`, and a push for a reply
 opens that URL. A message that carries `re` is always sent as the
-JSON `{ "text": …, "re": "direct:…" }` (§6), never as bare text.
+JSON `{ "text": …, "re": "direct:…" }` (§6), never as bare text. A picture can be a reply:
+`{ "text": …, "attachment": {…}, "re": "direct:…" }` (or `attachments`) is a reply in
+that post's thread exactly as a text reply is, and so is a voice note with `re`;
+only `role: "transcript"` marks an annotation.
 
 A voice note is a threaded message whose attachment is audio (its `text` may be
 empty). The Mayor's host transcribes it on arrival (`postern_transcribe_cmd`,

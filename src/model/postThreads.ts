@@ -1,5 +1,5 @@
 // src/model/postThreads.ts — docs/protocol.md §14: in any channel (General, a
-// bead's, a named one) a plain text message whose `re` names another message of
+// bead's, a named one) a text message, or one carrying files, whose `re` names another message of
 // that channel is a REPLY in that message's thread. The thread's root is the named message, or that message's own
 // root if it is itself a reply: one level deep, however long the chain. A message
 // whose `re` names a txid that is not here stays a root, and a transcript or a
@@ -16,9 +16,9 @@ export interface PostThread {
   lastReplyAt?: number;
 }
 
-/** The txid a plain text message answers, lower-cased; undefined for anything else. */
+/** The txid a text message or one carrying files answers, lower-cased; undefined for anything else. */
 function repliedTo(item: ConversationItem): string | undefined {
-  if (item.source !== 'message' || item.kind !== 'text' || item.re === undefined) return undefined;
+  if (item.source !== 'message' || (item.kind !== 'text' && item.kind !== 'attachment') || item.re === undefined) return undefined;
   return item.re.toLowerCase();
 }
 

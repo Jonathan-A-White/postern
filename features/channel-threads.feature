@@ -53,3 +53,11 @@ Feature: Every channel has reply threads: N replies under a post, Reply opens it
     Given a post "the post" in the channel of bead "mw-a.1" with the reply "first answer"
     When the notification for the reply "first answer" is tapped
     Then the app opens the thread of "the post" in the channel of bead "mw-a.1"
+
+  Scenario: mw-909ci.4: a picture with re is a reply in the post's thread and a transcript is not
+    Given a post "the post" in the named channel "wiring" with the picture reply "a screenshot" and the transcript "what was heard"
+    When the named channel "wiring" opens
+    Then its row says "1 reply"
+    And "a screenshot" is not shown in the channel
+    When the "1 reply" row is tapped
+    Then the thread shows "the post" and "a screenshot" in that order

@@ -21,6 +21,7 @@ import { fixtureView } from '../../tests/support/cockpit-fixture';
 configure({ asyncUtilTimeout: 5000 });
 
 const sendToThread = vi.fn();
+vi.mock('../../src/services/blobs', () => ({ openAttachment: async () => 'blob:image' }));
 vi.mock('../../src/cockpit/send', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/cockpit/send')>()),
   sendToThread: (...args: unknown[]) => sendToThread(...args),
@@ -33,7 +34,7 @@ let detailFor: string | undefined;
 const byText = new Map<string, MessageRow>();
 const BASE = 1_760_000_000;
 
-function say(text: string, options: { re?: string; thread?: string; direction?: 'sent' | 'received' } = {}): MessageRow {
+function say(text: string, options: { re?: string; thread?: string; direction?: 'sent' | 'received'; role?: string; files?: { hash: string; size: number; mime: string }[] } = {}): MessageRow {
   sequence += 1;
   const txid = `direct:${String(sequence).padStart(64, '0')}`;
   const row: MessageRow = {
@@ -46,7 +47,10 @@ function say(text: string, options: { re?: string; thread?: string; direction?: 
     from: '03'.padEnd(66, '0'),
     ts: BASE + sequence * 60,
     ciphertext: '',
-    plaintext: options.re === undefined ? text : JSON.stringify({ text, re: options.re }),
+    plaintext:
+      options.re === undefined && options.files === undefined
+        ? text
+        : JSON.stringify({ text, ...(options.files?.length === 1 ? { attachment: options.files[0] } : {}), ...(options.files && options.files.length > 1 ? { attachments: options.files } : {}), ...(options.re !== undefined ? { re: options.re } : {}), ...(options.role !== undefined ? { role: options.role } : {}) }),
     direction: options.direction ?? 'received',
     read: true,
     ...(options.thread !== undefined ? { thread: options.thread } : {}),
@@ -256,6 +260,21 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the app opens the thread of {string} in the channel of bead {string}', (_ctx, text: string, bead: string) => {
       expect(parseRoute(new URL(tapped, 'https://postern.allmymind.org').search)).toEqual({ view: 'talk', thread: beadChannel(bead), root: byText.get(text)!.txid });
+    });
+  });
+
+  Scenario("mw-909ci.4: a picture with re is a reply in the post's thread and a transcript is not", ({ Given, When, Then, And }) => {
+    Given('a post {string} in the named channel {string} with the picture reply {string} and the transcript {string}', (_ctx, text: string, name: string, picture: string, transcript: string) => {
+      const root = say(text, { thread: namedChannel(name) });
+      say(picture, { re: root.txid, thread: namedChannel(name), files: [{ hash: 'ab'.repeat(32), size: 90, mime: 'image/png' }] });
+      say(transcript, { re: root.txid, thread: namedChannel(name), role: 'transcript' });
+    });
+    When('the named channel {string} opens', (_ctx, name: string) => open(talkUrl(namedChannel(name))));
+    Then('its row says {string}', rowSays);
+    And('{string} is not shown in the channel', notShown);
+    When('the {string} row is tapped', rowTapped);
+    Then('the thread shows {string} and {string} in that order', async (_ctx, a: string, b: string) => {
+      await threadShows(a, b);
     });
   });
 });

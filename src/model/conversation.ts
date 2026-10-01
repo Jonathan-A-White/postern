@@ -173,7 +173,7 @@ export function itemFromMessage(row: MessageRow): ConversationItem & { transcrip
     return { ...base, kind: 'text', text: body.text, transcriptOf: body.re };
   }
   const files = attachmentsOf(body);
-  if (files.length > 0) return { ...base, kind: 'attachment', text: body.text, attachments: files };
+  if (files.length > 0) return { ...base, kind: 'attachment', text: body.text, attachments: files, ...(body.re !== undefined ? { re: body.re } : {}) };
   return { ...base, kind: 'text', text: body.text, ...(body.re !== undefined ? { re: body.re } : {}) };
 }
 

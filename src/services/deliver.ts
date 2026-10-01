@@ -24,6 +24,8 @@ export interface DeliverOptions {
   direct: boolean;
   /** The phone knows the backend is out of reach (the live status is offline): a Call me skips the direct post and goes on chain (docs/protocol.md §21). */
   offline?: boolean;
+  /** The outbox row's client id, sent with a direct post so the backend stores a retry once (docs/protocol.md §9). */
+  clientId?: string;
   apiBase?: string;
   fetchImpl?: typeof fetch;
 }
@@ -43,7 +45,7 @@ function isNetworkFailure(err: unknown): boolean {
 async function postDirect(scriptHex: string, options: DeliverOptions): Promise<string> {
   const response = await apiFetch(
     '/messages',
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scriptHex }) },
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options.clientId ? { scriptHex, clientId: options.clientId } : { scriptHex }) },
     { unlockedKey: options.key, apiBase: options.apiBase, fetchImpl: options.fetchImpl },
   );
   if (response.status === 404 || response.status === 405) throw new DirectUnsupported();

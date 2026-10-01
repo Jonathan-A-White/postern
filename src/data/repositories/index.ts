@@ -6,4 +6,4 @@ export { answersRepo } from './answers-repo';
 export { pendingSpendsRepo } from './pending-spends-repo';
 export { viewRepo, beadDetailsRepo, sessionRepo, sharesRepo } from './view-repo';
 export { eventsRepo } from './events-repo';
-export { outboxRepo } from './outbox-repo';
+export { outboxRepo, newClientId } from './outbox-repo';

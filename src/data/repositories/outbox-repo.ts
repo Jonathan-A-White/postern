@@ -1,10 +1,17 @@
 import { db, type OutboxRow } from '../db';
 
+/** A fresh client id: 128 random bits as 32 hex characters. */
+export function newClientId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /** mw-jrx0s.10: the outgoing queue (src/services/outbox.ts sends it, the screens read it). */
 export const outboxRepo = {
   /** Writes a new row, pending, and resolves with its id (ids rise in the order rows were written). */
-  async add(row: Omit<OutboxRow, 'id' | 'attempts' | 'state' | 'created'> & { created?: number }): Promise<number> {
-    return db.outbox.add({ ...row, created: row.created ?? Date.now(), attempts: 0, state: 'pending' });
+  async add(row: Omit<OutboxRow, 'id' | 'attempts' | 'state' | 'created' | 'clientId'> & { created?: number }): Promise<number> {
+    return db.outbox.add({ ...row, clientId: newClientId(), created: row.created ?? Date.now(), attempts: 0, state: 'pending' });
   },
 
   /** Every row, oldest first. */

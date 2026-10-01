@@ -652,7 +652,7 @@ With `POSTERN_HOME_CMD` unset, nothing changes.
 | `POSTERN_NETWORK` | Network label (informational; doesn't affect request URLs) | `testnet` |
 | `POSTERN_ANCHOR` | The anchor address the poller watches | *(required, no default)* |
 | `POSTERN_WOC_BASE` | WhatsOnChain API base URL | `https://api.whatsonchain.com/v1/bsv/test` |
-| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`), push state, the challenge key (`postern-nonce.key`), and attachment blobs (`blobs/`) | `./data` |
+| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`), push state, the challenge key (`postern-nonce.key`), attachment blobs (`blobs/`), and what the licence walk keeps across a restart: each key's last answer (`licence-answers.json`) and every transaction it fetched (`licence-txs/`), so a backend swap serves from the last answer while a background walk refreshes it | `./data` |
 | `POSTERN_VAPID_PUBLIC_KEY` | VAPID public key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
 | `POSTERN_VAPID_PRIVATE_KEY` | VAPID private key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
 | `POSTERN_PUSH_SUBSCRIBER` | The VAPID contact (an https URL or `mailto:` email) sent to push services | `https://postern.allmymind.org` |

@@ -43,6 +43,33 @@ func (a access) admits(r rights) bool {
 		(len(r.apps) > 0 && !r.cockpit && a&appKeys != 0)
 }
 
+// rightsForRoute is rightsFor for a request to a route that admits who: the
+// Mayor's key is let in without waiting on the licence reader when what it
+// has without one (the mayor right, plus any licence answer already in hand)
+// admits it, so a cold or slow licence walk never holds up the Talk line.
+// Only a route the mayor right does not open waits on the walk.
+func rightsForRoute(pubKeyHex string, checker auth.LicenceChecker, o *options, who access) (rights, error) {
+	if o.mayorKey != "" && strings.EqualFold(pubKeyHex, o.mayorKey) && !strings.EqualFold(pubKeyHex, o.millKey) {
+		var r rights
+		if cached, ok := checker.(cachedChecker); ok {
+			if collections, have := cached.CachedCollections(pubKeyHex); have {
+				r = rightsFromCollections(collections, o)
+			}
+		}
+		r.mayor = true
+		if who.admits(r) {
+			return r, nil
+		}
+	}
+	return rightsFor(pubKeyHex, checker, o)
+}
+
+// cachedChecker is a checker that can name a key's collections from what it
+// already knows, without waiting on the chain (*auth.CachedChecker).
+type cachedChecker interface {
+	CachedCollections(pubKeyHex string) ([]string, bool)
+}
+
 // rightsFor works out what pubKeyHex may do. The mill key (o.millKey) is
 // vouched for by configuration and needs no licence. Otherwise each
 // collection the key holds a licence in is an app's (o.apps maps collection
@@ -80,6 +107,11 @@ func licensedRights(pubKeyHex string, checker auth.LicenceChecker, o *options) (
 	if err != nil {
 		return rights{}, err
 	}
+	return rightsFromCollections(collections, o), nil
+}
+
+// rightsFromCollections is what holding licences in collections gives a key.
+func rightsFromCollections(collections []string, o *options) rights {
 	var r rights
 	for _, collection := range collections {
 		app, isApp := o.apps[collection]
@@ -90,7 +122,7 @@ func licensedRights(pubKeyHex string, checker auth.LicenceChecker, o *options) (
 			r.apps = append(r.apps, app)
 		}
 	}
-	return r, nil
+	return r
 }
 
 // rightsKey is the request-context key requireLicence stores a proved

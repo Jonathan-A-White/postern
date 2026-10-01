@@ -40,6 +40,12 @@ export function useTalkLine() {
   const handled = useRef(new Set<string>());
   const sending = useRef<TalkTurn | undefined>(undefined);
   const supported = isListenSupported();
+  // Whether the Mayor's wait is connected, as the last poll said; the wait's timing reads it each tick.
+  const here = useMayorHere();
+  const hereNow = useRef(here);
+  useEffect(() => {
+    hereNow.current = here;
+  }, [here]);
 
   // His turn goes out once, whenever the line asks for it.
   const outgoing = line.outgoing;
@@ -47,7 +53,7 @@ export function useTalkLine() {
     if (!outgoing || sending.current === outgoing) return;
     sending.current = outgoing;
     sendTurn(outgoing).then(
-      () => feed({ type: 'sent', at: now() }),
+      () => feed({ type: 'sent', at: now(), here: hereNow.current }),
       () => feed({ type: 'sendFailed' }),
     );
   }, [outgoing, feed]);
@@ -87,17 +93,16 @@ export function useTalkLine() {
     };
   }, [spoken, feed]);
 
-  // Waiting for the Mayor is counted; the line gives up after its timeout.
+  // Waiting for the Mayor is counted; the line gives up after its timeout (longer while he is here).
   const waiting = line.phase === 'waiting';
   useEffect(() => {
     if (!waiting) return;
-    const timer = setInterval(() => feed({ type: 'tick', now: now() }), 1000);
+    const timer = setInterval(() => feed({ type: 'tick', now: now(), here: hereNow.current }), 1000);
     return () => clearInterval(timer);
   }, [waiting, feed]);
 
   // The Mayor turning from away to here, after the line gave up on his answer, is told once
   // (a buzz and a note); turning to here at any other time is silent.
-  const here = useMayorHere();
   const wasHere = useRef<boolean | undefined>(undefined);
   const missed = line.error === NO_ANSWER_IN_TIME;
   useEffect(() => {

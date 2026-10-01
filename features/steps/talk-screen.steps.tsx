@@ -603,9 +603,16 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('AC-1: the thinking state shows from 8 s after his release until the answer (mw-j0f2d.31)', ({ Given, When, Then }) => {
-    Given('the Talk line is open with a believable speech recogniser', lineOpen);
-    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+  Scenario('AC-1: the thinking state shows from 8 s after his release while the Mayor is here (mw-j0f2d.30)', ({ Given, And, When, Then }) => {
+    Given('the Mayor is here', () => {
+      mayor.here = true;
+      setKey(new Uint8Array(32));
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go with the Mayor shown here', async (_c, words: string) => {
+      await screen.findByText('Mayor here');
+      await holdsAndSays(_c, words);
+    });
     Then('the screen says the turn was sent and does not yet say the Mayor is thinking', async () => {
       expect(await screen.findByText('Sent.')).toBeInTheDocument();
       expect(screen.queryByText('The Mayor is thinking…')).not.toBeInTheDocument();
@@ -615,6 +622,42 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the screen says the Mayor is thinking', async () => {
       expect(await screen.findByText('The Mayor is thinking…')).toBeInTheDocument();
+    });
+    When('{number} seconds pass with no answer too', (_c, seconds: number) => {
+      clock.at += Number(seconds) * 1000;
+    });
+    Then('the screen still says the Mayor is thinking', async () => {
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(screen.getByText('The Mayor is thinking…')).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-1: with the Mayor away the line gives up at 30 s and says nothing of thinking (mw-j0f2d.30)', ({ Given, And, When, Then }) => {
+    Given('the Mayor is away', () => {
+      mayor.here = false;
+      setKey(new Uint8Array(32));
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go with the Mayor shown away', async (_c, words: string) => {
+      await screen.findByText('Mayor away');
+      await holdsAndSays(_c, words);
+    });
+    Then('the screen says the turn was sent and does not yet say the Mayor is thinking', async () => {
+      expect(await screen.findByText('Sent.')).toBeInTheDocument();
+      expect(screen.queryByText('The Mayor is thinking…')).not.toBeInTheDocument();
+    });
+    When('{number} seconds pass with no answer', (_c, seconds: number) => {
+      clock.at += Number(seconds) * 1000;
+    });
+    Then('the screen does not say the Mayor is thinking', async () => {
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(screen.queryByText('The Mayor is thinking…')).not.toBeInTheDocument();
+    });
+    When('{number} seconds pass with no answer too', (_c, seconds: number) => {
+      clock.at += Number(seconds) * 1000;
+    });
+    Then('the screen says {string}', async (_c, words: string) => {
+      expect(await screen.findByText(words)).toBeInTheDocument();
     });
   });
 

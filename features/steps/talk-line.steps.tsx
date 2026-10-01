@@ -37,6 +37,8 @@ let failure: unknown;
 
 // the line
 let line: TalkLineState = initialTalkLine;
+/** Whether the Mayor is here, as the scenario's ticks tell the line. */
+let mayorHere: boolean | undefined;
 const feed = (event: TalkLineEvent) => {
   line = talkLine(line, event);
 };
@@ -46,12 +48,12 @@ function turnOf(talkId: string, n: number, text: string, extra: { model?: string
 }
 
 /** A line waiting on turn `n` of `talkId`, got there by the events a person would cause. */
-function waitingOn(talkId: string, n: number, sentAt = 1000): void {
+function waitingOn(talkId: string, n: number, sentAt = 1000, here?: boolean): void {
   line = initialTalkLine;
   for (let i = 1; i <= n; i += 1) {
     feed({ type: 'hold', talkId });
     feed({ type: 'release', text: `turn ${i}` });
-    feed({ type: 'sent', at: sentAt });
+    feed({ type: 'sent', at: sentAt, here });
     if (i < n) feed({ type: 'incoming', turn: { talk: { id: talkId, turn: i }, text: 'ok', role: 'answer' } });
     if (i < n) feed({ type: 'spoken' });
   }
@@ -93,6 +95,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   BeforeEachScenario(async () => {
     cleanup();
     line = initialTalkLine;
+    mayorHere = undefined;
     posts = [];
     stored = [];
     await db.messages.clear();
@@ -296,32 +299,55 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('nothing else is said', () => expect(line.speaking).toBeUndefined());
   });
 
-  Scenario('AC-2: thinking at 8 s: the line says the Mayor is thinking only once the wait passes 8 s (mw-j0f2d.31)', ({ Given, When, Then, And }) => {
-    Given('the line is waiting on turn {number} of {string} since {number}', (_c, n: number, id: string, since: number) => waitingOn(id, Number(n), Number(since)));
-    Then('the line is not yet thinking', () => expect(line.thinking).toBeFalsy());
-    When('the clock reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
-    Then('the line is still not thinking', () => expect(line.thinking).toBeFalsy());
-    When('the clock then reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
-    Then('the line is thinking', () => expect(line.thinking).toBe(true));
-    And('the line is still waiting', () => expect(line.phase).toBe('waiting'));
-  });
+  const tick = (now: number) => feed({ type: 'tick', now: Number(now), here: mayorHere });
+  const waitingWith = (n: number, id: string, since: number, here: boolean) => {
+    mayorHere = here;
+    waitingOn(id, Number(n), Number(since), here);
+  };
 
-  Scenario('AC-2: give-up at 90 s: no answer in time ends the wait and says so (mw-j0f2d.31)', ({ Given, When, Then, And }) => {
-    Given('the line is waiting on turn {number} of {string} since {number}', (_c, n: number, id: string, since: number) => waitingOn(id, Number(n), Number(since)));
-    When('the clock reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
-    Then('the line is still waiting', () => {
-      expect(line.phase).toBe('waiting');
-    });
-    When('the clock then reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
+  Scenario('AC-2: the Mayor is here: thinking at 8 s, give-up at 90 s (mw-j0f2d.30)', ({ Given, When, Then, And }) => {
+    Given('the line is waiting on turn {number} of {string} since {number} and the Mayor is here', (_c, n: number, id: string, since: number) => waitingWith(n, id, since, true));
+    Then('the line is not yet thinking', () => expect(line.thinking).toBeFalsy());
+    When('the clock reads {number}', (_c, now: number) => tick(now));
+    Then('the line is still not thinking', () => expect(line.thinking).toBeFalsy());
+    When('the clock then reads {number}', (_c, now: number) => tick(now));
+    Then('the line is thinking', () => expect(line.thinking).toBe(true));
+    When('the clock afterwards reads {number}', (_c, now: number) => tick(now));
+    Then('the line is still waiting', () => expect(line.phase).toBe('waiting'));
+    When('the clock reads {number} again', (_c, now: number) => tick(now));
     Then('the line is waiting still', () => expect(line.phase).toBe('waiting'));
-    When('the clock afterwards reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
+    When('the clock reads {number} once more', (_c, now: number) => tick(now));
     Then('the line is idle', () => expect(line.phase).toBe('idle'));
     And('the line says {string}', (_c, message: string) => expect(line.error).toBe(message));
   });
 
-  Scenario('AC-2: a late answer replaces the give-up line (mw-j0f2d.31)', ({ Given, When, Then, And }) => {
-    Given('the line is waiting on turn {number} of {string} since {number}', (_c, n: number, id: string, since: number) => waitingOn(id, Number(n), Number(since)));
-    When('the clock reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
+  Scenario('AC-2: the Mayor is away: give-up at 30 s (mw-j0f2d.30)', ({ Given, When, Then, And }) => {
+    Given('the line is waiting on turn {number} of {string} since {number} and the Mayor is away', (_c, n: number, id: string, since: number) => waitingWith(n, id, since, false));
+    When('the clock reads {number}', (_c, now: number) => tick(now));
+    Then('the line is still waiting', () => expect(line.phase).toBe('waiting'));
+    And('the line is not yet thinking', () => expect(line.thinking).toBeFalsy());
+    When('the clock then reads {number}', (_c, now: number) => tick(now));
+    Then('the line is waiting still', () => expect(line.phase).toBe('waiting'));
+    When('the clock afterwards reads {number}', (_c, now: number) => tick(now));
+    Then('the line is idle', () => expect(line.phase).toBe('idle'));
+    And('the line says {string}', (_c, message: string) => expect(line.error).toBe(message));
+  });
+
+  Scenario('AC-2: the Mayor seen here while he thinks keeps the longer wait even when his wait drops (mw-j0f2d.30)', ({ Given, When, Then, And }) => {
+    Given('the line is waiting on turn {number} of {string} since {number} and the Mayor is here', (_c, n: number, id: string, since: number) => waitingWith(n, id, since, true));
+    When('the clock reads {number}', (_c, now: number) => tick(now));
+    Then('the line is thinking', () => expect(line.thinking).toBe(true));
+    When('the Mayor\'s wait drops and the clock then reads {number}', (_c, now: number) => {
+      mayorHere = false;
+      tick(now);
+    });
+    Then('the line is still waiting', () => expect(line.phase).toBe('waiting'));
+    And('the line is thinking', () => expect(line.thinking).toBe(true));
+  });
+
+  Scenario('AC-2: a late answer replaces the give-up line (mw-j0f2d.30)', ({ Given, When, Then, And }) => {
+    Given('the line is waiting on turn {number} of {string} since {number} and the Mayor is away', (_c, n: number, id: string, since: number) => waitingWith(n, id, since, false));
+    When('the clock reads {number}', (_c, now: number) => tick(now));
     Then('the line says {string}', (_c, message: string) => expect(line.error).toBe(message));
     When('the Mayor answers {string} on model {string}', (_c, text: string, model: string) => {
       feed({ type: 'incoming', turn: { talk: line.talk!, text, role: 'answer', model } });

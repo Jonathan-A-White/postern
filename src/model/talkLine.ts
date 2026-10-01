@@ -49,8 +49,10 @@ export interface TalkLineState {
   outgoing?: TalkTurn;
   /** When his turn went out (ms), while `waiting`; a holding answer does not reset it. */
   sentAt?: number;
-  /** The wait has gone on past TALK_THINKING_MS, so the screen says the Mayor is thinking. */
+  /** The wait has gone on past TALK_THINKING_MS with the Mayor here, so the screen says he is thinking. */
   thinking?: boolean;
+  /** The Mayor was here (his wait connected) when the turn went out or at any tick since; away it waits only TALK_AWAY_TIMEOUT_MS. */
+  mayorHere?: boolean;
   /** What is being spoken; `holding` ones are followed by the real answer. */
   speaking?: { text: string; holding: boolean; links?: string[] };
   /** Why the line went back to idle without an answer. */
@@ -63,21 +65,23 @@ export type TalkLineEvent =
   | { type: 'hold'; talkId: string }
   | { type: 'release'; text: string }
   | { type: 'cancel' }
-  | { type: 'sent'; at: number }
+  | { type: 'sent'; at: number; here?: boolean }
   | { type: 'sendFailed'; message?: string }
   | { type: 'retry' }
   | { type: 'incoming'; turn: TalkTurn }
   | { type: 'spoken' }
   | { type: 'cut' }
-  | { type: 'tick'; now: number }
+  | { type: 'tick'; now: number; here?: boolean }
   | { type: 'setModel'; model?: string }
   | { type: 'setAbout'; about?: TalkAbout }
   | { type: 'end' };
 
 /** How long a wait goes on before the screen says 'The Mayor is thinking…'. */
 export const TALK_THINKING_MS = 8_000;
-/** How long the line waits for an answer; the Mayor's answers take 20-40 s (mw-j0f2d.30), so this is generous. */
+/** How long the line waits for an answer while the Mayor is here; his answers take 20-40 s (mw-j0f2d.30), so this is generous. */
 export const TALK_TIMEOUT_MS = 90_000;
+/** How long it waits while he is away (or not known to be here): nobody is reading, so it says so sooner. */
+export const TALK_AWAY_TIMEOUT_MS = 30_000;
 export const NO_ANSWER_IN_TIME = 'The Mayor did not answer in time.';
 /** A turn is queued on the phone and sent when a backend answers; this is what he is told only if the phone itself cannot keep it. */
 export const NOT_KEPT = 'Could not keep that on this phone. Try again.';
@@ -181,7 +185,7 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       return idle(state, { talk: state.talk && state.talk.turn > 0 ? state.talk : undefined });
     case 'sent':
       if (state.phase !== 'sending') return state;
-      return { ...state, phase: 'waiting', outgoing: undefined, unsent: undefined, sentAt: event.at, thinking: false, cutPending: false };
+      return { ...state, phase: 'waiting', outgoing: undefined, unsent: undefined, sentAt: event.at, thinking: false, mayorHere: event.here === true, cutPending: false };
     case 'sendFailed': {
       // His words stay: `retry` sends this very turn again, under the same number.
       if (state.phase !== 'sending' || !state.talk || !state.outgoing) return state;
@@ -202,8 +206,12 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
     case 'tick': {
       if (state.phase !== 'waiting' || state.sentAt === undefined) return state;
       const waited = event.now - state.sentAt;
-      if (waited >= TALK_TIMEOUT_MS) return idle(state, { error: NO_ANSWER_IN_TIME });
-      return waited >= TALK_THINKING_MS && !state.thinking ? { ...state, thinking: true } : state;
+      // Once seen here during the wait, he stays counted: his own wait is not connected while he thinks.
+      const here = state.mayorHere === true || event.here === true;
+      if (waited >= (here ? TALK_TIMEOUT_MS : TALK_AWAY_TIMEOUT_MS)) return idle(state, { error: NO_ANSWER_IN_TIME });
+      const thinking = here && waited >= TALK_THINKING_MS;
+      if (here === state.mayorHere && thinking === (state.thinking === true)) return state;
+      return { ...state, mayorHere: here, thinking };
     }
     case 'setModel':
       return { ...state, model: event.model };

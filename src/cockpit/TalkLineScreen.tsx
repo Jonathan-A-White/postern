@@ -11,7 +11,7 @@ import { useTalkLine } from './useTalkLine';
 import { useCallLine } from './hooks';
 import { sendCallRequest } from './send';
 import { now } from '../services/clock';
-import { callSentAt, clockHHMM } from '../model/call';
+import { callSent as waitingCall, clockHHMM } from '../model/call';
 import { beadHref } from '../nav/route';
 import { formatSeconds, showsCutTag } from '../model/talkScreen';
 import type { TalkPhase } from '../model/talkLine';
@@ -154,7 +154,8 @@ const CALL_ME = 'Call me';
 /**
  * Leaves the Mayor a note to call him back (docs/protocol.md §21): a tap opens a short
  * field, prefilled "Call me", and Send delivers it as a call record. Under the presence mark
- * it says "Call sent HH:MM" until the Mayor rings or answers.
+ * it says "Call sent HH:MM" until the Mayor rings or answers; a request that went on chain, with the
+ * backend out of reach, says "Sent on chain HH:MM, txid <short>" instead (§21).
  */
 function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [text, setText] = useState(CALL_ME);
@@ -218,7 +219,7 @@ export function TalkLineScreen() {
   const micOpen = talk.mic === 'ready';
   const label = buttonLabel(line.phase, talk.supported, micOpen);
   const [calling, setCalling] = useState(false);
-  const callSent = callSentAt(useCallLine());
+  const callSent = waitingCall(useCallLine());
 
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     try {
@@ -317,7 +318,7 @@ export function TalkLineScreen() {
         <PresenceMark here={talk.here} />
         {callSent !== undefined && (
           <p data-testid="call-sent" className="text-center text-[11.5px] text-faint">
-            Call sent {clockHHMM(callSent)}
+            {callSent.onChain ? `Sent on chain ${clockHHMM(callSent.at)}, txid ${callSent.txid.slice(0, 8)}…` : `Call sent ${clockHHMM(callSent.at)}`}
           </p>
         )}
 

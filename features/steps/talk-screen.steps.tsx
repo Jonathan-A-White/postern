@@ -15,7 +15,9 @@ import { formatRoute, parseRoute, topViewOf } from '../../src/nav/route';
 import { navigate, useRoute } from '../../src/router';
 import { lock, setKey } from '../../src/services/keySession';
 import { encodeTurn } from '../../src/services/talk';
-import { encodeCall, type CallRecord } from '../../src/services/call';
+import { deliverCallRequest, encodeCall, type CallRecord } from '../../src/services/call';
+import { PrivateKey, Utils } from '@bsv/sdk';
+import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-woc';
 import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 
 configure({ asyncUtilTimeout: 5000 });
@@ -1162,6 +1164,42 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the screen no longer reads Call sent', async () => {
       await waitFor(() => expect(screen.queryByTestId('call-sent')).not.toBeInTheDocument());
+    });
+  });
+
+  // mw-a0ih0.4: Call me with the backend out of reach goes on chain.
+  Scenario('AC-3: Call me while the backend is unreachable goes on chain and the screen says Sent on chain (mw-a0ih0.4)', ({ Given, When, Then, And }) => {
+    let down: BackendDownWoc;
+    Given('the time is 14:05 and the Talk line is open with a believable speech recogniser', async () => {
+      clock.at = at1405 * 1000;
+      await lineOpen();
+      setKey(new Uint8Array(32));
+    });
+    And('the backend cannot be reached and WhatsOnChain lists one coin', () => {
+      down = backendDownWoc();
+      sendCallRequest.mockImplementation((text: string, at: number) =>
+        deliverCallRequest(text, at, {
+          key: new Uint8Array(Utils.toArray('45'.repeat(32), 'hex')),
+          mayorKey: PrivateKey.fromHex('77'.repeat(32)).toPublicKey().toString(),
+          direct: true,
+          fetchImpl: down.fetchImpl,
+        }),
+      );
+    });
+    When('he taps the {string} button', async (_c, name: string) => {
+      fireEvent.click(await talkButton(name));
+    });
+    And('he then taps the {string} button', async (_c, name: string) => {
+      fireEvent.click(await talkButton(name));
+    });
+    Then('the screen reads {string}', async (_c, words: string) => {
+      expect(await screen.findByTestId('call-sent')).toHaveTextContent(words);
+    });
+    And('the call went to WhatsOnChain as one broadcast', () => {
+      expect(down.broadcasts).toHaveLength(1);
+    });
+    And('the call field is gone', () => {
+      expect(screen.queryByRole('textbox', { name: 'What to tell the Mayor' })).not.toBeInTheDocument();
     });
   });
 });

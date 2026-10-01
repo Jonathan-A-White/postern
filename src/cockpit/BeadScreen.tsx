@@ -12,6 +12,7 @@ import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
 import { RepliesRow } from './RepliesRow';
 import { NeedCard } from './NeedCard';
+import { StepUnderComment } from './HandsSteps';
 import { useAnswers, useBeadDetail, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
@@ -19,7 +20,7 @@ import { StaleChoice } from './StaleChoice';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, epicStats, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { groupPosts } from '../model/postThreads';
-import { unsettledNeeds } from '../model/needs';
+import { unsettledNeeds, waitsFor, waitsOnLinks } from '../model/needs';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
@@ -270,6 +271,7 @@ export function BeadScreen({ id }: { id: string }) {
   const index = view?.index;
   const bead = index?.byId.get(id);
   const { detail, status, error, refresh } = useBeadDetail(id);
+  const threadId = id;
   const threadKey = `bead:${id}`;
   const rows = useThreadMessages(threadKey);
   const items = useMemo(() => mergeConversation(rows, detail?.comments ?? []), [rows, detail]);
@@ -283,6 +285,17 @@ export function BeadScreen({ id }: { id: string }) {
     void markThreadSeen(threadKey);
   }, [threadKey, rows.length]);
 
+  // A comment that is a hands step ('HANDS STEP <id> on <host> as <as>:') gets that step's Run under it, when the view lists the step for him.
+  const answers = useAnswers();
+  const stepUnder = (item: ConversationItem) => {
+    const id = /^HANDS STEP (\S+) on /.exec(item.text.trimStart())?.[1];
+    if (!id) return null;
+    const need = unsettledNeeds(index?.needsByBead.get(threadId) ?? [], answers).find((n) => n.kind === 'hands' && n.steps.some((s) => s.id === id));
+    const step = need?.steps.find((s) => s.id === id);
+    if (!need || !step) return null;
+    const notReady = waitsFor(need) !== 'you' || need.not_ready === true;
+    return <StepUnderComment bead={threadId} step={step} waitsOn={notReady ? waitsOnLinks(need, index, beadHref) : undefined} />;
+  };
   const onQuote = (item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text });
   const title = detail?.title ?? bead?.title ?? id;
   // Opened cold the view index may not hold the bead yet: the fetched detail knows its parent too.
@@ -330,7 +343,13 @@ export function BeadScreen({ id }: { id: string }) {
       }}
       footer={(item) => {
         const thread = byRoot.get(item.id);
-        return thread && thread.replyCount > 0 ? <RepliesRow channel={threadKey} thread={thread} /> : null;
+        const run = stepUnder(item);
+        return (
+          <>
+            {run}
+            {thread && thread.replyCount > 0 ? <RepliesRow channel={threadKey} thread={thread} /> : null}
+          </>
+        );
       }}
       scrollOnOpen={wide}
       empty={

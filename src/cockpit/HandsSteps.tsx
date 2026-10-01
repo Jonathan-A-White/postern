@@ -10,11 +10,15 @@ import type { HandsStep } from '../model/hands';
 import type { WaitsOn } from '../model/needs';
 import { approveHandsStep, sendToThread, useSend } from './send';
 
-function StepCard({ bead, step, waitsOn }: { bead: string; step: HandsStep; waitsOn?: WaitsOn[] }) {
+/**
+ * What a step offers under its commands: what it waits on, or Approve and run and "I did it myself".
+ * The same control on the Needs card and under the step's comment on the bead's page.
+ */
+export function StepRun({ bead, step, waitsOn, approvedAt, onApproved }: { bead: string; step: HandsStep; waitsOn?: WaitsOn[]; approvedAt?: number; onApproved?: (at: number) => void }) {
   const { busy, run } = useSend();
   const [confirming, setConfirming] = useState(false);
-  const [approvedAt, setApprovedAt] = useState<number>();
-  const [showWayBack, setShowWayBack] = useState(false);
+  const [approvedHere, setApprovedHere] = useState<number>();
+  const approvedAtNow = approvedAt ?? approvedHere;
   const root = step.as === 'root';
   const ranOk = step.ran && step.ran.exit === 0;
   const where = `${root ? 'as root' : 'as you'} on ${step.host}`;
@@ -22,8 +26,67 @@ function StepCard({ bead, step, waitsOn }: { bead: string; step: HandsStep; wait
   async function approve() {
     const sent = await run(() => approveHandsStep(bead, step), `Approved — ${step.id} runs ${where}`);
     setConfirming(false);
-    if (sent) setApprovedAt(Date.now());
+    if (sent) {
+      const at = Date.now();
+      setApprovedHere(at);
+      onApproved?.(at);
+    }
   }
+
+  return (
+    <>
+      {!ranOk && !approvedAtNow && waitsOn && (
+        <p className="text-[13px] text-muted">
+          Waits on:{' '}
+          {waitsOn.map((item, i) => (
+            <span key={`${i}:${item.title}`}>
+              {i > 0 && ', '}
+              {item.href ? (
+                <a href={item.href} className="text-fg hover:underline">
+                  {item.title}
+                </a>
+              ) : (
+                item.title
+              )}
+            </span>
+          ))}
+        </p>
+      )}
+      {!ranOk && !approvedAtNow && !waitsOn && (
+        confirming ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-2.5" role="group" aria-label="Confirm">
+            <p className="text-[13px]">
+              Run <span className="font-mono font-semibold">{step.id}</span> {where}? It runs exactly the text above.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant={root ? 'danger' : 'primary'} icon="fingerprint" busy={busy} onClick={() => void approve()}>
+                Confirm and run
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="primary" icon="play" onClick={() => setConfirming(true)}>
+              {step.ran ? 'Approve and run again' : 'Approve and run'}
+            </Button>
+            <Button size="sm" variant="ghost" icon="hand" disabled={busy} onClick={() => void run(() => sendToThread({ bead }, `I ran step ${step.id} myself.`), 'Told the Mayor')}>
+              I did it myself
+            </Button>
+          </div>
+        )
+      )}
+    </>
+  );
+}
+
+function StepCard({ bead, step, waitsOn }: { bead: string; step: HandsStep; waitsOn?: WaitsOn[] }) {
+  const [approvedAt, setApprovedAt] = useState<number>();
+  const [showWayBack, setShowWayBack] = useState(false);
+  const root = step.as === 'root';
+  const ranOk = step.ran && step.ran.exit === 0;
 
   return (
     <li className={cx('flex flex-col gap-2.5 rounded-xl border bg-sunken p-3', root ? 'border-danger/30' : 'border-line')} data-testid="hands-step" aria-label={`Step ${step.id}`}>
@@ -63,49 +126,7 @@ function StepCard({ bead, step, waitsOn }: { bead: string; step: HandsStep; wait
           {showWayBack && <div className="mt-1.5"><CodeBlock text={step.way_back} className="overflow-x-auto rounded-lg bg-canvas p-2.5 font-mono text-[12px] whitespace-pre-wrap break-all text-muted" /></div>}
         </div>
       )}
-      {!ranOk && !approvedAt && waitsOn && (
-        <p className="text-[13px] text-muted">
-          Waits on:{' '}
-          {waitsOn.map((item, i) => (
-            <span key={`${i}:${item.title}`}>
-              {i > 0 && ', '}
-              {item.href ? (
-                <a href={item.href} className="text-fg hover:underline">
-                  {item.title}
-                </a>
-              ) : (
-                item.title
-              )}
-            </span>
-          ))}
-        </p>
-      )}
-      {!ranOk && !approvedAt && !waitsOn && (
-        confirming ? (
-          <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-2.5" role="group" aria-label="Confirm">
-            <p className="text-[13px]">
-              Run <span className="font-mono font-semibold">{step.id}</span> {where}? It runs exactly the text above.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant={root ? 'danger' : 'primary'} icon="fingerprint" busy={busy} onClick={() => void approve()}>
-                Confirm and run
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="primary" icon="play" onClick={() => setConfirming(true)}>
-              {step.ran ? 'Approve and run again' : 'Approve and run'}
-            </Button>
-            <Button size="sm" variant="ghost" icon="hand" disabled={busy} onClick={() => void run(() => sendToThread({ bead }, `I ran step ${step.id} myself.`), 'Told the Mayor')}>
-              I did it myself
-            </Button>
-          </div>
-        )
-      )}
+      <StepRun bead={bead} step={step} waitsOn={waitsOn} approvedAt={approvedAt} onApproved={setApprovedAt} />
     </li>
   );
 }
@@ -119,5 +140,24 @@ export function HandsSteps({ bead, steps, waitsOn }: { bead: string; steps: Hand
         <StepCard key={`${step.id}:${step.sha256}`} bead={bead} step={step} waitsOn={waitsOn} />
       ))}
     </ol>
+  );
+}
+
+/** Under a step's own comment on the bead's page: its result when it ran, else the same Run the Needs card has. */
+export function StepUnderComment({ bead, step, waitsOn }: { bead: string; step: HandsStep; waitsOn?: WaitsOn[] }) {
+  const ok = step.ran?.exit === 0;
+  return (
+    <div className="mt-2 flex flex-col gap-2.5" data-testid="step-under-comment" aria-label={`Run ${step.id}`}>
+      {step.ran && (
+        <p role="status" className="text-[13px] text-muted">
+          {ok ? (
+            <>Ran <TimeAgo at={step.ran.at} />, exit 0.</>
+          ) : (
+            <>Failed, exit {step.ran.exit}.{step.ran.why ? ` ${step.ran.why}` : ''}</>
+          )}
+        </p>
+      )}
+      <StepRun bead={bead} step={step} waitsOn={waitsOn} />
+    </div>
   );
 }

@@ -174,3 +174,33 @@ test('the Channels tab: a short tap lists the channels, a long press opens the T
   await expect(page).toHaveURL(/\?v=line$/);
   await shot(page, 'talk-line-idle');
 });
+
+// mw-j0f2d.13: an answer longer than the list is tall must still end up fully in view.
+test('talk line: a long answer scrolls into view instead of landing below the fold', async ({ page }) => {
+  const { posted, answerAfterTurn } = await unlocked(page);
+  const long = Array.from({ length: 40 }, (_, i) => `Sentence ${i + 1} of a long answer.`).join(' ');
+  answerAfterTurn(long);
+
+  await page.goto('/?v=line');
+  const button = page.getByRole('button', { name: 'Hold to talk' });
+  await expect(button).toBeEnabled();
+  const box = (await button.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(page.getByRole('button', { name: 'Release to send' })).toBeVisible();
+  await page.evaluate(() => window.__hear('Tell me everything'));
+  await page.mouse.up();
+  await expect.poll(() => posted.length).toBe(1);
+
+  const answer = page.getByTestId('talk-answer');
+  await expect(answer).toContainText('Sentence 40', { timeout: 15_000 });
+  const list = page.getByTestId('talk-scroll');
+  // the smooth scroll takes a moment: the answer's last line ends up inside the list's box
+  await expect
+    .poll(async () => {
+      const [a, l] = await Promise.all([answer.boundingBox(), list.boundingBox()]);
+      return a!.y + a!.height <= l!.y + l!.height + 1;
+    })
+    .toBe(true);
+  await expect(page.getByRole('button', { name: 'New answer' })).toHaveCount(0);
+});

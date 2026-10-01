@@ -35,6 +35,26 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the screen shows "Three things landed." as the answer
     And the phone speaks "Three things landed."
 
+  Scenario: AC-1: an answer scrolls the turn list down to the newest item (mw-j0f2d.13)
+    Given the Talk line is open with a believable speech recogniser
+    And the turn list is longer than the screen and he is reading its end
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet"
+    Then the turn list scrolls down to the end
+    And there is no "New answer" button
+
+  Scenario: AC-1: an answer that comes while he has scrolled up does not move him, and a New answer button takes him down (mw-j0f2d.13)
+    Given the Talk line is open with a believable speech recogniser
+    And the turn list is longer than the screen and he is reading its end
+    When he holds the talk button and says "What landed today?" and lets go
+    And he scrolls the turn list up to older turns
+    And the Mayor answers "Three things landed." on model "sonnet"
+    Then the turn list does not scroll
+    And there is a "New answer" button
+    When he taps "New answer"
+    Then the turn list scrolls down to the end
+    And there is no "New answer" button
+
   Scenario: AC-1: a tap cuts the answer and his next turn says so
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "Tell me everything" and lets go

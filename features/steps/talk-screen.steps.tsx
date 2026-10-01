@@ -300,6 +300,59 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  /** jsdom has no layout: give the turn list a height and a place in it, and watch its scrollTo. */
+  const scroller = () => screen.getByTestId('talk-scroll') as HTMLElement & { scrollTo: ReturnType<typeof vi.fn> };
+  const listIsLong = () => {
+    const el = scroller();
+    let top = 600;
+    Object.defineProperty(el, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(el, 'clientHeight', { value: 400, configurable: true });
+    Object.defineProperty(el, 'scrollTop', { get: () => top, set: (v: number) => void (top = v), configurable: true });
+    el.scrollTo = vi.fn();
+    fireEvent.scroll(el);
+  };
+  const scrollsToEnd = async () => {
+    await waitFor(() => expect(scroller().scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 1000, behavior: 'smooth' })));
+  };
+  const noNewAnswerButton = () => expect(screen.queryByRole('button', { name: 'New answer' })).toBeNull();
+  const mayorAnswersInView = async (_c: unknown, text: string, model: string) => {
+    scroller().scrollTo.mockClear();
+    await mayorAnswers(_c, text, model);
+    await screen.findByText(text);
+  };
+
+  Scenario('AC-1: an answer scrolls the turn list down to the newest item (mw-j0f2d.13)', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('the turn list is longer than the screen and he is reading its end', listIsLong);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswersInView);
+    Then('the turn list scrolls down to the end', scrollsToEnd);
+    And('there is no {string} button', noNewAnswerButton);
+  });
+
+  Scenario('AC-1: an answer that comes while he has scrolled up does not move him, and a New answer button takes him down (mw-j0f2d.13)', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('the turn list is longer than the screen and he is reading its end', listIsLong);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('he scrolls the turn list up to older turns', () => {
+      const el = scroller();
+      el.scrollTop = 0;
+      fireEvent.scroll(el);
+    });
+    And('the Mayor answers {string} on model {string}', mayorAnswersInView);
+    Then('the turn list does not scroll', () => {
+      expect(scroller().scrollTo).not.toHaveBeenCalled();
+    });
+    And('there is a {string} button', async (_c, name: string) => {
+      expect(await screen.findByRole('button', { name })).toBeInTheDocument();
+    });
+    When('he taps {string}', async (_c, name: string) => {
+      fireEvent.click(await screen.findByRole('button', { name }));
+    });
+    Then('the turn list scrolls down to the end', scrollsToEnd);
+    And('there is no {string} button', noNewAnswerButton);
+  });
+
   Scenario('AC-1: a tap cuts the answer and his next turn says so', ({ Given, When, Then, And }) => {
     let cancelledBefore = 0;
     Given('the Talk line is open with a believable speech recogniser', lineOpen);

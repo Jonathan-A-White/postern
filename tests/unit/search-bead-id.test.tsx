@@ -76,6 +76,9 @@ describe('Search offers a bead by its id even when the view does not hold it', (
     render(<SearchScreen q="mw-nope.9" />);
     await userEvent.click(await screen.findByRole('button', { name: 'Open mw-nope.9' }));
     expect(await screen.findByText('no bead mw-nope.9')).toBeInTheDocument();
-    expect(parseRoute(window.location.search)).toEqual({ view: 'search' });
+    // Search mirrors the query into the URL after a 300 ms debounce, so the route is
+    // {view:'search'} at first and {view:'search', q} once the debounce fires: wait for
+    // the settled one; the point is that it is still Search, never the bead screen.
+    await waitFor(() => expect(parseRoute(window.location.search)).toEqual({ view: 'search', q: 'mw-nope.9' }));
   });
 });

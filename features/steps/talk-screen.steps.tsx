@@ -93,6 +93,11 @@ class Utterance {
 const speak = vi.fn();
 const cancel = vi.fn();
 const vibrate = vi.fn(() => true);
+// mw-j0f2d.29: whether the page is showing, and the notifications the service worker was asked to show.
+let pageShowing = true;
+Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (pageShowing ? 'visible' : 'hidden') });
+const showNotification = vi.fn<(title: string, options?: unknown) => Promise<void>>(() => Promise.resolve());
+const getNotifications = vi.fn(() => Promise.resolve([] as { close(): void }[]));
 const release = vi.fn(() => Promise.resolve());
 const request = vi.fn(() => Promise.resolve({ release }));
 
@@ -107,6 +112,12 @@ function installBrowser(listens: boolean): void {
   vi.stubGlobal('SpeechSynthesisUtterance', Utterance);
   Object.defineProperty(window, 'speechSynthesis', { value: { speak, cancel, getVoices: () => [] }, configurable: true, writable: true });
   Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true, writable: true });
+  vi.stubGlobal('Notification', { permission: 'granted' });
+  Object.defineProperty(navigator, 'serviceWorker', {
+    value: { getRegistration: () => Promise.resolve({ showNotification, getNotifications }) },
+    configurable: true,
+    writable: true,
+  });
   Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true, writable: true });
 }
 
@@ -231,7 +242,8 @@ async function fresh(): Promise<void> {
     await storeCall({ role: 'request', text, at }, 'sent', at);
     return { txid: 'direct:call', channel: 'direct' };
   });
-  for (const fake of [speak, cancel, vibrate, release, request]) fake.mockClear();
+  for (const fake of [speak, cancel, vibrate, release, request, showNotification, getNotifications]) fake.mockClear();
+  pageShowing = true;
   await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
   document.documentElement.lang = '';
   setInputs(undefined);
@@ -680,6 +692,36 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await waitFor(() => expect(screen.getByTestId('talk-answer')).toHaveTextContent(text));
     });
     And('the phone speaks {string}', async (_c, text: string) => {
+      await waitFor(() => expect(speak).toHaveBeenCalled());
+      expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
+    });
+  });
+
+  Scenario('AC-2: an answer that comes while he has left the app is announced, and spoken when he returns (mw-j0f2d.29)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('he switches to another app', () => {
+      pageShowing = false;
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    });
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    Then('a notification says {string} and carries none of the answer\'s words', async (_c, title: string) => {
+      await waitFor(() => expect(showNotification).toHaveBeenCalledTimes(1));
+      expect(showNotification.mock.calls[0][0]).toBe(title);
+      expect(JSON.stringify(showNotification.mock.calls[0])).not.toContain('Three things landed');
+    });
+    And('the phone has not spoken', () => {
+      expect(speak).not.toHaveBeenCalled();
+    });
+    When('he returns to the app', () => {
+      pageShowing = true;
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    });
+    Then('the phone speaks {string}', async (_c, text: string) => {
       await waitFor(() => expect(speak).toHaveBeenCalled());
       expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
     });

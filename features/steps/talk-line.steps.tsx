@@ -16,6 +16,7 @@ import { ANCHOR_ADDRESS, decryptMessage, type MessagePayload } from '../../src/s
 import { decodeTurn, deliverTurn, encodeTurn } from '../../src/services/talk';
 import { decodeCall, deliverCallRequest } from '../../src/services/call';
 import { deliver, settledWrites, type Delivered } from '../../src/services/deliver';
+import { notificationSpecForTalkAnswer } from '../../src/push/classOptions';
 import { initialTalkLine, talkLine, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-woc';
@@ -357,6 +358,48 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(line.speaking?.text).toBe(text);
     });
     And('the line says nothing went wrong', () => expect(line.error).toBeUndefined());
+  });
+
+  Scenario('AC-2: an answer while hidden is announced, not spoken (mw-j0f2d.29)', ({ Given, When, Then, And }) => {
+    Given('the line is waiting on turn {number} of {string}', (_c, n: number, id: string) => waitingOn(id, Number(n)));
+    When('the Mayor answers {string} while he is away from the app', (_c, text: string) => {
+      feed({ type: 'incoming', turn: { talk: line.talk!, text, role: 'answer' }, hidden: true });
+    });
+    Then('the line is holding {string} unspoken', (_c, text: string) => {
+      expect(line.phase).toBe('speaking');
+      expect(line.speaking).toEqual({ text, holding: false, unspoken: true });
+    });
+    And('the announcement says {string} with a buzz and none of the answer\'s words', (_c, title: string) => {
+      const spec = notificationSpecForTalkAnswer();
+      expect(spec.title).toBe(title);
+      expect(spec.options.vibrate?.length).toBeGreaterThan(0);
+      expect(spec.options.silent).toBe(false);
+      expect(JSON.stringify(spec)).not.toContain('Three things landed');
+      expect(spec.options.body).toBeUndefined();
+    });
+  });
+
+  Scenario('AC-2: the unspoken answer speaks on return (mw-j0f2d.29)', ({ Given, And, When, Then }) => {
+    Given('the line is waiting on turn {number} of {string}', (_c, n: number, id: string) => waitingOn(id, Number(n)));
+    And('the Mayor answers {string} while he is away from the app', (_c, text: string) => {
+      feed({ type: 'incoming', turn: { talk: line.talk!, text, role: 'answer' }, hidden: true });
+    });
+    When('he comes back to the app', () => feed({ type: 'visible' }));
+    Then('the line is speaking {string} and it is no longer unspoken', (_c, text: string) => {
+      expect(line.phase).toBe('speaking');
+      expect(line.speaking?.text).toBe(text);
+      expect(line.speaking?.unspoken).toBeUndefined();
+    });
+    When('the speaking ends', () => feed({ type: 'spoken' }));
+    Then('the line is idle', () => expect(line.phase).toBe('idle'));
+  });
+
+  Scenario('AC-2: a holding answer while hidden is not queued to speak later (mw-j0f2d.29)', ({ Given, When, Then }) => {
+    Given('the line is waiting on turn {number} of {string}', (_c, n: number, id: string) => waitingOn(id, Number(n)));
+    When('the Mayor says holding {string} while he is away from the app', (_c, text: string) => {
+      feed({ type: 'incoming', turn: { talk: line.talk!, text, role: 'holding' }, hidden: true });
+    });
+    Then('the line is waiting', () => expect(line.phase).toBe('waiting'));
   });
 
   Scenario('AC-2: an answer to another talk or turn is ignored', ({ Given, When, And, Then }) => {

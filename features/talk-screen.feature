@@ -123,6 +123,16 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the screen shows "Three things landed." as the answer
     And the phone speaks "Three things landed."
 
+  Scenario: AC-2: an answer that comes while he has left the app is announced, and spoken when he returns (mw-j0f2d.29)
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "What landed today?" and lets go
+    And he switches to another app
+    And the Mayor answers "Three things landed." on model "sonnet"
+    Then a notification says "The Mayor answered" and carries none of the answer's words
+    And the phone has not spoken
+    When he returns to the app
+    Then the phone speaks "Three things landed."
+
   Scenario: AC-1: an answer's bead links show as chips under its text and tapping one opens the bead page (mw-j0f2d.18)
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "What landed today?" and lets go

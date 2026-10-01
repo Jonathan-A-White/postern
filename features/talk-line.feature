@@ -123,6 +123,25 @@ Feature: Talk line turns are records of their own, and the line is a small state
     Then the line is speaking "Late."
     And the line says nothing went wrong
 
+  Scenario: AC-2: an answer while hidden is announced, not spoken (mw-j0f2d.29)
+    Given the line is waiting on turn 1 of "talk-40"
+    When the Mayor answers "Three things landed." while he is away from the app
+    Then the line is holding "Three things landed." unspoken
+    And the announcement says "The Mayor answered" with a buzz and none of the answer's words
+
+  Scenario: AC-2: the unspoken answer speaks on return (mw-j0f2d.29)
+    Given the line is waiting on turn 1 of "talk-41"
+    And the Mayor answers "Three things landed." while he is away from the app
+    When he comes back to the app
+    Then the line is speaking "Three things landed." and it is no longer unspoken
+    When the speaking ends
+    Then the line is idle
+
+  Scenario: AC-2: a holding answer while hidden is not queued to speak later (mw-j0f2d.29)
+    Given the line is waiting on turn 1 of "talk-42"
+    When the Mayor says holding "One moment." while he is away from the app
+    Then the line is waiting
+
   Scenario: AC-2: an answer to another talk or turn is ignored
     Given the line is waiting on turn 1 of "talk-12"
     When the Mayor answers "Wrong talk." for turn 1 of "other-talk"

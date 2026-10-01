@@ -54,7 +54,7 @@ export interface TalkLineState {
   /** The Mayor was here (his wait connected) when the turn went out or at any tick since; away it waits only TALK_AWAY_TIMEOUT_MS. */
   mayorHere?: boolean;
   /** What is being spoken; `holding` ones are followed by the real answer. */
-  speaking?: { text: string; holding: boolean; links?: string[] };
+  speaking?: { text: string; holding: boolean; links?: string[]; unspoken?: boolean };
   /** Why the line went back to idle without an answer. */
   error?: string;
   /** The turn that failed to send, kept with his words so `retry` can send it again. */
@@ -68,7 +68,8 @@ export type TalkLineEvent =
   | { type: 'sent'; at: number; here?: boolean }
   | { type: 'sendFailed'; message?: string }
   | { type: 'retry' }
-  | { type: 'incoming'; turn: TalkTurn }
+  | { type: 'incoming'; turn: TalkTurn; hidden?: boolean }
+  | { type: 'visible' }
   | { type: 'spoken' }
   | { type: 'cut' }
   | { type: 'tick'; now: number; here?: boolean }
@@ -144,17 +145,18 @@ function idle(state: TalkLineState, patch: Partial<TalkLineState> = {}): TalkLin
 
 const linksOf = (turn: TalkTurn): { links?: string[] } => (turn.links?.length ? { links: turn.links } : {});
 
-function incoming(state: TalkLineState, turn: TalkTurn): TalkLineState {
+function incoming(state: TalkLineState, turn: TalkTurn, hidden: boolean): TalkLineState {
   if (!state.talk || turn.talk.id !== state.talk.id) return state;
   if (turn.role === 'end') return talkLine(state, { type: 'end' });
   if (turn.talk.turn !== state.talk.turn) return state;
   // An answer that comes after the line gave up still replaces the give-up line.
   const gaveUp = state.phase === 'idle' && state.error === NO_ANSWER_IN_TIME;
   const answering = state.phase === 'waiting' || gaveUp || (state.phase === 'speaking' && state.speaking?.holding === true);
+  // Android suspends the voice of a page he has left: an answer that comes then waits, unspoken, for him to return.
   if (turn.role === 'answer' && answering) {
-    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: false, ...linksOf(turn) }, answeredBy: turn.model ?? state.answeredBy, error: undefined, thinking: undefined };
+    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: false, ...linksOf(turn), ...(hidden ? { unspoken: true } : {}) }, answeredBy: turn.model ?? state.answeredBy, error: undefined, thinking: undefined };
   }
-  if (turn.role === 'holding' && state.phase === 'waiting') {
+  if (turn.role === 'holding' && state.phase === 'waiting' && !hidden) {
     return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: true, ...linksOf(turn) }, answeredBy: turn.model ?? state.answeredBy };
   }
   return state;
@@ -195,7 +197,10 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       if (state.phase !== 'idle' || !state.unsent) return state;
       return { ...state, phase: 'sending', outgoing: { ...state.unsent }, unsent: undefined, error: undefined };
     case 'incoming':
-      return incoming(state, event.turn);
+      return incoming(state, event.turn, event.hidden === true);
+    case 'visible':
+      if (state.phase !== 'speaking' || !state.speaking?.unspoken) return state;
+      return { ...state, speaking: { ...state.speaking, unspoken: undefined } };
     case 'spoken':
       if (state.phase !== 'speaking') return state;
       return state.speaking?.holding ? { ...state, phase: 'waiting', speaking: undefined } : idle(state);

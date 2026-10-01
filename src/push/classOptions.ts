@@ -18,7 +18,7 @@ export interface NotificationOptions {
   body?: string;
   /** Buttons on the notification (the Mayor's ring: Answer and Later). */
   actions?: { action: string; title: string }[];
-  data: { txid: string; class: PushClass | 'call' | 'events'; url: string };
+  data: { txid: string; class: PushClass | 'call' | 'events' | 'talk'; url: string };
 }
 
 export interface NotificationSpec {
@@ -145,6 +145,30 @@ export function notificationSpecForRing(txid: string, text: { title?: string; bo
       ],
       data: { txid, class: 'call', url: ringTapUrl(txid) },
       ...(text.body && { body: text.body }),
+    },
+  };
+}
+
+/** The tag a talk answer's notification wears, so a second one replaces the first. */
+export const TALK_ANSWER_TAG = 'talk-answer';
+
+export const TALK_ANSWER_TITLE = 'The Mayor answered';
+
+/** The chime's buzz (src/services/chime.ts), for the notification to match. */
+export const TALK_ANSWER_VIBRATE = [120];
+
+/** The notification the Talk line shows when an answer comes while he has left the app (mw-j0f2d.29):
+ * the title and nothing else, because the answer's words stay sealed until he is back, and the
+ * answer is spoken then. It is never silent; a tap opens the Talk line, where the answer speaks. */
+export function notificationSpecForTalkAnswer(): NotificationSpec {
+  return {
+    title: TALK_ANSWER_TITLE,
+    options: {
+      tag: TALK_ANSWER_TAG,
+      renotify: true,
+      silent: false,
+      vibrate: TALK_ANSWER_VIBRATE,
+      data: { txid: '', class: 'talk', url: `/${formatRoute({ view: 'line' })}` },
     },
   };
 }

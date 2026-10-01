@@ -13,12 +13,18 @@ import { decodeTurn, newTalkId } from '../services/talk';
 import { chime } from '../services/chime';
 import { now } from '../services/clock';
 import { holdAwake } from '../services/wakeLock';
+import { holdVoiceAlive } from '../services/silentLoop';
+import { announceAnswer, clearAnnouncement } from '../services/talkAnswerNotice';
 import { sendTurn } from './send';
 import { useTalkTurns } from './hooks';
 import { useMayorHere } from './useMayorHere';
 
 function buzz(ms: number): void {
   if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(ms);
+}
+
+function pageHidden(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 }
 
 export function useTalkLine() {
@@ -70,7 +76,7 @@ export function useTalkLine() {
       }
       if (talkLine(line, { type: 'incoming', turn }) !== line) {
         handled.current.add(row.id);
-        feed({ type: 'incoming', turn });
+        feed({ type: 'incoming', turn, hidden: pageHidden() });
         return;
       }
       if (!(line.phase === 'sending' && line.talk?.id === turn.talk.id)) handled.current.add(row.id);
@@ -79,7 +85,9 @@ export function useTalkLine() {
 
   // What is being said is spoken; the line moves on when the voice finishes. Leaving
   // the speaking state (a tap, the button, an end) silences it.
-  const spoken = line.phase === 'speaking' ? line.speaking?.text : undefined;
+  // An answer that came while he was away is not spoken until he returns (see below).
+  const unspoken = line.phase === 'speaking' && line.speaking?.unspoken === true;
+  const spoken = line.phase === 'speaking' && !unspoken ? line.speaking?.text : undefined;
   useEffect(() => {
     if (spoken === undefined) return;
     let current = true;
@@ -92,6 +100,21 @@ export function useTalkLine() {
       stopSpeaking();
     };
   }, [spoken, feed]);
+
+  // An answer that came while he had left the app (Android suspends the voice of a page that is
+  // not showing) is told by a notification with no words, and spoken the moment he returns.
+  useEffect(() => {
+    if (unspoken) void announceAnswer();
+  }, [unspoken]);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      feed({ type: 'visible' });
+      void clearAnnouncement();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [feed]);
 
   // Waiting for the Mayor is counted; the line gives up after its timeout (longer while he is here).
   const waiting = line.phase === 'waiting';
@@ -111,11 +134,17 @@ export function useTalkLine() {
     wasHere.current = here;
   }, [here, missed]);
 
-  // The screen stays awake for as long as a talk is open.
+  // The screen stays awake for as long as a talk is open, and a silent loop plays to try to keep
+  // the voice alive with the screen off.
   const open = line.talk !== undefined;
   useEffect(() => {
     if (!open) return;
-    return holdAwake();
+    const release = holdAwake();
+    const quiet = holdVoiceAlive();
+    return () => {
+      release();
+      quiet();
+    };
   }, [open]);
 
   useEffect(

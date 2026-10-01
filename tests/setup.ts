@@ -7,3 +7,9 @@ import { configure } from '@testing-library/dom';
 // waitFor/findBy default to 1 s, which the landing gate's loaded host outruns
 // (mw-gq6.204, .199, .205). vitest's testTimeout (20 s) stays well above this.
 configure({ asyncUtilTimeout: 5000 });
+
+// jsdom does not play media: the Talk line's silent loop (src/services/silentLoop.ts) calls these.
+if (typeof HTMLMediaElement !== 'undefined') {
+  HTMLMediaElement.prototype.play = () => Promise.resolve();
+  HTMLMediaElement.prototype.pause = () => undefined;
+}

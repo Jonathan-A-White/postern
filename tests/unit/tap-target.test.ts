@@ -86,6 +86,30 @@ describe('resolveTapUrl: a reply opens the post it answers', () => {
     expect(route(await resolveTapUrl({ txid: REPLY_TO_REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'topic:wiring', root: ROOT });
   });
 
+  it.each(['alarm', 'landing', 'decision-needed'] as const)('a %s row that is a threaded message with re opens the thread of its post, as a message reply does (mw-f758y.29)', async (cls) => {
+    await messagesRepo.put(row(ROOT, 'the post'));
+    await messagesRepo.put(row(REPLY, { text: 'the alarm', re: ROOT }, { class: cls }));
+    const url = await resolveTapUrl({ txid: REPLY, class: cls });
+    expect(route(url)).toEqual({ view: 'talk', thread: 'general', root: ROOT });
+    await db.messages.clear();
+    await messagesRepo.put(row(ROOT, 'the post'));
+    await messagesRepo.put(row(REPLY, { text: 'the answer', re: ROOT }));
+    expect(await resolveTapUrl({ txid: REPLY, class: 'message' })).toBe(url);
+  });
+
+  it('an alarm with no re, or a plain-text alarm, still opens its channel', async () => {
+    await messagesRepo.put(row(REPLY, { text: 'the alarm', thread: { topic: 'wiring' } }, { class: 'alarm', thread: 'topic:wiring' }));
+    expect(route(await resolveTapUrl({ txid: REPLY, class: 'alarm' }))).toEqual({ view: 'talk', thread: 'topic:wiring' });
+    await messagesRepo.put(row(REPLY_TO_REPLY, 'plain alarm', { class: 'alarm' }));
+    expect(route(await resolveTapUrl({ txid: REPLY_TO_REPLY, class: 'alarm' }))).toEqual({ view: 'talk', thread: 'general' });
+  });
+
+  it('a transcript of any class is still not a reply', async () => {
+    await messagesRepo.put(row(ROOT, 'the post'));
+    await messagesRepo.put(row(REPLY, { text: 'what he said', re: ROOT, role: 'transcript' }, { class: 'alarm' }));
+    expect(route(await resolveTapUrl({ txid: REPLY, class: 'alarm' }))).toEqual({ view: 'talk', thread: 'general' });
+  });
+
   it('a transcript is an annotation, not a reply: it opens the channel', async () => {
     await messagesRepo.put(row(REPLY, { text: 'what he said', re: ROOT, role: 'transcript' }));
     expect(route(await resolveTapUrl({ txid: REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'general' });

@@ -18,10 +18,11 @@ export interface TapData {
   url?: string;
 }
 
-/** The txid a stored message answers as a reply (docs/protocol.md §14): only a
- * plain text message counts, never a transcript. */
+/** The txid a stored message answers as a reply (docs/protocol.md §14): a
+ * threaded message of any class but `talk` counts (an alarm sent into a thread opens it,
+ * mw-f758y.29), never a transcript. */
 function repliedTo(row: MessageRow): string | undefined {
-  if (row.class !== 'message' || row.plaintext === undefined) return undefined;
+  if (row.plaintext === undefined || row.class === 'talk') return undefined;
   const body = decodeThreadedMessage(row.plaintext);
   return body.re !== undefined && body.role === undefined ? body.re : undefined;
 }

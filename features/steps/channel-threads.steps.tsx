@@ -34,7 +34,7 @@ let detailFor: string | undefined;
 const byText = new Map<string, MessageRow>();
 const BASE = 1_760_000_000;
 
-function say(text: string, options: { re?: string; thread?: string; direction?: 'sent' | 'received'; role?: string; files?: { hash: string; size: number; mime: string }[] } = {}): MessageRow {
+function say(text: string, options: { re?: string; thread?: string; direction?: 'sent' | 'received'; role?: string; cls?: MessageRow['class']; files?: { hash: string; size: number; mime: string }[] } = {}): MessageRow {
   sequence += 1;
   const txid = `direct:${String(sequence).padStart(64, '0')}`;
   const row: MessageRow = {
@@ -42,7 +42,7 @@ function say(text: string, options: { re?: string; thread?: string; direction?: 
     txid,
     vout: 0,
     seq: sequence,
-    class: 'message',
+    class: options.cls ?? 'message',
     to: '02'.padEnd(66, '0'),
     from: '03'.padEnd(66, '0'),
     ts: BASE + sequence * 60,
@@ -260,6 +260,21 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the app opens the thread of {string} in the channel of bead {string}', (_ctx, text: string, bead: string) => {
       expect(parseRoute(new URL(tapped, 'https://postern.allmymind.org').search)).toEqual({ view: 'talk', thread: beadChannel(bead), root: byText.get(text)!.txid });
+    });
+  });
+
+  Scenario('mw-f758y.29: a notification for an alarm sent as a reply into a thread opens that thread', ({ Given, When, Then }) => {
+    let tapped = '';
+    Given('a post {string} in Factory with the alarm {string} sent as a reply to it', (_ctx, text: string, alarm: string) => {
+      const root = say(text);
+      say(alarm, { re: root.txid, cls: 'alarm' });
+    });
+    When('the notification for the alarm {string} is tapped', async (_ctx, alarm: string) => {
+      for (const row of seeded) await messagesRepo.put(row);
+      tapped = await resolveTapUrl({ txid: byText.get(alarm)!.txid, class: 'alarm' });
+    });
+    Then('the app opens the thread of {string} in Factory', (_ctx, text: string) => {
+      expect(parseRoute(new URL(tapped, 'https://postern.allmymind.org').search)).toEqual({ view: 'talk', thread: 'general', root: byText.get(text)!.txid });
     });
   });
 

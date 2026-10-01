@@ -62,6 +62,11 @@ Feature: Every channel has reply threads: N replies under a post, Reply opens it
     When the "1 reply" row is tapped
     Then the thread shows "the post" and "a screenshot" in that order
 
+  Scenario: mw-f758y.29: a notification for an alarm sent as a reply into a thread opens that thread
+    Given a post "the post" in Factory with the alarm "test alarm" sent as a reply to it
+    When the notification for the alarm "test alarm" is tapped
+    Then the app opens the thread of "the post" in Factory
+
   Scenario: mw-gq6.170 Q1: a reply sent with no channel to a post in a bead's channel shows under that post in the post's channel
     Given a post "the card" in the channel of bead "mw-a.1" with the reply "the answer" sent in Factory
     When the notification for the reply "the answer" is tapped

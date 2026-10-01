@@ -2,13 +2,15 @@
 // decisions 5, 7 and 10): the §1 envelope, encrypted to the pinned Mayor, posted
 // straight to the backend (docs/protocol.md §9) — one round trip, no coins. An
 // old backend that has no direct delivery gets today's funded transaction
-// instead. Either way the sent message is stored at once, so it shows in its
-// thread before the event stream echoes it back.
+// instead; a Call me whose backend cannot be reached gets that transaction too,
+// sent through WhatsOnChain (§21). Either way the sent message is stored at
+// once, so it shows in its thread before the event stream echoes it back.
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { encodeRecordScript } from 'spell-forge-bsv';
-import { apiFetch, withTimeout } from './apiAuth';
+import { apiFetch, ApiTimeoutError, BackendUnreachableError, withTimeout } from './apiAuth';
 import { encryptMessage, type MessageClass } from './messages';
 import { readErrorMessage, sendTextMessage } from './send';
+import type { ChainVia } from './spendable';
 import { encodeReply } from './questions';
 import { encodeThreadedMessage, threadKey, threadOf, type Attachment, type ThreadRef } from './threads';
 import { messagesRepo } from '../data/repositories';
@@ -20,6 +22,8 @@ export interface DeliverOptions {
   mayorKey: string;
   /** Whether the backend takes direct delivery (docs/protocol.md §15). */
   direct: boolean;
+  /** The phone knows the backend is out of reach (the live status is offline): a Call me skips the direct post and goes on chain (docs/protocol.md §21). */
+  offline?: boolean;
   apiBase?: string;
   fetchImpl?: typeof fetch;
 }
@@ -31,6 +35,11 @@ export interface Delivered {
 
 class DirectUnsupported extends Error {}
 
+/** A call that never reached a working backend: no connection, no answer in time, or a gateway error. */
+function isNetworkFailure(err: unknown): boolean {
+  return err instanceof TypeError || err instanceof ApiTimeoutError || err instanceof BackendUnreachableError;
+}
+
 async function postDirect(scriptHex: string, options: DeliverOptions): Promise<string> {
   const response = await apiFetch(
     '/messages',
@@ -38,6 +47,9 @@ async function postDirect(scriptHex: string, options: DeliverOptions): Promise<s
     { unlockedKey: options.key, apiBase: options.apiBase, fetchImpl: options.fetchImpl },
   );
   if (response.status === 404 || response.status === 405) throw new DirectUnsupported();
+  if (response.status === 502 || response.status === 503 || response.status === 504) {
+    throw new BackendUnreachableError(await readErrorMessage(response, 'The backend refused the message.'));
+  }
   if (!response.ok) throw new Error(await readErrorMessage(response, 'The backend refused the message.'));
   const body = (await withTimeout(response.json(), true)) as { txid?: unknown };
   if (typeof body.txid !== 'string') throw new Error('The backend took the message but named no id.');
@@ -90,14 +102,21 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
   const senderPrivateKeyHex = Utils.toHex(Array.from(options.key));
   const payload = encryptMessage({ text: plaintext, class: messageClass, senderPrivateKeyHex, recipientPublicKeyHex: options.mayorKey });
 
+  // Only a Call me (docs/protocol.md §21) goes on chain when the backend cannot be reached:
+  // a network failure leaves the rule for every other class as it was.
+  const callsOnChainWhenDown = messageClass === 'call';
+  let via: ChainVia = 'backend';
   let delivered: Delivered | undefined;
-  if (options.direct) {
+  if (options.direct && !(callsOnChainWhenDown && options.offline)) {
     try {
       const script = encodeRecordScript(Utils.toArray(JSON.stringify(payload), 'utf8'));
       delivered = { txid: await postDirect(script.toHex(), options), channel: 'direct' };
     } catch (err) {
-      if (!(err instanceof DirectUnsupported)) throw err;
+      if (callsOnChainWhenDown && isNetworkFailure(err)) via = 'whatsonchain';
+      else if (!(err instanceof DirectUnsupported)) throw err;
     }
+  } else if (callsOnChainWhenDown && options.offline) {
+    via = 'whatsonchain';
   }
   if (!delivered) {
     const txid = await sendTextMessage({
@@ -107,6 +126,7 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
       recipientPublicKeyHex: options.mayorKey,
       apiBase: options.apiBase,
       fetchImpl: options.fetchImpl,
+      via,
     });
     delivered = { txid, channel: 'chain' };
   }

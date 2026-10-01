@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MessageRow } from '../../src/data/db';
 import { CALL_TEXT_MAX_BYTES, decodeCall, encodeCall } from '../../src/services/call';
-import { callSentAt, clockHHMM } from '../../src/model/call';
+import { callSent, callSentAt, clockHHMM } from '../../src/model/call';
 
 function row(over: Partial<MessageRow>): MessageRow {
   return {
@@ -84,5 +84,21 @@ describe('Call sent waits until the Mayor answers', () => {
     const ring = row({ id: 'g:0', txid: 'g', direction: 'received', ts: 1001, plaintext: encodeCall({ role: 'ring', text: 'Hi', at: 1001 }) });
     const again = row({ id: 'r2:0', txid: 'r2', ts: 2000, plaintext: encodeCall({ role: 'request', text: 'Call me', at: 2000 }) });
     expect(callSentAt([request, ring, again])).toBe(2000);
+  });
+});
+
+describe('how the waiting request went', () => {
+  const plaintext = encodeCall({ role: 'request', text: 'Call me', at: 1000 });
+
+  it('says its time and txid, and a direct id is not on chain', () => {
+    const direct = row({ id: `direct:${'e'.repeat(64)}:0`, txid: `direct:${'e'.repeat(64)}`, plaintext });
+    expect(callSent([direct])).toEqual({ at: 1000, txid: direct.txid, onChain: false });
+    const chain = row({ id: `${'f'.repeat(64)}:0`, txid: 'f'.repeat(64), plaintext });
+    expect(callSent([chain])).toEqual({ at: 1000, txid: 'f'.repeat(64), onChain: true });
+  });
+
+  it('is nothing once the Mayor has answered', () => {
+    const ring = row({ id: 'g:0', txid: 'g', direction: 'received', ts: 1001, plaintext: encodeCall({ role: 'ring', text: 'Hi', at: 1001 }) });
+    expect(callSent([row({ plaintext }), ring])).toBeUndefined();
   });
 });

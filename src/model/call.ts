@@ -9,19 +9,35 @@ export function clockHHMM(atSeconds: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+/** His waiting Call me request: when it was sent (Unix seconds), its id, and whether it went on chain rather than straight to the backend. */
+export interface CallSent {
+  at: number;
+  txid: string;
+  onChain: boolean;
+}
+
 /**
- * When his newest Call me request was sent (Unix seconds), while the Mayor has not answered
- * it: nothing from him (a ring, or a Talk-line answer) has arrived at or after it. `rows` are
- * the call and talk records this phone holds, in any order.
+ * His newest Call me request, while the Mayor has not answered it: nothing from him (a
+ * ring, or a Talk-line answer) has arrived at or after it. `rows` are the call and talk
+ * records this phone holds, in any order. A direct delivery's id starts `direct:` (§9); any
+ * other id is a transaction on chain (§21).
  */
-export function callSentAt(rows: MessageRow[]): number | undefined {
-  let sent: number | undefined;
+export function callSent(rows: MessageRow[]): CallSent | undefined {
+  let sent: CallSent | undefined;
   for (const row of rows) {
     if (row.class !== 'call' || row.direction !== 'sent') continue;
     const call = decodeCall(row.plaintext);
-    if (call?.role === 'request' && (sent === undefined || call.at > sent)) sent = call.at;
+    if (call?.role === 'request' && (sent === undefined || call.at > sent.at)) {
+      sent = { at: call.at, txid: row.txid, onChain: !row.txid.startsWith('direct:') };
+    }
   }
   if (sent === undefined) return undefined;
-  const answered = rows.some((row) => row.direction === 'received' && row.ts >= sent && (row.class === 'talk' || (row.class === 'call' && decodeCall(row.plaintext)?.role === 'ring')));
+  const { at } = sent;
+  const answered = rows.some((row) => row.direction === 'received' && row.ts >= at && (row.class === 'talk' || (row.class === 'call' && decodeCall(row.plaintext)?.role === 'ring')));
   return answered ? undefined : sent;
+}
+
+/** When his newest Call me request was sent (Unix seconds), while the Mayor has not answered it. */
+export function callSentAt(rows: MessageRow[]): number | undefined {
+  return callSent(rows)?.at;
 }

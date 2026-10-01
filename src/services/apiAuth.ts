@@ -55,6 +55,15 @@ function fetchWithin(fetchImpl: typeof fetch, url: string, init: RequestInit | u
   return withTimeout(Promise.resolve(fetchImpl(url, { ...init, signal: controller.signal })), sent, API_TIMEOUT_MS, () => controller.abort());
 }
 
+/** The backend, or the proxy in front of it, did not answer a call as a working backend does
+ * (no sign-in code, or a 502/503/504 from the gateway): the call can be retried by another way. */
+export class BackendUnreachableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BackendUnreachableError';
+  }
+}
+
 export interface ApiFetchOptions {
   /** This phone's unlocked raw master key. Omitted for an unauthenticated call. */
   unlockedKey?: Uint8Array;
@@ -72,7 +81,7 @@ async function signedAuthorizationHeader(
 ): Promise<string> {
   const privateKey = PrivateKey.fromHex(Utils.toHex(Array.from(unlockedKey)));
   const challengeResponse = await fetchWithin(fetchImpl, `${apiBase}/challenge`, undefined, false);
-  if (!challengeResponse.ok) throw new Error(`The backend could not be reached for a sign-in code (it answered ${challengeResponse.status}). Try again in a moment.`);
+  if (!challengeResponse.ok) throw new BackendUnreachableError(`The backend could not be reached for a sign-in code (it answered ${challengeResponse.status}). Try again in a moment.`);
   const { nonce } = (await challengeResponse.json()) as { nonce: unknown };
   // The same key signs a hands step's approval (docs/protocol.md §17). A
   // backend that could get anything signed as a "nonce" could get an approval

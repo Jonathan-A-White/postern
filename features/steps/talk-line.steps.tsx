@@ -4,7 +4,7 @@
 // Needs screen against a Dexie holding a talk record.
 import '@testing-library/react/dont-cleanup-after-each';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
-import { PrivateKey, Script, Utils } from '@bsv/sdk';
+import { P2PKH, PrivateKey, Script, Transaction, Utils } from '@bsv/sdk';
 import { decodeRecordScript } from 'spell-forge-bsv';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -12,12 +12,13 @@ import { NeedsScreen } from '../../src/cockpit/NeedsScreen';
 import { Shell } from '../../src/cockpit/Shell';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
 import { db, type MessageRow } from '../../src/data/db';
-import { decryptMessage, type MessagePayload } from '../../src/services/messages';
-import { settledWrites } from '../../src/services/deliver';
+import { ANCHOR_ADDRESS, decryptMessage, type MessagePayload } from '../../src/services/messages';
 import { decodeTurn, deliverTurn, encodeTurn } from '../../src/services/talk';
 import { decodeCall, deliverCallRequest } from '../../src/services/call';
+import { deliver, settledWrites, type Delivered } from '../../src/services/deliver';
 import { initialTalkLine, talkLine, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
+import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-woc';
 
 const MAYOR = PrivateKey.fromHex('77'.repeat(32));
 const HIM_KEY = new Uint8Array(Utils.toArray('45'.repeat(32), 'hex'));
@@ -28,6 +29,11 @@ let turn: TalkTurn;
 let decoded: TalkTurn | undefined;
 let encoded = '';
 let posts: { scriptHex: string }[] = [];
+
+// the backend that cannot be reached
+let down: BackendDownWoc;
+let delivered: Delivered | undefined;
+let failure: unknown;
 
 // the line
 let line: TalkLineState = initialTalkLine;
@@ -363,6 +369,76 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(text.endsWith(tail)).toBe(true);
       expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
     });
+  });
+
+  const mayorKnownBackendDown = () => {
+    down = backendDownWoc();
+    delivered = undefined;
+    failure = undefined;
+  };
+  const chainOptions = (extra: { offline?: boolean } = {}) => ({
+    key: HIM_KEY,
+    mayorKey: MAYOR.toPublicKey().toString(),
+    direct: true,
+    fetchImpl: down.fetchImpl,
+    ...extra,
+  });
+  const broadcastTx = () => Transaction.fromHex(down.broadcasts[0]);
+
+  Scenario('AC-3: Call me while the backend is unreachable goes on chain (mw-a0ih0.4)', ({ Given, When, Then, And }) => {
+    Given("the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin", mayorKnownBackendDown);
+    When('he delivers a call request saying {string} at {number}', async (_c, text: string, at: number) => {
+      delivered = await deliverCallRequest(text, Number(at), chainOptions());
+      await settledWrites();
+    });
+    Then('the request went on chain', () => {
+      expect(delivered?.channel).toBe('chain');
+      expect(delivered?.txid).toMatch(/^[0-9a-f]{64}$/);
+    });
+    And('WhatsOnChain was sent one section 4 transaction with the record, the anchor payment and change', () => {
+      expect(down.broadcasts).toHaveLength(1);
+      const tx = broadcastTx();
+      expect(tx.outputs).toHaveLength(3);
+      expect(tx.outputs[0].satoshis).toBe(0);
+      expect(decodeRecordScript(tx.outputs[0].lockingScript)).not.toBeNull();
+      expect(tx.outputs[1].satoshis).toBe(1);
+      expect(tx.outputs[1].lockingScript.toHex()).toBe(new P2PKH().lock(ANCHOR_ADDRESS).toHex());
+      expect(tx.outputs[2].lockingScript.toHex()).toBe(new P2PKH().lock(PrivateKey.fromHex('45'.repeat(32)).toAddress('testnet')).toHex());
+      expect(tx.id('hex')).toBe(delivered?.txid);
+    });
+    And('the Mayor reads that record as a request saying {string} at {number}', (_c, text: string, at: number) => {
+      const script = decodeRecordScript(broadcastTx().outputs[0].lockingScript);
+      const payload = JSON.parse(Utils.toUTF8(Array.from(script!.payloadBytes))) as MessagePayload;
+      expect(payload.class).toBe('call');
+      expect(decodeCall(decryptMessage(payload, MAYOR.toHex()))).toEqual({ role: 'request', text, at: Number(at) });
+    });
+    And('this phone keeps its sent copy under the chain id', async () => {
+      const kept = await db.messages.get(`${delivered?.txid}:0`);
+      expect(kept?.direction).toBe('sent');
+      expect(kept?.class).toBe('call');
+    });
+  });
+
+  Scenario('AC-3: a message does not fall back to chain on a network error (mw-a0ih0.4)', ({ Given, When, Then }) => {
+    Given("the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin", mayorKnownBackendDown);
+    When('he tries to deliver a message saying {string}', async (_c, text: string) => {
+      failure = await deliver(text, 'message', chainOptions()).then(() => undefined, (err: unknown) => err ?? new Error('failed'));
+    });
+    Then('the delivery fails and WhatsOnChain was never asked', () => {
+      expect(failure).toBeInstanceOf(TypeError);
+      expect(down.wocCalls).toEqual([]);
+      expect(down.broadcasts).toEqual([]);
+    });
+  });
+
+  Scenario('AC-3: a Call me while the phone knows it is offline goes on chain without trying the backend (mw-a0ih0.4)', ({ Given, When, Then, And }) => {
+    Given("the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin", mayorKnownBackendDown);
+    When('he delivers a call request saying {string} at {number} while the phone is offline', async (_c, text: string, at: number) => {
+      delivered = await deliverCallRequest(text, Number(at), chainOptions({ offline: true }));
+      await settledWrites();
+    });
+    Then('the request went on chain', () => expect(delivered?.channel).toBe('chain'));
+    And('the backend was never tried', () => expect(down.apiCalls).toEqual([]));
   });
 
   Scenario('AC-2: the model is chosen per talk and rides on his turns', ({ Given, When, And, Then }) => {

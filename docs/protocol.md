@@ -108,7 +108,9 @@ must be set to this value for the two sides to agree on what the poller watches.
 One P2PKH-funded transaction, the same shape `spell-forge-bsv`'s `write-record.ts`
 already builds for version-1 records (`buildRecordTransaction`), but built directly
 against `docs/api.md`'s `/api/utxos` and `/api/broadcast` rather than through a
-`ChainProvider`, since the PWA never talks to WhatsOnChain directly:
+`ChainProvider`, since the PWA does not talk to WhatsOnChain directly (the one exception
+is §21's Call me with the backend out of reach, which builds this same transaction and
+lists coins and broadcasts at WhatsOnChain):
 
 1. One P2PKH input per UTXO returned by `GET /api/utxos/{address}` for the sender's
    own address (excluding any 1-satoshi UTXO — that's a token, not fee money, same
@@ -1258,3 +1260,36 @@ bytes: at most 2,000 bytes of text as JSON writes it, ending `...`.
 After he sends a request the Talk line screen reads **Call sent HH:MM** (the phone's
 24-hour local time of `at`) under the presence mark, until a ring from the Mayor or an
 answer on the Talk line arrives after it; then the note goes.
+
+### When the backend cannot be reached
+
+A Call me must still leave when the direct line is down. For a `call` record, and for no
+other class, the phone puts the record on chain itself:
+
+- **When.** The live status is `offline` (the phone already knows; it then skips the direct
+  post), or the `POST /api/messages` of §9 fails as a network failure: no connection, no
+  answer within the API timeout, no sign-in code from `GET /api/challenge`, or a 502, 503
+  or 504 from the gateway in front of the backend. A 404 or 405 (a backend without direct
+  delivery) keeps today's rule for every class: the funded transaction goes through the
+  backend's own `/api/utxos` and `/api/broadcast`. Every other class (a message, an answer,
+  an action, a Talk turn) keeps today's rule on a network failure too: it fails, and he
+  taps again.
+- **How.** The same §4 transaction to the same §3 anchor address: output 0 the record,
+  output 1 the 1-sat anchor payment, output 2 change. Its coins come from WhatsOnChain's
+  `GET <provider>/address/<address>/unspent` (a bare list of `tx_hash`, `tx_pos`, `value`,
+  `height`; a 404 is no coins) and it is broadcast with `POST <provider>/tx/raw`
+  `{ "txhex": "<hex>" }`, which answers the txid. `<provider>` is the chain provider of the
+  rig's chain switch (`chainConfig.providerBaseUrl`: WhatsOnChain's testnet today), the
+  same chain the backend's poller reads. The phone's pending-spend memory still applies,
+  so two calls in a row do not spend one coin twice.
+- **Why the Mayor still hears.** The backend's poller reads the anchor address from
+  WhatsOnChain every 5 seconds, so a record the phone broadcast reaches `GET /api/messages`
+  and §10's stream with no backend change, and the Mayor's `mw talk wait` prints it within
+  a minute once the backend is back.
+- **What it costs.** One small transaction: the miner fee at `chainConfig.feeRateSatPerKb`
+  (a few satoshis for a record this size) plus the 1-sat anchor payment, from his own
+  coins. Testnet today. A call sent on chain is final: it cannot be taken back.
+- **What he sees.** The Talk line screen reads **Sent on chain HH:MM, txid <first 8 hex>…**
+  in place of **Call sent HH:MM**, until a ring or an answer arrives; the connection mark
+  keeps saying the backend is reconnecting. The sent copy is kept under the transaction id,
+  not a `direct:` id, and the backend's later echo of the same record lands on that row.

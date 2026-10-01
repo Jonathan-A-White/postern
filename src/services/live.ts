@@ -73,7 +73,7 @@ export function hasFeature(feature: Me['features'][number]): boolean {
 /** What deliver() needs, once the Mayor is known; null before then. */
 export function deliverOptions(key: Uint8Array | null): DeliverOptions | null {
   if (!key || !state.mayorKey) return null;
-  return { key, mayorKey: state.mayorKey, direct: hasFeature('direct') };
+  return { key, mayorKey: state.mayorKey, direct: hasFeature('direct'), offline: state.status === 'offline' };
 }
 
 let syncing: Promise<void> = Promise.resolve();

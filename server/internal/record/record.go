@@ -120,9 +120,14 @@ func parsePushDataSequence(data []byte) ([][]byte, bool) {
 }
 
 // VersionTyped is the License app's typed record format (spec §3.8): OP_FALSE
-// OP_RETURN <'nftgate'> <0x02> <record type> [<value manifest>] <payload>.
-// Only the record types findLicence needs to read are recognised.
+// OP_RETURN <'nftgate'> <0x02> <record type> [[<epoch commitment>] <value
+// manifest>] <payload>. Only the record types findLicence needs to read are
+// recognised.
 const VersionTyped = 0x02
+
+// epochCommitmentBytes is the length of a 6-push typed record's 4th push,
+// c(e) = SHA-256("nftgate-epoch" ‖ k(e)).
+const epochCommitmentBytes = 32
 
 var typedRecordTypes = map[string]bool{"M": true, "W": true, "TR": true}
 
@@ -136,11 +141,13 @@ type TypedDecoded struct {
 
 // DecodeTypedScript parses a locking script (as hex) as a version-0x02
 // nftgate record: OP_FALSE OP_RETURN <'nftgate'> <0x02> <record type>
-// <payload>, with an optional value-manifest push between the record type
-// and the payload (spell-forge-bsv's encodeTypedRecordScript writes 5 pushes
-// once a manifest exists, 4 before it did; both are accepted, and the
-// payload is always the last push). It reports ok=false for anything else,
-// including a version-1 (plaintext) record.
+// <payload>, in any of the three layouts spell-forge-bsv's
+// encodeTypedRecordScript has written: 6 pushes since gated reading
+// (mw-jeswf.3: a 32-byte epoch commitment, then the value manifest, between
+// the record type and the payload), 5 once a manifest existed, 4 before it
+// did. The payload is always the last push. It reports ok=false for anything
+// else, including a 6-push record whose 4th push is not 32 bytes and a
+// version-1 (plaintext) record.
 func DecodeTypedScript(scriptHex string) (*TypedDecoded, bool) {
 	scriptBytes, err := hex.DecodeString(scriptHex)
 	if err != nil {
@@ -152,7 +159,10 @@ func DecodeTypedScript(scriptHex string) (*TypedDecoded, bool) {
 	}
 
 	pushes, ok := parsePushDataSequence(scriptBytes[2:])
-	if !ok || (len(pushes) != 4 && len(pushes) != 5) {
+	if !ok || len(pushes) < 4 || len(pushes) > 6 {
+		return nil, false
+	}
+	if len(pushes) == 6 && len(pushes[3]) != epochCommitmentBytes {
 		return nil, false
 	}
 

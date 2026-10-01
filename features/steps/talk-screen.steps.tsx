@@ -170,8 +170,14 @@ async function mayorSays(text: string, role: TalkTurn['role'], model?: string, l
   });
 }
 
+// A silence the recogniser lives through: the page's clock, moved on without waiting.
+let silentFor = 0;
+const realNow = Date.now.bind(Date);
+const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + silentFor);
+
 async function fresh(): Promise<void> {
   cleanup();
+  silentFor = 0;
   vi.unstubAllGlobals();
   sequence = 0;
   clock.at = 1_000_000;
@@ -186,6 +192,7 @@ async function fresh(): Promise<void> {
 }
 
 afterAll(() => {
+  nowSpy.mockRestore();
   cleanup();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
@@ -396,6 +403,48 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the talk button reads {string}', async (_c, name: string) => {
       await waitFor(() => expect(screen.getByRole('button', { name })).toBeInTheDocument());
+    });
+    And('the live transcript reads exactly {string}', async (_c, words: string) => {
+      await waitFor(() => expect(screen.getByTestId('live-transcript').textContent?.trim()).toBe(words));
+    });
+    When('he lets go of the talk button', async () => {
+      fireEvent.pointerUp(await talkButton('Release to send'));
+      await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
+    });
+    Then('one turn is sent saying {string} as turn 1', (_c, words: string) => {
+      expect(sendTurn).toHaveBeenCalledTimes(1);
+      expect(lastSent()).toMatchObject({ text: words, role: 'turn', talk: { turn: 1 } });
+    });
+  });
+
+  Scenario('AC-1: a pause of many seconds while he holds does not end the turn, and both halves go as one turn (mw-j0f2d.27)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    And('the recogniser hears {string} so far', async (_c, words: string) => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      await hear(words);
+    });
+    And('he stays silent for {int} seconds, {int} times over, the recogniser ending itself each time', async (_c, seconds: number, times: number) => {
+      for (let i = 0; i < times; i++) {
+        const before = recognizers.length;
+        silentFor += seconds * 1000;
+        act(() => {
+          recognizers.at(-1)?.onerror?.({ error: 'no-speech' });
+          recognizers.at(-1)?.onend?.();
+        });
+        await waitFor(() => expect(recognizers.length).toBe(before + 1));
+      }
+    });
+    And('the recogniser then hears {string} so far', async (_c, words: string) => {
+      await hear(words);
+    });
+    Then('the talk button reads {string}', async (_c, name: string) => {
+      await waitFor(() => expect(screen.getByRole('button', { name })).toBeInTheDocument());
+    });
+    And('the screen does not say {string}', (_c, text: string) => {
+      expect(screen.queryByText(text)).toBeNull();
     });
     And('the live transcript reads exactly {string}', async (_c, words: string) => {
       await waitFor(() => expect(screen.getByTestId('live-transcript').textContent?.trim()).toBe(words));

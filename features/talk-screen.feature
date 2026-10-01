@@ -59,6 +59,18 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he lets go of the talk button
     Then one turn is sent saying "first part second part" as turn 1
 
+  Scenario: AC-1: a pause of many seconds while he holds does not end the turn, and both halves go as one turn (mw-j0f2d.27)
+    Given the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    And the recogniser hears "twenty Mississippi" so far
+    And he stays silent for 5 seconds, 8 times over, the recogniser ending itself each time
+    And the recogniser then hears "and now the rest" so far
+    Then the talk button reads "Release to send"
+    And the screen does not say "No speech was heard."
+    And the live transcript reads exactly "twenty Mississippi and now the rest"
+    When he lets go of the talk button
+    Then one turn is sent saying "twenty Mississippi and now the rest" as turn 1
+
   Scenario: AC-1: releasing vibrates and sends his words as a turn
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "What landed today?" and lets go

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { DEFAULT_LANG, isListenSupported, recognizerLang, startListening, MAX_IDLE_RESTARTS, STOP_TIMEOUT_MS, type ListenOptions } from '../../src/services/listen';
+import { DEFAULT_LANG, isListenSupported, recognizerLang, startListening, IDLE_RESTART_WAIT_MS, MAX_IDLE_RESTARTS, STOP_TIMEOUT_MS, type ListenOptions } from '../../src/services/listen';
 
 interface FakeAlt {
   transcript: string;
@@ -813,5 +813,153 @@ describe('the recogniser language (mw-j0f2d.24)', () => {
         expect(input.silent).not.toHaveBeenCalled();
       });
     });
+  });
+});
+
+describe('a pause while he holds, after his first words (mw-j0f2d.37)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+  const buds = () => ({ label: 'Bluetooth headset', track: { kind: 'audio' } as unknown as MediaStreamTrack, close: vi.fn(), silent: vi.fn() });
+
+  /** The recogniser ends at once with no result, `times` over, as Android's does through a pause; each restart is let run. */
+  async function endsAtOnce(recognizer: FakeRecognizer, times: number): Promise<void> {
+    for (let i = 0; i < times; i++) {
+      if (i % 2 === 0) recognizer.onerror?.({ error: 'no-speech' });
+      recognizer.onend?.();
+      await vi.advanceTimersByTimeAsync(IDLE_RESTART_WAIT_MS);
+    }
+  }
+
+  it('keeps one turn, both halves in order, when the recogniser ends at once with no result over and over, and keeps the chosen input', async () => {
+    vi.useFakeTimers();
+    install();
+    const input = buds();
+    const onError = vi.fn();
+    const onInput = vi.fn();
+    const onFinal = vi.fn();
+    const begun = startListening({ openInput: () => Promise.resolve(input), onError, onInput, onFinal });
+    if (!begun.ok) throw new Error('expected listening to start');
+    await vi.advanceTimersByTimeAsync(0);
+    const recognizer = FakeRecognizer.instances[0];
+    expect(recognizer.startFn).toHaveBeenCalledWith(input.track);
+    recognizer.say([result("I'd love to see", true)]);
+    const ends = MAX_IDLE_RESTARTS * 3;
+    await endsAtOnce(recognizer, ends);
+    expect(onError).not.toHaveBeenCalled();
+    expect(recognizer.startFn).toHaveBeenCalledTimes(ends + 1);
+    expect(recognizer.startFn.mock.calls.every(([track]) => track === input.track)).toBe(true);
+    expect(input.silent).not.toHaveBeenCalled();
+    expect(input.close).not.toHaveBeenCalled();
+    expect(onInput).toHaveBeenCalledTimes(1);
+    recognizer.say([result('Kieran where you can take pictures', false)]);
+    const outcome = await begun.session.stop();
+    expect(outcome).toEqual({ ok: true, text: "I'd love to see Kieran where you can take pictures", mode: 'on-device' });
+    expect(onFinal).toHaveBeenCalledTimes(1);
+    expect(input.close).toHaveBeenCalled();
+  });
+
+  it(`starts the recogniser again after ${MAX_IDLE_RESTARTS} quick ends only after a short wait, not at once`, async () => {
+    vi.useFakeTimers();
+    install();
+    startListening();
+    const recognizer = FakeRecognizer.instances[0];
+    recognizer.say([result('first words', false)]);
+    for (let i = 0; i <= MAX_IDLE_RESTARTS; i++) recognizer.onend?.();
+    expect(recognizer.startFn).toHaveBeenCalledTimes(MAX_IDLE_RESTARTS + 1);
+    await vi.advanceTimersByTimeAsync(IDLE_RESTART_WAIT_MS);
+    expect(recognizer.startFn).toHaveBeenCalledTimes(MAX_IDLE_RESTARTS + 2);
+  });
+
+  it('settles at once with his words when he lets go while the recogniser waits to start again, and does not start it after', async () => {
+    vi.useFakeTimers();
+    install();
+    const begun = startListening();
+    if (!begun.ok) throw new Error('expected listening to start');
+    const recognizer = FakeRecognizer.instances[0];
+    recognizer.say([result('first words', false)]);
+    for (let i = 0; i <= MAX_IDLE_RESTARTS; i++) recognizer.onend?.();
+    let outcome: unknown;
+    void begun.session.stop().then((settled) => (outcome = settled));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outcome).toEqual({ ok: true, text: 'first words', mode: 'on-device' });
+    await vi.advanceTimersByTimeAsync(STOP_TIMEOUT_MS);
+    expect(recognizer.startFn).toHaveBeenCalledTimes(MAX_IDLE_RESTARTS + 1);
+  });
+
+  it('still gives up and says why when nothing at all was heard', async () => {
+    vi.useFakeTimers();
+    install();
+    const onError = vi.fn();
+    startListening({ onError });
+    const recognizer = FakeRecognizer.instances[0];
+    for (let i = 0; i <= MAX_IDLE_RESTARTS; i++) recognizer.onend?.();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: 'no-speech' }));
+  });
+});
+
+describe('a restart never repeats words already heard (mw-j0f2d.37)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const listening = (options: ListenOptions = {}) => {
+    install();
+    const begun = startListening(options);
+    if (!begun.ok) throw new Error('expected listening to start');
+    return { session: begun.session, recognizer: FakeRecognizer.instances[0] };
+  };
+
+  it('holds each word once when a stretch ends on interim words and the restarted recogniser hears that phrase again, grown', async () => {
+    const onInterim = vi.fn();
+    const { session, recognizer } = listening({ onInterim });
+    recognizer.say([result("I'd love to see Kieran", false)]);
+    recognizer.onend?.();
+    expect(recognizer.startFn).toHaveBeenCalledTimes(2);
+    recognizer.say([result("I'd love to see Kieran where you can take pictures", false)]);
+    expect(onInterim).toHaveBeenLastCalledWith("I'd love to see Kieran where you can take pictures");
+    recognizer.say([result("I'd love to see Kieran where you can take pictures", true), result('and it tells you', false)]);
+    expect(await session.stop()).toEqual({ ok: true, text: "I'd love to see Kieran where you can take pictures and it tells you", mode: 'on-device' });
+  });
+
+  it('holds each word once when the restarted recogniser hears the interim phrase with a word heard differently', async () => {
+    const { session, recognizer } = listening();
+    recognizer.say([result("I'd love to see Kieran", false)]);
+    recognizer.onend?.();
+    recognizer.say([result("I'd love to see Chiron where you can take pictures", false)]);
+    expect(await session.stop()).toEqual({ ok: true, text: "I'd love to see Chiron where you can take pictures", mode: 'on-device' });
+  });
+
+  it('keeps the longer phrase when the restarted recogniser hands back only the start of it', async () => {
+    const { session, recognizer } = listening();
+    recognizer.say([result("I'd love to see Kieran where you", false)]);
+    recognizer.onend?.();
+    recognizer.say([result("I'd love to see Kieran", false)]);
+    expect(await session.stop()).toEqual({ ok: true, text: "I'd love to see Kieran where you", mode: 'on-device' });
+  });
+
+  it("says his turn 11 once: Android's growing hypotheses that change a word on the way (Kieran, Chiron, Kieran)", async () => {
+    const { session, recognizer } = listening();
+    const hypotheses = [
+      "I'd",
+      "I'd love",
+      "I'd love to see",
+      "I'd love to see Kieran",
+      "I'd love to see Chiron where you can take pictures",
+      "I'd love to see Chiron where you can take pictures and it tells you what's",
+      "I'd love to see Kieran where you can take pictures and it tells you what's in it",
+      "I'd love to see Kieran where you can take pictures and it tells you what's in it puts it",
+    ];
+    const results: FakeResult[] = [];
+    for (const [i, hypothesis] of hypotheses.entries()) {
+      results.push(result(hypothesis, i === hypotheses.length - 1));
+      recognizer.say([...results]);
+    }
+    expect(await session.stop()).toEqual({ ok: true, text: hypotheses.at(-1), mode: 'on-device' });
+  });
+
+  it('still joins two utterances that start alike, the way desktop Chrome delivers them', async () => {
+    const { session, recognizer } = listening();
+    recognizer.say([result('I think so', true), result("I think that's right", true)]);
+    expect(await session.stop()).toEqual({ ok: true, text: "I think so I think that's right", mode: 'on-device' });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { DEFAULT_LANG, isListenSupported, recognizerLang, startListening, MAX_IDLE_RESTARTS, STOP_TIMEOUT_MS } from '../../src/services/listen';
+import { DEFAULT_LANG, isListenSupported, recognizerLang, startListening, MAX_IDLE_RESTARTS, STOP_TIMEOUT_MS, type ListenOptions } from '../../src/services/listen';
 
 interface FakeAlt {
   transcript: string;
@@ -21,7 +21,7 @@ class FakeRecognizer {
   continuous = false;
   interimResults = false;
   processLocally?: boolean = false;
-  startFn = vi.fn();
+  startFn = vi.fn<(track?: unknown) => void>();
   stopFn = vi.fn(() => this.onend?.());
   abortFn = vi.fn(() => this.onend?.());
   onstart: (() => void) | null = null;
@@ -32,8 +32,8 @@ class FakeRecognizer {
   constructor() {
     FakeRecognizer.instances.push(this);
   }
-  start() {
-    this.startFn();
+  start(track?: unknown) {
+    this.startFn(track);
   }
   stop() {
     this.stopFn();
@@ -619,5 +619,94 @@ describe('the recogniser language (mw-j0f2d.24)', () => {
     expect(onError).not.toHaveBeenCalled();
     FakeRecognizer.instances[2].onerror?.({ error: 'language-not-supported' });
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+  describe('on a chosen input (his car\'s Bluetooth microphone)', () => {
+    const car = () => {
+      const close = vi.fn();
+      return { label: 'Bluetooth headset', track: { kind: 'audio' } as unknown as MediaStreamTrack, close };
+    };
+    const hold = (openInput: ListenOptions['openInput'], extra: ListenOptions = {}) => {
+      const begun = startListening({ openInput, ...extra });
+      if (!begun.ok) throw new Error('expected listening to start');
+      return begun.session;
+    };
+
+    it('starts the recogniser on the input\'s track once it is open, and says which input', async () => {
+      install();
+      const input = car();
+      const onInput = vi.fn();
+      hold(() => Promise.resolve(input), { onInput });
+      expect(FakeRecognizer.instances[0].startFn).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(input.track));
+      expect(onInput).toHaveBeenCalledWith('Bluetooth headset');
+    });
+
+    it('starts on the default microphone when no input is chosen', async () => {
+      install();
+      const onInput = vi.fn();
+      hold(() => Promise.resolve(undefined), { onInput });
+      await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledTimes(1));
+      expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(undefined);
+      expect(onInput).not.toHaveBeenCalled();
+    });
+
+    it('starts on the default microphone when opening the input fails', async () => {
+      install();
+      hold(() => Promise.reject(new Error('NotAllowedError')));
+      await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(undefined));
+    });
+
+    it('goes on the default microphone when the browser refuses the track', async () => {
+      install();
+      const input = car();
+      const onInput = vi.fn();
+      hold(() => Promise.resolve(input), { onInput });
+      FakeRecognizer.instances[0].startFn.mockImplementationOnce(() => {
+        throw new Error('not a track');
+      });
+      await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledTimes(2));
+      expect(FakeRecognizer.instances[0].startFn).toHaveBeenLastCalledWith(undefined);
+      expect(onInput).toHaveBeenCalledWith(undefined);
+      expect(input.close).toHaveBeenCalled();
+    });
+
+    it('starts again on the default microphone when the car input has no capture device', async () => {
+      install();
+      const input = car();
+      const onError = vi.fn();
+      const onInput = vi.fn();
+      hold(() => Promise.resolve(input), { onError, onInput });
+      await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(input.track));
+      FakeRecognizer.instances[0].onerror?.({ error: 'audio-capture' });
+      expect(onError).not.toHaveBeenCalled();
+      expect(FakeRecognizer.instances[1].startFn).toHaveBeenCalledWith(undefined);
+      expect(onInput).toHaveBeenLastCalledWith(undefined);
+      expect(input.close).toHaveBeenCalled();
+    });
+
+    it('keeps the track when the recogniser restarts itself during the hold, and lets it go on release', async () => {
+      install();
+      const input = car();
+      const session = hold(() => Promise.resolve(input));
+      await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(input.track));
+      FakeRecognizer.instances[0].onend?.();
+      expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledTimes(2);
+      expect(FakeRecognizer.instances[0].startFn).toHaveBeenLastCalledWith(input.track);
+      FakeRecognizer.instances[0].say([result('hello', false)]);
+      await session.stop();
+      expect(input.close).toHaveBeenCalled();
+    });
+
+    it('settles with nothing heard and lets the input go when released before it opened', async () => {
+      install();
+      const input = car();
+      let open: (value: typeof input) => void = () => {};
+      const session = hold(() => new Promise((resolve) => (open = resolve)));
+      const outcome = await session.stop();
+      expect(outcome).toEqual({ ok: true, text: '', mode: 'on-device' });
+      open(input);
+      await vi.waitFor(() => expect(input.close).toHaveBeenCalled());
+      expect(FakeRecognizer.instances[0].startFn).not.toHaveBeenCalled();
+    });
   });
 });

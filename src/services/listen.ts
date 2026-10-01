@@ -13,6 +13,11 @@
 // recogniser always gets a full language tag (en-US when none is given, a bare 'en'
 // widened to it), and a language-not-supported error is retried once with en-US
 // before it is shown, because the phone's service rejects tags it has no pack for.
+// The recogniser listens on the phone's default microphone unless it is handed an audio
+// track (start(track), Chrome): when the caller can open a Bluetooth input (a car's
+// hands-free microphone, see micInput.ts) the hold waits for it, starts the recogniser
+// on that track, says which input it chose, and goes back to the default microphone
+// if the track is refused or the recogniser finds no capture device on it.
 
 /** The language the recogniser is asked for when the page names none, and the one it falls back to. */
 export const DEFAULT_LANG = 'en-US';
@@ -45,6 +50,13 @@ export interface ListenError {
 /** How long stop() waits for the recogniser's last words before it settles with what it has. */
 export const STOP_TIMEOUT_MS = 3000;
 
+/** A microphone the caller opened for the hold: the track the recogniser listens on, a name for the screen, and how to let it go. */
+export interface MicInput {
+  label: string;
+  track: MediaStreamTrack;
+  close(): void;
+}
+
 export type ListenResult = { ok: true; text: string; mode: ListenMode } | { ok: false; text: string; error: ListenError };
 
 export interface ListenSession {
@@ -69,6 +81,10 @@ export interface ListenOptions {
   /** On-device recognition failed (language pack or service missing) and the same hold restarted in cloud mode. */
   onFallback?: () => void;
   onError?: (error: ListenError) => void;
+  /** Opens the input to listen on, or resolves nothing to use the phone's default microphone. Listening starts once it settles. */
+  openInput?: () => Promise<MicInput | undefined>;
+  /** Which input the hold ended up on: the chosen input's label, or nothing for the default microphone (also after a fallback). */
+  onInput?: (label: string | undefined) => void;
 }
 
 // TypeScript's DOM lib has no SpeechRecognition types; these are the parts used here.
@@ -90,7 +106,7 @@ interface Recognizer {
   onresult: ((event: RecognitionEvent) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
-  start(): void;
+  start(audioTrack?: MediaStreamTrack): void;
   stop(): void;
   abort(): void;
 }
@@ -213,7 +229,10 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   let announced = false;
   let retried = false;
   let langRetried = false;
+  let inputRetried = false;
   let stopping = false;
+  let input: MicInput | undefined;
+  let pending = options.openInput !== undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let settle: (result: ListenResult) => void = () => {};
   const settled = new Promise<ListenResult>((resolve) => {
@@ -225,9 +244,32 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     announced = true;
     options.onStart?.();
   };
+  const dropInput = () => {
+    const open = input;
+    input = undefined;
+    try {
+      open?.close();
+    } catch {
+      // already closed
+    }
+  };
+  /** Starts `recognizer` on the chosen input's track; a browser that refuses the track gets the default microphone instead. */
+  const begin = (recognizer: Recognizer) => {
+    if (input) {
+      try {
+        recognizer.start(input.track);
+        return;
+      } catch {
+        dropInput();
+        options.onInput?.(undefined);
+      }
+    }
+    recognizer.start();
+  };
   const finish = () => {
     if (outcome) return;
     clearTimeout(timer);
+    dropInput();
     const failure = error ?? (text ? null : transient);
     outcome = failure ? { ok: false, text, error: failure } : { ok: true, text, mode };
     if (!failure) options.onFinal?.(text);
@@ -244,7 +286,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
       announced = false;
       lang = next;
       attach(current);
-      current.start();
+      begin(current);
       if (fallback) options.onFallback?.();
       return true;
     } catch {
@@ -278,6 +320,13 @@ export function startListening(options: ListenOptions = {}): ListenStart {
         retried = true;
         if (restart(lang, false, true)) return;
       }
+      if (event.error === 'audio-capture' && input && !inputRetried && !stopping && !text) {
+        // The chosen input has no capture device behind it: go on the phone's default microphone.
+        inputRetried = true;
+        dropInput();
+        options.onInput?.(undefined);
+        if (restart(lang, mode === 'on-device', false)) return;
+      }
       if (event.error === 'language-not-supported' && !langRetried && !stopping && !text && lang !== DEFAULT_LANG) {
         langRetried = true;
         if (restart(DEFAULT_LANG, false, false)) return;
@@ -292,7 +341,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
         if (idleRestarts < MAX_IDLE_RESTARTS) {
           try {
             carried = text;
-            recognizer.start();
+            begin(recognizer);
             idleRestarts++;
             return;
           } catch {
@@ -309,10 +358,34 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   };
 
   attach(current);
-  try {
-    current.start();
-  } catch (err) {
-    return { ok: false, error: { kind: 'other', message: err instanceof Error ? err.message : 'Listening could not start.' } };
+  if (options.openInput) {
+    // The input opens first; the recogniser starts when it is ready (or has failed to open, and the default microphone is used).
+    options
+      .openInput()
+      .catch(() => undefined)
+      .then((opened) => {
+        pending = false;
+        if (outcome) {
+          opened?.close();
+          return;
+        }
+        input = opened;
+        try {
+          begin(current);
+        } catch (err) {
+          error = { kind: 'other', message: err instanceof Error ? err.message : 'Listening could not start.' };
+          options.onError?.(error);
+          finish();
+          return;
+        }
+        if (input) options.onInput?.(input.label);
+      });
+  } else {
+    try {
+      current.start();
+    } catch (err) {
+      return { ok: false, error: { kind: 'other', message: err instanceof Error ? err.message : 'Listening could not start.' } };
+    }
   }
 
   const session: ListenSession = {
@@ -320,7 +393,11 @@ export function startListening(options: ListenOptions = {}): ListenStart {
       return mode;
     },
     stop() {
-      if (!outcome && !stopping) {
+      if (!outcome && !stopping && pending) {
+        // Released before the input opened: nothing was heard.
+        stopping = true;
+        finish();
+      } else if (!outcome && !stopping) {
         stopping = true;
         // A recogniser that never says it has ended must not hold the screen: settle with what was heard.
         timer = setTimeout(() => {
@@ -341,6 +418,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     },
     abort() {
       clearTimeout(timer);
+      dropInput();
       outcome = outcome ?? { ok: true, text: '', mode };
       settle(outcome);
       try {

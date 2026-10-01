@@ -60,6 +60,40 @@ func TestATalkRecordIsAcceptedAndPublishedToTheMayorsStream(t *testing.T) {
 	}
 }
 
+// A call record (docs/protocol.md §21) is delivered like a turn: the Governor's
+// Call me request reaches the Mayor's stream as a message event.
+func TestACallRequestIsAcceptedAndPublishedToTheMayorsStream(t *testing.T) {
+	s := newGristServer(t, WithIdentity(vectorKeyHex(t, "stranger"), "testnet"))
+	mayor, _ := s.v.key(t, "stranger")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resp, frames := openStream(t, ctx, s.URL, authorizedAs(t, s.Server, mayor))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/events as the Mayor's key: status %d, want 200", resp.StatusCode)
+	}
+	if hello := nextEvent(t, frames); hello.name != "hello" {
+		t.Fatalf("first event = %q, want hello", hello.name)
+	}
+
+	sent := s.deliver(t, "call", "governor", "stranger")
+	got := decodeDirect(t, sent)
+	if sent.StatusCode != http.StatusCreated {
+		t.Fatalf("delivering a call record: status %d (%s), want 201", sent.StatusCode, got.Error)
+	}
+
+	event := nextEvent(t, frames)
+	if event.name != "message" {
+		t.Fatalf("event after the call record = %q, want message", event.name)
+	}
+	var data struct {
+		Seq uint64 `json:"seq"`
+	}
+	if err := json.Unmarshal([]byte(event.data), &data); err != nil || data.Seq != got.Seq {
+		t.Fatalf("message event data = %q, want seq %d", event.data, got.Seq)
+	}
+}
+
 func TestAStrangersKeyIsStillRefusedTheEventStream(t *testing.T) {
 	s := newGristServer(t, WithIdentity(vectorKeyHex(t, "stranger"), "testnet"))
 

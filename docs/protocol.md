@@ -1450,3 +1450,18 @@ already holds is dropped, whichever record, lane or `txid` it came in. The same 
 transaction seen again by the poller is the same row and is never indexed twice. A
 reader also tolerates a gap or overlap between batches: the seq range says what a
 record claims to cover, and the event `seq`s are what is kept.
+
+### What the app does with a batch
+
+`mw-jrx0s.7`. The app reads an `events` record only from the pinned Mayor (§15) to its own
+key, and never keeps it as a message. It keeps each event once by `seq` (Dexie `events`),
+and applies those past its cursor (the last applied `seq`, in settings) to its own copy of
+the view (§11), in `seq` order, keeping that copy's `written_at`: a bead's status, times and
+comment count, a card asked, answered (`answered: {option, at}` on the need, this phone's
+own field) or applied, a closed bead's cards settled and the cards that waited on it freed.
+A changed field or a `hands_ran` fetches that bead's detail (§12) for the value the event
+does not carry. It fetches the view again only on a gap (the first event past the cursor is
+not cursor + 1), with no view yet, or when an event says something only the home can build
+(a new or reopened bead, a hold, a landing, a story closed, a question it does not hold).
+Once a batch has been applied in the session, §10's `view` event waits 10 seconds and
+fetches the view only if no batch came within 10 seconds of it.

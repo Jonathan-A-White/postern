@@ -111,7 +111,7 @@ export function useTalkLine() {
     const thisHold = {};
     hold.current = thisHold;
     const started = startListening({
-      lang: typeof navigator === 'undefined' ? undefined : navigator.language,
+      lang: typeof document === 'undefined' ? undefined : document.documentElement.lang,
       onInterim: setTranscript,
       onStart: () => hold.current === thisHold && setMic('ready'),
       onFallback: () => {
@@ -176,6 +176,7 @@ export function useTalkLine() {
   }
 
   function end(): void {
+    setNotice(undefined);
     const turn = endTurn(line);
     hold.current = null;
     listening.current?.abort();
@@ -189,6 +190,7 @@ export function useTalkLine() {
     log,
     transcript,
     notice: notice ?? line.error,
+    canEnd: line.phase !== 'sending' && (line.talk !== undefined || notice !== undefined || line.error !== undefined),
     mode,
     mic,
     fellBack,

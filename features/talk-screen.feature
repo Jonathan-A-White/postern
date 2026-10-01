@@ -184,6 +184,32 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the screen now says "Speech on this phone is not available, so your browser sends the audio to its speech service."
     And the talk button reads "Release to send"
 
+  Scenario: AC-1: the recogniser is asked for a full language tag, en-US when the page names none (mw-j0f2d.24)
+    Given the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    Then the recogniser was asked for "en-US"
+
+  Scenario: AC-1: a language-not-supported error is retried once with en-US before the message shows (mw-j0f2d.24)
+    Given the Talk line is open with a believable speech recogniser and the page language is "fr-FR"
+    When he presses and holds the talk button
+    And the recogniser fails with "language-not-supported"
+    And the recogniser fails again with "language-not-supported"
+    Then the latest recogniser was asked for "en-US"
+    And the screen does not say "The phone's speech service failed: language-not-supported (this language is not available for speech recognition)."
+    When the recogniser fails once more with "language-not-supported"
+    Then the screen says "The phone's speech service failed: language-not-supported (this language is not available for speech recognition)."
+    And the talk button reads "Hold to talk"
+
+  Scenario: AC-2: End talk is not greyed after a failed hold, and tapping it clears the message (mw-j0f2d.24)
+    Given the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    And the recogniser fails with "language-not-supported"
+    And the recogniser fails again with "language-not-supported"
+    Then the screen says "The phone's speech service failed: language-not-supported (this language is not available for speech recognition)."
+    And the "End talk" button is not greyed
+    When he taps "End talk"
+    Then the screen now says "Hold the button and speak."
+
   Scenario: AC-3: the bottom tab that lists the channels is called Channels
     Given the cockpit shell on a phone with the Channels place open
     Then the bottom menu offers "Needs you", "Map", "Channels", "Search" and "Me"

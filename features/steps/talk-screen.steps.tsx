@@ -29,6 +29,7 @@ vi.mock('../../src/cockpit/send', async (importOriginal) => ({
 
 // The browser's speech, vibration and wake lock, as fakes.
 interface FakeRecognizer {
+  lang: string;
   processLocally: boolean;
   onstart: (() => void) | null;
   onaudiostart: (() => void) | null;
@@ -160,6 +161,7 @@ async function fresh(): Promise<void> {
   sendTurn.mockResolvedValue({ txid: 'direct:x', channel: 'direct' });
   for (const fake of [speak, cancel, vibrate, release, request]) fake.mockClear();
   await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
+  document.documentElement.lang = '';
   window.history.replaceState(null, '', '/?v=line');
   screenIs(390);
 }
@@ -589,6 +591,55 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('nothing is sent', () => {
       expect(sendTurn).not.toHaveBeenCalled();
+    });
+  });
+
+  Scenario('AC-1: the recogniser is asked for a full language tag, en-US when the page names none (mw-j0f2d.24)', ({ Given, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', holdsButton);
+    Then('the recogniser was asked for {string}', (_c, lang: string) => {
+      expect(recognizers.at(-1)?.lang).toBe(lang);
+    });
+  });
+
+  Scenario('AC-1: a language-not-supported error is retried once with en-US before the message shows (mw-j0f2d.24)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser and the page language is {string}', async (_c, lang: string) => {
+      document.documentElement.lang = lang;
+      await lineOpen();
+    });
+    When('he presses and holds the talk button', holdsButton);
+    And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
+    And('the recogniser fails again with {string}', async (_c, code: string) => recogniserFails(code));
+    Then('the latest recogniser was asked for {string}', (_c, lang: string) => {
+      expect(recognizers).toHaveLength(3);
+      expect(recognizers.at(-1)?.lang).toBe(lang);
+    });
+    And('the screen does not say {string}', (_c, text: string) => {
+      expect(screen.queryByText(text)).toBeNull();
+    });
+    When('the recogniser fails once more with {string}', async (_c, code: string) => recogniserFails(code));
+    Then('the screen says {string}', async (_c, text: string) => {
+      expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-2: End talk is not greyed after a failed hold, and tapping it clears the message (mw-j0f2d.24)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', holdsButton);
+    And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
+    And('the recogniser fails again with {string}', async (_c, code: string) => recogniserFails(code));
+    Then('the screen says {string}', async (_c, text: string) => {
+      expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
+    });
+    And('the {string} button is not greyed', async (_c, name: string) => {
+      await waitFor(() => expect(screen.getByRole('button', { name })).toBeEnabled());
+    });
+    When('he taps {string}', tapButton);
+    Then('the screen now says {string}', async (_c, text: string) => {
+      expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
     });
   });
 

@@ -5,7 +5,7 @@
 // scenarios end at the screen the Governor would see.
 import '@testing-library/react/dont-cleanup-after-each';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
-import { afterAll, beforeAll, expect } from 'vitest';
+import { afterAll, beforeAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { db, type MessageClass, type MessageRow } from '../../src/data/db';
 import { messagesRepo } from '../../src/data/repositories';
@@ -59,6 +59,7 @@ async function arrive(messageClass: MessageClass): Promise<void> {
 
 async function fresh(): Promise<void> {
   cleanup();
+  vi.useRealTimers();
   await db.messages.clear();
   appWindow = undefined;
   tappedUrl = undefined;
@@ -185,6 +186,32 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await messagesRepo.put(replyRow());
     });
     Then('the app moves to the reply thread of the General post', async () => {
+      await waitFor(() => expect(parseRoute(window.location.search)).toEqual(replyThread));
+    });
+  });
+
+  Scenario("mw-gq6.163 AC-8: a reply tapped on a cold start waits for the app's own sync, however long it takes, and opens the reply thread", ({ Given, And, When, Then }) => {
+    Given("the Mayor's message push arrives for a reply the phone does not hold yet", () => arrive('message'));
+    When('he taps the notification', tap);
+    And('the app opens where the notification pointed', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      window.history.replaceState(null, '', tappedUrl!);
+      const route = parseRoute(window.location.search);
+      expect(route).toMatchObject({ view: 'notice', tx: TXID });
+      if (route.view !== 'notice') return;
+      render(<NoticeScreen tx={route.tx} cls={route.cls} />);
+    });
+    And("more than 8 seconds pass before the app's sync brings in the reply and its post", async () => {
+      await vi.advanceTimersByTimeAsync(9000);
+      vi.useRealTimers(); // Dexie's change notifications need the real ones
+      await messagesRepo.put(generalRow(POST, 'the post'));
+      await messagesRepo.put(replyRow());
+    });
+    Then('the app is still finding the message', () => {
+      expect(screen.getByText('Finding what it is about')).toBeInTheDocument();
+      expect(parseRoute(window.location.search)).toMatchObject({ view: 'notice', tx: TXID });
+    });
+    And('the app moves to the reply thread of the General post', async () => {
       await waitFor(() => expect(parseRoute(window.location.search)).toEqual(replyThread));
     });
   });

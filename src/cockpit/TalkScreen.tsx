@@ -195,23 +195,32 @@ function ChannelPane({ threadKey }: { threadKey: string }) {
   );
 }
 
-/** One post of a channel with its replies in time order, and a composer that answers it. */
+/** One post with its replies in time order, and a composer that answers it. The
+ * replies are found across every channel: one sent with no channel to a post of a
+ * bead's or a named channel sits in Factory but belongs under its post (mw-gq6.170).
+ * `threadKey` is the post's own channel. */
 function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: string }) {
   const ref: ThreadRef | undefined = parseThreadKey(threadKey);
   const storeKey = threadKey === GENERAL ? undefined : threadKey;
   const rows = useThreadMessages(storeKey);
+  const all = useMessages();
   const bead = ref && 'bead' in ref ? ref.bead : undefined;
   const { detail } = useBeadDetail(bead);
   const thread = useMemo(() => {
     const wanted = rootTxid.toLowerCase();
-    return groupPosts(mergeConversation(rows, detail?.comments ?? [])).find((candidate) => candidate.root.txid?.toLowerCase() === wanted);
-  }, [rows, detail, rootTxid]);
+    return groupPosts(mergeConversation(all, detail?.comments ?? [])).find((candidate) => candidate.root.txid?.toLowerCase() === wanted);
+  }, [all, detail, rootTxid]);
   const items = useMemo(() => (thread ? [thread.root, ...thread.replies] : []), [thread]);
   const [quote, setQuote] = useState<{ speaker: string; text: string } | null>(null);
 
   useEffect(() => {
     void markThreadSeen(storeKey);
   }, [storeKey, rows.length]);
+
+  // A reply from another channel is read once its thread is open.
+  useEffect(() => {
+    for (const item of items) if (item.unread) void messagesRepo.markRead(item.id);
+  }, [items]);
 
   return (
     <>
@@ -237,14 +246,16 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
   const wide = useWide();
   const view = useViewIndex();
   const [filter, setFilter] = useState('');
-  const current = thread;
+  const messages = useMessages();
+  // A reply thread opens in the channel its post lives in, whatever channel the link names.
+  const rootRow = root ? messages.find((row) => row.txid.toLowerCase() === root.toLowerCase()) : undefined;
+  const current = thread !== undefined && rootRow ? (rootRow.thread ?? GENERAL) : thread;
   const inReplies = current !== undefined && root !== undefined;
   const channel = current ? titleFor(current, view?.index) : undefined;
   const { title, subtitle } = inReplies && channel ? { title: 'Thread', subtitle: `A post in ${channel.title} and its replies` } : (channel ?? { title: 'Talk', subtitle: '' });
   const bead = current?.startsWith('bead:') ? current.slice(5) : undefined;
   const rows = useThreadMessages(current === GENERAL ? undefined : current);
   const speakItems = useMemo(() => mergeConversation(rows), [rows]);
-  const messages = useMessages();
   const choices = useThreadArchive();
   const comments = useBeadComments();
   const threads = useMemo(() => summariseThreads(messages, view?.index, choices, undefined, comments), [messages, view, choices, comments]);

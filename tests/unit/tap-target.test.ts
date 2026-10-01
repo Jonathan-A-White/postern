@@ -6,6 +6,7 @@ import { resolveTapUrl, threadUrlOfMessage } from '../../src/push/tapTarget';
 
 const ROOT = `direct:${'a1'.repeat(32)}`;
 const REPLY = `direct:${'b2'.repeat(32)}`;
+const MISSING = `direct:${'d4'.repeat(32)}`;
 const REPLY_TO_REPLY = `direct:${'c3'.repeat(32)}`;
 
 function row(txid: string, body: object | string, extra: Partial<MessageRow> = {}): MessageRow {
@@ -65,11 +66,24 @@ describe('resolveTapUrl: a reply opens the post it answers', () => {
     expect(route(url!)).toEqual({ view: 'talk', thread: 'general', root: ROOT });
   });
 
-  it('a message with no re still opens its channel', async () => {
+  it('a message with no re, or a re naming a post that is not on the phone, still opens its channel', async () => {
     await messagesRepo.put(row(ROOT, 'just a post'));
     expect(route(await resolveTapUrl({ txid: ROOT, class: 'message' }))).toEqual({ view: 'talk', thread: 'general' });
-    await messagesRepo.put(row(REPLY, { thread: { bead: 'mw-1' }, text: 'on a bead', re: ROOT }, { thread: 'bead:mw-1' }));
+    await messagesRepo.put(row(REPLY, { thread: { bead: 'mw-1' }, text: 'on a bead', re: MISSING }, { thread: 'bead:mw-1' }));
     expect(route(await resolveTapUrl({ txid: REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'bead:mw-1' });
+  });
+
+  it('a reply with no channel whose re names a post in a bead channel opens that post in the bead channel (mw-gq6.170)', async () => {
+    await messagesRepo.put(row(ROOT, { thread: { bead: 'mw-1' }, text: 'the card' }, { thread: 'bead:mw-1' }));
+    await messagesRepo.put(row(REPLY, { text: 'the answer', re: ROOT }));
+    expect(route(await resolveTapUrl({ txid: REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'bead:mw-1', root: ROOT });
+  });
+
+  it('a chain that crosses channels ends at the root, in the root\'s channel', async () => {
+    await messagesRepo.put(row(ROOT, { thread: { topic: 'wiring' }, text: 'the post' }, { thread: 'topic:wiring' }));
+    await messagesRepo.put(row(REPLY, { thread: { topic: 'wiring' }, text: 'the answer', re: ROOT }, { thread: 'topic:wiring' }));
+    await messagesRepo.put(row(REPLY_TO_REPLY, { text: 'and again', re: REPLY }));
+    expect(route(await resolveTapUrl({ txid: REPLY_TO_REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'topic:wiring', root: ROOT });
   });
 
   it('a transcript is an annotation, not a reply: it opens the channel', async () => {

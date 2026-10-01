@@ -53,3 +53,29 @@ Feature: Tapping a push notification opens the app at what it is about (mw-f758y
     And more than 8 seconds pass before the app's sync brings in the reply and its post
     Then the app is still finding the message
     And the app moves to the reply thread of the General post
+
+  Scenario: mw-gq6.170 AC-9: a push for a reply with no channel whose re names a post in a bead's channel opens that post's thread there
+    Given the phone already holds a post in the channel of bead "mw-j0f2d" and the Mayor's reply to it in Factory
+    And the Mayor's message push for that reply arrives
+    When he taps the notification
+    Then the app opens at the reply thread of the post in the channel of bead "mw-j0f2d"
+
+  Scenario: mw-gq6.170 AC-10: the same for a post in a named channel
+    Given the phone already holds a post in the named channel "wiring" and the Mayor's reply to it in Factory
+    And the Mayor's message push for that reply arrives
+    When he taps the notification
+    Then the app opens at the reply thread of the post in the named channel "wiring"
+
+  Scenario: mw-gq6.170 AC-11: a push for a reply whose post is not on the phone opens the reply as its own post in Factory, as before
+    Given the phone already holds the Mayor's reply in Factory to a post it does not hold
+    And the Mayor's message push for that reply arrives
+    When he taps the notification
+    Then the app opens at the reply thread of the reply itself in Factory
+
+  Scenario: mw-gq6.170 AC-12: the notice screen moves to the post's thread in the other channel once the reply arrives
+    Given the phone holds a post in the channel of bead "mw-j0f2d"
+    And the Mayor's message push arrives for a reply the phone does not hold yet
+    When he taps the notification
+    And the app opens where the notification pointed
+    And the reply arrives and decrypts
+    Then the app moves to the reply thread of the post in the channel of bead "mw-j0f2d"

@@ -61,3 +61,31 @@ Feature: Every channel has reply threads: N replies under a post, Reply opens it
     And "a screenshot" is not shown in the channel
     When the "1 reply" row is tapped
     Then the thread shows "the post" and "a screenshot" in that order
+
+  Scenario: mw-gq6.170 Q1: a reply sent with no channel to a post in a bead's channel shows under that post in the post's channel
+    Given a post "the card" in the channel of bead "mw-a.1" with the reply "the answer" sent in Factory
+    When the notification for the reply "the answer" is tapped
+    Then the app opens the thread of "the card" in the channel of bead "mw-a.1"
+    When that thread opens
+    Then the screen is titled "Thread" and says "A post in mw-a.1 and its replies"
+    And the thread shows "the card" and "the answer" in that order
+    And the composer says "Reply…"
+
+  Scenario: mw-gq6.170 Q2: the same for a named channel
+    Given a post "the card" in the named channel "wiring" with the reply "the answer" sent in Factory
+    When the notification for the reply "the answer" is tapped
+    Then the app opens the thread of "the card" in the named channel "wiring"
+    When that thread opens
+    Then the screen is titled "Thread" and says "A post in wiring and its replies"
+    And the thread shows "the card" and "the answer" in that order
+
+  Scenario: mw-gq6.170 Q3: a Thread link that names a post by Factory but the post lives in a bead's channel still opens that post with its reply
+    Given a post "the card" in the channel of bead "mw-a.1" with the reply "the answer" sent in Factory
+    When the Factory thread of "the card" opens
+    Then the screen is titled "Thread" and says "A post in mw-a.1 and its replies"
+    And the thread shows "the card" and "the answer" in that order
+
+  Scenario: mw-gq6.170 Q4: a Thread link to a post that is not on the phone keeps the empty state
+    Given a reply "the answer" in Factory that names a post not on the phone
+    When the Factory thread of a post that is not on the phone opens
+    Then the thread says "That post is not on this phone"

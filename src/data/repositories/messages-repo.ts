@@ -4,14 +4,18 @@ import { db, type MessageRow } from '../db';
  * every list of messages, every thread and every unread count below leaves them out. */
 const notTalk = (row: MessageRow) => row.class !== 'talk' && row.class !== 'call';
 
+/** An events batch (§22) is the factory's changes for the projector, never a message (mw-jrx0s.22):
+ * it is never stored, and a row some older build stored is hidden here and removed when the app opens. */
+const isMessage = (row: MessageRow) => row.class !== 'events';
+
 export const messagesRepo = {
   async getAll(): Promise<MessageRow[]> {
-    return db.messages.orderBy('ts').reverse().toArray();
+    return db.messages.orderBy('ts').reverse().filter(isMessage).toArray();
   },
 
   /** Every message but the Talk line's turns, oldest first — the order a conversation reads in. */
   async getAllOldestFirst(): Promise<MessageRow[]> {
-    return db.messages.orderBy('ts').filter(notTalk).toArray();
+    return db.messages.orderBy('ts').filter((row) => isMessage(row) && notTalk(row)).toArray();
   },
 
   /** The Talk line's turns alone, oldest first. */
@@ -28,7 +32,7 @@ export const messagesRepo = {
   async inThread(key: string | undefined): Promise<MessageRow[]> {
     return db.messages
       .orderBy('ts')
-      .filter((row) => notTalk(row) && (key === undefined ? row.thread === undefined : row.thread === key))
+      .filter((row) => isMessage(row) && notTalk(row) && (key === undefined ? row.thread === undefined : row.thread === key))
       .toArray();
   },
 
@@ -42,6 +46,7 @@ export const messagesRepo = {
   },
 
   async put(row: MessageRow): Promise<void> {
+    if (!isMessage(row)) return;
     await db.messages.put(row);
   },
 
@@ -51,13 +56,13 @@ export const messagesRepo = {
 
   /** Marks the thread's received messages read; resolves with the txids it just marked. */
   async markThreadRead(key: string | undefined): Promise<string[]> {
-    const unread = db.messages.filter((row) => notTalk(row) && row.direction === 'received' && !row.read && row.thread === key);
+    const unread = db.messages.filter((row) => isMessage(row) && notTalk(row) && row.direction === 'received' && !row.read && row.thread === key);
     const txids = (await unread.toArray()).map((row) => row.txid);
     await unread.modify({ read: true });
     return txids;
   },
 
   async countUnread(): Promise<number> {
-    return db.messages.filter((row) => notTalk(row) && row.direction === 'received' && !row.read).count();
+    return db.messages.filter((row) => isMessage(row) && notTalk(row) && row.direction === 'received' && !row.read).count();
   },
 };

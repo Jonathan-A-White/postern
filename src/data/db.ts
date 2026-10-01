@@ -296,6 +296,9 @@ class PosternDB extends Dexie {
       events: 'seq, kind, bead, detail',
       outbox: '++id, state, bead',
     });
+
+    // mw-jrx0s.22: an events record (§22) is never a message. An older build kept some as rows; every open removes them (sticky: a plain `ready` listener runs on the first open only).
+    this.on('ready', () => this.messages.filter((row) => row.class === 'events').delete(), true);
   }
 }
 

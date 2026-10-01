@@ -1,9 +1,11 @@
 // src/model/needs.ts — which needs still wait on the Governor (plans/0021
 // decision 8). One he has answered or acted on since it was raised leaves the
 // queue at once, before the Mayor's host has applied it and the view drops it.
-import type { AnswerRow } from '../data/db';
+import type { AnswerRow, MessageRow, OutboxRow } from '../data/db';
+import { decodeReply } from '../services/questions';
+import { decodeThreadedMessage } from '../services/threads';
 import { isEpic, type ViewIndex } from './tree';
-import type { Need, WaitsFor } from './view';
+import type { BeadComment, Need, WaitsFor } from './view';
 
 export function unsettledNeeds(needs: Need[], answers: AnswerRow[]): Need[] {
   const answered = new Map(answers.map((row) => [row.bead, row.ts * 1000]));
@@ -76,4 +78,74 @@ export function releaseState(need: Need, index?: ViewIndex, status?: string): 'h
   if (now === '') return 'unknown';
   if (now === 'deferred') return 'held';
   return now === 'in_progress' ? 'building' : 'released';
+}
+
+/** What he answered a question and when (ms), for the card's 'Answered' line. */
+export interface SaidAnswer {
+  label: string;
+  at: number;
+}
+
+const ANSWER_COMMENT = /^answer\b/i;
+const ANSWER_AFTER_TXID = /^answer\b.*?\btxid\s+\S+:\s+/is;
+
+/** The ANSWER comment the factory wrote on the bead for this question (`ANSWER <ts> from <key>, txid <txid>: <answer>`),
+ * made after it was asked: the answer reached the factory, whichever way it was sent. */
+export function answeredByComment(need: Need, comments: BeadComment[]): SaidAnswer | undefined {
+  const since = Date.parse(need.since);
+  for (const comment of comments) {
+    if (!ANSWER_COMMENT.test(comment.text.trim())) continue;
+    const at = Date.parse(comment.at);
+    if (Number.isNaN(at) || (!Number.isNaN(since) && at < since)) continue;
+    const text = comment.text.trim();
+    const words = ANSWER_AFTER_TXID.test(text) ? text.replace(ANSWER_AFTER_TXID, '') : text.replace(/^answer\b[\s:-]*/i, '');
+    return { label: words.trim().split('\n')[0], at };
+  }
+  return undefined;
+}
+
+function names(text: string, words: string): boolean {
+  const word = words.trim().toLowerCase();
+  if (word === '') return false;
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'u').test(text.toLowerCase());
+}
+
+/** The option a typed `text` names, the longest when it names several; undefined when it names none. */
+export function optionNamed(need: Need, text: string): string | undefined {
+  return need.options.filter((option) => names(text, option)).sort((a, b) => b.length - a.length)[0];
+}
+
+/** Whether `soleQuestion` (no other question is open) or the words themselves tie a message in Factory to this card. */
+function aboutThisCard(need: Need, text: string, soleQuestion: boolean): boolean {
+  return soleQuestion || (need.bead !== '' && text.toLowerCase().includes(need.bead.toLowerCase()));
+}
+
+/**
+ * His words, typed after the question was asked, that name one of its options: a message in the bead's thread, or
+ * one in Factory that names the bead (or the only question open), sent or still in the outbox. A tapped answer is
+ * not words (the answers this phone sent say that); a message before the question, or naming no option, is not an answer.
+ * `messages` are the bead's thread's and Factory's messages.
+ */
+export function answeredInWords(need: Need, messages: MessageRow[], outbox: OutboxRow[], soleQuestion: boolean): SaidAnswer | undefined {
+  if (need.kind !== 'question' || need.bead === '') return undefined;
+  const since = Date.parse(need.since);
+  const late = (ms: number) => Number.isNaN(since) || ms >= since;
+  const mine = `bead:${need.bead}`;
+  const found: SaidAnswer[] = [];
+  const consider = (text: string, thread: string | undefined, at: number) => {
+    if (!late(at) || (thread !== undefined && thread !== mine)) return;
+    const option = optionNamed(need, text);
+    if (option === undefined || (thread === undefined && !aboutThisCard(need, text, soleQuestion))) return;
+    found.push({ label: option, at });
+  };
+  for (const row of messages) {
+    if (row.direction !== 'sent' || row.class !== 'message' || row.plaintext === undefined || decodeReply(row.plaintext)) continue;
+    consider(decodeThreadedMessage(row.plaintext).text, row.thread, row.ts * 1000);
+  }
+  for (const row of outbox) {
+    if (row.kind !== 'message' || row.state === 'failed' || typeof row.payload.text !== 'string') continue;
+    consider(row.payload.text, row.thread, row.created);
+  }
+  return found.sort((a, b) => a.at - b.at)[0];
 }

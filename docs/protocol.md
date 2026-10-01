@@ -1343,14 +1343,18 @@ itself, with no backend:
 - **When.** Every 5 seconds, the first read 5 seconds after the status first reads
   `reconnecting` or `offline` (a drop that mends in a moment never asks WhatsOnChain). It
   stops the moment the event stream is back (status `live`), and starts again at the next
-  drop. A read that fails, WhatsOnChain being out of reach too, is tried again at the next
-  tick.
+  drop. A read that fails (WhatsOnChain out of reach too, or answering 429 or an error) or
+  that could not fetch a transaction doubles the wait before the next, 5 seconds to a cap of
+  60; a clean read brings it back to 5.
 - **What it reads.** `GET <provider>/address/<anchor>/unconfirmed/history` and
   `GET <provider>/address/<anchor>/confirmed/history` (`{ "result": [{ "tx_hash", "height" }] }`;
   a bare list is read too; a 404 on the confirmed history is none), at the same `<provider>` as
   the rest of §21. Only the newest page is read: a ring is recent. Each transaction not yet
-  read this session is fetched with `GET <provider>/tx/<txid>/hex`, at most 20 a read, newest
-  first, the rest on later reads. A transaction is read once, so the 1-sat anchor payments and
+  read this session is fetched with `GET <provider>/tx/<txid>/hex`, at most 10 a read, 500
+  milliseconds apart (about 2 a second, inside WhatsOnChain's free tier), newest first, the
+  rest on later reads; a 429 ends the read there. A transaction counts as read only once its
+  records are applied (or none is his): one whose fetch failed is asked for again at the next
+  read, and costs the others of that read nothing. A transaction is read once, so the 1-sat anchor payments and
   the records for other keys cost one fetch each, not one per tick.
 - **What it keeps.** Each output that is a §1 record (§4's script, version `1`) whose `to`
   or `from` is his key goes through the same decrypt (§2) and the same store as a record from

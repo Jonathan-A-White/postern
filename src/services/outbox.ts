@@ -1,0 +1,212 @@
+// src/services/outbox.ts — the phone's outgoing queue (mw-jrx0s.10, Q5 A of mw-6ww.55): every
+// tap, answer, message and talk turn is written to the Dexie outbox first and the caller goes
+// on at once; this sender takes the rows in order, one at a time, through services/deliver.ts
+// (direct, else on chain), and tries a failed one again after a growing wait. It resumes when
+// the app opens (a reload loses nothing), when the browser says it is online, and when the live
+// connection comes back. A sent row waits until its own record or event is seen coming back
+// (since-paging, or the `card_answered` event naming its txid) and is then acked.
+import { answersRepo, eventsRepo, messagesRepo, outboxRepo } from '../data/repositories';
+import type { OutboxKind, OutboxRow } from '../data/db';
+import type { GovernorAction } from '../model/conversation';
+import { retryDelay } from '../model/outbox';
+import type { TalkTurn } from '../model/talkLine';
+import { attachmentMime, uploadAttachment } from './attachments';
+import { deliverAction, deliverAnswer, deliverThreaded, writeBehind, type Delivered, type DeliverOptions } from './deliver';
+import { deliverCallRequest } from './call';
+import { getLiveState, deliverOptions, subscribeLive } from './live';
+import { getKey, onKeyChange } from './keySession';
+import { deliverTurn } from './talk';
+import type { Attachment, ThreadRef } from './threads';
+
+/** A file waiting to go with a message: stored whole, as base64 text (so no browser or test realm can lose its bytes), uploaded when its turn comes. */
+export interface QueuedFile {
+  name: string;
+  type: string;
+  data: string;
+}
+
+const CHUNK = 0x8000;
+
+/** A file's bytes as base64 text, for the outbox row. */
+export function packBytes(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  return btoa(binary);
+}
+
+function unpackBytes(data: string): Uint8Array {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/** What each kind carries in its row's payload. */
+export interface QueuedMessage {
+  text: string;
+  thread?: ThreadRef;
+  files: QueuedFile[];
+  re?: string;
+  /** Files already uploaded by an earlier try, in order, so a retry does not upload them again. */
+  uploaded?: Attachment[];
+}
+
+/** How long acked rows are kept before they are forgotten. */
+const KEEP_ACKED_MS = 24 * 60 * 60 * 1000;
+/** A record kept by the phone's own write when it sent has this seq until since-paging brings the real one. */
+const OWN_WRITE_SEQ = Number.MAX_SAFE_INTEGER;
+
+let draining: Promise<void> | undefined;
+let again: { force: boolean } | undefined;
+let timer: ReturnType<typeof setTimeout> | undefined;
+let generation = 0;
+
+/** Writes one thing he did to the outbox and wakes the sender; resolves once it is written, not once it is sent. */
+export async function enqueue(row: { kind: OutboxKind; bead?: string; payload: Record<string, unknown>; thread?: string; label?: string }): Promise<number> {
+  const id = await outboxRepo.add({ kind: row.kind, bead: row.bead ?? '', payload: row.payload, ...(row.thread !== undefined ? { thread: row.thread } : {}), ...(row.label !== undefined ? { label: row.label } : {}) });
+  kickOutbox();
+  return id;
+}
+
+async function deliverRow(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
+  switch (row.kind) {
+    case 'answer':
+      return deliverAnswer(row.bead, String(row.payload.answer ?? ''), options);
+    case 'action':
+      return deliverAction(row.payload.action as GovernorAction, options);
+    case 'turn':
+      return deliverTurn(row.payload.turn as TalkTurn, options);
+    case 'call':
+      return deliverCallRequest(String(row.payload.text ?? ''), Number(row.payload.at ?? 0), options);
+    case 'message':
+      return deliverMessage(row, options);
+  }
+}
+
+/** Uploads the message's files that are not up yet (docs/protocol.md §8), then delivers it as ONE message. */
+async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
+  const message = row.payload as unknown as QueuedMessage;
+  const uploaded = [...(message.uploaded ?? [])];
+  for (const file of message.files.slice(uploaded.length)) {
+    const mime = attachmentMime(file.type);
+    if (!mime) throw new Error(`${file.name}: not a type Postern carries.`);
+    uploaded.push(await uploadAttachment({ bytes: unpackBytes(file.data), mime, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }));
+    await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
+  }
+  return deliverThreaded({ thread: message.thread, text: message.text, attachments: uploaded, re: message.re }, options);
+}
+
+/** What the phone remembers of a delivered answer or action: the card it settles leaves the queue at once. */
+function rememberDelivered(row: OutboxRow, delivered: Delivered): void {
+  if (row.kind === 'answer') writeBehind(answersRepo.save({ bead: row.bead, answer: String(row.payload.answer ?? ''), txid: delivered.txid }), 'your answer');
+  else if (row.kind === 'action') {
+    const action = row.payload.action as GovernorAction;
+    writeBehind(answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid }), 'your action');
+  }
+}
+
+/** Acks every sent row whose own record is kept (by since-paging) or whose event has been heard; forgets old acked rows. */
+export async function ackSent(): Promise<void> {
+  for (const row of await outboxRepo.sent()) {
+    if (!row.txid) continue;
+    const record = await messagesRepo.getByTxid(row.txid);
+    const paged = record !== undefined && record.seq !== OWN_WRITE_SEQ;
+    if (paged || (await eventsRepo.hasDetail(row.txid))) await outboxRepo.update(row.id as number, { state: 'acked' });
+  }
+  await outboxRepo.pruneAcked(Date.now() - KEEP_ACKED_MS);
+}
+
+function wakeAt(at: number): void {
+  clearTimeout(timer);
+  timer = setTimeout(() => kickOutbox(), Math.max(0, at - Date.now()));
+}
+
+async function drain(force: boolean): Promise<void> {
+  const mine = generation;
+  await ackSent();
+  for (;;) {
+    const row = await outboxRepo.head();
+    if (!row || mine !== generation) return;
+    if (!force && row.nextAt !== undefined && row.nextAt > Date.now()) return wakeAt(row.nextAt);
+    force = false;
+    const options = deliverOptions(getKey());
+    if (!options) {
+      // Locked, or the Mayor not yet known: the next live state or key change wakes the sender; this is the fallback.
+      // The row has now waited, so the status line says so.
+      if (row.attempts === 0) await outboxRepo.update(row.id as number, { attempts: 1 });
+      wakeAt(Date.now() + retryDelay(row.attempts + 1));
+      return;
+    }
+    let delivered: Delivered;
+    try {
+      delivered = await deliverRow(row, options);
+    } catch {
+      // Out of reach or refused: the row keeps its place, and nothing behind it goes ahead of it.
+      if (mine !== generation) return;
+      const attempts = row.attempts + 1;
+      const nextAt = Date.now() + retryDelay(attempts);
+      await outboxRepo.update(row.id as number, { attempts, nextAt });
+      return wakeAt(nextAt);
+    }
+    if (mine !== generation) return;
+    await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, attempts: row.attempts + 1, nextAt: undefined });
+    rememberDelivered(row, delivered);
+  }
+}
+
+/** Wakes the sender: one pass at a time. `force` skips the wait a failed row set itself (the network is back). */
+export function kickOutbox(force = false): void {
+  if (draining) {
+    again = { force: force || (again?.force ?? false) };
+    return;
+  }
+  const run = drain(force)
+    .catch((err: unknown) => console.warn('The outbox could not be read:', err))
+    .finally(() => {
+      if (draining === run) draining = undefined;
+      const next = again;
+      again = undefined;
+      if (next) kickOutbox(next.force);
+    });
+  draining = run;
+}
+
+/** Resolves once the sender has gone quiet (a test's seam; the app never waits on it). */
+export async function settledOutbox(): Promise<void> {
+  while (draining) await draining;
+}
+
+/** Starts the sender for this page: resumes the queue now, and again whenever the phone may be back in reach. Resolves to its stop. */
+export function startOutbox(): () => void {
+  let live = getLiveState();
+  const stopLive = subscribeLive(() => {
+    const next = getLiveState();
+    const back = (next.status === 'live' || next.status === 'polling') && (live.status !== next.status || live.reconnects !== next.reconnects || live.syncs !== next.syncs);
+    live = next;
+    // Every sync also looks for the records that ack what was sent.
+    kickOutbox(back);
+  });
+  const stopKey = onKeyChange(() => kickOutbox(true));
+  const online = () => kickOutbox(true);
+  const visible = () => {
+    if (typeof document === 'undefined' || !document.hidden) kickOutbox(true);
+  };
+  if (typeof window !== 'undefined') window.addEventListener('online', online);
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visible);
+  kickOutbox();
+  return () => {
+    stopLive();
+    stopKey();
+    if (typeof window !== 'undefined') window.removeEventListener('online', online);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visible);
+  };
+}
+
+/** Forgets what this page holds in memory, as a reload does: the rows in Dexie stay. A test's seam. */
+export function forgetOutboxState(): void {
+  generation++;
+  clearTimeout(timer);
+  timer = undefined;
+  draining = undefined;
+  again = undefined;
+}

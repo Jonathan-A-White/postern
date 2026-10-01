@@ -143,6 +143,32 @@ export interface ShareRow {
   files: { name: string; type: string; bytes: ArrayBuffer }[];
 }
 
+/** mw-jrx0s.10: one thing he did that is on its way to the Mayor, written before anything is sent.
+ * `pending` until a backend or the chain has taken it, `sent` (with its `txid`) until its own record
+ * or event is seen coming back, then `acked`. Rows go out oldest first, one at a time. */
+export type OutboxKind = 'answer' | 'action' | 'turn' | 'message' | 'call';
+export type OutboxState = 'pending' | 'sent' | 'acked';
+
+export interface OutboxRow {
+  id?: number;
+  kind: OutboxKind;
+  /** The bead the row is about; empty for a turn, a call or a message on no bead. */
+  bead: string;
+  /** What to send, by kind (src/services/outbox.ts). */
+  payload: Record<string, unknown>;
+  /** A message's thread key (src/services/threads.ts threadKey), absent for the general thread. */
+  thread?: string;
+  /** What he tapped, for a card that says it. */
+  label?: string;
+  /** Ms since the epoch. */
+  created: number;
+  attempts: number;
+  /** Ms since the epoch: the next try waits until then. */
+  nextAt?: number;
+  txid?: string;
+  state: OutboxState;
+}
+
 export interface VaultRow {
   id: string;
   mode: 'prf' | 'phrase';
@@ -170,6 +196,7 @@ class PosternDB extends Dexie {
   session!: Table<SessionRow, string>;
   shares!: Table<ShareRow, string>;
   events!: Table<EventRow, number>;
+  outbox!: Table<OutboxRow, number>;
 
   constructor() {
     super('PosternDB');
@@ -248,6 +275,22 @@ class PosternDB extends Dexie {
       session: 'id',
       shares: 'id, createdAt',
       events: 'seq, kind, bead',
+    });
+
+    // mw-jrx0s.10: the outgoing queue, in the order things were done; events indexed by the txid they name.
+    this.version(10).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read, thread',
+      snapshot: 'id',
+      answers: 'bead',
+      pendingSpends: 'txid',
+      view: 'id',
+      beadDetails: 'id, fetchedAt',
+      session: 'id',
+      shares: 'id, createdAt',
+      events: 'seq, kind, bead, detail',
+      outbox: '++id, state, bead',
     });
   }
 }

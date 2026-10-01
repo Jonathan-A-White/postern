@@ -18,7 +18,10 @@
 // track (start(track), Chrome): when the caller can open a Bluetooth input (a car's
 // hands-free microphone, see micInput.ts) the hold waits for it, starts the recogniser
 // on that track, says which input it chose, and goes back to the default microphone
-// if the track is refused or the recogniser finds no capture device on it.
+// if the track is refused or the recogniser finds no capture device on it, or if a stretch
+// of the hold ends with no result at all on it (earbuds whose microphone is not routed hear
+// nothing and raise no error): the hold goes on on the default microphone and the input is
+// marked silent, so the page does not choose it again. An input that gave any words is kept (mw-j0f2d.34).
 
 /** The language the recogniser is asked for when the page names none, and the one it falls back to. */
 export const DEFAULT_LANG = 'en-US';
@@ -55,6 +58,10 @@ export const STOP_TIMEOUT_MS = 3000;
 export interface MicInput {
   label: string;
   track: MediaStreamTrack;
+  /** The browser's id for the device, when known. */
+  deviceId?: string;
+  /** Called when the input heard nothing for a whole stretch of the hold, so the caller does not choose it again. */
+  silent?(): void;
   close(): void;
 }
 
@@ -242,6 +249,8 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   let inputRetried = false;
   let stopping = false;
   let input: MicInput | undefined;
+  // True once the chosen input produced any result: a quiet stretch after that is a pause, not a dead microphone.
+  let inputHeard = false;
   let pending = options.openInput !== undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let settle: (result: ListenResult) => void = () => {};
@@ -318,6 +327,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
       text = [carried, transcript(event.results)].filter(Boolean).join(' ');
       transient = null;
       idleRestarts = 0;
+      if (input) inputHeard = true;
       announce();
       options.onInterim?.(text);
     };
@@ -351,6 +361,16 @@ export function startListening(options: ListenOptions = {}): ListenStart {
         // He is still holding: the recogniser ended by itself, so start it again and keep what was heard.
         // A stretch that listened for a while only met his silence: it is a pause, not a failure, so it does not count.
         if (Date.now() - stretchStart >= MIN_LIVE_STRETCH_MS) idleRestarts = 0;
+        if (input && !inputHeard) {
+          // The chosen input gave nothing in a whole stretch: go on the phone's default microphone, and not that input again.
+          try {
+            input.silent?.();
+          } catch {
+            // the mark is only a courtesy to later holds
+          }
+          dropInput();
+          options.onInput?.(undefined);
+        }
         if (idleRestarts < MAX_IDLE_RESTARTS) {
           try {
             carried = text;

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { canChooseInput, chooseInput, openBluetoothInput, type InputDevice } from '../../src/services/micInput';
+import { canChooseInput, chooseInput, forgetSilentInputs, openBluetoothInput, type InputDevice } from '../../src/services/micInput';
 
 const input = (deviceId: string, label: string, kind = 'audioinput'): InputDevice => ({ deviceId, label, kind });
 
@@ -84,5 +84,44 @@ describe('openBluetoothInput', () => {
     Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true, writable: true });
     expect(await openBluetoothInput()).toBeUndefined();
     expect(canChooseInput()).toBe(false);
+  });
+});
+
+describe('an input that heard nothing (mw-j0f2d.34)', () => {
+  afterEach(() => {
+    forgetSilentInputs();
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true, writable: true });
+  });
+
+  function media(devices: InputDevice[]) {
+    const track = { label: 'Bluetooth headset (track)', stop: vi.fn() };
+    const getUserMedia = vi.fn(() => Promise.resolve({ getAudioTracks: () => [track], getTracks: () => [track] }));
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { enumerateDevices: vi.fn(() => Promise.resolve(devices)), getUserMedia },
+      configurable: true,
+      writable: true,
+    });
+    return getUserMedia;
+  }
+
+  it('is not chosen again once marked silent, and the next Bluetooth input is', async () => {
+    const getUserMedia = media([input('buds', 'Bluetooth headset'), input('car', 'Car kit (hands-free)')]);
+    const first = await openBluetoothInput();
+    expect(first?.deviceId).toBe('buds');
+    first?.silent?.();
+    expect(chooseInput([input('buds', 'Bluetooth headset')])).toBeUndefined();
+    expect(chooseInput([input('buds', 'Bluetooth headset'), input('car', 'Car kit (hands-free)')])?.deviceId).toBe('car');
+    getUserMedia.mockClear();
+    const again = await openBluetoothInput();
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'car' } } });
+    expect(again?.deviceId).toBe('car');
+  });
+
+  it('gives the default microphone when the only Bluetooth input was silent', async () => {
+    const getUserMedia = media([input('buds', 'Bluetooth headset')]);
+    (await openBluetoothInput())?.silent?.();
+    getUserMedia.mockClear();
+    expect(await openBluetoothInput()).toBeUndefined();
+    expect(getUserMedia).not.toHaveBeenCalled();
   });
 });

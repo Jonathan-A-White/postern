@@ -24,9 +24,19 @@ const BUILT_IN_LABEL = /earpiece|speaker/i;
 /** The pseudo-inputs the browser adds for 'whatever the system default is'; they name no real device. */
 const PSEUDO_IDS = new Set(['default', 'communications']);
 
+/** Inputs that were chosen and heard nothing (earbuds whose hands-free microphone is not routed): not chosen again for the life of the page. */
+const silentInputs = new Set<string>();
+
+/** Lets every silent input be chosen again (for tests; a page reload does the same). */
+export function forgetSilentInputs(): void {
+  silentInputs.clear();
+}
+
 /** The Bluetooth input to listen on, or nothing when the phone has none (the default microphone is then used). */
 export function chooseInput(devices: readonly InputDevice[]): InputDevice | undefined {
-  const candidates = devices.filter((device) => device.kind === 'audioinput' && !PSEUDO_IDS.has(device.deviceId) && !BUILT_IN_LABEL.test(device.label));
+  const candidates = devices.filter(
+    (device) => device.kind === 'audioinput' && !PSEUDO_IDS.has(device.deviceId) && !silentInputs.has(device.deviceId) && !BUILT_IN_LABEL.test(device.label),
+  );
   return candidates.find((device) => BLUETOOTH_LABEL.test(device.label)) ?? candidates.find((device) => HANDS_FREE_LABEL.test(device.label));
 }
 
@@ -35,12 +45,14 @@ function hasLabels(devices: readonly InputDevice[]): boolean {
   return devices.some((device) => device.kind === 'audioinput' && device.label !== '');
 }
 
-function inputFor(stream: MediaStream, label: string): MicInput | undefined {
+function inputFor(stream: MediaStream, label: string, deviceId: string): MicInput | undefined {
   const track = stream.getAudioTracks()[0];
   if (!track) return undefined;
   return {
     label: track.label || label,
     track,
+    deviceId,
+    silent: () => silentInputs.add(deviceId),
     close: () => stream.getTracks().forEach((each) => each.stop()),
   };
 }
@@ -64,7 +76,7 @@ export async function openBluetoothInput(): Promise<MicInput | undefined> {
     }
     const chosen = chooseInput(devices);
     if (!chosen) return undefined;
-    return inputFor(await media.getUserMedia({ audio: { deviceId: { exact: chosen.deviceId } } }), chosen.label);
+    return inputFor(await media.getUserMedia({ audio: { deviceId: { exact: chosen.deviceId } } }), chosen.label, chosen.deviceId);
   } catch {
     return undefined;
   }

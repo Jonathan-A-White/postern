@@ -666,7 +666,8 @@ describe('the recogniser language (mw-j0f2d.24)', () => {
   describe('on a chosen input (his car\'s Bluetooth microphone)', () => {
     const car = () => {
       const close = vi.fn();
-      return { label: 'Bluetooth headset', track: { kind: 'audio' } as unknown as MediaStreamTrack, close };
+      const silent = vi.fn();
+      return { label: 'Bluetooth headset', track: { kind: 'audio' } as unknown as MediaStreamTrack, close, silent };
     };
     const hold = (openInput: ListenOptions['openInput'], extra: ListenOptions = {}) => {
       const begun = startListening({ openInput, ...extra });
@@ -732,6 +733,8 @@ describe('the recogniser language (mw-j0f2d.24)', () => {
       const input = car();
       const session = hold(() => Promise.resolve(input));
       await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(input.track));
+      // The input has given words (an input that gave none is left for the default microphone, mw-j0f2d.34).
+      FakeRecognizer.instances[0].say([result('hel', false)]);
       FakeRecognizer.instances[0].onend?.();
       expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledTimes(2);
       expect(FakeRecognizer.instances[0].startFn).toHaveBeenLastCalledWith(input.track);
@@ -750,6 +753,65 @@ describe('the recogniser language (mw-j0f2d.24)', () => {
       open(input);
       await vi.waitFor(() => expect(input.close).toHaveBeenCalled());
       expect(FakeRecognizer.instances[0].startFn).not.toHaveBeenCalled();
+    });
+
+    describe('an input that hears nothing (his AeroFit 2 earbuds, mw-j0f2d.34)', () => {
+      it('goes on the default microphone when the stretch ends with no speech and no result, and returns the words heard there', async () => {
+        install();
+        const input = car();
+        const onInput = vi.fn();
+        const onError = vi.fn();
+        const session = hold(() => Promise.resolve(input), { onInput, onError });
+        await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(input.track));
+        const recognizer = FakeRecognizer.instances[0];
+        recognizer.onerror?.({ error: 'no-speech' });
+        recognizer.onend?.();
+        expect(recognizer.startFn).toHaveBeenCalledTimes(2);
+        expect(recognizer.startFn).toHaveBeenLastCalledWith(undefined);
+        expect(onInput).toHaveBeenLastCalledWith(undefined);
+        expect(input.silent).toHaveBeenCalledTimes(1);
+        expect(input.close).toHaveBeenCalled();
+        expect(onError).not.toHaveBeenCalled();
+        recognizer.say([result('hello there', false)]);
+        expect(await session.stop()).toEqual({ ok: true, text: 'hello there', mode: 'on-device' });
+      });
+
+      it('goes on the default microphone when the stretch ends with no error at all and nothing heard', async () => {
+        install();
+        const input = car();
+        hold(() => Promise.resolve(input));
+        await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(input.track));
+        FakeRecognizer.instances[0].onend?.();
+        expect(FakeRecognizer.instances[0].startFn).toHaveBeenLastCalledWith(undefined);
+        expect(input.silent).toHaveBeenCalledTimes(1);
+      });
+
+      it('keeps the track on the restart when the input produced a result before a pause', async () => {
+        install();
+        const input = car();
+        const onInput = vi.fn();
+        hold(() => Promise.resolve(input), { onInput });
+        await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(input.track));
+        const recognizer = FakeRecognizer.instances[0];
+        recognizer.say([result('first part', false)]);
+        recognizer.onerror?.({ error: 'no-speech' });
+        recognizer.onend?.();
+        expect(recognizer.startFn).toHaveBeenLastCalledWith(input.track);
+        recognizer.onend?.();
+        expect(recognizer.startFn).toHaveBeenLastCalledWith(input.track);
+        expect(onInput).toHaveBeenCalledTimes(1);
+        expect(input.silent).not.toHaveBeenCalled();
+        expect(input.close).not.toHaveBeenCalled();
+      });
+
+      it('does not give up the input when the hold is released while the stretch ends', async () => {
+        install();
+        const input = car();
+        const session = hold(() => Promise.resolve(input));
+        await vi.waitFor(() => expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(input.track));
+        await session.stop();
+        expect(input.silent).not.toHaveBeenCalled();
+      });
     });
   });
 });

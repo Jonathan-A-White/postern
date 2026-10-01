@@ -366,3 +366,15 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the call went to WhatsOnChain as one broadcast
     And the call field is gone
 
+  # mw-a0ih0.3: the Mayor's ring.
+  Scenario: AC-4: a ring shows the Mayor's reason (mw-a0ih0.3)
+    Given the Mayor rang at 14:06 saying "Back now: two landings." and the Talk line is opened from its Answer tap
+    Then the screen reads "The Mayor called 14:06: Back now: two landings." above the hold button
+    When he leaves the Talk line and comes back
+    Then the screen still reads "The Mayor called 14:06: Back now: two landings." above the hold button
+
+  Scenario: AC-5: a missed call stays on the line until the next turn is sent (mw-a0ih0.3)
+    Given the Mayor rang at 14:06 saying "Back now: two landings." and the Talk line is opened without answering
+    Then the screen reads "Missed call 14:06: Back now: two landings." above the hold button
+    When he holds the button, says "Tell me" and lets go
+    Then the ring note is gone

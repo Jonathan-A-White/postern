@@ -40,3 +40,8 @@ export function decodeCall(plaintext: string | undefined): CallRecord | undefine
 export function deliverCallRequest(text: string, at: number, options: DeliverOptions): Promise<Delivered> {
   return deliver(encodeCall({ role: 'request', text, at }), 'call', options);
 }
+
+/** Tells the Mayor he is putting a ring off (his Later tap): class `call`, naming the ring's `txid` (§21). */
+export function deliverCallLater(ringTxid: string, options: DeliverOptions): Promise<Delivered> {
+  return deliver(encodeCall({ role: 'later', ring_txid: ringTxid }), 'call', options);
+}

@@ -165,9 +165,9 @@ func newApp(cfg config.Config) (*app, error) {
 // the on-message hook when configured (which runs in standby too: mw decides
 // what to apply) for every record but grist and talk, and the on-grist hook
 // for grist addressed to the mill. A talk or call record reaches the hub only
-// (docs/protocol.md §20).
+// (docs/protocol.md §20), but for the Mayor's ring, which is pushed too (§21).
 func buildFanout(cfg config.Config, home *standby.Monitor, pusher, hub notify.Notifier) notify.Fanout {
-	fanout := notify.Fanout{notify.Only{Notifier: standby.Gate(home, pusher), Keep: func(rec index.Record) bool { return !isTalk(rec) }}, hub}
+	fanout := notify.Fanout{notify.Only{Notifier: standby.Gate(home, pusher), Keep: func(rec index.Record) bool { return !isTalk(rec) || isRing(rec) }}, hub}
 	forMill := gristForMill(cfg.MillKey)
 	if cfg.OnMessage != "" {
 		fanout = append(fanout, notify.Only{Notifier: hook.New(cfg.OnMessage), Keep: func(rec index.Record) bool { return !isGrist(rec) && !isTalk(rec) }})
@@ -189,10 +189,17 @@ func isGrist(rec index.Record) bool {
 
 // isTalk reports whether a record is a turn on the Talk line
 // (docs/protocol.md §20) or a call record (§21): no push and no hook runs for
-// one. The ring's push is the Mayor's host's to send, not the backend's.
+// one, but for a ring (isRing).
 func isTalk(rec index.Record) bool {
 	env, err := record.ParseEnvelope(rec.Payload)
 	return err == nil && (env.Class == record.ClassTalk || env.Class == record.ClassCall)
+}
+
+// isRing reports whether a record is the Mayor's call-back (docs/protocol.md §21), a
+// call record whose clear role is "ring": the one call record that is pushed.
+func isRing(rec index.Record) bool {
+	env, err := record.ParseEnvelope(rec.Payload)
+	return err == nil && env.Class == record.ClassCall && env.Role == record.RoleRing
 }
 
 // gristForMill reports whether a record is a grist addressed to millKey

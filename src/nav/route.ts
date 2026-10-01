@@ -16,8 +16,8 @@ export type Route =
   | { view: 'bead'; id: string }
   /** `root` is the txid of a General post whose thread of replies is open (docs/protocol.md §14). */
   | { view: 'talk'; thread?: string; root?: string }
-  /** The Talk line: a spoken conversation with the Mayor (docs/protocol.md §20). */
-  | { view: 'line' }
+  /** The Talk line: a spoken conversation with the Mayor (docs/protocol.md §20). `call` is the txid of the ring he answered (§21). */
+  | { view: 'line'; call?: string }
   | { view: 'search'; q?: string }
   | { view: 'me' }
   | { view: 'key' }
@@ -86,7 +86,7 @@ export function parseRoute(search: string): Route {
     case 'talk':
       return { view: 'talk', thread: params.get('t') ?? undefined, ...(params.get('r') ? { root: params.get('r') as string } : {}) };
     case 'line':
-      return { view: 'line' };
+      return { view: 'line', ...(params.get('call') ? { call: params.get('call') as string } : {}) };
     case 'search':
       return { view: 'search', q: params.get('q') ?? undefined };
     case 'me':
@@ -134,6 +134,9 @@ export function formatRoute(route: Route): string {
     case 'talk':
       if (route.thread) params.set('t', route.thread);
       if (route.thread && route.root) params.set('r', route.root);
+      break;
+    case 'line':
+      if (route.call) params.set('call', route.call);
       break;
     case 'search':
       if (route.q) params.set('q', route.q);

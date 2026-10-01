@@ -30,9 +30,14 @@ const ClassTalk = "talk"
 
 // ClassCall is a call record between the Governor and the Mayor
 // (docs/protocol.md §21): his Call me request, the Mayor's ring and his Later
-// tap. The backend cannot tell which, since the role sits in the sealed
-// plaintext; like a talk turn it reaches the event stream and nothing else.
+// tap. The sealed plaintext holds the role, so the backend knows it only from the
+// clear `role` the sender puts beside `ct` (Envelope.Role); like a talk turn a call
+// record reaches the event stream and nothing else, but for a ring (RoleRing),
+// which is also pushed.
 const ClassCall = "call"
+
+// RoleRing is the clear `role` of the Mayor's call-back, the one call record that is pushed.
+const RoleRing = "ring"
 
 // Envelope is docs/protocol.md §1's clear message payload. The backend never
 // decrypts Ct; it only checks the envelope's shape.
@@ -42,6 +47,8 @@ type Envelope struct {
 	From  string
 	Ts    json.Number
 	Ct    string
+	// Role is a call record's optional clear role (docs/protocol.md §21); empty when absent.
+	Role string
 }
 
 // ParseEnvelope checks payload is exactly §1's envelope — v 1, kind "msg",
@@ -92,6 +99,10 @@ func ParseEnvelope(payload []byte) (Envelope, error) {
 	}
 	if err := stringField(fields, "ct", &env.Ct); err != nil {
 		return Envelope{}, err
+	}
+	if raw, ok := fields["role"]; ok {
+		// A role that is not a string is no role: it never makes a record push-worthy.
+		_ = json.Unmarshal(raw, &env.Role)
 	}
 	return env, nil
 }

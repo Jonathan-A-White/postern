@@ -61,6 +61,11 @@ export function useTalkTurns(): MessageRow[] {
   return useLiveQuery(() => messagesRepo.talkTurns(), [], [] as MessageRow[]);
 }
 
+/** The ring he last opened the Talk line from (docs/protocol.md §21), or undefined. */
+export function useAnsweredRing(): string | undefined {
+  return useLiveQuery(() => settingsRepo.get('answeredRing').then((value) => (typeof value === 'string' ? value : undefined)), [], undefined as string | undefined);
+}
+
 /** The call records and Talk-line turns, oldest first (docs/protocol.md §21): what says whether a Call me has been answered. */
 export function useCallLine(): MessageRow[] {
   return useLiveQuery(() => messagesRepo.callLine(), [], [] as MessageRow[]);

@@ -14,7 +14,7 @@ import type { HandsStep } from '../model/hands';
 import { buildApproval, stepUp } from '../services/hands';
 import type { HomeHost } from '../services/standby';
 import { deliverTurn } from '../services/talk';
-import { deliverCallRequest } from '../services/call';
+import { deliverCallLater, deliverCallRequest } from '../services/call';
 import type { TalkTurn } from '../model/talkLine';
 import type { Attachment, ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
@@ -51,6 +51,11 @@ export function sendTurn(turn: TalkTurn): Promise<Delivered> {
 /** Leaves the Mayor a Call me request (docs/protocol.md §21): class `call`, straight to the backend. `at` is Unix seconds. */
 export function sendCallRequest(text: string, at: number): Promise<Delivered> {
   return deliverCallRequest(text, at, options());
+}
+
+/** Tells the Mayor he is putting a ring off (docs/protocol.md §21): class `call`, naming the ring. */
+export function sendCallLater(ringTxid: string): Promise<Delivered> {
+  return deliverCallLater(ringTxid, options());
 }
 
 /** Asks the Mayor's host to make `host` the factory's home (docs/protocol.md §18).

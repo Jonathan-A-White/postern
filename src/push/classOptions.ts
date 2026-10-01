@@ -16,7 +16,9 @@ export interface NotificationOptions {
   requireInteraction?: boolean;
   silent?: boolean;
   body?: string;
-  data: { txid: string; class: PushClass; url: string };
+  /** Buttons on the notification (the Mayor's ring: Answer and Later). */
+  actions?: { action: string; title: string }[];
+  data: { txid: string; class: PushClass | 'call'; url: string };
 }
 
 export interface NotificationSpec {
@@ -35,7 +37,7 @@ export interface ClassNotificationSettings {
   quiet: boolean;
 }
 
-/** The classes that can reach him as a push: every class but `talk`, whose turns the backend never pushes (§20), and `call`, whose ring the Mayor's host pushes in its own way (§21). */
+/** The classes that can reach him as a push: every class but `talk`, whose turns the backend never pushes (§20), and `call`, whose ring has its own notification (notificationSpecForRing, §21). */
 export type PushClass = Exclude<MessageClass, 'talk' | 'call'>;
 
 export type NotificationSettingsMap = Record<PushClass, ClassNotificationSettings>;
@@ -107,6 +109,43 @@ function tapUrl(messageClass: PushClass, txid: string, text: NotificationText): 
   if (txid) return `/${formatRoute({ view: 'notice', tx: txid, cls: messageClass })}`;
   if (messageClass === 'alarm') return `/${formatRoute({ view: 'alarm', title: text.title, body: text.body, ts: text.ts })}`;
   return CLASS_URLS[messageClass] ?? '/';
+}
+
+/** The tag every ring wears, so a second ring replaces the first and re-alerts. */
+export const RING_TAG = 'mayor-call';
+
+export const RING_TITLE = 'The Mayor is calling';
+
+/** The ring's vibration: ten pulses of 600 ms, 400 ms apart. A Web Notification cannot loop
+ * forever, so this is the longest, most phone-like pattern the notification asks for once; the
+ * phone's own ring, vibrate or silent mode decides whether it plays (the app sets no volume). */
+export const RING_VIBRATE: number[] = Array.from({ length: 10 }, () => [600, 400]).flat();
+
+/** Where a tap on a ring (Answer, or the notification itself) lands: the Talk line, naming the ring. */
+export function ringTapUrl(txid: string): string {
+  return `/${formatRoute({ view: 'line', call: txid })}`;
+}
+
+/** The notification for the Mayor's ring (docs/protocol.md §21): it rings like an incoming call,
+ * Answer and Later, until dealt with. `body` is the reason the push carries, if any. It follows
+ * no per-class switch: it is never silent, and Android applies the phone's ring/vibrate/silent mode. */
+export function notificationSpecForRing(txid: string, text: { title?: string; body?: string } = {}): NotificationSpec {
+  return {
+    title: text.title || RING_TITLE,
+    options: {
+      tag: RING_TAG,
+      renotify: true,
+      requireInteraction: true,
+      silent: false,
+      vibrate: RING_VIBRATE,
+      actions: [
+        { action: 'answer', title: 'Answer' },
+        { action: 'later', title: 'Later' },
+      ],
+      data: { txid, class: 'call', url: ringTapUrl(txid) },
+      ...(text.body && { body: text.body }),
+    },
+  };
 }
 
 export function notificationSpecForClass(

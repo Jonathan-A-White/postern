@@ -8,10 +8,12 @@ import type { KeyboardEvent, PointerEvent } from 'react';
 import { Button, Chip, Icon, cx } from '../ui';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
-import { useCallLine } from './hooks';
+import { useAnsweredRing, useCallLine } from './hooks';
 import { sendCallRequest } from './send';
+import { useRoute } from '../router';
+import { settingsRepo } from '../data/repositories';
 import { now } from '../services/clock';
-import { callSent as waitingCall, clockHHMM } from '../model/call';
+import { callSent as waitingCall, clockHHMM, ringNote } from '../model/call';
 import { beadHref } from '../nav/route';
 import { formatSeconds, showsCutTag } from '../model/talkScreen';
 import type { TalkPhase } from '../model/talkLine';
@@ -219,7 +221,17 @@ export function TalkLineScreen() {
   const micOpen = talk.mic === 'ready';
   const label = buttonLabel(line.phase, talk.supported, micOpen);
   const [calling, setCalling] = useState(false);
-  const callSent = waitingCall(useCallLine());
+  const callRows = useCallLine();
+  const callSent = waitingCall(callRows);
+  const route = useRoute();
+  const calledFrom = route.view === 'line' ? route.call : undefined;
+  const answered = useAnsweredRing();
+  const ring = ringNote(callRows, calledFrom ?? answered);
+
+  // Opening the line from a ring's Answer is answering that ring: it stays answered when he comes back.
+  useEffect(() => {
+    if (calledFrom) void settingsRepo.setAnsweredRing(calledFrom);
+  }, [calledFrom]);
 
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     try {
@@ -319,6 +331,12 @@ export function TalkLineScreen() {
         {callSent !== undefined && (
           <p data-testid="call-sent" className="text-center text-[11.5px] text-faint">
             {callSent.onChain ? `Sent on chain ${clockHHMM(callSent.at)}, txid ${callSent.txid.slice(0, 8)}…` : `Call sent ${clockHHMM(callSent.at)}`}
+          </p>
+        )}
+
+        {ring !== undefined && (
+          <p data-testid="ring-note" className="text-center text-[13px] break-words">
+            {ring.missed ? 'Missed call' : 'The Mayor called'} {clockHHMM(ring.at)}: {ring.text}
           </p>
         )}
 

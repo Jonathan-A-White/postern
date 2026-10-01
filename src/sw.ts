@@ -11,10 +11,12 @@
 //  - a tap lands at what the push is about (the bead's thread for a message or a
 //    decision, the alarm itself for a watchdog alarm; src/push/tapTarget.ts), in
 //    the open app if there is one;
+//  - the Mayor's ring (class call, docs/protocol.md §21) rings like an incoming call:
+//    Answer opens the Talk line, Later leaves a missed call on it (src/push/classOptions.ts);
 //  - files shared from another app (the manifest's share_target) are parked in
 //    IndexedDB and the app opens on the Share screen to place them.
 import { precacheAndRoute } from 'workbox-precaching';
-import { notificationSpecForClass, type PushClass } from './push/classOptions';
+import { notificationSpecForClass, notificationSpecForRing, type PushClass } from './push/classOptions';
 import { resolveTapUrl, type TapData } from './push/tapTarget';
 import { settingsRepo } from './data/repositories/settings-repo';
 import { sharesRepo } from './data/repositories/view-repo';
@@ -24,7 +26,7 @@ declare const self: ServiceWorkerGlobalScope;
 precacheAndRoute(self.__WB_MANIFEST);
 
 interface PushPayload {
-  class: PushClass;
+  class: PushClass | 'call';
   txid?: string;
   ts: number;
   title?: string;
@@ -79,6 +81,12 @@ async function closeNotificationsFor(txid: string): Promise<void> {
 }
 
 async function onPush(payload: PushPayload): Promise<void> {
+  // A ring is a call, not a message on a screen: it always rings, whatever window is open.
+  if (payload.class === 'call') {
+    const ring = notificationSpecForRing(payload.txid ?? '', { title: payload.title, body: payload.body });
+    await self.registration.showNotification(ring.title, ring.options);
+    return;
+  }
   // A message already on a window he is looking at needs no notification, whatever its class.
   if (payload.txid) {
     const showing = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).filter(isShowingTheApp);
@@ -106,21 +114,36 @@ self.addEventListener('message', (event) => {
   if (data.seen !== false) event.waitUntil(closeNotificationsFor(data.txid));
 });
 
+/** Focuses an open window and sends it to `url`, or opens one there. */
+async function openAt(url: string): Promise<WindowClient | null | undefined> {
+  const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of clientList) {
+    if ('focus' in client) {
+      client.postMessage({ type: 'sync-inbox' });
+      client.postMessage({ type: 'open', url });
+      return client.focus();
+    }
+  }
+  return self.clients.openWindow(url);
+}
+
+/** His Later tap on a ring: an open window sends the record (the key is in the app); with none, the tap waits in IndexedDB for the next open. */
+async function putRingOff(ringTxid: string): Promise<void> {
+  const [open] = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  if (open) open.postMessage({ type: 'later', ring_txid: ringTxid });
+  else await settingsRepo.addPendingLater(ringTxid);
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const data = event.notification.data as TapData | undefined;
-  event.waitUntil(
-    Promise.all([resolveTapUrl(data), self.clients.matchAll({ type: 'window', includeUncontrolled: true })]).then(([url, clientList]) => {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          client.postMessage({ type: 'sync-inbox' });
-          client.postMessage({ type: 'open', url });
-          return client.focus();
-        }
-      }
-      return self.clients.openWindow(url);
-    }),
-  );
+  if (data?.class === 'call' && event.action === 'later') {
+    if (data.txid) event.waitUntil(putRingOff(data.txid));
+    return;
+  }
+  // Answer, or a tap on the ring itself, opens the Talk line with the ring named; no thread is looked up for it.
+  const ringUrl = data?.class === 'call' ? data.url : undefined;
+  event.waitUntil(ringUrl ? openAt(ringUrl) : resolveTapUrl(data).then(openAt));
 });
 
 async function parkShare(request: Request): Promise<Response> {

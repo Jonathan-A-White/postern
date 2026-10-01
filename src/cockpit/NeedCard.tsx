@@ -3,7 +3,7 @@
 // other answer one tap further. A question is answered (§6), an approval or a
 // verification is an action applied at once (§13), a step for his hands or a
 // demo is acknowledged on the bead's thread, and anything can be discussed.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, Chip, Icon, IconButton, TimeAgo, cx } from '../ui';
 import { Markdown } from '../markdown';
 import { NEED_META, VERIFY_BUTTON } from './labels';
@@ -13,11 +13,11 @@ import { threadKey } from '../services/threads';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { speak } from '../services/speech';
 import type { Need } from '../model/view';
-import { orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
+import { answeredByComment, answeredInWords, orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
-import { useAnswers, useOutbox } from './hooks';
+import { useAnswers, useOutbox, useStoredComments, useThreadMessages } from './hooks';
 import { pendingAnswer } from '../model/outbox';
 import { OutboxMark } from './OutboxMark';
 import { clockTime } from '../services/age';
@@ -70,7 +70,16 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   // An answer still in the outbox (mw-jrx0s.10) is dead and says so too: it is marked pending until it has gone.
   const outbox = useOutbox();
   const pendingRow = asks ? pendingAnswer(outbox, need.bead, Date.parse(need.since)) : undefined;
-  const answered = asks && (answerTap.waiting || sentRow !== undefined || heard !== undefined || pendingRow !== undefined);
+  // Words count as an answer too (mw-gq6.199): typed in the bead's thread or in Factory naming an option, or an ANSWER comment on the bead.
+  const inBeadThread = useThreadMessages(asks ? threadKey({ bead: need.bead }) : undefined);
+  const inFactory = useThreadMessages(undefined);
+  const comments = useStoredComments(asks ? need.bead : '');
+  const soleQuestion = index !== undefined && index.view.needs.filter((n) => n.kind === 'question' && n.bead !== '').length === 1;
+  const inWords = useMemo(
+    () => (asks ? (answeredByComment(need, comments) ?? answeredInWords(need, [...inBeadThread, ...inFactory], outbox, soleQuestion)) : undefined),
+    [asks, need, comments, inBeadThread, inFactory, outbox, soleQuestion],
+  );
+  const answered = asks && (answerTap.waiting || sentRow !== undefined || heard !== undefined || pendingRow !== undefined || inWords !== undefined);
   const saidWhat = answerTap.said
     ? { label: answerTap.said.label, at: answerTap.said.at }
     : pendingRow
@@ -79,7 +88,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
       ? { label: sentRow.answer, at: sentRow.ts * 1000 }
       : heard
         ? { label: heard.option, at: Date.parse(heard.at) }
-        : undefined;
+        : inWords;
   const [notSent, setNotSent] = useState(false);
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');

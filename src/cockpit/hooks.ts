@@ -137,6 +137,19 @@ export function useBeadDetail(id: string | undefined): { detail?: BeadDetail; st
   return { detail, status, error: result?.token === token ? result.error : undefined, refresh: () => setAttempt((n) => n + 1) };
 }
 
+/** The stored comments of one bead (its detail, whenever this phone last fetched it): none until it has been. */
+export function useStoredComments(id: string): BeadComment[] {
+  const row = useLiveQuery<BeadDetailRow | null>(() => (id ? beadDetailsRepo.get(id).then((r) => r ?? null) : Promise.resolve(null)), [id], null);
+  return useMemo(() => {
+    if (!row) return [];
+    try {
+      return decodeBeadDetail(row.plaintext).comments;
+    } catch {
+      return [];
+    }
+  }, [row]);
+}
+
 /** The stored comments of every bead whose detail this phone holds, by its thread key
  * ('bead:<id>'): the same comments useBeadDetail hands a thread screen. */
 export function useBeadComments(): ReadonlyMap<string, BeadComment[]> {

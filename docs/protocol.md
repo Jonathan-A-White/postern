@@ -1168,6 +1168,18 @@ on-message hook, no on-grist hook. It carries no `summary` (§1), so no word of 
 side is ever pushed, handed to a hook or logged; the clear class tells the backend a
 turn's time and size, never its words.
 
+### An answer that comes while he has left the app
+
+Android suspends the voice of an app that is in the background, and the backend pushes
+no talk record, so the phone does what it can itself (mw-j0f2d.29). While a talk is open
+the page holds the screen awake and loops a silent audio element, to try to keep the
+voice alive with the screen off. An answer the page reads while it is hidden is not
+spoken: the page shows a notification titled "The Mayor answered", with the talk chime's
+buzz and none of the answer's words, and keeps the answer unspoken. When the page is
+visible again the answer is spoken at once and the notification is taken down. A page
+the browser has frozen outright cannot show the notification; the answer then speaks on
+return all the same.
+
 The Mayor's host hears a turn by reading `GET /api/events` with the Mayor's key. That
 key needs no licence for the stream: the backend's own configuration
 (`POSTERN_MAYOR_KEY`) vouches for it, as it does the mill's key (§19), so a lapsed or

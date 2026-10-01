@@ -151,7 +151,7 @@ self.addEventListener('notificationclick', (event) => {
   }
   // Answer, or a tap on the ring itself, opens the Talk line with the ring named; no thread is looked up for it.
   // An emergency opens the app at its own url, where the banner waits.
-  const ringUrl = data?.class === 'call' || data?.class === 'events' ? data.url : undefined;
+  const ringUrl = data?.class === 'call' || data?.class === 'events' || data?.class === 'talk' ? data.url : undefined;
   event.waitUntil(ringUrl ? openAt(ringUrl) : resolveTapUrl(data).then(openAt));
 });
 

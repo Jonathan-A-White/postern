@@ -60,3 +60,43 @@ test('the Prompts screen lists the prompts; Run prefills the composer, Edit open
   await expect(page.getByTestId('prompt-current')).toContainText('Current /top5:');
   await expect(page.getByTestId('prompt-current')).toContainText('List five things, shortest first.');
 });
+
+// mw-nqur1n.16: the composer predicts the next option and its default in grey; one tap takes each.
+test('the composer shows the next option and its default in grey, and a tap takes each', async ({ page }) => {
+  const mnemonic = createMnemonic();
+  const governorKeyBytes = await deriveMasterKey(mnemonic);
+  const governor = PrivateKey.fromHex(Buffer.from(governorKeyBytes).toString('hex'));
+  await stubBackend(page, governor);
+  await page.route('**/api/prompts', (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { ETag: '"v1"' }, body: JSON.stringify(PROMPTS) }));
+  await seedVault(page, mnemonic);
+  await page.goto('/');
+  await page.getByLabel('Recovery phrase').fill(mnemonic);
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await expect(page.getByTestId('need-card').first()).toBeVisible();
+  await page.goto('/?v=me');
+  await page.getByRole('link', { name: /^Prompts/ }).click();
+  await page.getByTestId('prompt-top5').getByRole('button', { name: 'Run' }).click();
+
+  const box = page.getByRole('textbox', { name: 'Message' });
+  await expect(box).toHaveValue('/top5 ');
+  await box.fill('/top5 --');
+  const grey = page.getByTestId('grey-suggestion');
+  await expect(grey).toHaveAccessibleName('Add --duration');
+  await expect(grey).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await shot(page, 'composer-grey-option');
+
+  await grey.click();
+  await expect(box).toHaveValue('/top5 --duration ');
+  await expect(grey).toHaveAccessibleName('Add 30m');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await shot(page, 'composer-grey-default');
+
+  await grey.click();
+  await expect(box).toHaveValue('/top5 --duration 30m');
+  await expect(grey).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
+
+  await box.fill('/top5 --nope ');
+  await expect(page.getByRole('alert')).toContainText('/top5 has no option --nope');
+});

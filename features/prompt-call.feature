@@ -39,3 +39,32 @@ Feature: The composer offers the saved prompts as he types and checks a call bef
     And Send is enabled and no error shows
     When he taps Send
     Then the message "see /top6 later" is sent
+
+  Scenario: mw-nqur1n.16: a half-typed option is not an error and the rest of it shows in grey
+    Given the backend has the prompts "top5" and "sweep"
+    When he types "/top5 --" in the composer
+    Then no error shows
+    And the grey text "--duration" shows after the cursor
+
+  Scenario: mw-nqur1n.16: tapping the grey option, then the grey default, builds the call
+    Given the backend has the prompts "top5" and "sweep"
+    When he types "/top5 --" in the composer
+    And he taps the grey text "--duration"
+    Then the composer holds "/top5 --duration "
+    And the grey text "30m" shows after the cursor
+    When he taps the grey text "30m"
+    Then the box reads "/top5 --duration 30m"
+    And Send is enabled and no error shows
+
+  Scenario: mw-nqur1n.16: the Tab key takes the grey text and the box keeps the cursor
+    Given the backend has the prompts "top5" and "sweep"
+    When he types "/top5 --du" in the composer
+    And he presses Tab
+    Then the composer holds "/top5 --duration "
+    And the box has the cursor
+
+  Scenario: mw-nqur1n.16: a complete unknown option is still an error and nothing is suggested
+    Given the backend has the prompts "top5" and "sweep"
+    When he types "/top5 --nope " in the composer
+    Then the error "/top5 has no option --nope" shows
+    And no grey text shows

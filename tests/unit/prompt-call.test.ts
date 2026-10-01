@@ -1,7 +1,7 @@
 // tests/unit/prompt-call.test.ts — mw-nqur1n.5: the pure check of '/<name> [--flag value]...'
 // against the saved prompts' signatures, and the list the composer offers as he types.
 import { describe, expect, it } from 'vitest';
-import { beginsCall, checkPromptCall, matchPrompts, tokenizeCall } from '../../src/model/prompts';
+import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext, tokenizeCall } from '../../src/model/prompts';
 import type { Prompt } from '../../src/data/db';
 
 const base = { body: 'b', updatedAt: '2026-10-01T12:00:00Z', updatedBy: '02' };
@@ -112,5 +112,72 @@ describe('checkPromptCall', () => {
 
   it('refuses an unclosed quote', () => {
     expect(checkPromptCall('/sweep --who "Ann', PROMPTS)).toEqual({ ok: false, error: 'A quote is not closed' });
+  });
+});
+
+describe('suggestNext (mw-nqur1n.16)', () => {
+  it('completes a half-typed option name to the first option not yet given', () => {
+    for (const typed of ['/top5 -', '/top5 --', '/top5 --du']) {
+      const suggestion = suggestNext(typed, PROMPTS);
+      expect(suggestion?.kind).toBe('option');
+      expect(suggestion?.text).toBe('--duration');
+      expect(typed + suggestion?.rest).toBe('/top5 --duration ');
+    }
+  });
+
+  it('skips an option already given', () => {
+    expect(suggestNext('/top5 --duration 15m --', PROMPTS)?.text).toBe('--count');
+    expect(suggestNext('/top5 --duration 15m --d', PROMPTS)).toBeUndefined();
+  });
+
+  it('suggests the default after a complete option name and a space', () => {
+    const suggestion = suggestNext('/top5 --duration ', PROMPTS);
+    expect(suggestion).toMatchObject({ kind: 'value', text: '30m', rest: '30m' });
+  });
+
+  it('completes a half-typed default', () => {
+    expect(suggestNext('/top5 --duration 3', PROMPTS)).toMatchObject({ kind: 'value', rest: '0m' });
+    expect(suggestNext('/top5 --duration 30m', PROMPTS)).toBeUndefined();
+  });
+
+  it('suggests nothing once the value is given', () => {
+    expect(suggestNext('/top5 --duration 15m ', PROMPTS)).toBeUndefined();
+  });
+
+  it('suggests no value for an option with no default, required or not', () => {
+    expect(suggestNext('/sweep --who ', PROMPTS)).toBeUndefined();
+    expect(suggestNext('/top5 --count ', PROMPTS)).toBeUndefined();
+  });
+
+  it('suggests nothing for an unknown prompt, a bare name, an unknown option or plain text', () => {
+    expect(suggestNext('/nope --', PROMPTS)).toBeUndefined();
+    expect(suggestNext('/top5', PROMPTS)).toBeUndefined();
+    expect(suggestNext('/top5 ', PROMPTS)).toBeUndefined();
+    expect(suggestNext('/top5 --zzz', PROMPTS)).toBeUndefined();
+    expect(suggestNext('/top5 --zzz ', PROMPTS)).toBeUndefined();
+    expect(suggestNext('hello --', PROMPTS)).toBeUndefined();
+    expect(suggestNext('/top-ten --', PROMPTS)).toBeUndefined();
+  });
+
+  it('suggests nothing for a bool option beyond its name', () => {
+    expect(suggestNext('/top5 --loud ', PROMPTS)).toBeUndefined();
+  });
+});
+
+describe('halfTypedOption (mw-nqur1n.16)', () => {
+  it('is true while the last word is the start of an option', () => {
+    expect(halfTypedOption('/top5 -', PROMPTS)).toBe(true);
+    expect(halfTypedOption('/top5 --', PROMPTS)).toBe(true);
+    expect(halfTypedOption('/top5 --du', PROMPTS)).toBe(true);
+    expect(halfTypedOption('/sweep --', PROMPTS)).toBe(true);
+    expect(halfTypedOption('/top5 --duration', PROMPTS)).toBe(true);
+  });
+  it('is false for a complete unknown option, a finished call, or an earlier fault', () => {
+    expect(halfTypedOption('/top5 --nope', PROMPTS)).toBe(false);
+    expect(halfTypedOption('/top5 --nope ', PROMPTS)).toBe(false);
+    expect(halfTypedOption('/top5 --du ', PROMPTS)).toBe(false);
+    expect(halfTypedOption('/top5 --duration soon --', PROMPTS)).toBe(false);
+    expect(halfTypedOption('/top5 --duration 15m', PROMPTS)).toBe(false);
+    expect(halfTypedOption('/top5', PROMPTS)).toBe(false);
   });
 });

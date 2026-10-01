@@ -98,6 +98,16 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   const errorShows = async (_c: unknown, error: string) => {
     expect(await screen.findByRole('alert')).toHaveTextContent(error);
   };
+  const greyShows = async (grey: string) => {
+    await waitFor(() => expect(screen.getByTestId('grey-suggestion')).toHaveAccessibleName(`Add ${grey}`));
+  };
+  const tapsGrey = async (_c: unknown, grey: string) => {
+    await greyShows(grey);
+    await userEvent.click(screen.getByTestId('grey-suggestion'));
+  };
+  const composerHolds = async (_c: unknown, text: string) => {
+    await waitFor(() => expect(box()).toHaveValue(text));
+  };
   const taps = async () => {
     await userEvent.click(sendButton());
   };
@@ -168,5 +178,53 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('Send is enabled and no error shows', sendIsEnabled);
     When('he taps Send', taps);
     Then('the message {string} is sent', messageSent);
+  });
+
+  Scenario('mw-nqur1n.16: a half-typed option is not an error and the rest of it shows in grey', ({ Given, When, Then, And }) => {
+    Given('the backend has the prompts {string} and {string}', backendHasTwo);
+    When('he types {string} in the composer', types);
+    Then('no error shows', async () => {
+      await greyShows('--duration');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+    And('the grey text {string} shows after the cursor', async (_c, grey: string) => {
+      await greyShows(grey);
+    });
+  });
+
+  Scenario('mw-nqur1n.16: tapping the grey option, then the grey default, builds the call', ({ Given, When, Then, And }) => {
+    Given('the backend has the prompts {string} and {string}', backendHasTwo);
+    When('he types {string} in the composer', types);
+    And('he taps the grey text {string}', tapsGrey);
+    Then('the composer holds {string}', composerHolds);
+    And('the grey text {string} shows after the cursor', async (_c, grey: string) => {
+      await greyShows(grey);
+    });
+    When('he taps the grey text {string}', tapsGrey);
+    Then('the box reads {string}', composerHolds);
+    And('Send is enabled and no error shows', sendIsEnabled);
+  });
+
+  Scenario('mw-nqur1n.16: the Tab key takes the grey text and the box keeps the cursor', ({ Given, When, And, Then }) => {
+    Given('the backend has the prompts {string} and {string}', backendHasTwo);
+    When('he types {string} in the composer', types);
+    And('he presses Tab', async () => {
+      await greyShows('--duration');
+      await userEvent.tab();
+    });
+    Then('the composer holds {string}', composerHolds);
+    And('the box has the cursor', async () => {
+      await waitFor(() => expect(box()).toHaveFocus());
+      expect((box() as HTMLTextAreaElement).selectionStart).toBe((box() as HTMLTextAreaElement).value.length);
+    });
+  });
+
+  Scenario('mw-nqur1n.16: a complete unknown option is still an error and nothing is suggested', ({ Given, When, Then, And }) => {
+    Given('the backend has the prompts {string} and {string}', backendHasTwo);
+    When('he types {string} in the composer', types);
+    Then('the error {string} shows', errorShows);
+    And('no grey text shows', async () => {
+      expect(screen.queryByTestId('grey-suggestion')).not.toBeInTheDocument();
+    });
   });
 });

@@ -67,6 +67,14 @@ const (
 	emergencyTitle = "Emergency"
 )
 
+// A push's time to live: how long a push service keeps it for a phone that is off or dozing.
+// An ordinary push is worth nothing late, so it lives 30 s; an emergency lives an hour, long
+// enough for a locked, low-battery phone to wake and be reached (mw-gq6.203).
+const (
+	defaultTTL   = 30
+	emergencyTTL = 3600
+)
+
 // maxSummaryRunes is the longest summary a push carries (docs/protocol.md §1).
 const maxSummaryRunes = 80
 
@@ -123,11 +131,24 @@ func (s *Sender) NotifyRecord(txid string, payload json.RawMessage) error {
 		return fmt.Errorf("marshaling push payload: %w", err)
 	}
 
+	ttl := defaultTTL
+	if addressed.Class == eventsClass {
+		ttl = emergencyTTL // parseAddressed lets an events record through only in the emergency lane
+	}
+
 	var errs []error
+	sent := 0
 	for _, sub := range subs {
-		if err := s.send(sub, body); err != nil {
+		ok, err := s.deliver(sub, body, ttl)
+		if err != nil {
 			errs = append(errs, err)
 		}
+		if ok {
+			sent++
+		}
+	}
+	if sent > 0 {
+		log.Printf("push for record %s: sent to %d device(s)", txid, sent)
 	}
 	return errors.Join(errs...)
 }
@@ -204,7 +225,7 @@ func (s *Sender) Broadcast(payload Payload) (delivered int, err error) {
 
 	var errs []error
 	for _, sub := range s.store.All() {
-		ok, err := s.deliver(sub, body)
+		ok, err := s.deliver(sub, body, defaultTTL)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -215,24 +236,17 @@ func (s *Sender) Broadcast(payload Payload) (delivered int, err error) {
 	return delivered, errors.Join(errs...)
 }
 
-// send pushes body to sub's endpoint, dropping sub from the store if the
-// push service reports it gone (410) — the standard signal that the browser
-// unsubscribed or the installation was uninstalled.
-func (s *Sender) send(sub Subscription, body []byte) error {
-	_, err := s.deliver(sub, body)
-	return err
-}
-
-// deliver is send, also reporting whether the push service accepted the
-// push (a 2xx).
-func (s *Sender) deliver(sub Subscription, body []byte) (bool, error) {
+// deliver pushes body to sub's endpoint, to be kept ttl seconds, and reports whether the push
+// service accepted it (a 2xx). It drops sub from the store if the service reports it gone (410):
+// the standard signal that the browser unsubscribed or the installation was uninstalled.
+func (s *Sender) deliver(sub Subscription, body []byte, ttl int) (bool, error) {
 	resp, err := webpush.SendNotificationWithContext(context.Background(), body, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys:     sub.Keys,
 	}, &webpush.Options{
 		HTTPClient:      s.httpClient,
 		Subscriber:      s.subscriber,
-		TTL:             30,
+		TTL:             ttl,
 		Urgency:         webpush.UrgencyHigh,
 		VAPIDPublicKey:  s.keys.PublicKey,
 		VAPIDPrivateKey: s.keys.PrivateKey,

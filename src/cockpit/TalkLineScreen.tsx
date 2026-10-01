@@ -3,7 +3,7 @@
 // answer shows and is spoken, and a tap cuts it off. The model for the talk is a chip
 // (Opus, Sonnet or Fable) and each answered turn says how soon its first words came.
 // What the screen does is in useTalkLine; this only draws it.
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { Button, Chip, Icon, cx } from '../ui';
 import { Screen } from './Shell';
@@ -44,8 +44,14 @@ function useFollowEnd(log: TalkLogEntry[]) {
     else if (answer !== seen.answer && !atEnd) setPill(true);
   }
 
+  // True from a smooth scroll to the end until it arrives, he touches the list or the list
+  // moves up (a glide only goes down), so the scroll events on the way do not read as him
+  // leaving the end.
+  const gliding = useRef(false);
+  const lastTop = useRef(0);
   const toEnd = () => {
     const el = scroller.current;
+    gliding.current = true;
     el?.scrollTo?.({ top: el.scrollHeight, behavior: 'smooth' });
   };
   const last = useRef({ turns, answer });
@@ -59,10 +65,26 @@ function useFollowEnd(log: TalkLogEntry[]) {
     }
   }, [turns, answer]);
 
+  // The list changes height under the end when the controls below it grow or shrink (the
+  // status line wraps, a button appears) and when an answer's text settles: stay on the end.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (nearEnd.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, []);
+
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_END_PX;
+    if (near || el.scrollTop < lastTop.current) gliding.current = false;
+    lastTop.current = el.scrollTop;
+    if (!near && gliding.current) return;
     nearEnd.current = near;
     setAtEnd(near);
     if (near) setPill(false);
@@ -73,7 +95,10 @@ function useFollowEnd(log: TalkLogEntry[]) {
     setAtEnd(true);
     setPill(false);
   };
-  return { scroller, onScroll, pill, showNew };
+  const onTouch = () => {
+    gliding.current = false;
+  };
+  return { scroller, onScroll, onTouch, pill, showNew };
 }
 
 const MODELS = [
@@ -106,7 +131,7 @@ function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean): st
 export function TalkLineScreen() {
   const talk = useTalkLine();
   const { line } = talk;
-  const { scroller, onScroll, pill, showNew } = useFollowEnd(talk.log);
+  const { scroller, onScroll, onTouch, pill, showNew } = useFollowEnd(talk.log);
   const listening = line.phase === 'listening';
   const dead = !talk.supported || line.phase === 'sending' || line.phase === 'waiting';
   const micOpen = talk.mic === 'ready';
@@ -132,7 +157,7 @@ export function TalkLineScreen() {
   return (
     <Screen title="Talk" subtitle="A voice line to the Mayor" back={{ view: 'talk' }} bare>
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div ref={scroller} onScroll={onScroll} data-testid="talk-scroll" className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div ref={scroller} onScroll={onScroll} onWheel={onTouch} onTouchStart={onTouch} onPointerDown={onTouch} data-testid="talk-scroll" className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <ol className="mx-auto flex max-w-xl flex-col gap-4" data-testid="talk-log">
             {talk.log.map((entry) => (
               <li key={entry.turn} className="flex flex-col gap-2" data-testid="talk-turn">
@@ -167,7 +192,7 @@ export function TalkLineScreen() {
         )}
       </div>
 
-      <div className="flex shrink-0 flex-col items-center gap-3 border-t border-line bg-canvas px-4 pt-3 pb-4">
+      <div data-testid="talk-controls" className="flex shrink-0 flex-col items-center gap-3 border-t border-line bg-canvas px-4 pt-3 pb-4">
         <div role="status" aria-live="polite" className="min-h-[2.75rem] w-full max-w-xl text-center text-[14px]">
           {listening ? (
             <p data-testid="live-transcript" className="text-fg">

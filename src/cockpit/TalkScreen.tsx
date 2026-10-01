@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, EmptyState, Icon, IconButton, TimeAgo, cx } from '../ui';
 import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
+import { ThreadCards } from './LiveCard';
 import { Composer } from './Composer';
 import { TopicForm } from './TopicForm';
 import { topicKey } from './topicKey';
@@ -172,6 +173,7 @@ function ChannelPane({ threadKey, prefill }: { threadKey: string; prefill?: stri
     <>
       <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-3xl">
+          <ThreadCards threadKey={storeKey} />
           <Conversation
             items={posts}
             onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}

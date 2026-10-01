@@ -74,8 +74,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
         expect(screen.getByRole('button', { name: words })).toBeDisabled();
       });
     });
-    And('the card says {string}', async (_c, line: string) => {
-      await waitFor(() => expect(screen.getByTestId('need-card').textContent).toContain(line));
+    And('the card says {string} and the time as HH:MM', async (_c, line: string) => {
+      await waitFor(() => expect(screen.getByTestId('need-card').textContent).toMatch(new RegExp(`${line} \\d{2}:\\d{2}`)));
     });
   });
 
@@ -113,7 +113,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the card does not say he answered', async () => {
       const card = await screen.findByTestId('need-card');
-      expect(card.textContent).not.toContain('You answered');
+      expect(card.textContent).not.toContain('Answered');
       expect(within(card).getByRole('button', { name: 'Red' })).toBeEnabled();
     });
   });

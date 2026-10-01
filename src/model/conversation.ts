@@ -274,14 +274,25 @@ export interface GivenAnswer {
   at: number;
 }
 
+/** For each question item, when the same bead asked again (ms): the end of its answer's window. Absent when it did not. */
+export function askedAgainAt(items: ConversationItem[]): Map<string, number> {
+  const again = new Map<string, number>();
+  const questions = items.filter((item) => item.kind === 'question' && item.question);
+  for (const item of questions) {
+    const next = questions.find((other) => other !== item && other.question!.bead === item.question!.bead && other.at > item.at);
+    if (next) again.set(item.id, next.at);
+  }
+  return again;
+}
+
 /** For each question item, his answer to it: the first answer he sent on its bead after it was asked
  * and before the same bead asked again. The sent records are the truth, so this survives a reload. */
 export function answersGiven(items: ConversationItem[]): Map<string, GivenAnswer> {
   const given = new Map<string, GivenAnswer>();
-  const questions = items.filter((item) => item.kind === 'question' && item.question);
-  for (const item of questions) {
+  const again = askedAgainAt(items);
+  for (const item of items.filter((candidate) => candidate.kind === 'question' && candidate.question)) {
     const bead = item.question!.bead;
-    const nextAsked = questions.find((other) => other !== item && other.question!.bead === bead && other.at > item.at)?.at ?? Infinity;
+    const nextAsked = again.get(item.id) ?? Infinity;
     const reply = items.find((other) => other.kind === 'answer' && other.speaker === 'you' && other.answerBead === bead && other.at >= item.at && other.at < nextAsked);
     if (reply?.answer !== undefined) given.set(item.id, { answer: reply.answer, at: reply.at });
   }

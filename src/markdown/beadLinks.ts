@@ -5,8 +5,8 @@
 import type { Link, Nodes, Parent, PhrasingContent, Root, RootContent, Text } from 'mdast';
 import { beadHref } from '../nav/route';
 
-const BEAD_ID = /mw-[a-z0-9]+(?:\.\d+)*(?![A-Za-z0-9_-])/g;
-const WORD_CHAR = /[A-Za-z0-9_\-/.]/;
+export const BEAD_ID = /mw-[a-z0-9]+(?:\.\d+)*(?![A-Za-z0-9_-])/g;
+export const WORD_CHAR = /[A-Za-z0-9_\-/.]/;
 
 function linkIds(node: Text): PhrasingContent[] | null {
   const parts: PhrasingContent[] = [];

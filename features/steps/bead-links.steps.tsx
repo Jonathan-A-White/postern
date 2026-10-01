@@ -1,8 +1,8 @@
 // features/steps/bead-links.steps.tsx — runs features/bead-links.feature (mw-tbx1n.11):
 // the Talk screen over a seeded Dexie, one message whose text names beads.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, configure } from '@testing-library/react';
-import { afterAll, expect } from 'vitest';
+import { render, screen, cleanup, within, configure, fireEvent } from '@testing-library/react';
+import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
 import { db, type MessageRow } from '../../src/data/db';
@@ -13,6 +13,11 @@ configure({ asyncUtilTimeout: 5000 });
 
 let now = Date.now();
 let seeded: MessageRow[] = [];
+const spoken: string[] = [];
+
+class FakeUtterance {
+  constructor(public text: string) {}
+}
 
 function generalMessage(text: string): MessageRow {
   return {
@@ -33,6 +38,7 @@ function generalMessage(text: string): MessageRow {
 
 afterAll(() => {
   cleanup();
+  vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
 });
 
@@ -43,6 +49,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     cleanup();
     now = Date.now();
     seeded = [];
+    spoken.length = 0;
+    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
+    vi.stubGlobal('speechSynthesis', { speak: (u: FakeUtterance) => spoken.push(u.text), cancel: () => {}, getVoices: () => [] });
     await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
     window.history.replaceState(null, '', '/?v=talk&t=general');
   });
@@ -63,6 +72,27 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(link).toHaveAttribute('href', `?v=bead&id=${id}`);
       expect(within(conversation).queryByRole('link', { name: plain })).toBeNull();
       expect(within(conversation).getByText(plain).tagName).toBe('CODE');
+    });
+  });
+  Scenario('mw-gq6.223: the Read aloud control speaks a message without its bead ids while the screen keeps the chips', ({ Given, When, Then, And }) => {
+    Given("the Mayor's message in the general thread is {string}", (_c, text: string) => {
+      seeded.push(generalMessage(text));
+    });
+    When('the general thread is opened and Read aloud is tapped on the message', async () => {
+      await viewRepo.save({ plaintext: JSON.stringify(fixtureView(now)), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
+      for (const row of seeded) await messagesRepo.put(row);
+      render(<TalkScreen thread="general" />);
+      const conversation = await screen.findByTestId('conversation');
+      fireEvent.click(await within(conversation).findByRole('button', { name: 'Read aloud' }));
+    });
+    Then('the phone speaks aloud {string}', (_c, text: string) => {
+      expect(spoken).toEqual([text]);
+    });
+    And('the message still shows links {string}, {string} and {string}', async (_c, a: string, b: string, c: string) => {
+      const conversation = screen.getByTestId('conversation');
+      for (const id of [a, b, c]) {
+        expect(await within(conversation).findByRole('link', { name: id })).toHaveAttribute('href', `?v=bead&id=${id}`);
+      }
     });
   });
 });

@@ -35,10 +35,12 @@ export const messagesRepo = {
     await db.messages.update(id, { read: true });
   },
 
-  async markThreadRead(key: string | undefined): Promise<void> {
-    await db.messages
-      .filter((row) => row.direction === 'received' && !row.read && row.thread === key)
-      .modify({ read: true });
+  /** Marks the thread's received messages read; resolves with the txids it just marked. */
+  async markThreadRead(key: string | undefined): Promise<string[]> {
+    const unread = db.messages.filter((row) => row.direction === 'received' && !row.read && row.thread === key);
+    const txids = (await unread.toArray()).map((row) => row.txid);
+    await unread.modify({ read: true });
+    return txids;
   },
 
   async countUnread(): Promise<number> {

@@ -124,9 +124,10 @@ export function notificationSpecForClass(
       return { title, options: { ...options, tag: 'landing' } };
     case 'alarm':
       return { title, options: { ...options, tag: 'alarm', renotify: true } };
+    // Tagged with its txid, so the app can close it once it has shown that message (mw-gq6.166).
     case 'decision-needed':
     case 'message':
     case 'move-home':
-      return { title, options };
+      return { title, options: txid ? { ...options, tag: txid } : options };
   }
 }

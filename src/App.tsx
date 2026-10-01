@@ -24,6 +24,8 @@ import { NoticeScreen } from './cockpit/NoticeScreen';
 import { AlarmScreen } from './cockpit/AlarmScreen';
 import { ToastHost } from './ui/toast';
 import { answerSeen } from './services/seen';
+import { sendCallLater } from './cockpit/send';
+import { settingsRepo } from './data/repositories';
 import type { Route } from './nav/route';
 
 function Place({ route }: { route: Route }) {
@@ -102,6 +104,35 @@ export function App() {
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
   }, []);
+
+  // His Later taps on a ring (src/sw.ts): an open window sends the record; one that cannot yet, or a
+  // tap made with no window, waits in IndexedDB until the app is unlocked and the Mayor's key is known.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const putOff = async (ringTxid: string) => {
+      try {
+        if (!key) throw new Error('locked');
+        await sendCallLater(ringTxid);
+      } catch {
+        await settingsRepo.addPendingLater(ringTxid);
+      }
+    };
+    const drain = async () => {
+      if (!key) return;
+      for (const ringTxid of await settingsRepo.takePendingLaters()) await putOff(ringTxid);
+    };
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; ring_txid?: string } | undefined;
+      if (data?.type === 'later' && data.ring_txid) void putOff(data.ring_txid);
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    void drain();
+    const retry = setInterval(() => void drain(), 15_000);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+      clearInterval(retry);
+    };
+  }, [key]);
 
   let content;
   if (route.view === 'key') content = key ? <Shell route={route}><KeyPlace inShell /></Shell> : <KeyPlace inShell={false} />;

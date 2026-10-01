@@ -4,6 +4,8 @@ import type { NotificationSettingsMap } from '../../push/classOptions';
 
 const NOTIFICATION_SETTINGS_KEY = 'notificationSettings';
 const THREAD_ARCHIVE_KEY = 'threadArchive';
+const PENDING_LATERS_KEY = 'pendingLaters';
+const ANSWERED_RING_KEY = 'answeredRing';
 // Also stored through the generic get/set: 'lastShareThread' is the thread key he shared to last
 // (src/cockpit/ShareScreen.tsx, mw-dw0i6.2); a string, never cleared.
 
@@ -45,6 +47,29 @@ export const settingsRepo = {
       const row = await db.settings.get(THREAD_ARCHIVE_KEY);
       const choices = (row?.value as ArchiveChoices | undefined) ?? {};
       await db.settings.put({ key: THREAD_ARCHIVE_KEY, value: { ...choices, [key]: { archived, at: Date.now() } } });
+    });
+  },
+
+  /** The ring he last opened the Talk line from (docs/protocol.md §21). */
+  async setAnsweredRing(txid: string): Promise<void> {
+    await db.settings.put({ key: ANSWERED_RING_KEY, value: txid });
+  },
+
+  /** A Later tap with no open window to send it: kept for the next open (src/sw.ts), once per ring. */
+  async addPendingLater(ringTxid: string): Promise<void> {
+    await db.transaction('rw', db.settings, async () => {
+      const row = await db.settings.get(PENDING_LATERS_KEY);
+      const waiting = (row?.value as string[] | undefined) ?? [];
+      if (!waiting.includes(ringTxid)) await db.settings.put({ key: PENDING_LATERS_KEY, value: [...waiting, ringTxid] });
+    });
+  },
+
+  /** The Later taps waiting for the app, handed over once. */
+  async takePendingLaters(): Promise<string[]> {
+    return db.transaction('rw', db.settings, async () => {
+      const row = await db.settings.get(PENDING_LATERS_KEY);
+      if (row) await db.settings.delete(PENDING_LATERS_KEY);
+      return (row?.value as string[] | undefined) ?? [];
     });
   },
 

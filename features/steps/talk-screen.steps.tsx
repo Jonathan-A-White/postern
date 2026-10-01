@@ -1208,6 +1208,60 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  // mw-a0ih0.3: the Mayor's ring.
+  const ringTxid = 'direct:ring-a';
+  const ringRang = async (words: string, time: string, answered: boolean) => {
+    await messagesRepo.put({
+      id: `${ringTxid}:0`,
+      txid: ringTxid,
+      vout: 0,
+      seq: 1,
+      class: 'call',
+      to: '03'.padEnd(66, '0'),
+      from: '02'.padEnd(66, '0'),
+      ts: atMinute(time),
+      ciphertext: '',
+      plaintext: encodeCall({ role: 'ring', text: words, at: atMinute(time) }),
+      direction: 'received',
+      read: true,
+    });
+    installBrowser(true);
+    window.history.replaceState(null, '', answered ? `/?v=line&call=${encodeURIComponent(ringTxid)}` : '/?v=line');
+    render(<Harness />);
+    await talkButton('Hold to talk');
+  };
+  const noteAboveTheButton = async (_c: unknown, words: string) => {
+    const note = await screen.findByTestId('ring-note');
+    expect(note).toHaveTextContent(words);
+    const button = await talkButton('Hold to talk');
+    expect(note.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  };
+
+  Scenario("AC-4: a ring shows the Mayor's reason (mw-a0ih0.3)", ({ Given, Then, When }) => {
+    Given('the Mayor rang at 14:06 saying {string} and the Talk line is opened from its Answer tap', async (_c, words: string) => ringRang(words, '14:06', true));
+    Then('the screen reads {string} above the hold button', noteAboveTheButton);
+    When('he leaves the Talk line and comes back', async () => {
+      act(() => navigate('?v=talk'));
+      await screen.findByRole('navigation', { name: 'Places' });
+      act(() => navigate('?v=line'));
+      await talkButton('Hold to talk');
+    });
+    Then('the screen still reads {string} above the hold button', noteAboveTheButton);
+  });
+
+  Scenario('AC-5: a missed call stays on the line until the next turn is sent (mw-a0ih0.3)', ({ Given, Then, When }) => {
+    Given('the Mayor rang at 14:06 saying {string} and the Talk line is opened without answering', async (_c, words: string) => ringRang(words, '14:06', false));
+    Then('the screen reads {string} above the hold button', noteAboveTheButton);
+    When('he holds the button, says {string} and lets go', async (_c, words: string) => {
+      await holdAndSay(words);
+      // Delivering a turn keeps a sent copy, as the real deliver does.
+      await messagesRepo.put({ id: 'direct:turn1:0', txid: 'direct:turn1', vout: 0, seq: Number.MAX_SAFE_INTEGER, class: 'talk', to: '03'.padEnd(66, '0'), from: '02'.padEnd(66, '0'), ts: atMinute('14:07'), ciphertext: '', plaintext: '{}', direction: 'sent', read: true });
+    });
+    Then('the ring note is gone', async () => {
+      await waitFor(() => expect(screen.queryByTestId('ring-note')).not.toBeInTheDocument());
+    });
+  });
+
   // mw-a0ih0.4: Call me with the backend out of reach goes on chain.
   Scenario('AC-3: Call me while the backend is unreachable goes on chain and the screen says Sent on chain (mw-a0ih0.4)', ({ Given, When, Then, And }) => {
     let down: BackendDownWoc;

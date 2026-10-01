@@ -41,3 +41,30 @@ export function callSent(rows: MessageRow[]): CallSent | undefined {
 export function callSentAt(rows: MessageRow[]): number | undefined {
   return callSent(rows)?.at;
 }
+
+/** The note the Talk line keeps for the Mayor's last ring: when it rang, what it said, and whether he never answered it. */
+export interface RingNote {
+  txid: string;
+  at: number;
+  text: string;
+  missed: boolean;
+}
+
+/**
+ * The Mayor's newest ring that no turn of his has followed (docs/protocol.md §21): a turn he sent
+ * at or after the ring clears it. `answered` is the txid of the ring he last opened the line from;
+ * any other ring reads as a missed call.
+ */
+export function ringNote(rows: MessageRow[], answered: string | undefined): RingNote | undefined {
+  let newest: RingNote | undefined;
+  for (const row of rows) {
+    if (row.class !== 'call' || row.direction !== 'received') continue;
+    const call = decodeCall(row.plaintext);
+    if (call?.role === 'ring' && (newest === undefined || call.at >= newest.at)) {
+      newest = { txid: row.txid, at: call.at, text: call.text, missed: row.txid !== answered };
+    }
+  }
+  if (newest === undefined) return undefined;
+  const { at } = newest;
+  return rows.some((row) => row.class === 'talk' && row.direction === 'sent' && row.ts >= at) ? undefined : newest;
+}

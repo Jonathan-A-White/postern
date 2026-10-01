@@ -25,7 +25,8 @@ export interface WorkerHarness {
   push(payload: Record<string, unknown>): Promise<void>;
   /** A message a window posts to the worker (navigator.serviceWorker's postMessage). */
   deliver(data: unknown): Promise<void>;
-  click(notification: { data?: unknown }): Promise<void>;
+  /** A tap on the notification, or on one of its buttons when `action` names it ('' is the body). */
+  click(notification: { data?: unknown }, action?: string): Promise<void>;
 }
 
 export interface FakeNotification {
@@ -71,9 +72,9 @@ export async function loadWorker(): Promise<WorkerHarness> {
       handlers.get('message')?.({ data, waitUntil: (p: Promise<unknown>) => waits.push(p) });
       await Promise.all(waits);
     },
-    async click(notification) {
+    async click(notification, action = '') {
       const waits: Promise<unknown>[] = [];
-      handlers.get('notificationclick')?.({ notification: { ...notification, close: vi.fn() }, waitUntil: (p: Promise<unknown>) => waits.push(p) });
+      handlers.get('notificationclick')?.({ notification: { ...notification, close: vi.fn() }, action, waitUntil: (p: Promise<unknown>) => waits.push(p) });
       await Promise.all(waits);
     },
   };

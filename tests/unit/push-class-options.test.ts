@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { notificationSpecForClass, DEFAULT_NOTIFICATION_SETTINGS } from '../../src/push/classOptions';
+import { notificationSpecForClass, notificationSpecForRing, ringTapUrl, RING_VIBRATE, DEFAULT_NOTIFICATION_SETTINGS } from '../../src/push/classOptions';
 import type { ClassNotificationSettings } from '../../src/push/classOptions';
 
 describe('notificationSpecForClass', () => {
@@ -124,5 +124,41 @@ describe('notificationSpecForClass', () => {
     const spec = notificationSpecForClass('alarm', 'tx1', { sound: false, vibrate: false, stayUntilDismissed: false, quiet: false });
     expect(spec.options.tag).toBe('alarm');
     expect(spec.options.renotify).toBe(true);
+  });
+});
+
+describe('the Mayor\'s ring (docs/protocol.md §21)', () => {
+  it('rings like an incoming call: Answer and Later, one tag, until dealt with', () => {
+    const spec = notificationSpecForRing('direct:ring1', { body: 'Back now: two landings.' });
+    expect(spec.title).toBe('The Mayor is calling');
+    expect(spec.options.body).toBe('Back now: two landings.');
+    expect(spec.options.actions).toEqual([
+      { action: 'answer', title: 'Answer' },
+      { action: 'later', title: 'Later' },
+    ]);
+    expect(spec.options.tag).toBe('mayor-call');
+    expect(spec.options.renotify).toBe(true);
+    expect(spec.options.requireInteraction).toBe(true);
+    expect(spec.options.silent).toBe(false);
+  });
+
+  it('vibrates a long repeating pattern: ten pulses of 600 ms, 400 ms apart', () => {
+    const { vibrate } = notificationSpecForRing('direct:ring1').options;
+    expect(vibrate).toEqual(Array.from({ length: 10 }, () => [600, 400]).flat());
+    expect(RING_VIBRATE.filter((_, index) => index % 2 === 0)).toHaveLength(10);
+  });
+
+  it('a tap, on Answer or on the body, lands on the Talk line with the ring named', () => {
+    expect(notificationSpecForRing('direct:ring1').options.data).toEqual({ txid: 'direct:ring1', class: 'call', url: '/?v=line&call=direct%3Aring1' });
+    expect(ringTapUrl('direct:ring1')).toBe('/?v=line&call=direct%3Aring1');
+  });
+
+  it("uses the push's own title when it sends one, and has no body when the push carries none", () => {
+    expect(notificationSpecForRing('t', { title: 'Calling' }).title).toBe('Calling');
+    expect(notificationSpecForRing('t').options).not.toHaveProperty('body');
+  });
+
+  it('follows no per-class switch: the phone\'s own ring, vibrate or silent mode decides', () => {
+    expect(notificationSpecForRing('t').options.silent).toBe(false);
   });
 });

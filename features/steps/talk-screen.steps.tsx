@@ -381,6 +381,53 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('there is no {string} button', noNewAnswerButton);
   });
 
+  /** jsdom has no ResizeObserver: a fake whose callbacks the scenario can fire. */
+  const resizeCallbacks: Array<() => void> = [];
+  const browserReportsResizes = () => {
+    resizeCallbacks.length = 0;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resizeCallbacks.push(callback);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+  };
+  const controlsGrow = () => {
+    const el = scroller();
+    Object.defineProperty(el, 'clientHeight', { value: 300, configurable: true });
+    for (const callback of resizeCallbacks) callback();
+  };
+  const scrollsUp = () => {
+    const el = scroller();
+    el.scrollTop = 0;
+    fireEvent.scroll(el);
+  };
+
+  Scenario('AC-1: the turn list stays on its newest answer when the controls below it change height (mw-j0f2d.23)', ({ Given, When, Then, And }) => {
+    Given('the browser reports when the turn list changes size', browserReportsResizes);
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('the turn list is longer than the screen and he is reading its end', listIsLong);
+    When('the turn list gets shorter because the controls below it grew', controlsGrow);
+    Then('the turn list is moved to the end again', () => {
+      expect(scroller().scrollTop).toBe(1000);
+    });
+  });
+
+  Scenario('AC-1: the turn list does not follow a resize once he has scrolled up to older turns (mw-j0f2d.23)', ({ Given, When, Then, And }) => {
+    Given('the browser reports when the turn list changes size', browserReportsResizes);
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('the turn list is longer than the screen and he is reading its end', listIsLong);
+    When('he scrolls the turn list up to older turns', scrollsUp);
+    And('the turn list gets shorter because the controls below it grew', controlsGrow);
+    Then('the turn list is left where it is', () => {
+      expect(scroller().scrollTop).toBe(0);
+    });
+  });
+
   Scenario('AC-1: an answer that comes while he has scrolled up does not move him, and a New answer button takes him down (mw-j0f2d.13)', ({ Given, When, Then, And }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     And('the turn list is longer than the screen and he is reading its end', listIsLong);

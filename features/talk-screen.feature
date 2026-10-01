@@ -61,6 +61,21 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the turn list scrolls down to the end
     And there is no "New answer" button
 
+  Scenario: AC-1: the turn list stays on its newest answer when the controls below it change height (mw-j0f2d.23)
+    Given the browser reports when the turn list changes size
+    And the Talk line is open with a believable speech recogniser
+    And the turn list is longer than the screen and he is reading its end
+    When the turn list gets shorter because the controls below it grew
+    Then the turn list is moved to the end again
+
+  Scenario: AC-1: the turn list does not follow a resize once he has scrolled up to older turns (mw-j0f2d.23)
+    Given the browser reports when the turn list changes size
+    And the Talk line is open with a believable speech recogniser
+    And the turn list is longer than the screen and he is reading its end
+    When he scrolls the turn list up to older turns
+    And the turn list gets shorter because the controls below it grew
+    Then the turn list is left where it is
+
   Scenario: AC-1: an answer that comes while he has scrolled up does not move him, and a New answer button takes him down (mw-j0f2d.13)
     Given the Talk line is open with a believable speech recogniser
     And the turn list is longer than the screen and he is reading its end

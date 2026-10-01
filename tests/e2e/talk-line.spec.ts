@@ -204,3 +204,49 @@ test('talk line: a long answer scrolls into view instead of landing below the fo
     .toBe(true);
   await expect(page.getByRole('button', { name: 'New answer' })).toHaveCount(0);
 });
+
+// mw-j0f2d.23: on a phone the newest answer's last line sits fully above the bottom controls,
+// also once the controls change height (the status line wraps, a button appears) after it lands.
+test.describe('phone viewport', () => {
+  test.use({ viewport: { width: 412, height: 915 } });
+
+  test('talk line: the newest answer is not clipped by the controls', async ({ page }) => {
+    const { posted, answerAfterTurn } = await unlocked(page);
+    const long = Array.from({ length: 60 }, (_, i) => `Sentence ${i + 1} of a long answer.`).join(' ');
+    answerAfterTurn(long);
+
+    await page.goto('/?v=line');
+    const button = page.getByRole('button', { name: 'Hold to talk' });
+    await expect(button).toBeEnabled();
+    const box = (await button.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await expect(page.getByRole('button', { name: 'Release to send' })).toBeVisible();
+    await page.evaluate(() => window.__hear('Tell me everything'));
+    await page.mouse.up();
+    await expect.poll(() => posted.length).toBe(1);
+    await expect(page.getByTestId('talk-answer')).toContainText('Sentence 60', { timeout: 15_000 });
+
+    // how far the answer's last rendered line reaches below the top of the controls (<= 0: fully above)
+    const overlap = () =>
+      page.evaluate(() => {
+        const text = document.querySelector('[data-testid="talk-answer"] p')!;
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const rects = [...range.getClientRects()];
+        const lastBottom = Math.max(...rects.map((rect) => rect.bottom));
+        return lastBottom - document.querySelector('[data-testid="talk-controls"]')!.getBoundingClientRect().top;
+      });
+    await expect.poll(overlap).toBeLessThanOrEqual(0);
+
+    // the controls grow after the answer (a long failure notice wraps): the answer still ends above them
+    await page.evaluate(() => {
+      const status = document.querySelector('[data-testid="talk-controls"] [role="status"]')!;
+      const note = document.createElement('p');
+      note.textContent = 'x '.repeat(200);
+      status.appendChild(note);
+    });
+    await expect.poll(overlap).toBeLessThanOrEqual(0);
+    await shot(page, 'talk-line-long-answer');
+  });
+});

@@ -4,8 +4,8 @@
 // fetching on its own.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { liveQuery } from 'dexie';
-import type { AnswerRow, ArchiveChoices, BeadDetailRow, MessageRow, OutboxRow, ViewRow } from '../data/db';
-import { answersRepo, beadDetailsRepo, messagesRepo, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
+import type { AnswerRow, ArchiveChoices, BeadDetailRow, EventRow, MessageRow, OutboxRow, ViewRow } from '../data/db';
+import { answersRepo, beadDetailsRepo, eventsRepo, messagesRepo, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
 import { decodeBeadDetail, decodeView, type BeadComment, type BeadDetail } from '../model/view';
 import { indexView, type ViewIndex } from '../model/tree';
 import { getKey, onKeyChange } from '../services/keySession';
@@ -50,6 +50,11 @@ export function useViewIndex(): ViewState | undefined | null {
       return null;
     }
   }, [row]);
+}
+
+/** The newest emergency event (§22) he has not tapped away; undefined when there is none. */
+export function useEmergency(): EventRow | undefined {
+  return useLiveQuery(() => eventsRepo.latestEmergency(), [], undefined);
 }
 
 /** Every stored message, oldest first. */

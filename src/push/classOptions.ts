@@ -18,7 +18,7 @@ export interface NotificationOptions {
   body?: string;
   /** Buttons on the notification (the Mayor's ring: Answer and Later). */
   actions?: { action: string; title: string }[];
-  data: { txid: string; class: PushClass | 'call'; url: string };
+  data: { txid: string; class: PushClass | 'call' | 'events'; url: string };
 }
 
 export interface NotificationSpec {
@@ -37,7 +37,7 @@ export interface ClassNotificationSettings {
   quiet: boolean;
 }
 
-/** The classes that can reach him as a push: every class but `talk`, whose turns the backend never pushes (§20), `call`, whose ring has its own notification (notificationSpecForRing, §21), and `events`, never pushed (§22). */
+/** The classes that can reach him as a push: every class but `talk`, whose turns the backend never pushes (§20), `call`, whose ring has its own notification (notificationSpecForRing, §21), and `events`, whose emergency has its own notification (notificationSpecForEmergency, §22). */
 export type PushClass = Exclude<MessageClass, 'talk' | 'call' | 'events'>;
 
 export type NotificationSettingsMap = Record<PushClass, ClassNotificationSettings>;
@@ -145,6 +145,32 @@ export function notificationSpecForRing(txid: string, text: { title?: string; bo
       ],
       data: { txid, class: 'call', url: ringTapUrl(txid) },
       ...(text.body && { body: text.body }),
+    },
+  };
+}
+
+/** The tag every emergency wears, so a second one replaces the first and re-alerts. */
+export const EMERGENCY_TAG = 'emergency';
+
+export const EMERGENCY_TITLE = 'Emergency';
+
+/** The emergency's vibration: three long pulses, like an alarm's. */
+const EMERGENCY_VIBRATE = [500, 150, 500, 150, 500];
+
+/** The notification for an emergency events record (docs/protocol.md §22): the push carries the lane and
+ * nothing of the record (its words are sealed), so it names no detail; the banner in the app, which
+ * has read the record, shows it. It follows no per-class switch: it is never silent, and it stays
+ * until he deals with it. A tap opens the app, where the banner waits. */
+export function notificationSpecForEmergency(txid: string, text: { title?: string } = {}): NotificationSpec {
+  return {
+    title: text.title || EMERGENCY_TITLE,
+    options: {
+      tag: EMERGENCY_TAG,
+      renotify: true,
+      requireInteraction: true,
+      silent: false,
+      vibrate: EMERGENCY_VIBRATE,
+      data: { txid, class: 'events', url: CLASS_URLS.events },
     },
   };
 }

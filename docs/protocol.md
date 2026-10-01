@@ -839,6 +839,16 @@ holds a licence when the chain carries a type-M record for it that is:
   it, even to the same key in the same collection, is a new licence. With no issuer
   configured a revoke record is never read.
 
+A typed record (M, W or TR) is `OP_FALSE OP_RETURN 'nftgate' 0x02 <type>` and then one
+of three layouts, all read alike, the payload always the last push: **6 pushes**, the
+gated layout spell-forge writes since mw-jeswf.3 (a 32-byte epoch commitment, an empty
+value manifest `0x00`, the payload; a 6-push record whose 4th push is not 32 bytes is
+not a record); 5 pushes (the manifest, the payload: Postern's own records and
+spell-forge-bsv 0.1.0's); 4 pushes (the payload alone, the oldest tokens). A gated M's
+payload carries `wrapKey` and `wrap` besides `collection` and `holder`; the backend reads
+only those two. What makes a spell-forge License token count for an app is
+docs/licence-token.md.
+
 ## 17. Steps for his hands, approved and run from Postern
 
 The Governor, 2026-09-28: "I should be able to approve and execute 'my hands' work from

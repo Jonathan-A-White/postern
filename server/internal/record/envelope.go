@@ -15,11 +15,17 @@ var MessageClasses = map[string]bool{
 	"alarm":           true,
 	"move-home":       true,
 	ClassGrist:        true,
+	ClassTalk:         true,
 }
 
 // ClassGrist is an app's AI work for the factory, and the mill's answer to
 // it (docs/protocol.md §19).
 const ClassGrist = "grist"
+
+// ClassTalk is a turn on the Talk line between the Governor and the Mayor
+// (docs/protocol.md §20): it reaches the event stream only, never a push or
+// a hook.
+const ClassTalk = "talk"
 
 // Envelope is docs/protocol.md §1's clear message payload. The backend never
 // decrypts Ct; it only checks the envelope's shape.

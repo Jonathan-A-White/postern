@@ -28,8 +28,8 @@ JSON shape that only postern understands:
   `GET /api/messages` JSON) is still self-describing.
 - `kind` — always `"msg"`.
 - `class` — one of `"message"`, `"decision-needed"`, `"landing"`, `"alarm"`
-  (`mw-f758y.5`), `"move-home"` (§18), or `"grist"` (an app's AI work for the
-  factory and its answer, §19). Sits in the clear beside the ciphertext on purpose
+  (`mw-f758y.5`), `"move-home"` (§18), `"grist"` (an app's AI work for the
+  factory and its answer, §19), or `"talk"` (a turn on the Talk line, §20). Sits in the clear beside the ciphertext on purpose
   (`mw-f758y.9` Q1): a classified-push backend, or anyone else reading the chain,
   can act on the class (e.g. wake the Mayor for `alarm`) without holding either
   party's private key.
@@ -491,7 +491,8 @@ The backend:
    the recipient's subscriptions (whose body is the record's clear `summary`, cut to
    80 runes, when it has one and is a `message`, `decision-needed`, `landing` or
    `alarm`; §1), a `message` event on §10's stream, and the
-   on-message hook (`POSTERN_ON_MESSAGE`, `docs/api.md`).
+   on-message hook (`POSTERN_ON_MESSAGE`, `docs/api.md`). A `talk` record gets
+   the `message` event only (§20).
 
 A body over 256 KiB is refused `413`. The chain channel (§4) keeps working
 unchanged: a reader must accept both kinds of record, in `seq` order.
@@ -524,6 +525,9 @@ data: {"etag": "<the new view's ETag>"}
 The app reads it with `fetch` (not `EventSource`, which cannot send the
 `Authorization` header) and reconnects with a back-off from 1 to 30 seconds;
 after any reconnect it syncs messages and revalidates the view.
+
+A cockpit key may read the stream, and so may the Mayor's key
+(`POSTERN_MAYOR_KEY`) with or without a licence (§20).
 
 ## 11. The live view
 
@@ -1109,3 +1113,55 @@ other origin gets no CORS headers, so browsers refuse it.
 (`gristAskingModelAndEffort`), its answer in each
 status, and envelopes the backend must accept or refuse for each kind of key. The
 backend's tests and the mill's read the same file.
+
+## 20. Talk
+
+The Governor, 2026-10-01 (map `mw-j0f2d`): he holds a button in Postern, speaks, and
+hears and sees the Mayor's short answer within about 8 seconds. Each spoken turn,
+and each answer, is a **turn**: §1's envelope with `"class": "talk"`, delivered with
+`POST /api/messages` (§9). The Governor's turns go `to` the Mayor's key, the Mayor's
+answers `to` the Governor's.
+
+### What the backend does with a turn
+
+A `talk` record reaches §10's event stream and nothing else: no web push, no
+on-message hook, no on-grist hook. It carries no `summary` (§1), so no word of either
+side is ever pushed, handed to a hook or logged; the clear class tells the backend a
+turn's time and size, never its words.
+
+The Mayor's host hears a turn by reading `GET /api/events` with the Mayor's key. That
+key needs no licence for the stream: the backend's own configuration
+(`POSTERN_MAYOR_KEY`) vouches for it, as it does the mill's key (§19), so a lapsed or
+unreadable licence never cuts the Talk line. Without a licence it opens the stream
+and nothing else (every other route is `403`); with a cockpit licence it is a cockpit
+key as before. A stranger's key is still refused the stream (`401` without a licence,
+`403` with only an app's).
+
+### The turn plaintext
+
+What `ct` seals to the recipient:
+
+```json
+{
+  "talk": { "id": "<the talk's id>", "turn": 3 },
+  "text": "What landed today?",
+  "role": "turn",
+  "model": "sonnet",
+  "cut": true
+}
+```
+
+- `talk` — which talk this turn belongs to: `id`, one talk from its first turn to its
+  end, and `turn`, the turn's number within it. An answer carries the `id` and `turn`
+  of the Governor's turn it answers.
+- `text` — the words, as spoken or to be spoken.
+- `role`:
+  - `turn`: the Governor's spoken turn.
+  - `answer`: the Mayor's answer to it.
+  - `holding`: a short answer the Mayor sends while the real one is still coming; the
+    `answer` follows with the same `talk`.
+  - `end`: the talk is over (either side may send it).
+- `model` — optional: the model the Mayor's answers should use from this turn on (for
+  example `"sonnet"`), or the model that answered. Absent means unchanged.
+- `cut` — optional: `true` on a turn whose previous answer the Governor cut off with a
+  tap before it finished speaking. Absent means `false`.

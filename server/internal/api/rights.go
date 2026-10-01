@@ -11,14 +11,16 @@ import (
 // rights is what a proved key may do (docs/protocol.md §19, "Who may do
 // what"): a cockpit key everything; the mill key its own records, grist to
 // anyone and blobs; an app key its own records, grist to the mill and
-// uploads. apps names the apps a key's licences open, cockpit or not.
+// uploads; the Mayor's key the event stream, licence or not (§20). apps
+// names the apps a key's licences open, cockpit or not.
 type rights struct {
 	cockpit bool
 	mill    bool
+	mayor   bool
 	apps    []string
 }
 
-func (r rights) any() bool { return r.cockpit || r.mill || len(r.apps) > 0 }
+func (r rights) any() bool { return r.cockpit || r.mill || r.mayor || len(r.apps) > 0 }
 
 // access is the set of kinds of key a route admits.
 type access uint8
@@ -27,13 +29,17 @@ const (
 	cockpitKeys access = 1 << iota
 	millKey
 	appKeys
+	mayorKey
 
+	// everyKey is every licensed kind of key: the Mayor's key without a
+	// licence opens only the routes that name it.
 	everyKey = cockpitKeys | millKey | appKeys
 )
 
 func (a access) admits(r rights) bool {
 	return (r.cockpit && a&cockpitKeys != 0) ||
 		(r.mill && a&millKey != 0) ||
+		(r.mayor && a&mayorKey != 0) ||
 		(len(r.apps) > 0 && !r.cockpit && a&appKeys != 0)
 }
 
@@ -44,10 +50,27 @@ func (a access) admits(r rights) bool {
 // backend was configured with, so any other held collection is one of
 // POSTERN_COLLECTIONS. A checker that cannot name collections licenses
 // every key it holds as a cockpit key, as before §19.
+//
+// The Mayor's key (o.mayorKey) is vouched for by configuration too, for the
+// event stream only (§20): it also gets whatever its licences give it, and
+// keeps the mayor right even when the licence check fails, so a chain
+// outage never cuts the Talk line (the error is still returned).
 func rightsFor(pubKeyHex string, checker auth.LicenceChecker, o *options) (rights, error) {
 	if o.millKey != "" && strings.EqualFold(pubKeyHex, o.millKey) {
 		return rights{mill: true}, nil
 	}
+	r, err := licensedRights(pubKeyHex, checker, o)
+	if err != nil {
+		r = rights{}
+	}
+	if o.mayorKey != "" && strings.EqualFold(pubKeyHex, o.mayorKey) {
+		r.mayor = true
+	}
+	return r, err
+}
+
+// licensedRights is what pubKeyHex's licences alone give it (rightsFor).
+func licensedRights(pubKeyHex string, checker auth.LicenceChecker, o *options) (rights, error) {
 	named, ok := checker.(auth.CollectionChecker)
 	if !ok {
 		held, err := checker.Held(pubKeyHex)

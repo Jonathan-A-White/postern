@@ -185,7 +185,7 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 	mux.HandleFunc("POST /api/messages", gate(everyKey, handleDirectMessage(store, o.notifier, o.millKey)))
 	mux.HandleFunc("GET /api/me", gate(everyKey, handleMe(&o)))
 	mux.HandleFunc("GET /api/view", gate(cockpitKeys, handleView(o.view)))
-	mux.HandleFunc("GET /api/events", gate(cockpitKeys, handleEvents(store, o.hub, o.view, o.ping)))
+	mux.HandleFunc("GET /api/events", gate(cockpitKeys|mayorKey, handleEvents(store, o.hub, o.view, o.ping)))
 	mux.HandleFunc("GET /api/beads/{id}", gate(cockpitKeys, handleBead(o.beads)))
 	mux.HandleFunc("POST /api/broadcast", gate(cockpitKeys, handleBroadcast(client)))
 	mux.HandleFunc("GET /api/utxos/{address}", gate(cockpitKeys, handleUtxos(client)))
@@ -257,7 +257,7 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 		}
 		key := strings.ToLower(pubKeyHex)
 		granted, err := rightsFor(key, checker, o)
-		if err != nil {
+		if err != nil && !who.admits(granted) {
 			writeError(w, http.StatusBadGateway, "checking licence: "+err.Error())
 			return
 		}

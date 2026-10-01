@@ -411,6 +411,12 @@ behind (never waited on); it reconnects and its fresh `hello` says what it
 missed. Browsers read the stream with `fetch` (`EventSource` cannot send the
 `Authorization` header); the nonce is consumed when the stream opens.
 
+A cockpit key may open the stream, and so may the Mayor's key
+(`POSTERN_MAYOR_KEY`) without a licence: configuration vouches for it, as for
+the mill's, and a failing licence check does not refuse it the stream. Without a
+licence the Mayor's key gets `403` from every other route (`docs/protocol.md`
+§20).
+
 ## GET /api/view
 
 The live view (`docs/protocol.md` §11): the bytes of `POSTERN_VIEW_FILE` as they
@@ -486,7 +492,8 @@ Every record newly stored in the index — found on chain by the poller, or
 delivered to `POST /api/messages` — goes through one `notify.Fanout`
 (`server/internal/notify`): the push notifier, a `message` event on
 `GET /api/events`, and the on-message hook. A repeat delivery of a stored record
-goes through none of them.
+goes through none of them. A `talk` record (`docs/protocol.md` §20) gets the
+`message` event only: no push, and no hook of either kind.
 
 ## The push notifier
 
@@ -602,7 +609,7 @@ With `POSTERN_HOME_CMD` unset, nothing changes.
 | `POSTERN_ON_MESSAGE` | Shell command (`sh -c`) run after records are indexed (e.g. `mw postern inbox --apply`) | *(unset: no hook)* |
 | `POSTERN_HOME_CMD` | Shell command (`sh -c`), exit 0 = this host is home (e.g. `mw home --check`); checked at start and every 30 s; see Standby | *(unset: never standby)* |
 | `POSTERN_PEERS` | Comma-separated `host=url` pairs (each url `http(s)://host[:port]`, no path): each host's backend, looked up by the home's name so a standby relays its send routes to the home; see Standby | *(unset: a standby serves the send routes itself)* |
-| `POSTERN_MAYOR_KEY` | The Mayor's compressed public key, hex (66 characters, `02`/`03` first), answered by `GET /api/me` | *(unset: `""`)* |
+| `POSTERN_MAYOR_KEY` | The Mayor's compressed public key, hex (66 characters, `02`/`03` first), answered by `GET /api/me`; it may read `GET /api/events` without a licence | *(unset: `""`)* |
 | `POSTERN_ISSUER_KEY` | The licence issuer's compressed public key, hex (66 characters, `02`/`03` first); a mint counts only if this key unlocked one of its inputs | *(unset: any mint counts, with a warning)* |
 | `POSTERN_COLLECTIONS` | Comma-separated collections a licence mint may name | `postern,spellforge-leaderboard-testnet` |
 | `POSTERN_MILL_KEY` | The mill's compressed public key, hex (`docs/protocol.md` §19) | *(unset: no grist)* |

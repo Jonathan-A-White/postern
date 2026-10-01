@@ -15,11 +15,13 @@ export type Route =
   | { view: 'map'; focus?: string; lens?: MapLens; bucket?: string; filter?: string; landed?: 'today' }
   | { view: 'bead'; id: string }
   /** `root` is the txid of a General post whose thread of replies is open (docs/protocol.md §14). */
-  | { view: 'talk'; thread?: string; root?: string }
+  | { view: 'talk'; thread?: string; root?: string; prefill?: string }
   /** The Talk line: a spoken conversation with the Mayor (docs/protocol.md §20). `call` is the txid of the ring he answered (§21). */
   | { view: 'line'; call?: string }
   | { view: 'search'; q?: string }
   | { view: 'me' }
+  /** The saved prompts, each with Run and Edit (src/cockpit/PromptsScreen.tsx). */
+  | { view: 'prompts' }
   | { view: 'key' }
   | { view: 'share'; id?: string }
   /** Where a push about a record lands before the app knows its thread: it waits
@@ -84,13 +86,20 @@ export function parseRoute(search: string): Route {
       return id ? { view: 'bead', id } : { view: 'map' };
     }
     case 'talk':
-      return { view: 'talk', thread: params.get('t') ?? undefined, ...(params.get('r') ? { root: params.get('r') as string } : {}) };
+      return {
+        view: 'talk',
+        thread: params.get('t') ?? undefined,
+        ...(params.get('r') ? { root: params.get('r') as string } : {}),
+        ...(params.get('p') ? { prefill: params.get('p') as string } : {}),
+      };
     case 'line':
       return { view: 'line', ...(params.get('call') ? { call: params.get('call') as string } : {}) };
     case 'search':
       return { view: 'search', q: params.get('q') ?? undefined };
     case 'me':
       return { view: 'me' };
+    case 'prompts':
+      return { view: 'prompts' };
     case 'key':
       return { view: 'key' };
     case 'share':
@@ -134,6 +143,7 @@ export function formatRoute(route: Route): string {
     case 'talk':
       if (route.thread) params.set('t', route.thread);
       if (route.thread && route.root) params.set('r', route.root);
+      if (route.thread && route.prefill) params.set('p', route.prefill);
       break;
     case 'line':
       if (route.call) params.set('call', route.call);
@@ -168,6 +178,7 @@ export function topViewOf(route: Route): TopView {
     case 'search':
       return 'search';
     case 'me':
+    case 'prompts':
     case 'key':
       return 'me';
     default:
@@ -184,6 +195,7 @@ export function isDeep(route: Route): boolean {
     route.view === 'notice' ||
     route.view === 'alarm' ||
     route.view === 'key' ||
+    route.view === 'prompts' ||
     route.view === 'line' ||
     (route.view === 'talk' && route.thread !== undefined) ||
     (route.view === 'map' && route.focus !== undefined)

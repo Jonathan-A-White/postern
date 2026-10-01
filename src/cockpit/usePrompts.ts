@@ -19,13 +19,14 @@ export interface PromptsState {
   retry: () => void;
 }
 
-export function usePrompts(): PromptsState {
+/** `enabled` false keeps it to what the phone holds (the composer asks only once he types '/'). */
+export function usePrompts(enabled = true): PromptsState {
   const key = useUnlockedKey();
   const cache = useLiveQuery(() => settingsRepo.getPromptsCache().then((row) => row ?? null), [], undefined);
   const [fresh, setFresh] = useState<boolean | undefined>();
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!key) return;
+    if (!key || !enabled) return;
     let current = true;
     const ask = () => {
       void fetchPrompts(key).then((answer) => {
@@ -41,7 +42,7 @@ export function usePrompts(): PromptsState {
       current = false;
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [key, attempt]);
+  }, [key, enabled, attempt]);
   const retry = () => {
     setFresh(undefined);
     setAttempt((n) => n + 1);

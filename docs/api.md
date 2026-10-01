@@ -232,11 +232,15 @@ record carries `signer_apps` when its signer's licences open apps
 - Request body (at most 256 KiB):
 
   ```json
-  { "scriptHex": "006a076e667467617465010127..." }
+  { "scriptHex": "006a076e667467617465010127...", "clientId": "3f0c9a41d2b8470e9a5c1e66b7d20f13" }
   ```
 
   `scriptHex` — the §1 record script, `OP_FALSE OP_RETURN <'nftgate'> <0x01>
   <payload>`, as hex (either case).
+  `clientId` — optional: the phone's outbox row's id (1 to 128 letters, digits, `-`
+  or `_`). A post whose key and `clientId` were accepted in the last 24 hours is
+  answered `200` with that first acceptance, whatever script it carries (a retry
+  is freshly encrypted, so its bytes differ).
 - `201 application/json` — a record not already stored:
 
   ```json
@@ -249,8 +253,10 @@ record carries `signer_apps` when its signer's licences open apps
   `GET /api/events`, and the on-message hook.
 - `200 application/json` — the same shape, when those exact script bytes are
   already stored: the stored record's `txid` and `seq`, nothing re-indexed or
-  re-sent. A retry is harmless.
-- `400` — the body isn't JSON, `scriptHex` is missing or not hex, the script isn't
+  re-sent. A retry is harmless. The same answer, too, for a `clientId` already
+  accepted from this key (`docs/protocol.md` §9).
+- `400` — the body isn't JSON, `scriptHex` is missing or not hex, `clientId` is
+  malformed, the script isn't
   an `nftgate` version-1 record with a JSON payload, or the payload isn't §1's
   envelope (`v` 1, `kind` `"msg"`, `class` one of `message`, `decision-needed`,
   `landing`, `alarm`, `move-home`, 66-hex `to` and `from`, numeric `ts`, string `ct`); `error`

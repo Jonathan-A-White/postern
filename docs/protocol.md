@@ -471,8 +471,13 @@ funded transaction, a WhatsOnChain round trip and a 5-second poll.
 `POST /api/messages`, authenticated like every endpoint (`docs/api.md`):
 
 ```json
-{ "scriptHex": "<hex of the §1 record script>" }
+{ "scriptHex": "<hex of the §1 record script>", "clientId": "<optional, see below>" }
 ```
+
+`clientId` is the phone's outbox row's id (mw-jrx0s.23): 128 random bits as 32 hex
+characters, made once when the row is written, kept in its Dexie row (so it survives a
+restart) and sent with every try of that row. The backend accepts 1 to 128 letters,
+digits, `-` or `_` (`400` otherwise).
 
 The backend:
 
@@ -494,6 +499,15 @@ The backend:
    then;
 5. answers `201 {"txid": "direct:…", "seq": <n>}`, or `200` with the same shape
    when those exact script bytes are already stored (a retry is harmless);
+   **A retry is not a second message.** The phone encrypts afresh on every try, so a
+   retry of a send whose reply was lost has other bytes and so another `direct:` name.
+   When the post carries a `clientId`, the backend therefore also remembers, per
+   authenticated key, the ids it accepted in the last 24 hours (at most 20,000 are held,
+   oldest first out; in memory, so a restart forgets them). A post whose key and
+   `clientId` are remembered is answered `200` with the first acceptance's `txid` and
+   `seq`, whatever script it carries; nothing is stored, pushed or evented a second
+   time. Two rows with identical content have different ids and are two records. A post
+   with no `clientId` is deduped by the script's bytes alone, as above;
 6. then does everything the poller does for a newly indexed record: a web push to
    the recipient's subscriptions (whose body is the record's clear `summary`, cut to
    80 runes, when it has one and is a `message`, `decision-needed`, `landing` or

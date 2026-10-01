@@ -16,7 +16,7 @@ test.use({ serviceWorkers: 'block' });
 async function expectBarUnderComposer(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 0) >= 1024) return;
   const bar = page.getByRole('navigation', { name: 'Places' });
-  await expect(bar.getByRole('link')).toHaveText([/Needs you$/, /Map$/, /Talk$/, /Search$/, /Me$/]);
+  await expect(bar.getByRole('link')).toHaveText([/Needs you$/, /Map$/, /Channels$/, /Search$/, /Me$/]);
   const composer = await page.getByTestId('composer').boundingBox();
   const menu = await bar.boundingBox();
   expect(composer && menu && composer.y + composer.height <= menu.y + 1).toBe(true);

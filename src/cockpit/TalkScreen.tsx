@@ -254,7 +254,7 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
   const current = thread !== undefined && rootRow ? (rootRow.thread ?? GENERAL) : thread;
   const inReplies = current !== undefined && root !== undefined;
   const channel = current ? titleFor(current, view?.index) : undefined;
-  const { title, subtitle } = inReplies && channel ? { title: 'Thread', subtitle: `A post in ${channel.title} and its replies` } : (channel ?? { title: 'Talk', subtitle: '' });
+  const { title, subtitle } = inReplies && channel ? { title: 'Thread', subtitle: `A post in ${channel.title} and its replies` } : (channel ?? { title: 'Channels', subtitle: '' });
   const bead = current?.startsWith('bead:') ? current.slice(5) : undefined;
   const rows = useThreadMessages(current === GENERAL ? undefined : current);
   const speakItems = useMemo(() => mergeConversation(rows), [rows]);
@@ -279,6 +279,11 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
 
   const list = (
     <>
+      <div className="border-b border-line px-4 py-2.5">
+        <Button icon="mic" variant="primary" className="w-full" onClick={() => navigate({ view: 'line' })}>
+          Talk to the Mayor
+        </Button>
+      </div>
       <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
         <label className="relative flex-1">
           <span className="sr-only">Find a channel</span>

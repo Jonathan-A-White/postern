@@ -16,6 +16,8 @@ export type Route =
   | { view: 'bead'; id: string }
   /** `root` is the txid of a General post whose thread of replies is open (docs/protocol.md §14). */
   | { view: 'talk'; thread?: string; root?: string }
+  /** The Talk line: a spoken conversation with the Mayor (docs/protocol.md §20). */
+  | { view: 'line' }
   | { view: 'search'; q?: string }
   | { view: 'me' }
   | { view: 'key' }
@@ -83,6 +85,8 @@ export function parseRoute(search: string): Route {
     }
     case 'talk':
       return { view: 'talk', thread: params.get('t') ?? undefined, ...(params.get('r') ? { root: params.get('r') as string } : {}) };
+    case 'line':
+      return { view: 'line' };
     case 'search':
       return { view: 'search', q: params.get('q') ?? undefined };
     case 'me':
@@ -156,6 +160,7 @@ export function topViewOf(route: Route): TopView {
     case 'map':
       return 'map';
     case 'talk':
+    case 'line':
       return 'talk';
     case 'search':
       return 'search';
@@ -176,6 +181,7 @@ export function isDeep(route: Route): boolean {
     route.view === 'notice' ||
     route.view === 'alarm' ||
     route.view === 'key' ||
+    route.view === 'line' ||
     (route.view === 'talk' && route.thread !== undefined) ||
     (route.view === 'map' && route.focus !== undefined)
   );

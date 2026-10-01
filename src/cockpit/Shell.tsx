@@ -3,10 +3,10 @@
 // bead or a thread too: the composer sits above it, and only the lowest bar
 // keeps the bottom safe-area inset); on a wide screen, a sidebar with the same
 // places and room for two panes. isDeep only decides Back, not the tab bar.
-import { type ReactNode } from 'react';
+import { useRef, type ReactNode, type ComponentProps } from 'react';
 import { Banner, Icon, IconButton, cx, type IconName } from '../ui';
 import { formatRoute, topViewOf, type Route, type TopView } from '../nav/route';
-import { goBack } from '../router';
+import { goBack, navigate } from '../router';
 import { useLive } from '../services/live';
 import { hostsToMoveTo, useStandby } from '../services/standby';
 import { MoveHomeButtons } from './MoveHome';
@@ -14,13 +14,51 @@ import { liveLabel } from './liveLabel';
 import { useAnswers, useMessages, useViewIndex, useWide } from './hooks';
 import { needsByWaiter, unsettledNeeds } from '../model/needs';
 
-const TABS: { view: TopView; label: string; icon: IconName; route: Route }[] = [
+const TABS: { view: TopView; label: string; icon: IconName; route: Route; longPress?: Route }[] = [
   { view: 'needs', label: 'Needs you', icon: 'needs', route: { view: 'needs' } },
   { view: 'map', label: 'Map', icon: 'map', route: { view: 'map' } },
-  { view: 'talk', label: 'Talk', icon: 'talk', route: { view: 'talk' } },
+  // The channel list. A long press goes straight to the Talk line, which has its own button on this place too.
+  { view: 'talk', label: 'Channels', icon: 'talk', route: { view: 'talk' }, longPress: { view: 'line' } },
   { view: 'search', label: 'Search', icon: 'search', route: { view: 'search' } },
   { view: 'me', label: 'Me', icon: 'me', route: { view: 'me' } },
 ];
+
+/** How long a press on a tab is held before it counts as a long press. */
+export const LONG_PRESS_MS = 500;
+
+/** A tab's link. With a `longPress` route, holding it for LONG_PRESS_MS buzzes the
+ * phone and goes there, and the click that follows the release is swallowed so it
+ * does not also open the tab's own place. */
+function TabLink({ tab, ...rest }: { tab: (typeof TABS)[number] } & ComponentProps<'a'>) {
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const fired = useRef(false);
+  const longPress = tab.longPress;
+  const clear = () => clearTimeout(timer.current);
+  const handlers = longPress
+    ? {
+        onPointerDown: () => {
+          fired.current = false;
+          clear();
+          timer.current = setTimeout(() => {
+            fired.current = true;
+            navigator.vibrate?.(30);
+            navigate(longPress);
+          }, LONG_PRESS_MS);
+        },
+        onPointerUp: clear,
+        onPointerCancel: clear,
+        onPointerLeave: clear,
+        onClick: (event: { preventDefault(): void }) => {
+          if (!fired.current) return;
+          fired.current = false;
+          event.preventDefault();
+        },
+        // A long press on a link opens the phone's own menu; here it is the shortcut.
+        onContextMenu: (event: { preventDefault(): void }) => event.preventDefault(),
+      }
+    : {};
+  return <a href={formatRoute(tab.route)} {...handlers} {...rest} />;
+}
 
 function useBadges(): Partial<Record<TopView, number>> {
   const view = useViewIndex();
@@ -65,10 +103,10 @@ function TabBar({ current }: { current: TopView }) {
           const active = tab.view === current;
           return (
             <li key={tab.view} className="flex-1">
-              <a
-                href={formatRoute(tab.route)}
+              <TabLink
+                tab={tab}
                 aria-current={active ? 'page' : undefined}
-                className={cx('relative flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-[11px] font-medium', active ? 'text-fg' : 'text-faint')}
+                className={cx('relative flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-[11px] font-medium select-none [-webkit-touch-callout:none]', active ? 'text-fg' : 'text-faint')}
               >
                 <span className="relative">
                   <Icon name={tab.icon} size={22} strokeWidth={active ? 2.1 : 1.7} />
@@ -79,7 +117,7 @@ function TabBar({ current }: { current: TopView }) {
                   ) : null}
                 </span>
                 {tab.label}
-              </a>
+              </TabLink>
             </li>
           );
         })}
@@ -106,18 +144,18 @@ function Sidebar({ current }: { current: TopView }) {
           const active = tab.view === current;
           return (
             <li key={tab.view}>
-              <a
-                href={formatRoute(tab.route)}
+              <TabLink
+                tab={tab}
                 aria-current={active ? 'page' : undefined}
                 className={cx(
-                  'flex h-10 items-center gap-3 rounded-xl px-3 text-[14px] font-medium transition-colors',
+                  'flex h-10 items-center gap-3 rounded-xl px-3 text-[14px] font-medium transition-colors select-none [-webkit-touch-callout:none]',
                   active ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg',
                 )}
               >
                 <Icon name={tab.icon} size={19} />
                 <span className="flex-1">{tab.label}</span>
                 <Badge count={badges[tab.view]} />
-              </a>
+              </TabLink>
             </li>
           );
         })}

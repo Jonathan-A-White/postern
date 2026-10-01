@@ -342,7 +342,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the unread count is {number}', async (_c, count: number) => {
       const places = screen.getAllByRole('navigation', { name: 'Places' })[0];
-      await waitFor(() => expect(within(places).getByRole('link', { name: /Talk$/ }).textContent).toBe(`${count}Talk`));
+      await waitFor(() => expect(within(places).getByRole('link', { name: /Channels$/ }).textContent).toBe(`${count}Channels`));
     });
     And('Needs has no entry for the talk record', async () => {
       cleanup();

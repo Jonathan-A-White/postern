@@ -43,7 +43,7 @@ afterAll(() => {
   window.history.pushState({}, '', '/');
 });
 
-const places = ['Needs you', 'Map', 'Talk', 'Search', 'Me'];
+const places = ['Needs you', 'Map', 'Channels', 'Search', 'Me'];
 
 const menu = () => screen.getByRole('navigation', { name: 'Places' });
 

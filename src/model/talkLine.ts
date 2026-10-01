@@ -49,6 +49,8 @@ export interface TalkLineState {
   outgoing?: TalkTurn;
   /** When his turn went out (ms), while `waiting`; a holding answer does not reset it. */
   sentAt?: number;
+  /** The wait has gone on past TALK_THINKING_MS, so the screen says the Mayor is thinking. */
+  thinking?: boolean;
   /** What is being spoken; `holding` ones are followed by the real answer. */
   speaking?: { text: string; holding: boolean; links?: string[] };
   /** Why the line went back to idle without an answer. */
@@ -72,8 +74,10 @@ export type TalkLineEvent =
   | { type: 'setAbout'; about?: TalkAbout }
   | { type: 'end' };
 
-/** How long the line waits for an answer; the aim is about 8 s, so this is generous. */
-export const TALK_TIMEOUT_MS = 30_000;
+/** How long a wait goes on before the screen says 'The Mayor is thinking…'. */
+export const TALK_THINKING_MS = 8_000;
+/** How long the line waits for an answer; the Mayor's answers take 20-40 s (mw-j0f2d.30), so this is generous. */
+export const TALK_TIMEOUT_MS = 90_000;
 export const NO_ANSWER_IN_TIME = 'The Mayor did not answer in time.';
 /** A turn is queued on the phone and sent when a backend answers; this is what he is told only if the phone itself cannot keep it. */
 export const NOT_KEPT = 'Could not keep that on this phone. Try again.';
@@ -140,9 +144,11 @@ function incoming(state: TalkLineState, turn: TalkTurn): TalkLineState {
   if (!state.talk || turn.talk.id !== state.talk.id) return state;
   if (turn.role === 'end') return talkLine(state, { type: 'end' });
   if (turn.talk.turn !== state.talk.turn) return state;
-  const answering = state.phase === 'waiting' || (state.phase === 'speaking' && state.speaking?.holding === true);
+  // An answer that comes after the line gave up still replaces the give-up line.
+  const gaveUp = state.phase === 'idle' && state.error === NO_ANSWER_IN_TIME;
+  const answering = state.phase === 'waiting' || gaveUp || (state.phase === 'speaking' && state.speaking?.holding === true);
   if (turn.role === 'answer' && answering) {
-    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: false, ...linksOf(turn) }, answeredBy: turn.model ?? state.answeredBy, error: undefined };
+    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: false, ...linksOf(turn) }, answeredBy: turn.model ?? state.answeredBy, error: undefined, thinking: undefined };
   }
   if (turn.role === 'holding' && state.phase === 'waiting') {
     return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: true, ...linksOf(turn) }, answeredBy: turn.model ?? state.answeredBy };
@@ -175,7 +181,7 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       return idle(state, { talk: state.talk && state.talk.turn > 0 ? state.talk : undefined });
     case 'sent':
       if (state.phase !== 'sending') return state;
-      return { ...state, phase: 'waiting', outgoing: undefined, unsent: undefined, sentAt: event.at, cutPending: false };
+      return { ...state, phase: 'waiting', outgoing: undefined, unsent: undefined, sentAt: event.at, thinking: false, cutPending: false };
     case 'sendFailed': {
       // His words stay: `retry` sends this very turn again, under the same number.
       if (state.phase !== 'sending' || !state.talk || !state.outgoing) return state;
@@ -193,9 +199,12 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       if (state.phase === 'speaking') return idle(state, { cutPending: true });
       if (state.phase === 'waiting') return idle(state);
       return state;
-    case 'tick':
-      if (state.phase !== 'waiting' || state.sentAt === undefined || event.now - state.sentAt < TALK_TIMEOUT_MS) return state;
-      return idle(state, { error: NO_ANSWER_IN_TIME });
+    case 'tick': {
+      if (state.phase !== 'waiting' || state.sentAt === undefined) return state;
+      const waited = event.now - state.sentAt;
+      if (waited >= TALK_TIMEOUT_MS) return idle(state, { error: NO_ANSWER_IN_TIME });
+      return waited >= TALK_THINKING_MS && !state.thinking ? { ...state, thinking: true } : state;
+    }
     case 'setModel':
       return { ...state, model: event.model };
     case 'setAbout':

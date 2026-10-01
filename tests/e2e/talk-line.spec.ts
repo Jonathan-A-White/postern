@@ -302,9 +302,12 @@ test('talk line: after a missed turn the phone buzzes once when the mark turns t
   await page.evaluate(() => window.__hear('What landed today?'));
   await page.mouse.up();
   await expect.poll(() => posted.length).toBe(1);
+  await expect(page.getByText('Sent.')).toBeVisible();
+
+  await page.clock.fastForward(9_000);
   await expect(page.getByText('The Mayor is thinking…')).toBeVisible();
 
-  await page.clock.fastForward(31_000);
+  await page.clock.fastForward(82_000);
   await expect(page.getByText('The Mayor did not answer in time.')).toBeVisible();
   const buzzes = () => page.evaluate(() => window.__vibrations.length);
   const before = await buzzes();

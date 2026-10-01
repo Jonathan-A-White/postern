@@ -603,9 +603,16 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('AC-1: the thinking state shows between his release and the answer', ({ Given, When, Then }) => {
+  Scenario('AC-1: the thinking state shows from 8 s after his release until the answer (mw-j0f2d.31)', ({ Given, When, Then }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    Then('the screen says the turn was sent and does not yet say the Mayor is thinking', async () => {
+      expect(await screen.findByText('Sent.')).toBeInTheDocument();
+      expect(screen.queryByText('The Mayor is thinking…')).not.toBeInTheDocument();
+    });
+    When('{number} seconds pass with no answer', (_c, seconds: number) => {
+      clock.at += Number(seconds) * 1000;
+    });
     Then('the screen says the Mayor is thinking', async () => {
       expect(await screen.findByText('The Mayor is thinking…')).toBeInTheDocument();
     });
@@ -1175,8 +1182,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await holdAndSay(words);
     });
     And('the wait runs out', async () => {
-      await screen.findByText('The Mayor is thinking…');
-      clock.at += 31_000;
+      await screen.findByText('Sent.');
+      clock.at += 91_000;
     });
     Then('the line says {string}', async (_c, words: string) => {
       expect(await screen.findByText(words)).toBeInTheDocument();

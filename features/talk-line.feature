@@ -81,15 +81,32 @@ Feature: Talk line turns are records of their own, and the line is a small state
     Then the turn to send is turn 2 of "talk-10" saying "Stop." with a cut
     And nothing else is said
 
-  Scenario: AC-2: no answer in time ends the wait and says so
+  Scenario: AC-2: thinking at 8 s: the line says the Mayor is thinking only once the wait passes 8 s (mw-j0f2d.31)
+    Given the line is waiting on turn 1 of "talk-15" since 1000
+    Then the line is not yet thinking
+    When the clock reads 8000
+    Then the line is still not thinking
+    When the clock then reads 9000
+    Then the line is thinking
+    And the line is still waiting
+
+  Scenario: AC-2: give-up at 90 s: no answer in time ends the wait and says so (mw-j0f2d.31)
     Given the line is waiting on turn 1 of "talk-11" since 1000
-    When the clock reads 20000
+    When the clock reads 40000
     Then the line is still waiting
-    When the clock then reads 40000
+    When the clock then reads 90000
+    Then the line is waiting still
+    When the clock afterwards reads 91000
     Then the line is idle
     And the line says "The Mayor did not answer in time."
+
+  Scenario: AC-2: a late answer replaces the give-up line (mw-j0f2d.31)
+    Given the line is waiting on turn 1 of "talk-16" since 1000
+    When the clock reads 91000
+    Then the line says "The Mayor did not answer in time."
     When the Mayor answers "Late." on model "sonnet"
-    Then the line is still idle
+    Then the line is speaking "Late."
+    And the line says nothing went wrong
 
   Scenario: AC-2: an answer to another talk or turn is ignored
     Given the line is waiting on turn 1 of "talk-12"

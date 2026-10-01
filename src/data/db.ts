@@ -5,6 +5,31 @@ export interface SettingRow {
   value: unknown;
 }
 
+// The saved prompts (server/README.md) and what the phone last heard of them; defined here for the same reason as MessageClass, and re-exported by src/services/prompts.ts.
+export interface PromptOption {
+  flag: string;
+  type: 'duration' | 'string' | 'int' | 'bool';
+  default?: string;
+  required?: boolean;
+  help?: string;
+}
+
+export interface Prompt {
+  name: string;
+  summary: string;
+  signature: PromptOption[];
+  body: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+/** What the phone last heard from GET /api/prompts, and when (ms). */
+export interface PromptsCache {
+  etag?: string;
+  prompts: Prompt[];
+  at: number;
+}
+
 // docs/protocol.md's message classes (`talk`, §20, is the Talk line's turns and `call`, §21, its call records: never a channel, an unread or a Need). Defined here (not in src/services/messages.ts,
 // which re-exports it) so this file — the leaf data layer — never has to import from
 // the service layer.

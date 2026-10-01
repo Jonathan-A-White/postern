@@ -1,4 +1,4 @@
-import { db, type ArchiveChoices } from '../db';
+import { db, type ArchiveChoices, type PromptsCache } from '../db';
 import { DEFAULT_NOTIFICATION_SETTINGS } from '../../push/classOptions';
 import type { NotificationSettingsMap } from '../../push/classOptions';
 
@@ -6,6 +6,7 @@ const NOTIFICATION_SETTINGS_KEY = 'notificationSettings';
 const THREAD_ARCHIVE_KEY = 'threadArchive';
 const PENDING_LATERS_KEY = 'pendingLaters';
 const ANSWERED_RING_KEY = 'answeredRing';
+const PROMPTS_KEY = 'prompts';
 // Also stored through the generic get/set: 'lastShareThread' is the thread key he shared to last
 // (src/cockpit/ShareScreen.tsx, mw-dw0i6.2); a string, never cleared.
 
@@ -71,6 +72,16 @@ export const settingsRepo = {
       if (row) await db.settings.delete(PENDING_LATERS_KEY);
       return (row?.value as string[] | undefined) ?? [];
     });
+  },
+
+  /** The saved prompts as the backend last answered, with the time (src/services/prompts.ts). */
+  async getPromptsCache(): Promise<PromptsCache | undefined> {
+    const row = await db.settings.get(PROMPTS_KEY);
+    return row?.value as PromptsCache | undefined;
+  },
+
+  async setPromptsCache(cache: PromptsCache): Promise<void> {
+    await db.settings.put({ key: PROMPTS_KEY, value: cache });
   },
 
   async resetNotificationSettings(): Promise<void> {

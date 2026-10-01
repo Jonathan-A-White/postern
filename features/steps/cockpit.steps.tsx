@@ -408,7 +408,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
     When('the Share screen is opened and "Factory" is chosen', async () => {
       await openAt('?v=share&s=s1');
-      await userEvent.click(await screen.findByRole('button', { name: /Factory/ }));
+      await userEvent.click(await screen.findByRole('button', { name: /^Factory/ }));
     });
     Then('the Factory thread opens with the image waiting in its composer', async () => {
       const composer = await screen.findByTestId('composer');

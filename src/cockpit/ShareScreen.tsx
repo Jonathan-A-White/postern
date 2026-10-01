@@ -2,14 +2,18 @@
 // (plans/0021 decision 12): what arrived, then where it should go — the factory
 // thread, a thread he used lately, or a bead he searches for. Choosing one opens
 // that thread with the files already in its composer. 'New topic' comes first, then
-// the thread he shared to last, marked 'Last used' (mw-dw0i6.2).
+// the thread he shared to last, marked 'Last used' (mw-dw0i6.2). Every channel row
+// has 'Threads': its newest posts, any of which opens that post's thread with the
+// files in its Reply… composer (mw-909ci.4).
 import { useEffect, useMemo, useState } from 'react';
-import { EmptyState, Icon, Spinner } from '../ui';
+import { Button, EmptyState, Icon, Spinner, TimeAgo } from '../ui';
 import { Screen } from './Shell';
-import { useMessages, useViewIndex } from './hooks';
+import { useMessages, useThreadMessages, useViewIndex } from './hooks';
 import { settingsRepo, sharesRepo } from '../data/repositories';
 import type { ShareRow } from '../data/db';
 import { GENERAL, summariseThreads, titleFor, type ThreadSummary } from '../model/threads';
+import { mergeConversation, previewText } from '../model/conversation';
+import { groupPosts } from '../model/postThreads';
 import { setPendingShare } from './shareInbox';
 import { navigate } from '../router';
 import { formatRoute } from '../nav/route';
@@ -17,19 +21,61 @@ import { matchesText } from '../model/filter';
 import { TopicForm } from './TopicForm';
 import { topicKey } from './topicKey';
 
-function ThreadChoice({ thread, lastUsed, onChoose }: { thread: ThreadSummary; lastUsed?: boolean; onChoose: (key: string) => void }) {
+const NEWEST_POSTS = 5;
+
+/** A channel's newest posts that can be replied to (they have a txid), newest first, each with its reply count. */
+function ChannelPosts({ thread, onPick }: { thread: ThreadSummary; onPick: (root: string) => void }) {
+  const rows = useThreadMessages(thread.key === GENERAL ? undefined : thread.key);
+  const posts = useMemo(() => {
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return groupPosts(mergeConversation(rows))
+      .filter((post) => post.root.txid)
+      .slice(-NEWEST_POSTS)
+      .reverse()
+      .map((post) => ({ post, preview: previewText(byId.get(post.root.id) ?? { plaintext: post.root.text, class: 'message' as const }) }));
+  }, [rows]);
+  if (posts.length === 0) return <p className="px-4 pb-3 text-[12.5px] text-faint">Nothing said here yet.</p>;
+  return (
+    <ul aria-label={`Posts in ${thread.title}`} className="mx-3 mb-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-sunken">
+      {posts.map(({ post, preview }) => (
+        <li key={post.root.id}>
+          <button type="button" onClick={() => onPick(post.root.txid!)} className="flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-raised">
+            <span className="line-clamp-1 text-[13.5px]">{preview}</span>
+            <span className="flex items-center gap-2 text-[11.5px] text-faint">
+              <TimeAgo at={post.root.at} />
+              {post.replyCount > 0 && (
+                <span className="font-semibold text-accent">
+                  {post.replyCount} {post.replyCount === 1 ? 'reply' : 'replies'}
+                </span>
+              )}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ThreadChoice({ thread, lastUsed, onChoose }: { thread: ThreadSummary; lastUsed?: boolean; onChoose: (key: string, root?: string) => void }) {
+  const [open, setOpen] = useState(false);
   return (
     <li>
-      <button type="button" onClick={() => onChoose(thread.key)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-raised">
-        <Icon name={thread.key === GENERAL ? 'layers' : 'talk'} size={17} className="text-muted" />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="block truncate text-[14.5px] font-medium">{thread.title}</span>
-            {lastUsed && <span className="shrink-0 rounded-full bg-accent/15 px-2 text-[11px] leading-[18px] font-semibold text-accent">Last used</span>}
+      <div className="flex items-center">
+        <button type="button" onClick={() => onChoose(thread.key)} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left hover:bg-raised">
+          <Icon name={thread.key === GENERAL ? 'layers' : 'talk'} size={17} className="text-muted" />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="block truncate text-[14.5px] font-medium">{thread.title}</span>
+              {lastUsed && <span className="shrink-0 rounded-full bg-accent/15 px-2 text-[11px] leading-[18px] font-semibold text-accent">Last used</span>}
+            </span>
+            <span className="block truncate text-[12px] text-faint">{thread.subtitle}</span>
           </span>
-          <span className="block truncate text-[12px] text-faint">{thread.subtitle}</span>
-        </span>
-      </button>
+        </button>
+        <Button size="sm" variant="ghost" className="mr-2" aria-label={`Threads in ${thread.title}`} aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+          Threads
+        </Button>
+      </div>
+      {open && <ChannelPosts thread={thread} onPick={(root) => onChoose(thread.key, root)} />}
     </li>
   );
 }
@@ -62,12 +108,12 @@ export function ShareScreen({ id }: { id?: string }) {
     void settingsRepo.get('lastShareThread').then((value) => setLastKey(typeof value === 'string' ? value : null));
   }, []);
 
-  function sendTo(threadKey: string) {
+  function sendTo(threadKey: string, root?: string) {
     if (!share) return;
     void settingsRepo.set('lastShareThread', threadKey);
     setPendingShare({ text: share.text, files: share.files });
     void sharesRepo.remove(share.id);
-    navigate(formatRoute({ view: 'talk', thread: threadKey }), { replace: true });
+    navigate(formatRoute({ view: 'talk', thread: threadKey, ...(root !== undefined ? { root } : {}) }), { replace: true });
   }
 
   if (share === undefined || lastKey === undefined) {

@@ -118,7 +118,7 @@ describeFeature(feature, ({ Scenario }) => {
     Given('the factory is live and a screenshot was shared into Postern', liveWithAScreenshot);
     When('the screenshot is shared to the thread "desktop move"', async () => {
       await openShare('s1');
-      await userEvent.click(await within(whereTo()).findByRole('button', { name: /desktop move/ }));
+      await userEvent.click(await within(whereTo()).findByRole('button', { name: /^desktop move/ }));
     });
     And('a second screenshot is shared into Postern and the Share screen is opened', sharedAgainAndOpened);
     Then('the first row says "New topic" and the second is "desktop move" marked "Last used"', () => {

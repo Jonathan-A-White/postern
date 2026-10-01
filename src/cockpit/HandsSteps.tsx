@@ -5,7 +5,7 @@
 // Mayor. What ran says so, with its exit code. A step whose bead waits on an open
 // bead offers neither: it says what it waits on, each a link to that bead.
 import { useState } from 'react';
-import { Button, Chip, Icon, TimeAgo, cx } from '../ui';
+import { Button, Chip, CodeBlock, Icon, TimeAgo, cx } from '../ui';
 import type { HandsStep } from '../model/hands';
 import type { WaitsOn } from '../model/needs';
 import { approveHandsStep, sendToThread, useSend } from './send';
@@ -53,14 +53,14 @@ function StepCard({ bead, step, waitsOn }: { bead: string; step: HandsStep; wait
           <span className="text-[13px] whitespace-pre-wrap break-words">{step.ran.why}</span>
         </div>
       )}
-      <pre className="overflow-x-auto rounded-lg bg-canvas p-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap break-all">{step.run}</pre>
+      <CodeBlock text={step.run} className="overflow-x-auto rounded-lg bg-canvas p-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap break-all" />
       {step.way_back && (
         <div>
           <button type="button" onClick={() => setShowWayBack((v) => !v)} aria-expanded={showWayBack} className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-fg">
             <Icon name="down" size={14} className={cx('transition-transform', showWayBack && 'rotate-180')} />
             Way back
           </button>
-          {showWayBack && <pre className="mt-1.5 overflow-x-auto rounded-lg bg-canvas p-2.5 font-mono text-[12px] whitespace-pre-wrap break-all text-muted">{step.way_back}</pre>}
+          {showWayBack && <div className="mt-1.5"><CodeBlock text={step.way_back} className="overflow-x-auto rounded-lg bg-canvas p-2.5 font-mono text-[12px] whitespace-pre-wrap break-all text-muted" /></div>}
         </div>
       )}
       {!ranOk && !approvedAt && waitsOn && (

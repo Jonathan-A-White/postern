@@ -1,7 +1,7 @@
 // src/cockpit/send.ts — what the screens call to say something or tap an action
 // (plans/0021 decisions 7, 10–12): answers, actions, comments and files, each
 // encrypted to the pinned Mayor and delivered directly. Files go up first
-// (docs/protocol.md §8), one message each, the caption riding on the last.
+// (docs/protocol.md §8), then go as one message, the caption its text.
 import { useState } from 'react';
 import { deliverAction, deliverAnswer, deliverMoveHome, deliverThreaded, writeBehind, type Delivered } from '../services/deliver';
 import { ApiTimeoutError } from '../services/apiAuth';
@@ -13,7 +13,7 @@ import type { GovernorAction } from '../model/conversation';
 import type { HandsStep } from '../model/hands';
 import { buildApproval, stepUp } from '../services/hands';
 import type { HomeHost } from '../services/standby';
-import type { ThreadRef } from '../services/threads';
+import type { Attachment, ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
 import { navigate } from '../router';
 import type { Route } from '../nav/route';
@@ -67,21 +67,19 @@ export function refuseFile(file: { name: string; type: string; size: number }): 
   return undefined;
 }
 
-/** Sends text and files to a thread: each file its own message, the text as the
- * last file's caption (or on its own when there are no files). */
+/** Sends text and files to a thread as ONE message (docs/protocol.md §8): one
+ * file as `attachment`, two or more as `attachments` in the order given, the
+ * text as its caption. Every file is uploaded first, so a failed upload sends
+ * nothing. */
 export async function sendToThread(thread: ThreadRef | undefined, text: string, files: OutgoingFile[] = [], re?: string): Promise<Delivered[]> {
   const opts = options();
-  const sent: Delivered[] = [];
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
+  const attachments: Attachment[] = [];
+  for (const file of files) {
     const mime = attachmentMime(file.type);
     if (!mime) throw new Error(`${file.name}: not a type Postern carries.`);
-    const attachment = await uploadAttachment({ bytes: file.bytes, mime, senderKey: opts.key, recipientPublicKeyHex: opts.mayorKey });
-    const caption = i === files.length - 1 ? text : '';
-    sent.push(await deliverThreaded({ thread, text: caption, attachment, re }, opts));
+    attachments.push(await uploadAttachment({ bytes: file.bytes, mime, senderKey: opts.key, recipientPublicKeyHex: opts.mayorKey }));
   }
-  if (files.length === 0) sent.push(await deliverThreaded({ thread, text, re }, opts));
-  return sent;
+  return [await deliverThreaded({ thread, text, attachments, re }, opts)];
 }
 
 export const MAY_HAVE_GONE = 'May have gone: check the thread before sending again';

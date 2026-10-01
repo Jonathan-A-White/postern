@@ -110,7 +110,7 @@ function AttachmentView({ attachment, direction }: { attachment: Attachment; dir
         <img src={url} alt="Attached image" className="max-h-80 w-auto max-w-full object-contain" />
       </button>
     ) : (
-      <div className="flex h-40 w-56 items-center justify-center rounded-xl bg-sunken text-faint">
+      <div className="flex h-40 w-56 max-w-full items-center justify-center rounded-xl bg-sunken text-faint">
         <Icon name="image" size={24} />
       </div>
     );
@@ -123,6 +123,26 @@ function AttachmentView({ attachment, direction }: { attachment: Attachment; dir
       <Icon name="file" size={18} />
       {attachmentLabel(attachment)} · {Math.max(1, Math.round(attachment.size / 1024))} KB
     </button>
+  );
+}
+
+/** Every file of one message: a lone file as it always was; several, images two to a row. */
+function AttachmentList({ attachments, direction }: { attachments: Attachment[]; direction: 'sent' | 'received' }) {
+  if (attachments.length === 1) {
+    return (
+      <div className="mb-1.5">
+        <AttachmentView attachment={attachments[0]} direction={direction} />
+      </div>
+    );
+  }
+  return (
+    <div className="mb-1.5 grid grid-cols-2 gap-1.5" data-testid="attachment-list">
+      {attachments.map((file, i) => (
+        <div key={`${file.hash}:${i}`} className={file.mime.startsWith('image/') ? 'min-w-0' : 'col-span-2'}>
+          <AttachmentView attachment={file} direction={direction} />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -171,11 +191,7 @@ function Bubble({ item, onQuote, onReply }: { item: ConversationItem; onQuote?: 
         )}
       >
         {!mine && <p className={cx('mb-0.5 text-[11.5px] font-semibold', item.speaker === 'mayor' ? 'text-accent' : 'text-muted')}>{item.speakerLabel}</p>}
-        {item.attachment && (
-          <div className="mb-1.5">
-            <AttachmentView attachment={item.attachment} direction={mine ? 'sent' : 'received'} />
-          </div>
-        )}
+        {item.attachments && item.attachments.length > 0 && <AttachmentList attachments={item.attachments} direction={mine ? 'sent' : 'received'} />}
         {item.text && <Markdown text={item.text} wrap />}
         {item.transcript !== undefined && (
           <p className="mt-1.5 border-l-2 border-line-strong pl-2 text-[13px] text-muted">

@@ -22,7 +22,7 @@ const item: ConversationItem = {
   speakerLabel: 'Mayor',
   kind: 'attachment',
   text: '',
-  attachment: { hash: 'ab'.repeat(32), size: 2048, mime: 'image/png' },
+  attachments: [{ hash: 'ab'.repeat(32), size: 2048, mime: 'image/png' }],
   source: 'message',
 };
 

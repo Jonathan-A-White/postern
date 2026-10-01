@@ -303,3 +303,14 @@ export function applyBeadDetail(view: View, detail: BeadDetail): View {
   });
   return { ...view, beads, needs };
 }
+
+/** A bead's fetched detail brought up to the view's copy of it: the view is applied event
+ * by event (§22), so when its copy was stamped later than the detail's, its status and
+ * times are the newer. Without a newer view copy the detail is returned as it is. */
+export function detailAsOf(detail: BeadDetail | undefined, bead: ViewBead | undefined): BeadDetail | undefined {
+  if (!detail || !bead || bead.id !== detail.id) return detail;
+  const seen = Date.parse(detail.updated);
+  const heard = Date.parse(bead.updated);
+  if (Number.isNaN(heard) || !(Number.isNaN(seen) || heard > seen)) return detail;
+  return { ...detail, status: bead.status, updated: bead.updated, started: bead.started, closed: bead.closed };
+}

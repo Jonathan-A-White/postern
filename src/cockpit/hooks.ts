@@ -12,6 +12,7 @@ import { getKey, onKeyChange } from '../services/keySession';
 import { fetchBeadDetail } from '../services/beads';
 import { threadKey } from '../services/threads';
 import { getLiveState } from '../services/live';
+import { useEvents } from '../services/events';
 
 export function useLiveQuery<T>(query: () => Promise<T>, deps: unknown[], initial: T): T {
   const [value, setValue] = useState<T>(initial);
@@ -94,6 +95,9 @@ export function useBeadDetail(id: string | undefined): { detail?: BeadDetail; st
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{ token: string; status: DetailStatus; error?: string }>();
   const token = `${id ?? ''}|${attempt}`;
+  // A comment added to this bead (§22): its text is in the bead's detail alone, so the open page fetches it again, in
+  // place (the status stays as it was, so the page does not flash a spinner). A message needs no fetch: it is in the thread's records.
+  const commented = useEvents({ kinds: ['bead_changed'], beads: [id ?? ''], details: ['comment'] })?.seq ?? 0;
 
   useEffect(() => {
     if (!key || !id) return;
@@ -108,7 +112,7 @@ export function useBeadDetail(id: string | undefined): { detail?: BeadDetail; st
     return () => {
       cancelled = true;
     };
-  }, [id, key, token]);
+  }, [id, key, token, commented]);
 
   const detail = useMemo(() => {
     if (!stored) return undefined;

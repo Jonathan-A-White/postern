@@ -102,17 +102,22 @@ export async function syncMessagesAndEvents(options: SyncEventsOptions): Promise
   return { applied: projected.applied.length, refetched: refetch };
 }
 
-/** What a screen listens for: events of these kinds about these beads. Either left out
- * (or empty) matches every one. */
+/** What a screen listens for: events of these kinds about these beads, naming these
+ * details (a `bead_changed`'s `comment`, say). Any left out (or empty) matches every one. */
 export interface EventFilter {
   kinds?: readonly string[];
   beads?: readonly string[];
+  details?: readonly string[];
 }
 
 const subscribers = new Set<{ filter: EventFilter; listener: (event: FactoryEvent) => void }>();
 
 function matches(filter: EventFilter, event: FactoryEvent): boolean {
-  return (!filter.kinds?.length || filter.kinds.includes(event.kind)) && (!filter.beads?.length || filter.beads.includes(event.bead));
+  return (
+    (!filter.kinds?.length || filter.kinds.includes(event.kind)) &&
+    (!filter.beads?.length || filter.beads.includes(event.bead)) &&
+    (!filter.details?.length || filter.details.includes(event.detail))
+  );
 }
 
 /** Calls `listener` with the newest matching event of each applied batch; resolves to the unsubscribe. */
@@ -153,6 +158,10 @@ function eventStore(filter: EventFilter): EventStore {
 export function useEvents(filter: EventFilter): FactoryEvent | undefined {
   const kinds = JSON.stringify(filter.kinds ?? []);
   const beads = JSON.stringify(filter.beads ?? []);
-  const store = useMemo(() => eventStore({ kinds: JSON.parse(kinds) as string[], beads: JSON.parse(beads) as string[] }), [kinds, beads]);
+  const details = JSON.stringify(filter.details ?? []);
+  const store = useMemo(
+    () => eventStore({ kinds: JSON.parse(kinds) as string[], beads: JSON.parse(beads) as string[], details: JSON.parse(details) as string[] }),
+    [kinds, beads, details],
+  );
   return useSyncExternalStore(store.subscribe, store.get, store.get);
 }

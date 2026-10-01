@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { db, type EventRow } from '../../src/data/db';
 import { eventsRepo, viewRepo } from '../../src/data/repositories';
-import { applyBeadDetail, decodeEventBatch, projectEvents, type EventBatch } from '../../src/model/events';
+import { applyBeadDetail, decodeEventBatch, detailAsOf, projectEvents, type EventBatch } from '../../src/model/events';
 import { projectBatches, publishEvents, useEvents } from '../../src/services/events';
 import { decodeView, type BeadDetail, type Need, type View, type ViewBead } from '../../src/model/view';
 import { handsStep } from '../support/cockpit-fixture';
@@ -240,5 +240,44 @@ describe('useEvents', () => {
     const any = event({ kind: 'job' });
     act(() => publishEvents([any]));
     expect(result.current).toEqual(any);
+  });
+});
+
+describe('useEvents details', () => {
+  it('hears only events naming one of its details', () => {
+    const { result } = renderHook(() => useEvents({ kinds: ['bead_changed'], beads: ['mw-a'], details: ['comment'] }));
+    act(() => publishEvents([event({ kind: 'bead_changed', bead: 'mw-a', detail: 'status' })]));
+    expect(result.current).toBeUndefined();
+    // A comment is heard even when a later event of the same batch is about the same bead.
+    const comment = event({ seq: 5, kind: 'bead_changed', bead: 'mw-a', detail: 'comment' });
+    act(() => publishEvents([comment, event({ seq: 6, kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'claimed', detail: 'status' })]));
+    expect(result.current).toEqual(comment);
+  });
+});
+
+describe('detailAsOf', () => {
+  const fetched = (extra: Partial<BeadDetail> = {}): BeadDetail => ({
+    v: 2, id: 'mw-a', title: 'T', type: 'task', status: 'open', priority: 2, labels: [], assignee: '', waits: [], blocks: [], children: [],
+    created: '', updated: '2026-10-01T10:00:00Z', started: '', closed: '', attempts: 0, description: '', acceptance: '', comments: [], ...extra,
+  });
+
+  it('takes the status and times of a view copy stamped later', () => {
+    const moved = detailAsOf(fetched(), bead('mw-a', { status: 'in_progress', updated: '2026-10-01T11:00:00Z', started: '2026-10-01T11:00:00Z' }));
+    expect(moved).toMatchObject({ status: 'in_progress', updated: '2026-10-01T11:00:00Z', started: '2026-10-01T11:00:00Z' });
+  });
+
+  it('keeps a detail that is as new as the view, or newer', () => {
+    const same = fetched();
+    expect(detailAsOf(same, bead('mw-a', { status: 'closed', updated: '2026-10-01T10:00:00Z' }))).toBe(same);
+    expect(detailAsOf(same, bead('mw-a', { status: 'closed', updated: '2026-10-01T09:00:00Z' }))).toBe(same);
+    expect(detailAsOf(same, bead('mw-a', { status: 'closed', updated: '' }))).toBe(same);
+  });
+
+  it('takes a view stamp when the detail has none, and leaves another bead or no bead alone', () => {
+    expect(detailAsOf(fetched({ updated: '' }), bead('mw-a', { status: 'closed', updated: '2026-10-01T11:00:00Z' }))?.status).toBe('closed');
+    const other = fetched();
+    expect(detailAsOf(other, bead('mw-b', { updated: '2026-10-01T11:00:00Z' }))).toBe(other);
+    expect(detailAsOf(other, undefined)).toBe(other);
+    expect(detailAsOf(undefined, bead('mw-a'))).toBeUndefined();
   });
 });

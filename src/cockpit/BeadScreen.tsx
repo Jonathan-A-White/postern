@@ -20,6 +20,7 @@ import { StaleChoice } from './StaleChoice';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, epicStats, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { groupPosts } from '../model/postThreads';
+import { detailAsOf } from '../model/events';
 import { unsettledNeeds, waitsFor, waitsOnLinks } from '../model/needs';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
 import { beadHref, formatRoute } from '../nav/route';
@@ -275,7 +276,9 @@ export function BeadScreen({ id }: { id: string }) {
   const rememberConversation = useScrollMemory('conversation');
   const index = view?.index;
   const bead = index?.byId.get(id);
-  const { detail, status, error, refresh } = useBeadDetail(id);
+  const { detail: fetched, status, error, refresh } = useBeadDetail(id);
+  // The view moves on event by event; the detail was fetched once: what the view heard since is the newer.
+  const detail = useMemo(() => detailAsOf(fetched, bead), [fetched, bead]);
   const threadId = id;
   const threadKey = `bead:${id}`;
   const rows = useThreadMessages(threadKey);

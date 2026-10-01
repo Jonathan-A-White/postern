@@ -1466,6 +1466,15 @@ not cursor + 1), with no view yet, or when an event says something only the home
 Once a batch has been applied in the session, §10's `view` event waits 10 seconds and
 fetches the view only if no batch came within 10 seconds of it.
 
+`mw-jrx0s.8`. The bead's page hears the events about its bead: a `message` shows in its
+thread from the stored record (the sync keeps it before the batch is applied), so it fetches
+nothing; a `bead_changed` whose detail is `comment` is the one thing only the bead's detail
+(§12) holds, so the open page fetches that detail again, in place; a status or time the view
+heard (above) shows on the page at once, the view's copy being the newer when its `updated`
+is later than the fetched detail's. A card answered or a step run shows from the view and the
+detail the sync already applied. The Talk line needs no event of its own: a turn is a stored
+record (§20) that the line reads from the same store, whichever road brought it.
+
 ### The chain road, while the backend is out of reach
 
 `mw-jrx0s.9`. The phone's own read of the chain (§21, "The phone reads the chain itself")

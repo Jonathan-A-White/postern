@@ -1180,3 +1180,27 @@ What `ct` seals to the recipient:
   example `"sonnet"`), or the model that answered. Absent means unchanged.
 - `cut` — optional: `true` on a turn whose previous answer the Governor cut off with a
   tap before it finished speaking. Absent means `false`.
+
+### Presence: is the Mayor here
+
+The Governor, 2026-10-01: he wants to see, very subtly, when the Mayor is there and
+when he is not, and to be told when the Mayor is back after a turn went unanswered.
+
+The Mayor is **here** while his key (`POSTERN_MAYOR_KEY`) holds `GET /api/events` open,
+which is what `mw talk wait` does for as long as it waits. He is **away** the rest of the
+time: between waits (as during a handoff, when no wait is armed), while his host is off, or
+when no Mayor key is configured. The backend counts open streams by key and nothing else;
+it reads no record and learns no word of any talk.
+
+`GET /api/presence` (a cockpit key; `docs/api.md`) answers `{"mayor": true}` while he is
+here and `{"mayor": false}` when he is away. The Talk screen asks it every few seconds while
+it is open.
+
+What the Talk screen does with it:
+
+- A small dot beside the screen's status says **Mayor here** (a coloured dot) or **Mayor
+  away** (a grey one). Until the first answer, and when the backend cannot be asked or has
+  no such route (an older backend), it shows no dot rather than a guess.
+- When the line has given up waiting (`The Mayor did not answer in time.`) and the mark then
+  turns from away to here, the phone buzzes (and chimes where it can) once: the Mayor is back
+  and the turn can be tried again. Turning to here at any other time is silent.

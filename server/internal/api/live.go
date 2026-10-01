@@ -19,8 +19,9 @@ import (
 // publishes, and a ": ping" comment every ping, each flushed as it is
 // written. The subscription is taken before the hello is built, so nothing
 // indexed in between is missed; it is dropped when the client goes (the
-// request's context ends) or the hub drops a subscriber that fell behind.
-func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.Duration) http.HandlerFunc {
+// request's context ends) or the hub drops a subscriber that fell behind. While
+// it is open its key counts as present (presence).
+func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.Duration, here *presence) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -30,6 +31,7 @@ func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.D
 
 		ch, cancel := hub.Subscribe()
 		defer cancel()
+		defer here.opened(AuthenticatedKey(r.Context()))()
 
 		header := w.Header()
 		header.Set("Content-Type", "text/event-stream")

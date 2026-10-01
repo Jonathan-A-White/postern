@@ -423,6 +423,20 @@ the mill's, and a failing licence check does not refuse it the stream. Without a
 licence the Mayor's key gets `403` from every other route (`docs/protocol.md`
 §20).
 
+## GET /api/presence
+
+Whether the Mayor is here (`docs/protocol.md` §20, "Presence"). A cockpit key only
+(the Mayor's unlicensed key gets `403`, as from every route but the stream).
+
+```json
+{ "mayor": true }
+```
+
+`mayor` is `true` while the Mayor's key (`POSTERN_MAYOR_KEY`) holds `GET /api/events`
+open (that is, while an `mw talk wait` is armed), and `false` otherwise, including when
+`POSTERN_MAYOR_KEY` is unset. `Cache-Control: no-store`. The backend counts open
+streams per key in memory: a restart forgets them until the streams reconnect.
+
 ## GET /api/view
 
 The live view (`docs/protocol.md` §11): the bytes of `POSTERN_VIEW_FILE` as they

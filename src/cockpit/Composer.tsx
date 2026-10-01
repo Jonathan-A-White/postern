@@ -4,7 +4,7 @@
 // drop, or files shared in from another app. Whatever he quotes rides at the
 // top of what he sends. All the files go as one message, the words its caption.
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { Icon, IconButton, cx } from '../ui';
+import { Chip, Icon, IconButton, cx } from '../ui';
 import { useWide } from './hooks';
 import { canRecord, formatDuration, VoiceRecorder } from '../services/recorder';
 import { refuseFile, sendToThread, useSend, type OutgoingFile } from './send';
@@ -12,6 +12,9 @@ import { toast } from '../ui/toastStore';
 import type { ThreadRef } from '../services/threads';
 import { takePendingShare } from './shareInbox';
 import { quoteBlock } from './quote';
+import { usePrompts } from './usePrompts';
+import { beginsCall, checkPromptCall, matchPrompts } from '../model/prompts';
+import { optionChip } from '../services/prompts';
 
 interface Pending extends OutgoingFile {
   id: string;
@@ -135,7 +138,27 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     setRecording(false);
   }
 
+  // A text beginning '/' is a call to a saved prompt: it is checked against the signature before it can go.
+  const call = text.trimStart();
+  const calling = beginsCall(call);
+  const { prompts, fresh } = usePrompts(calling);
+  const offered = calling && prompts ? matchPrompts(call, prompts) : [];
+  const verdict = calling && prompts ? checkPromptCall(call, prompts) : undefined;
+  const checking = calling && prompts === undefined && fresh === undefined;
+  const callError = verdict && !verdict.ok && offered.length === 0 ? verdict.error : undefined;
+  const callBlocked = checking || (verdict !== undefined && !verdict.ok);
+
+  function choosePrompt(name: string) {
+    setText(`/${name} `);
+    const area = textarea.current;
+    if (!area) return;
+    area.focus();
+    // the box has not re-rendered yet: put the caret after the words once it has
+    requestAnimationFrame(() => area.setSelectionRange(area.value.length, area.value.length));
+  }
+
   async function send() {
+    if (callBlocked) return;
     const body = `${quote ? quoteBlock(quote) : ''}${text.trim()}`;
     if (!body.trim() && files.length === 0) return;
     const sent = await run(() => sendToThread(thread, body, files, re));
@@ -211,6 +234,33 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           ))}
         </div>
       )}
+      {offered.length > 0 && !recording && (
+        <div role="listbox" aria-label="Saved prompts" className="flex max-h-56 flex-col overflow-y-auto border-b border-line">
+          {offered.map((prompt) => (
+            <button
+              key={prompt.name}
+              type="button"
+              role="option"
+              aria-selected={false}
+              className="flex flex-col gap-1 px-4 py-2 text-left active:bg-sunken"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => choosePrompt(prompt.name)}
+            >
+              <span className="font-mono text-[14px] font-semibold">/{prompt.name}</span>
+              <span className="text-[13px] text-muted">{prompt.summary}</span>
+              {prompt.signature.length > 0 && (
+                <span className="flex flex-wrap gap-1.5">
+                  {prompt.signature.map((option) => (
+                    <Chip key={option.flag} mono tone={option.required ? 'needs' : 'neutral'}>
+                      {optionChip(option)}
+                    </Chip>
+                  ))}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex items-end gap-1 px-2 py-2">
         {recording ? (
           <div className="flex h-11 flex-1 items-center gap-3 rounded-2xl bg-sunken px-3" role="status">
@@ -240,11 +290,21 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
         {recording ? (
           <IconButton icon="stop" label="Stop recording" tone="danger" size="lg" onClick={() => void stopRecording()} />
         ) : canSend ? (
-          <IconButton icon="send" label="Send" tone="accent" size="lg" disabled={busy || !canSend} onClick={() => void send()} />
+          <IconButton icon="send" label="Send" tone="accent" size="lg" disabled={busy || !canSend || callBlocked} onClick={() => void send()} />
         ) : (
           <IconButton icon="mic" label="Record a voice note" size="lg" disabled={!canRecord()} onClick={() => void startRecording()} className={cx(!canRecord() && 'opacity-40')} />
         )}
       </div>
+      {callError && (
+        <p role="alert" className="px-4 pb-2 text-[12.5px] text-danger">
+          {callError}
+        </p>
+      )}
+      {checking && (
+        <p role="status" className="px-4 pb-2 text-[12.5px] text-muted">
+          Checking the saved prompts…
+        </p>
+      )}
       <input
         ref={picker}
         type="file"

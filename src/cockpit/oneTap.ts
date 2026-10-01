@@ -80,5 +80,5 @@ export function useOneTap(bead: string, action: string) {
     }
     return result;
   }
-  return { waiting, tap, said: waiting ? tapped.get(key) : undefined, pending: queued !== undefined };
+  return { waiting, tap, said: waiting ? tapped.get(key) : undefined, pending: queued !== undefined, queued };
 }

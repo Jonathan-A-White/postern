@@ -80,7 +80,8 @@ async function stubBackend(options: BackendOptions = {}): Promise<void> {
       if (path.endsWith('/messages') && init?.method === 'POST') {
         if (refuseNext) {
           refuseNext = false;
-          return json({}, 422);
+          // A passing trouble (a 4xx is final since mw-jrx0s.21 and would be marked failed, not retried).
+          return json({}, 503);
         }
         const { scriptHex } = JSON.parse(String(init.body)) as { scriptHex: string };
         const decoded = decodeRecordScript(LockingScript.fromHex(scriptHex))!;

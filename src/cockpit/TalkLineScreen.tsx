@@ -16,8 +16,9 @@ import { now } from '../services/clock';
 import { callSent as waitingCall, clockHHMM, ringNote } from '../model/call';
 import { beadHref } from '../nav/route';
 import { formatSeconds, showsCutTag } from '../model/talkScreen';
-import { pendingTurn } from '../model/outbox';
-import { PendingMark } from './PendingMark';
+import { isUnsent, pendingTurn } from '../model/outbox';
+import type { OutboxRow } from '../data/db';
+import { OutboxMark } from './OutboxMark';
 import { NOT_KEPT, type TalkPhase } from '../model/talkLine';
 import type { TalkLogEntry } from '../model/talkScreen';
 
@@ -142,6 +143,11 @@ function micName(input: string | undefined): string {
   return input ? `Listening on the Bluetooth microphone: ${input}.` : "Listening on the phone's own microphone.";
 }
 
+/** A turn of his that has not gone wears the pending mark, or what the backend said and Retry / Discard (mw-jrx0s.21). */
+function TurnMark({ row }: { row: OutboxRow | undefined }) {
+  return row ? <OutboxMark row={row} /> : null;
+}
+
 /** The small mark of whether the Mayor is here: a coloured dot, or a grey one while no wait of his is connected. Nothing until the backend has said. */
 function PresenceMark({ here }: { here: boolean | undefined }) {
   if (here === undefined) return null;
@@ -226,7 +232,7 @@ export function TalkLineScreen() {
   const callRows = useCallLine();
   const callSent = waitingCall(callRows);
   const outbox = useOutbox();
-  const callWaiting = outbox.some((row) => row.kind === 'call' && row.state === 'pending');
+  const callWaiting = outbox.find((row) => row.kind === 'call' && isUnsent(row));
   const route = useRoute();
   const calledFrom = route.view === 'line' ? route.call : undefined;
   const answered = useAnsweredRing();
@@ -266,7 +272,7 @@ export function TalkLineScreen() {
                     {entry.said}
                   </p>
                   <span className="flex gap-1.5">
-                    {line.talk && pendingTurn(outbox, line.talk.id, entry.turn) && <PendingMark />}
+                    {line.talk && <TurnMark row={pendingTurn(outbox, line.talk.id, entry.turn)} />}
                     {showsCutTag(entry) && <Chip>cut the last answer</Chip>}
                     {entry.asked && <Chip>asked for {entry.asked}</Chip>}
                   </span>
@@ -335,7 +341,7 @@ export function TalkLineScreen() {
         <PresenceMark here={talk.here} />
         {callWaiting && (
           <p data-testid="call-pending" className="flex items-center justify-center gap-1.5 text-center text-[11.5px] text-faint">
-            Call request <PendingMark />
+            Call request <OutboxMark row={callWaiting} />
           </p>
         )}
         {callSent !== undefined && (

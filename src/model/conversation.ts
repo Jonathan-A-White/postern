@@ -49,6 +49,9 @@ export interface ConversationItem {
   unread?: boolean;
   pending?: boolean;
   failed?: boolean;
+  /** The outbox row a message still on its way is (mw-jrx0s.21), and what the backend said when it refused it for good. */
+  outboxId?: number;
+  failure?: string;
   source: 'message' | 'comment';
 }
 

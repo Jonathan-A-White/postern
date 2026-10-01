@@ -19,7 +19,7 @@ import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
 import { useAnswers, useOutbox } from './hooks';
 import { pendingAnswer } from '../model/outbox';
-import { PendingMark } from './PendingMark';
+import { OutboxMark } from './OutboxMark';
 import { clockTime } from '../services/age';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
@@ -218,7 +218,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
         </p>
       )}
 
-      {tapAction && oneTap.waiting && !released && <WaitingNote pending={oneTap.pending} />}
+      {tapAction && oneTap.waiting && !released && <WaitingNote pending={oneTap.pending} queued={oneTap.queued} />}
 
       {answered && saidWhat && (
         <p role="status" className="inline-flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
@@ -226,7 +226,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
           <span className="min-w-0 truncate">
             {saidWhat.label ? `Answered: ${saidWhat.label}` : 'Answered'} {clockTime(new Date(saidWhat.at))}
           </span>
-          {pendingRow && <PendingMark />}
+          {pendingRow && <OutboxMark row={pendingRow} />}
         </p>
       )}
 

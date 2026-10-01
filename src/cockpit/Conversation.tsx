@@ -13,6 +13,7 @@ import { useLive } from '../services/live';
 import { speak } from '../services/speech';
 import { useOutbox, useUnlockedKey } from './hooks';
 import { pendingAnswer } from '../model/outbox';
+import { FailedNote, OutboxMark } from './OutboxMark';
 import { PendingMark } from './PendingMark';
 import { VoicePlayer } from './VoicePlayer';
 import { sendAnswer } from './send';
@@ -217,7 +218,7 @@ function QuestionBlock({ item, given }: { item: ConversationItem; given?: GivenA
           <span className="min-w-0 break-words">
             Answered: {answered.answer} {clockTime(new Date(answered.at))}
           </span>
-          {queued && <PendingMark />}
+          {queued && <OutboxMark row={queued} />}
         </p>
       )}
       {failed && !dead && (
@@ -263,7 +264,7 @@ function Bubble({ item, given, onQuote, onReply }: { item: ConversationItem; giv
       </div>
       <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-faint">
         <span>{clockTime(new Date(item.at))}</span>
-        {item.pending && <PendingMark />}
+        {item.pending && (item.failure !== undefined && item.outboxId !== undefined ? <FailedNote id={item.outboxId} failure={item.failure} /> : <PendingMark />)}
         {item.unread && <span className="font-semibold text-accent">· new</span>}
         {item.speaker !== 'you' && item.text && (
           <button type="button" aria-label="Read aloud" className="rounded p-0.5 hover:text-fg" onClick={() => speak(item.text)}>

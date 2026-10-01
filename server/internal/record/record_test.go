@@ -240,6 +240,61 @@ func TestDecodeTypedScriptTransferRecordWithoutManifest(t *testing.T) {
 	}
 }
 
+// buildGatedRecordScript builds spell-forge's 6-push layout (mw-jeswf.3):
+// OP_FALSE OP_RETURN <'nftgate'> <0x02> <recordType> <commitment>
+// <empty manifest 0x00> <payload>.
+func buildGatedRecordScript(recordType string, commitment []byte, payload []byte) []byte {
+	var script []byte
+	script = append(script, 0x00, 0x6a) // OP_FALSE OP_RETURN
+	script = append(script, pushData([]byte("nftgate"))...)
+	script = append(script, pushData([]byte{VersionTyped})...)
+	script = append(script, pushData([]byte(recordType))...)
+	script = append(script, pushData(commitment)...)
+	script = append(script, pushData([]byte{0x00})...)
+	script = append(script, pushData(payload)...)
+	return script
+}
+
+func TestDecodeTypedScriptReadsTheSixPushGatedLayout(t *testing.T) {
+	commitment := bytes.Repeat([]byte{0xc0}, 32)
+	for _, tc := range []struct {
+		recordType string
+		payload    []byte
+	}{
+		{"M", []byte(`{"collection":"sf","holder":"mzzz","wrapKey":"04","wrap":"01"}`)},
+		{"W", []byte{0x9a, 0x01, 0xfe, 0x33}}, // a gated W's payload is ciphertext
+		{"TR", []byte(`{"to":"mzzz"}`)},
+	} {
+		decoded, ok := DecodeTypedScript(hex.EncodeToString(buildGatedRecordScript(tc.recordType, commitment, tc.payload)))
+		if !ok {
+			t.Fatalf("DecodeTypedScript returned ok=false for a 6-push %s record", tc.recordType)
+		}
+		if decoded.RecordType != tc.recordType {
+			t.Fatalf("RecordType = %q, want %q", decoded.RecordType, tc.recordType)
+		}
+		if !bytes.Equal(decoded.PayloadBytes, tc.payload) {
+			t.Fatalf("%s PayloadBytes = %x, want the last push %x", tc.recordType, decoded.PayloadBytes, tc.payload)
+		}
+	}
+}
+
+func TestDecodeTypedScriptRefusesASixPushRecordWhoseCommitmentIsNot32Bytes(t *testing.T) {
+	for _, size := range []int{0, 1, 31, 33} {
+		script := buildGatedRecordScript("M", bytes.Repeat([]byte{0xc0}, size), []byte(`{"collection":"c","holder":"h"}`))
+		if _, ok := DecodeTypedScript(hex.EncodeToString(script)); ok {
+			t.Fatalf("DecodeTypedScript returned ok=true for a 6-push record with a %d-byte 4th push, want 32 only", size)
+		}
+	}
+}
+
+func TestDecodeTypedScriptRefusesSevenPushes(t *testing.T) {
+	script := buildGatedRecordScript("M", bytes.Repeat([]byte{0xc0}, 32), []byte(`{}`))
+	script = append(script, pushData([]byte(`{}`))...)
+	if _, ok := DecodeTypedScript(hex.EncodeToString(script)); ok {
+		t.Fatal("DecodeTypedScript returned ok=true for 7 pushes")
+	}
+}
+
 func TestDecodeTypedScriptUnknownRecordType(t *testing.T) {
 	script := buildTypedRecordScript("X", []byte{0x00}, []byte(`{}`))
 

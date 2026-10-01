@@ -241,3 +241,28 @@ export function fixtureRecords(governorKey: PrivateKey, now: number = Date.now()
     fromMayor(encodeThreadedMessage({ thread: { topic: 'desktop move' }, text: 'The runbook is in `hosts/desktop-move.md`. Step 2 needs you: two sudo lines, on the bead.' }), 48),
   ];
 }
+
+/** Three options of about 200 characters each, as a grilling card carries (mw-gq6.172). */
+export const LONG_OPTIONS = [
+  'A: Move the core into a new repo called bsv-kit now, publish it to the registry, and have spell-forge and postern depend on the published package from the first release on',
+  'B: Keep the core as a workspace inside spell-forge for another month, extract it once the second consumer has proved the API, and accept the duplicate lint config until then',
+  'C: Leave everything where it is, copy the three modules postern needs, and write the shared test vectors first so a later extraction is a mechanical move and not a redesign',
+];
+
+/** The conversation's long-option cards: one answered ('Answered: …' chip), one open. */
+export function longOptionRecords(governorKey: PrivateKey, now: number, firstSeq: number): FixtureRecord[] {
+  const governorPub = governorKey.toPublicKey().toString();
+  const mayorPub = MAYOR.toPublicKey().toString();
+  const ts = (m: number) => Math.floor((now - m * 60_000) / 1000);
+  let seq = firstSeq;
+  const record = (text: string, from: PrivateKey, to: string, minutes: number, cls: MessagePayload['class'] = 'message'): FixtureRecord => {
+    seq += 1;
+    return { seq, txid: `direct:${hex64(seq)}`, vout: 0, payload: { ...encryptMessage({ text, class: cls, senderPrivateKeyHex: from.toHex(), recipientPublicKeyHex: to }), ts: ts(minutes) } };
+  };
+  const ask = (q: string, minutes: number) => record(encodeQuestion({ bead: 'mw-2rbm.6', q, rec: LONG_OPTIONS[1], options: LONG_OPTIONS }), MAYOR, governorPub, minutes, 'decision-needed');
+  return [
+    ask('Q1: Where should the shared core live?', 9),
+    record(encodeReply({ bead: 'mw-2rbm.6', answer: LONG_OPTIONS[0] }), governorKey, mayorPub, 8),
+    ask('Q2: And when does the extraction happen?', 5),
+  ];
+}

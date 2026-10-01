@@ -8,7 +8,7 @@ import { deriveMasterKey, deriveAesKeyFromPhrase, wrapKey, publicKeyHexFromMaste
 import { sealDocument } from '../../src/services/documents';
 import { encryptAttachment } from '../../src/services/messages';
 import type { Need, View } from '../../src/model/view';
-import { MAYOR, fixtureDetail, fixtureRecords, fixtureView } from '../support/cockpit-fixture';
+import { MAYOR, fixtureDetail, fixtureRecords, fixtureView, longOptionRecords } from '../support/cockpit-fixture';
 
 export async function seedVault(page: Page, mnemonic: string): Promise<string> {
   const key = await deriveMasterKey(mnemonic);
@@ -57,6 +57,8 @@ export interface StubExtras {
   utxoSatoshis?: number;
   /** Needs added to the fixture's view (mw-tbx1n.8: cards that wait on the Mayor or the factory). */
   needs?: Need[];
+  /** Adds the long-option decision cards of mw-gq6.172 to bead mw-2rbm.6's thread. */
+  longOptions?: boolean;
 }
 
 export async function stubBackend(
@@ -75,6 +77,7 @@ export async function stubBackend(
     voiceAttachment = { hash: createHash('sha256').update(voiceCiphertext).digest('hex'), size: voice.bytes.length, mime: voice.mime };
   }
   const records = fixtureRecords(governor, now, voiceAttachment);
+  if (extras.longOptions) records.push(...longOptionRecords(governor, now, records.length));
   const posted: string[] = [];
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 

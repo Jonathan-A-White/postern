@@ -296,19 +296,41 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('nothing else is said', () => expect(line.speaking).toBeUndefined());
   });
 
-  Scenario('AC-2: no answer in time ends the wait and says so', ({ Given, When, Then, And }) => {
+  Scenario('AC-2: thinking at 8 s: the line says the Mayor is thinking only once the wait passes 8 s (mw-j0f2d.31)', ({ Given, When, Then, And }) => {
+    Given('the line is waiting on turn {number} of {string} since {number}', (_c, n: number, id: string, since: number) => waitingOn(id, Number(n), Number(since)));
+    Then('the line is not yet thinking', () => expect(line.thinking).toBeFalsy());
+    When('the clock reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
+    Then('the line is still not thinking', () => expect(line.thinking).toBeFalsy());
+    When('the clock then reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
+    Then('the line is thinking', () => expect(line.thinking).toBe(true));
+    And('the line is still waiting', () => expect(line.phase).toBe('waiting'));
+  });
+
+  Scenario('AC-2: give-up at 90 s: no answer in time ends the wait and says so (mw-j0f2d.31)', ({ Given, When, Then, And }) => {
     Given('the line is waiting on turn {number} of {string} since {number}', (_c, n: number, id: string, since: number) => waitingOn(id, Number(n), Number(since)));
     When('the clock reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
     Then('the line is still waiting', () => {
       expect(line.phase).toBe('waiting');
     });
     When('the clock then reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
+    Then('the line is waiting still', () => expect(line.phase).toBe('waiting'));
+    When('the clock afterwards reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
     Then('the line is idle', () => expect(line.phase).toBe('idle'));
     And('the line says {string}', (_c, message: string) => expect(line.error).toBe(message));
+  });
+
+  Scenario('AC-2: a late answer replaces the give-up line (mw-j0f2d.31)', ({ Given, When, Then, And }) => {
+    Given('the line is waiting on turn {number} of {string} since {number}', (_c, n: number, id: string, since: number) => waitingOn(id, Number(n), Number(since)));
+    When('the clock reads {number}', (_c, now: number) => feed({ type: 'tick', now: Number(now) }));
+    Then('the line says {string}', (_c, message: string) => expect(line.error).toBe(message));
     When('the Mayor answers {string} on model {string}', (_c, text: string, model: string) => {
-      feed({ type: 'incoming', turn: { talk: { id: 'talk-11', turn: 1 }, text, role: 'answer', model } });
+      feed({ type: 'incoming', turn: { talk: line.talk!, text, role: 'answer', model } });
     });
-    Then('the line is still idle', () => expect(line.phase).toBe('idle'));
+    Then('the line is speaking {string}', (_c, text: string) => {
+      expect(line.phase).toBe('speaking');
+      expect(line.speaking?.text).toBe(text);
+    });
+    And('the line says nothing went wrong', () => expect(line.error).toBeUndefined());
   });
 
   Scenario('AC-2: an answer to another talk or turn is ignored', ({ Given, When, And, Then }) => {

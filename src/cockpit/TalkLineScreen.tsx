@@ -119,9 +119,12 @@ const MODELS = [
 
 const STATUS: Partial<Record<TalkPhase, string>> = {
   sending: 'Sending…',
-  waiting: 'The Mayor is thinking…',
+  waiting: 'Sent.',
   speaking: 'The Mayor is speaking…',
 };
+
+/** Said once a wait has gone on past TALK_THINKING_MS. */
+const THINKING = 'The Mayor is thinking…';
 
 /** What the big button says a hold will do (or why it cannot be held now). */
 function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean): string {
@@ -349,7 +352,7 @@ export function TalkLineScreen() {
             </p>
           ) : (
             <p className={cx(talk.notice ? 'text-danger' : 'text-muted')}>
-              {talk.notice ?? STATUS[line.phase] ?? (talk.supported ? 'Hold the button and speak.' : '')}
+              {talk.notice ?? (line.phase === 'waiting' && line.thinking ? THINKING : STATUS[line.phase]) ?? (talk.supported ? 'Hold the button and speak.' : '')}
             </p>
           )}
           {!talk.supported && <p className="text-danger">This browser cannot turn speech into text.</p>}

@@ -96,9 +96,11 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And one turn is sent saying "What landed today?" as turn 1
     And the screen shows "What landed today?" as what he said
 
-  Scenario: AC-1: the thinking state shows between his release and the answer
+  Scenario: AC-1: the thinking state shows from 8 s after his release until the answer (mw-j0f2d.31)
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "Hello" and lets go
+    Then the screen says the turn was sent and does not yet say the Mayor is thinking
+    When 9 seconds pass with no answer
     Then the screen says the Mayor is thinking
 
   Scenario: AC-1: an answer is shown and spoken aloud

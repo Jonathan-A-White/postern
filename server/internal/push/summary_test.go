@@ -127,9 +127,9 @@ func TestSummaryDoesNotChangeWhoIsAddressed(t *testing.T) {
 }
 
 // An events record (docs/protocol.md §22) is never summary-pushed, even if a
-// sender put a summary on it: its body stays out of any push.
+// sender put a summary on it: its body stays out of any push, an emergency's too.
 func TestAnEventsRecordsSummaryIsNeverAPushBody(t *testing.T) {
-	p, ok := recordPush("direct:ab", recordWithSummary(t, "events", "Answer: should never show"))
+	p, ok := recordPush("direct:ab", eventsRecord(t, "emergency", "Answer: should never show"))
 	if !ok {
 		t.Fatal("events record not addressed")
 	}

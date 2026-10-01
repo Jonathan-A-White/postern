@@ -165,9 +165,10 @@ func newApp(cfg config.Config) (*app, error) {
 // the on-message hook when configured (which runs in standby too: mw decides
 // what to apply) for every record but grist, talk, call and events, and the on-grist hook
 // for grist addressed to the mill. A talk, call or events record reaches the hub
-// only (docs/protocol.md §20-§22), but for the Mayor's ring, which is pushed too (§21).
+// only (docs/protocol.md §20-§22), but for the Mayor's ring, which is pushed too (§21), and an
+// events record in the emergency lane (§22).
 func buildFanout(cfg config.Config, home *standby.Monitor, pusher, hub notify.Notifier) notify.Fanout {
-	fanout := notify.Fanout{notify.Only{Notifier: standby.Gate(home, pusher), Keep: func(rec index.Record) bool { return !isTalk(rec) || isRing(rec) }}, hub}
+	fanout := notify.Fanout{notify.Only{Notifier: standby.Gate(home, pusher), Keep: func(rec index.Record) bool { return !isTalk(rec) || isRing(rec) || isEmergency(rec) }}, hub}
 	forMill := gristForMill(cfg.MillKey)
 	if cfg.OnMessage != "" {
 		fanout = append(fanout, notify.Only{Notifier: hook.New(cfg.OnMessage), Keep: func(rec index.Record) bool { return !isGrist(rec) && !isTalk(rec) }})
@@ -193,6 +194,13 @@ func isGrist(rec index.Record) bool {
 func isTalk(rec index.Record) bool {
 	env, err := record.ParseEnvelope(rec.Payload)
 	return err == nil && (env.Class == record.ClassTalk || env.Class == record.ClassCall || env.Class == record.ClassEvents)
+}
+
+// isEmergency reports whether a record is an events record in the emergency lane
+// (docs/protocol.md §22): the one events record that is pushed.
+func isEmergency(rec index.Record) bool {
+	env, err := record.ParseEnvelope(rec.Payload)
+	return err == nil && env.Class == record.ClassEvents && env.Lane == record.LaneEmergency
 }
 
 // isRing reports whether a record is the Mayor's call-back (docs/protocol.md §21), a

@@ -42,8 +42,12 @@ const RoleRing = "ring"
 
 // ClassEvents is a batch of factory events from the Mayor's host to the
 // Governor (docs/protocol.md §22): like a talk turn it reaches the event
-// stream and nothing else, never a push or a hook.
+// stream and nothing else, never a hook, and no push but for an emergency
+// (Envelope.Lane, LaneEmergency).
 const ClassEvents = "events"
+
+// LaneEmergency is the clear `lane` of an unbatched emergency events record, the one events record that is pushed.
+const LaneEmergency = "emergency"
 
 // Envelope is docs/protocol.md §1's clear message payload. The backend never
 // decrypts Ct; it only checks the envelope's shape.
@@ -55,6 +59,8 @@ type Envelope struct {
 	Ct    string
 	// Role is a call record's optional clear role (docs/protocol.md §21); empty when absent.
 	Role string
+	// Lane is an events record's optional clear lane (docs/protocol.md §22); empty when absent.
+	Lane string
 }
 
 // ParseEnvelope checks payload is exactly §1's envelope — v 1, kind "msg",
@@ -109,6 +115,10 @@ func ParseEnvelope(payload []byte) (Envelope, error) {
 	if raw, ok := fields["role"]; ok {
 		// A role that is not a string is no role: it never makes a record push-worthy.
 		_ = json.Unmarshal(raw, &env.Role)
+	}
+	if raw, ok := fields["lane"]; ok {
+		// A lane that is not a string is no lane: it never makes a record push-worthy.
+		_ = json.Unmarshal(raw, &env.Lane)
 	}
 	return env, nil
 }

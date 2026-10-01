@@ -48,6 +48,11 @@ describe('previewText', () => {
     expect(previewText(row(encodeThreadedMessage({ thread: { bead: 'b' }, text: 'hi' })))).toBe('hi');
     expect(previewText(row(encodeThreadedMessage({ text: '', attachment: { hash: 'h', size: 1, mime: 'audio/webm' } })))).toBe('Voice note');
     expect(previewText(row(encodeThreadedMessage({ text: 'look', attachment: { hash: 'h', size: 1, mime: 'image/png' } })))).toBe('Image · look');
+    const img = { hash: 'h', size: 1, mime: 'image/png' };
+    const pdf = { hash: 'p', size: 1, mime: 'application/pdf' };
+    expect(previewText(row(encodeThreadedMessage({ text: 'both', attachments: [img, img] })))).toBe('2 images · both');
+    expect(previewText(row(encodeThreadedMessage({ text: '', attachments: [img, img] })))).toBe('2 images');
+    expect(previewText(row(encodeThreadedMessage({ text: 'all', attachments: [img, pdf, img] })))).toBe('3 files · all');
     expect(previewText(row('plain words'))).toBe('plain words');
     expect(previewText({ plaintext: undefined, class: 'message', decryptFailed: false })).toMatch(/unlock/i);
   });
@@ -82,7 +87,7 @@ describe('mergeConversation', () => {
       const comment = { at: new Date((ts + 30) * 1000).toISOString(), author: 'root', text: `The Governor by postern ${stamp}: the tiles [image: ${path}]` };
       const items = mergeConversation([image()], [comment]);
       expect(items).toHaveLength(1);
-      expect(items[0]).toMatchObject({ speaker: 'you', kind: 'attachment', attachment: { mime: 'image/jpeg' } });
+      expect(items[0]).toMatchObject({ speaker: 'you', kind: 'attachment', attachments: [{ mime: 'image/jpeg' }] });
       expect(JSON.stringify(items)).not.toContain('/home/jwhite');
     });
 

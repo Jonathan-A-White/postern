@@ -7,7 +7,7 @@
 import type { MessageRow } from '../data/db';
 import { markdownToPlain } from '../markdown/plain';
 import { decodeQuestion, decodeReply, type QuestionBody } from '../services/questions';
-import { decodeThreadedMessage, type Attachment } from '../services/threads';
+import { attachmentsOf, decodeThreadedMessage, type Attachment } from '../services/threads';
 import type { BeadComment } from './view';
 
 export type Speaker = 'you' | 'mayor' | 'builder' | 'other';
@@ -36,7 +36,8 @@ export interface ConversationItem {
   question?: QuestionBody;
   answer?: string;
   action?: GovernorAction;
-  attachment?: Attachment;
+  /** The files this message carries, in order: one or more, on an 'attachment' item. */
+  attachments?: Attachment[];
   /** What the Mayor's host heard in this voice note (docs/protocol.md §14). */
   transcript?: string;
   txid?: string;
@@ -113,8 +114,9 @@ export function previewText(row: Pick<MessageRow, 'plaintext' | 'class' | 'decry
   const reply = decodeReply(text);
   if (reply) return `Answered: ${reply.answer}`;
   const body = decodeThreadedMessage(text);
-  if (body.attachment) {
-    const label = attachmentLabel(body.attachment);
+  const files = attachmentsOf(body);
+  if (files.length > 0) {
+    const label = attachmentsLabel(files);
     const plain = markdownToPlain(body.text);
     return plain ? `${label} · ${plain}` : label;
   }
@@ -126,6 +128,13 @@ export function attachmentLabel(attachment: Attachment): string {
   if (attachment.mime.startsWith('image/')) return 'Image';
   if (attachment.mime === 'application/pdf') return 'PDF';
   return 'File';
+}
+
+/** What several files read as in a preview: one as its own label, two or more
+ * images '2 images', any other mix '3 files'. */
+export function attachmentsLabel(files: Attachment[]): string {
+  if (files.length === 1) return attachmentLabel(files[0]);
+  return files.every((file) => file.mime.startsWith('image/')) ? `${files.length} images` : `${files.length} files`;
 }
 
 function speakerOfMessage(row: MessageRow): { speaker: Speaker; label: string } {
@@ -163,7 +172,8 @@ export function itemFromMessage(row: MessageRow): ConversationItem & { transcrip
   if (body.role === 'transcript' && body.re) {
     return { ...base, kind: 'text', text: body.text, transcriptOf: body.re };
   }
-  if (body.attachment) return { ...base, kind: 'attachment', text: body.text, attachment: body.attachment };
+  const files = attachmentsOf(body);
+  if (files.length > 0) return { ...base, kind: 'attachment', text: body.text, attachments: files };
   return { ...base, kind: 'text', text: body.text, ...(body.re !== undefined ? { re: body.re } : {}) };
 }
 

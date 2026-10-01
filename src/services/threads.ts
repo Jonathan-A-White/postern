@@ -23,6 +23,9 @@ export interface ThreadedBody {
   thread?: ThreadRef;
   text: string;
   attachment?: Attachment;
+  /** docs/protocol.md §8: two or more files sent together as one message, in the
+   * order they were added. Never set beside `attachment`: one file is `attachment`. */
+  attachments?: Attachment[];
   /** docs/protocol.md §14: the txid of the message this one answers or annotates. */
   re?: string;
   /** docs/protocol.md §14: "transcript" marks the text as what the Mayor's host
@@ -44,24 +47,40 @@ function isAttachment(value: unknown): value is Attachment {
   return typeof candidate.hash === 'string' && typeof candidate.size === 'number' && typeof candidate.mime === 'string';
 }
 
-/** Encodes a message body that may name a thread and/or carry an attachment.
- * Omitting all three produces the same bare text an unthreaded, attachment-less
+function isAttachmentList(value: unknown): value is Attachment[] {
+  return Array.isArray(value) && value.length > 0 && value.every(isAttachment);
+}
+
+/** Every file a body carries, in order: `attachments` when present, else the one
+ * `attachment`, else none. */
+export function attachmentsOf(body: Pick<ThreadedBody, 'attachment' | 'attachments'>): Attachment[] {
+  if (body.attachments !== undefined) return body.attachments;
+  return body.attachment !== undefined ? [body.attachment] : [];
+}
+
+/** Encodes a message body that may name a thread and/or carry attachments.
+ * Omitting all of them produces the same bare text an unthreaded, attachment-less
  * message already carries, so an old reader (or one that never learns about
- * threads or attachments) sees no format change. */
+ * threads or attachments) sees no format change. One file is always written as
+ * `attachment`, exactly as before; `attachments` is written only for two or more. */
 export function encodeThreadedMessage(body: ThreadedBody): string {
+  const files = attachmentsOf(body);
   // A `re` is only ever read from the JSON shape, so a message that carries one is never bare text.
-  if (body.thread === undefined && body.attachment === undefined && body.re === undefined) return body.text;
+  if (body.thread === undefined && files.length === 0 && body.re === undefined) return body.text;
   return JSON.stringify({
     ...(body.thread !== undefined ? { thread: body.thread } : {}),
     text: body.text,
-    ...(body.attachment !== undefined ? { attachment: body.attachment } : {}),
+    ...(files.length === 1 ? { attachment: files[0] } : {}),
+    ...(files.length > 1 ? { attachments: files } : {}),
     ...(body.re !== undefined ? { re: body.re } : {}),
     ...(body.role !== undefined ? { role: body.role } : {}),
   });
 }
 
-/** Decodes a decrypted plaintext into its thread (if any), attachment (if any)
- * and text. Anything that isn't this JSON shape — plain text, or JSON of some
+/** Decodes a decrypted plaintext into its thread (if any), attachment or
+ * attachments (if any) and text. A message with both fields reads as its
+ * `attachments`; one whose `attachments` is empty or holds a malformed entry is
+ * plain text. Anything that isn't this JSON shape — plain text, or JSON of some
  * other shape — is the general thread with no attachment, its text unchanged. */
 export function decodeThreadedMessage(text: string): ThreadedBody {
   let parsed: unknown;
@@ -75,16 +94,18 @@ export function decodeThreadedMessage(text: string): ThreadedBody {
   if (typeof candidate.text !== 'string') return { text };
   const hasThread = candidate.thread !== undefined;
   const hasAttachment = candidate.attachment !== undefined;
+  const hasAttachments = candidate.attachments !== undefined;
   // docs/protocol.md §14: a transcript on the general thread carries only text,
   // `re` and `role` — still this shape, never plain text.
   const annotates = typeof candidate.re === 'string' || typeof candidate.role === 'string';
-  if (!hasThread && !hasAttachment && !annotates) return { text };
+  if (!hasThread && !hasAttachment && !hasAttachments && !annotates) return { text };
   if (hasThread && !isThreadRef(candidate.thread)) return { text };
   if (hasAttachment && !isAttachment(candidate.attachment)) return { text };
+  if (hasAttachments && !isAttachmentList(candidate.attachments)) return { text };
   return {
     text: candidate.text,
     ...(hasThread ? { thread: candidate.thread as ThreadRef } : {}),
-    ...(hasAttachment ? { attachment: candidate.attachment as Attachment } : {}),
+    ...(hasAttachments ? { attachments: candidate.attachments as Attachment[] } : hasAttachment ? { attachment: candidate.attachment as Attachment } : {}),
     ...(typeof candidate.re === 'string' ? { re: candidate.re } : {}),
     ...(typeof candidate.role === 'string' ? { role: candidate.role } : {}),
   };

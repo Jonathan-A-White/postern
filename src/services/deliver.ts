@@ -121,6 +121,7 @@ export interface ThreadedMessage {
   thread?: ThreadRef;
   text: string;
   attachment?: Attachment;
+  attachments?: Attachment[];
   re?: string;
 }
 

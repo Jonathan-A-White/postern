@@ -49,6 +49,39 @@ describe('threads: encode/decode round trips', () => {
     expect(decodeThreadedMessage(encodeThreadedMessage(body))).toEqual(body);
   });
 
+  describe('several files in one message (mw-909ci.3)', () => {
+    const a = { hash: 'a'.repeat(64), size: 10, mime: 'image/png' };
+    const b = { hash: 'b'.repeat(64), size: 20, mime: 'image/jpeg' };
+
+    it('round-trips two files as `attachments`, in order, with thread and re', () => {
+      const body: ThreadedBody = { thread: { bead: 'mw-x.1' }, text: 'both', attachments: [a, b], re: 'direct:' + 'e'.repeat(64) };
+      const encoded = encodeThreadedMessage(body);
+      const wire = JSON.parse(encoded) as Record<string, unknown>;
+      expect(wire.attachments).toEqual([a, b]);
+      expect(wire.attachment).toBeUndefined();
+      expect(decodeThreadedMessage(encoded)).toEqual(body);
+    });
+
+    it('writes one file as the single `attachment`, never `attachments`', () => {
+      const wire = JSON.parse(encodeThreadedMessage({ text: 'one', attachments: [a] })) as Record<string, unknown>;
+      expect(wire.attachment).toEqual(a);
+      expect(wire.attachments).toBeUndefined();
+      expect(decodeThreadedMessage(JSON.stringify(wire))).toEqual({ text: 'one', attachment: a });
+    });
+
+    it('a reader that finds both fields uses `attachments`', () => {
+      const text = JSON.stringify({ text: 't', attachment: a, attachments: [b, a] });
+      expect(decodeThreadedMessage(text)).toEqual({ text: 't', attachments: [b, a] });
+    });
+
+    it('an empty or malformed `attachments` is plain text', () => {
+      for (const attachments of [[], [a, { hash: 'x', size: 'big', mime: 'image/png' }], 'nope', { hash: 'x' }]) {
+        const text = JSON.stringify({ text: 't', attachments });
+        expect(decodeThreadedMessage(text)).toEqual({ text });
+      }
+    });
+  });
+
   it('treats plain text as the general thread', () => {
     expect(decodeThreadedMessage('hello')).toEqual({ text: 'hello' });
   });

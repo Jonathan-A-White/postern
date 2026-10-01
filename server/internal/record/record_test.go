@@ -471,3 +471,32 @@ func TestParseTransactionRejectsTruncatedHex(t *testing.T) {
 		t.Fatal("ParseTransaction accepted a truncated transaction")
 	}
 }
+
+func TestP2PKHLockHashReadsTheHashOfAStandardP2PKHScript(t *testing.T) {
+	hash, ok := P2PKHLockHash(hex.EncodeToString(buildP2PKHScript()))
+	if !ok || !bytes.Equal(hash, bytes.Repeat([]byte{0xab}, 20)) {
+		t.Fatalf("P2PKHLockHash = %x, %v, want the 20-byte hash", hash, ok)
+	}
+}
+
+func TestP2PKHLockHashRejectsAnythingElse(t *testing.T) {
+	p2pkh := buildP2PKHScript()
+	for name, script := range map[string][]byte{
+		"OP_2DROP OP_1":      {0x6d, 0x51},
+		"empty":              {},
+		"a record":           buildRecordScript(1, []byte(`{"kind":"msg"}`)),
+		"trailing opcode":    append(append([]byte{}, p2pkh...), 0x75),
+		"no OP_CHECKSIG":     p2pkh[:len(p2pkh)-1],
+		"OP_CHECKSIGVERIFY":  append(append([]byte{}, p2pkh[:len(p2pkh)-1]...), 0xad),
+		"a 21-byte hash":     append(append([]byte{0x76, 0xa9, 0x15}, bytes.Repeat([]byte{0xab}, 21)...), 0x88, 0xac),
+		"OP_PUSHDATA1 20":    append(append([]byte{0x76, 0xa9, 0x4c, 0x14}, bytes.Repeat([]byte{0xab}, 20)...), 0x88, 0xac),
+		"a prefix before it": append([]byte{0x51, 0x75}, p2pkh...),
+	} {
+		if hash, ok := P2PKHLockHash(hex.EncodeToString(script)); ok {
+			t.Errorf("%s: P2PKHLockHash = %x, true, want ok=false", name, hash)
+		}
+	}
+	if _, ok := P2PKHLockHash("zz"); ok {
+		t.Error("P2PKHLockHash accepted invalid hex")
+	}
+}

@@ -413,6 +413,35 @@ optional field beside `text` and `thread`:
   itself carries no type information); one of `image/png`, `image/jpeg`, or
   `image/webp`.
 
+### Several files in one message
+
+`mw-909ci.3`: files sent together are ONE message. One file is the single
+`attachment` above, exactly as before. Two or more go in `attachments`, an
+array of those same `{ hash, size, mime }` objects in the order the sender
+added them, with the caption as the message's `text` and the same `thread`
+and `re`:
+
+```json
+{
+  "thread": { "bead": "mw-abc.3" },
+  "text": "<optional caption, for the whole post>",
+  "attachments": [
+    { "hash": "<sha256 hex>", "size": <ciphertext bytes>, "mime": "image/png" },
+    { "hash": "<sha256 hex>", "size": <ciphertext bytes>, "mime": "image/jpeg" }
+  ]
+}
+```
+
+- A writer sets `attachment` or `attachments`, never both. A reader that finds
+  both uses `attachments`.
+- `attachments` is a non-empty array whose every entry is a valid attachment:
+  one that is empty, not an array, or holds a malformed entry makes the whole
+  body read as plain text, as any other malformed shape does.
+- No new size cap: each file is still at most 8 MiB, and every file is uploaded
+  before the message is sent, so a failed upload sends nothing.
+- A list preview reads one file as its own label, two or more images as
+  `2 images`, any other mix as `3 files`, then ` · caption`.
+
 ## 9. Direct delivery (the live channel)
 
 The Governor's 2026-09-28 overhaul (vault `plans/0021-cockpit-plan.md`, decision 5):
@@ -691,8 +720,10 @@ to read as text.
 `audio/webm`, `audio/ogg`, `audio/mp4`, `audio/mpeg`, `application/pdf` and
 `text/plain`; the 8 MiB cap is unchanged (about half an hour of Opus voice).
 Attachments now travel both ways: the Mayor may attach a file to a message to the
-Governor exactly as the app does (`mw postern send --attach <file>`). Several
-files are several messages, the caption on the last.
+Governor exactly as the app does (`mw postern send --attach <file>`). From the
+app, several files are one message's `attachments` (§8); `mw postern send
+--attach` still sends one message per file, the caption on the last. Both are
+valid for a reader.
 
 §6's threaded body gains two optional fields:
 

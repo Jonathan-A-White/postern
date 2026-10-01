@@ -106,8 +106,8 @@ describeFeature(feature, ({ Scenario }) => {
     Then('Send is ready again', () => {
       expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
     });
-    And('he is told "May have gone: check the thread before sending again"', () => {
-      expect(screen.getByText('May have gone: check the thread before sending again')).toBeInTheDocument();
+    And('he is told "May have gone: check the channel before sending again"', () => {
+      expect(screen.getByText('May have gone: check the channel before sending again')).toBeInTheDocument();
       expect(screen.queryByText(/Not sent/)).toBeNull();
     });
     And('the text "Is the deploy done?" is still in the box', () => {
@@ -122,8 +122,8 @@ describeFeature(feature, ({ Scenario }) => {
     And('he has typed "Is the deploy done?"', () => type('Is the deploy done?'));
     When('he taps Send', tapSend);
     And('30 seconds pass', pass30Seconds);
-    Then('he is told "May have gone: check the thread before sending again"', () => {
-      expect(screen.getByText('May have gone: check the thread before sending again')).toBeInTheDocument();
+    Then('he is told "May have gone: check the channel before sending again"', () => {
+      expect(screen.getByText('May have gone: check the channel before sending again')).toBeInTheDocument();
     });
     And('he is never shown "signal is aborted without reason"', () => {
       expect(screen.queryByText(/aborted/)).toBeNull();

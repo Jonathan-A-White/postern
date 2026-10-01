@@ -238,6 +238,13 @@ or
 - `text` — the message body: exactly what an unthreaded plaintext already carries
   as its whole value, just wrapped alongside the thread it belongs to.
 
+Words (mw-909ci.5): the `thread` field names what the app calls a **channel**: a
+bead's own channel (`{"bead": …}`), or a named one (`{"topic": …}`, which the app
+shows as 'New channel' and a subtitle of 'Channel'; the word 'topic' is never on a
+screen). What the app calls a **thread** is §14's replies under one post, found by
+`re`. The wire keys (`thread`, `topic`, `bead`, `re`) and the stored keys are
+unchanged.
+
 A `decision-needed` message, and its reply, never carry this shape: the `bead`
 field each already has (above) names its thread directly — that bead IS its
 thread, so a second `thread` field would only duplicate it. `src/services/threads.ts`'s

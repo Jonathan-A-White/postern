@@ -1,5 +1,5 @@
-// src/cockpit/TalkScreen.tsx — every conversation with the Mayor (plans/0021
-// decision 10): the factory-wide thread first, then each bead and topic he has
+// src/cockpit/TalkScreen.tsx — every channel with the Mayor (plans/0021
+// decision 10): the factory-wide thread first, then each bead and named channel he has
 // talked about, most recent first, with what was said last and what is unread.
 // Opening one shows it as a conversation with the composer; a bead's thread
 // links through to the bead. Two panes on a wide screen. A thread of a finished
@@ -115,12 +115,12 @@ function ThreadList({ threads, current, filter, onToggleArchive }: { threads: Th
   );
 }
 
-function NewTopic() {
+function NewChannel() {
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
       <Button size="sm" icon="plus" onClick={() => setOpen(true)}>
-        New topic
+        New channel
       </Button>
     );
   }
@@ -185,7 +185,7 @@ function ChannelPane({ threadKey }: { threadKey: string }) {
               const thread = byRoot.get(item.id);
               return thread && thread.replyCount > 0 ? <RepliesRow channel={threadKey} thread={thread} onOpen={remember} /> : null;
             }}
-            empty={<EmptyState icon="talk" title="Nothing said here yet">Say anything; the Mayor answers in this same thread.</EmptyState>}
+            empty={<EmptyState icon="talk" title="Nothing said here yet">Say anything; the Mayor answers in its thread.</EmptyState>}
           />
         </div>
       </div>
@@ -257,7 +257,7 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
     <>
       <SpeakAll items={speakItems} />
       {currentThread && currentThread.key !== GENERAL && (
-        <IconButton icon="archive" label={currentThread.archived ? 'Unarchive thread' : 'Archive thread'} onClick={() => toggleArchive(currentThread)} />
+        <IconButton icon="archive" label={currentThread.archived ? 'Unarchive channel' : 'Archive channel'} onClick={() => toggleArchive(currentThread)} />
       )}
       {bead && <IconButton icon="forward" label="Open the bead" onClick={() => navigate(beadHref(bead))} />}
     </>
@@ -267,11 +267,11 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
     <>
       <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
         <label className="relative flex-1">
-          <span className="sr-only">Find a thread</span>
+          <span className="sr-only">Find a channel</span>
           <Icon name="search" size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
-          <input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Find a thread" className="h-9 w-full pl-8 text-sm" />
+          <input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Find a channel" className="h-9 w-full pl-8 text-sm" />
         </label>
-        <NewTopic />
+        <NewChannel />
       </div>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <ThreadList threads={threads} current={current} filter={filter} onToggleArchive={toggleArchive} />
@@ -281,11 +281,11 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
 
   if (wide) {
     return (
-      <Screen title={current ? title : 'Talk'} subtitle={current ? subtitle : 'Every conversation with the Mayor'} actions={current ? threadActions : undefined} bare>
+      <Screen title={current ? title : 'Channels'} subtitle={current ? subtitle : 'Every channel with the Mayor'} actions={current ? threadActions : undefined} bare>
         <div className="flex min-h-0 flex-1">
           <div className="flex w-[360px] shrink-0 flex-col border-r border-line">{list}</div>
           <div className="flex min-w-0 flex-1 flex-col">
-            {current ? <PaneFor threadKey={current} root={root} /> : <EmptyState icon="talk" title="Pick a conversation">Or start one with the Factory thread.</EmptyState>}
+            {current ? <PaneFor threadKey={current} root={root} /> : <EmptyState icon="talk" title="Pick a channel">Or start with Factory.</EmptyState>}
           </div>
         </div>
       </Screen>
@@ -301,7 +301,7 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
   }
 
   return (
-    <Screen title="Talk" subtitle="Every conversation with the Mayor" bare>
+    <Screen title="Channels" subtitle="Every channel with the Mayor" bare>
       {list}
     </Screen>
   );

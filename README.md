@@ -1,7 +1,7 @@
 # postern
 
 Postern is the Governor's cockpit for his software factory: one place to see what needs
-him, the whole wayfinder map at any zoom, and every conversation with the Mayor — by
+him, the whole wayfinder map at any zoom, and every channel with the Mayor — by
 text, voice, screenshots and files, pinned to the factory, a map, an epic, a story or a
 single comment. It is an offline-first PWA (Vite, React, TypeScript, Dexie), served at
 https://postern.allmymind.org, with a small Go backend under `server/` that runs beside

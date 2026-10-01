@@ -182,7 +182,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('the thread {string} is opened and its Archive control is tapped', async (_c, id: string) => {
       window.history.replaceState(null, '', `/?v=talk&t=${encodeURIComponent(`bead:${id}`)}`);
       await openTalk();
-      await userEvent.click(await screen.findByRole('button', { name: 'Archive thread' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Archive channel' }));
     });
     Then('the thread list shows nothing of {string}', (_c, id: string) => listHasNothingOf(id));
     And('an {string} row is shown', archivedRowShown);
@@ -227,7 +227,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the thread of {string} was last spoken in {string} days ago', (_c, id: string, days: string) => spokenAgo(id, days));
     When('Talk opens', talkOpens);
     And('{string} is typed into the thread search', async (_c, words: string) => {
-      await userEvent.type(screen.getByRole('searchbox', { name: 'Find a thread' }), words);
+      await userEvent.type(screen.getByRole('searchbox', { name: 'Find a channel' }), words);
     });
     Then('the live list has no {string}', async (_c, id: string) => {
       expect(rowOf(id)).not.toBeInTheDocument();

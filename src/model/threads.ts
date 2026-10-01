@@ -1,6 +1,6 @@
-// src/model/threads.ts — every conversation with the Mayor, as the Talk list
+// src/model/threads.ts — every channel with the Mayor, as the Talk list
 // shows it (plans/0021 decision 10): the factory-wide thread first, then each bead
-// and topic by its latest message, each titled from the live view where it can be.
+// and named channel by its latest message, each titled from the live view where it can be.
 // A thread is archived (mw-2y46l.6) when he put it away by hand, or its bead is
 // closed and it has been quiet for 3 days; a newer message brings it back.
 import type { ArchiveChoices, MessageRow } from '../data/db';
@@ -43,7 +43,7 @@ export function titleFor(key: string, index?: ViewIndex): { title: string; subti
   if (key === GENERAL) return { title: 'Factory', subtitle: 'Everything not about one bead' };
   const ref = parseThreadKey(key);
   if (ref && 'bead' in ref) return { title: index?.byId.get(ref.bead)?.title ?? ref.bead, subtitle: ref.bead };
-  if (ref && 'topic' in ref) return { title: ref.topic, subtitle: 'Topic' };
+  if (ref && 'topic' in ref) return { title: ref.topic, subtitle: 'Channel' };
   return { title: key, subtitle: '' };
 }
 

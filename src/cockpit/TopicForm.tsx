@@ -1,5 +1,5 @@
-// src/cockpit/TopicForm.tsx — the name field and Start button for a new topic,
-// shared by the Talk screen's New topic and the Share screen's New topic row.
+// src/cockpit/TopicForm.tsx — the name field and Start button for a new channel,
+// shared by the Talk screen's New channel and the Share screen's New channel row.
 import { useState } from 'react';
 import { Button } from '../ui';
 
@@ -19,7 +19,7 @@ export function TopicForm({ onStart }: { onStart: (name: string) => void }) {
         start();
       }}
     >
-      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="What about?" aria-label="New topic" className="h-8 flex-1 text-sm" autoFocus />
+      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="What about?" aria-label="New channel" className="h-8 flex-1 text-sm" autoFocus />
       <Button size="sm" variant="primary" type="submit" disabled={!name.trim()}>
         Start
       </Button>

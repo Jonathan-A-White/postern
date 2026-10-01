@@ -47,4 +47,4 @@ Feature: A share can land in any channel, or in a post's thread inside one (mw-9
     And the bead channel of "mw-f758y.30.2" has the post "a bead post"
     When the Share screen is opened and "Threads in GET /api/events streams message and view changes" is tapped and the post "a bead post" is tapped
     And two screenshots are shared into Postern again and the Share screen is opened
-    Then the first row says "New topic" and the second is "GET /api/events streams message and view changes" marked "Last used"
+    Then the first row says "New channel" and the second is "GET /api/events streams message and view changes" marked "Last used"

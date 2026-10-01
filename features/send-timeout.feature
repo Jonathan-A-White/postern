@@ -7,7 +7,7 @@ Feature: A send never spins for ever, and he always knows whether it went (mw-t6
     Then Send is busy
     When 30 seconds pass
     Then Send is ready again
-    And he is told "May have gone: check the thread before sending again"
+    And he is told "May have gone: check the channel before sending again"
     And the text "Is the deploy done?" is still in the box
 
   Scenario: mw-t64a3.14: a send whose fetch is aborted at the timeout says it may have gone, never the abort text
@@ -15,7 +15,7 @@ Feature: A send never spins for ever, and he always knows whether it went (mw-t6
     And he has typed "Is the deploy done?"
     When he taps Send
     And 30 seconds pass
-    Then he is told "May have gone: check the thread before sending again"
+    Then he is told "May have gone: check the channel before sending again"
     And he is never shown "signal is aborted without reason"
 
   Scenario: AC-2: a challenge that never answers says the message was not sent

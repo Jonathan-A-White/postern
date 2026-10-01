@@ -1,5 +1,5 @@
 // features/steps/share-where.steps.tsx — runs features/share-where.feature: the
-// Share screen's 'New topic' row and the 'Last used' thread (mw-dw0i6.2). The whole
+// Share screen's 'New channel' row and the 'Last used' thread (mw-dw0i6.2). The whole
 // app (<App />) against a small stubbed backend serving tests/support/cockpit-fixture.ts.
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, expect, vi } from 'vitest';
@@ -75,8 +75,8 @@ function whereTo(): HTMLElement {
 }
 
 async function startTopic(name: string): Promise<void> {
-  await userEvent.click(within(whereTo()).getByRole('button', { name: /New topic/ }));
-  await userEvent.type(screen.getByRole('textbox', { name: 'New topic' }), name);
+  await userEvent.click(within(whereTo()).getByRole('button', { name: /New channel/ }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'New channel' }), name);
   await userEvent.click(screen.getByRole('button', { name: 'Start' }));
 }
 
@@ -98,13 +98,13 @@ function rowTitles(): string[] {
 }
 
 describeFeature(feature, ({ Scenario }) => {
-  Scenario('mw-dw0i6.2: New topic opens a named thread with the image in its composer', ({ Given, When, Then, And }) => {
+  Scenario('mw-dw0i6.2: New channel opens a named channel with the image in its composer', ({ Given, When, Then, And }) => {
     Given('the factory is live and a screenshot was shared into Postern', liveWithAScreenshot);
-    When('the Share screen is opened and "New topic" is tapped and "Sprint notes" is typed and "Start" is tapped', async () => {
+    When('the Share screen is opened and "New channel" is tapped and "Sprint notes" is typed and "Start" is tapped', async () => {
       await openShare('s1');
       await startTopic('Sprint notes');
     });
-    Then('the topic "Sprint notes" opens with the screenshot in its composer', async () => {
+    Then('the channel "Sprint notes" opens with the screenshot in its composer', async () => {
       await expectComposerHoldsTheScreenshot();
       expect(window.location.search).toBe('?v=talk&t=topic%3ASprint+notes');
     });
@@ -114,16 +114,16 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario('mw-dw0i6.2: the thread shared to last is first and says Last used', ({ Given, When, Then, And }) => {
+  Scenario('mw-dw0i6.2: the channel shared to last is first and says Last used', ({ Given, When, Then, And }) => {
     Given('the factory is live and a screenshot was shared into Postern', liveWithAScreenshot);
-    When('the screenshot is shared to the thread "desktop move"', async () => {
+    When('the screenshot is shared to the channel "desktop move"', async () => {
       await openShare('s1');
       await userEvent.click(await within(whereTo()).findByRole('button', { name: /^desktop move/ }));
     });
     And('a second screenshot is shared into Postern and the Share screen is opened', sharedAgainAndOpened);
-    Then('the first row says "New topic" and the second is "desktop move" marked "Last used"', () => {
+    Then('the first row says "New channel" and the second is "desktop move" marked "Last used"', () => {
       const rows = rowTitles();
-      expect(rows[0]).toContain('New topic');
+      expect(rows[0]).toContain('New channel');
       expect(rows[1]).toContain('desktop move');
       expect(rows[1]).toContain('Last used');
     });
@@ -132,12 +132,12 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario('mw-dw0i6.2: with no thread remembered the list is as before', ({ Given, When, Then, And }) => {
+  Scenario('mw-dw0i6.2: with no channel remembered the list is as before', ({ Given, When, Then, And }) => {
     Given('the factory is live and a screenshot was shared into Postern', liveWithAScreenshot);
     When('the Share screen is opened', () => openShare('s1'));
-    Then('the first row says "New topic" and then comes "Factory"', () => {
+    Then('the first row says "New channel" and then comes "Factory"', () => {
       const rows = rowTitles();
-      expect(rows[0]).toContain('New topic');
+      expect(rows[0]).toContain('New channel');
       expect(rows[1]).toContain('Factory');
     });
     And('"Last used" is nowhere on the screen', () => {
@@ -145,16 +145,16 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario('mw-dw0i6.2: a remembered thread with no message yet is still offered', ({ Given, When, Then, And }) => {
+  Scenario('mw-dw0i6.2: a remembered channel with no message yet is still offered', ({ Given, When, Then, And }) => {
     Given('the factory is live and a screenshot was shared into Postern', liveWithAScreenshot);
-    When('the screenshot is shared to the new topic "Fresh idea"', async () => {
+    When('the screenshot is shared to the new channel "Fresh idea"', async () => {
       await openShare('s1');
       await startTopic('Fresh idea');
     });
     And('a second screenshot is shared into Postern and the Share screen is opened', sharedAgainAndOpened);
-    Then('the first row says "New topic" and the second is "Fresh idea" marked "Last used"', () => {
+    Then('the first row says "New channel" and the second is "Fresh idea" marked "Last used"', () => {
       const rows = rowTitles();
-      expect(rows[0]).toContain('New topic');
+      expect(rows[0]).toContain('New channel');
       expect(rows[1]).toContain('Fresh idea');
       expect(rows[1]).toContain('Last used');
     });

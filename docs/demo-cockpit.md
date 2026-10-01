@@ -45,11 +45,11 @@ and a deploy of this branch. Each step says what you should see.
 2. Tap the quote mark beside any comment to answer that comment specifically.
 3. Hold nothing: tap the microphone, speak, tap stop, send. Within a minute the voice
    note shows **Heard: …** — the desktop's transcript, not a third party's.
-4. Take a screenshot anywhere on the phone → Share → **Postern** → pick a thread or a
+4. Take a screenshot anywhere on the phone → Share → **Postern** → pick a channel or a
    bead. The composer opens with the image waiting.
-5. **Talk** lists every conversation: the factory-wide one first, then each bead and
-   topic by its latest message, unread counts on the right.
-6. The speaker icon beside any Mayor message (or in a thread's header) reads it aloud.
+5. **Talk** lists every channel: the factory-wide one first, then each bead and
+   named channel by its latest message, unread counts on the right.
+6. The speaker icon beside any Mayor message (or in a channel's header) reads it aloud.
 
 ## 5. Steps for your hands (decision 21, protocol §17)
 

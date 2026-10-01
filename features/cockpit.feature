@@ -63,7 +63,7 @@ Feature: The Governor's cockpit (plans/0021)
     Given the factory is live and his key is unlocked
     And an image was shared into Postern from another app
     When the Share screen is opened and "Factory" is chosen
-    Then the Factory thread opens with the image waiting in its composer
+    Then the Factory channel opens with the image waiting in its composer
 
   Scenario: plans/0021 AC-11 (his hands, 2026-09-28): a step for his hands is approved from the queue and delivered signed
     Given the factory is live and his key is unlocked
@@ -162,7 +162,7 @@ Feature: The Governor's cockpit (plans/0021)
     Then one keep action for "mw-gq6.132" is sent
     And the bead's actions say it was sent and are waiting for the factory, with no Keep or Close to tap
 
-  Scenario: mw-t64a3.21: a link in a Talk message opens the bead in the app, and Back shows the same thread again
+  Scenario: mw-t64a3.21: a link in a Talk message opens the bead in the app, and Back shows the same channel again
     Given the factory is live with links in its words and his key is unlocked
     When the Talk thread "Factory" is opened
     And the link in the Mayor's message is tapped

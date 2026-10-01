@@ -1,7 +1,7 @@
 // src/cockpit/ShareScreen.tsx — files shared into Postern from any other app
 // (plans/0021 decision 12): what arrived, then where it should go — the factory
 // thread, a thread he used lately, or a bead he searches for. Choosing one opens
-// that thread with the files already in its composer. 'New topic' comes first, then
+// that thread with the files already in its composer. 'New channel' comes first, then
 // the thread he shared to last, marked 'Last used' (mw-dw0i6.2). Every channel row
 // has 'Threads': its newest posts, any of which opens that post's thread with the
 // files in its Reply… composer (mw-909ci.4).
@@ -89,7 +89,7 @@ export function ShareScreen({ id }: { id?: string }) {
   const [lastKey, setLastKey] = useState<string | null | undefined>(undefined);
   const [naming, setNaming] = useState(false);
   const threads = useMemo(() => summariseThreads(messages, view?.index), [messages, view]);
-  // The thread he shared to last, even when it has no message yet (a fresh topic); the recents omit it.
+  // The thread he shared to last, even when it has no message yet (a fresh channel); the recents omit it.
   const last = useMemo<ThreadSummary | undefined>(() => {
     if (!lastKey) return undefined;
     return threads.find((thread) => thread.key === lastKey) ?? { key: lastKey, ...titleFor(lastKey, view?.index), unread: 0, archived: false };
@@ -158,7 +158,7 @@ export function ShareScreen({ id }: { id?: string }) {
                 <button type="button" onClick={() => setNaming(true)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-raised">
                   <Icon name="plus" size={17} className="text-muted" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14.5px] font-medium">New topic</span>
+                    <span className="block truncate text-[14.5px] font-medium">New channel</span>
                     <span className="block truncate text-[12px] text-faint">Name something new to talk about</span>
                   </span>
                 </button>

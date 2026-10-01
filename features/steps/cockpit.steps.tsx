@@ -410,7 +410,7 @@ describeFeature(feature, ({ Scenario }) => {
       await openAt('?v=share&s=s1');
       await userEvent.click(await screen.findByRole('button', { name: /^Factory/ }));
     });
-    Then('the Factory thread opens with the image waiting in its composer', async () => {
+    Then('the Factory channel opens with the image waiting in its composer', async () => {
       const composer = await screen.findByTestId('composer');
       expect(await within(composer).findByRole('button', { name: 'Remove screen.png' })).toBeInTheDocument();
       expect(window.location.search).toBe('?v=talk&t=general');
@@ -663,7 +663,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario('mw-t64a3.21: a link in a Talk message opens the bead in the app, and Back shows the same thread again', ({ Given, When, Then, And }) => {
+  Scenario('mw-t64a3.21: a link in a Talk message opens the bead in the app, and Back shows the same channel again', ({ Given, When, Then, And }) => {
     Given('the factory is live with links in its words and his key is unlocked', liveWithLinks);
     When('the Talk thread "Factory" is opened', async () => {
       await openAt('?v=talk&t=general');

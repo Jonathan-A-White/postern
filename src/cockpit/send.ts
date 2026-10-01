@@ -82,7 +82,7 @@ export async function sendToThread(thread: ThreadRef | undefined, text: string, 
   return [await deliverThreaded({ thread, text, attachments, re }, opts)];
 }
 
-export const MAY_HAVE_GONE = 'May have gone: check the thread before sending again';
+export const MAY_HAVE_GONE = 'May have gone: check the channel before sending again';
 export const NOT_SENT = 'Not sent: try again';
 
 /** The words a failed send shows: a timeout says whether the message could have gone. */

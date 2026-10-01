@@ -19,6 +19,29 @@ describe('optionNamed (mw-gq6.199)', () => {
   });
 });
 
+describe('optionNamed on lettered options (mw-gq6.222)', () => {
+  const lettered: Need = { ...need, options: ['A: It greyed out', 'B: It did not'] };
+  it("names 'A: …' by its letter, as an uppercase word or after do / option / pick / choose / go with / answer", () => {
+    for (const text of ['Do A', 'A', 'do a', 'option a', 'Go with A', 'pick a', 'Choose A.', 'answer: A', 'A please']) {
+      expect(optionNamed(lettered, text), text).toBe('A: It greyed out');
+    }
+    expect(optionNamed(lettered, 'B please')).toBe('B: It did not');
+    expect(optionNamed(lettered, 'option b')).toBe('B: It did not');
+  });
+  it('does not take a lowercase article for a letter', () => {
+    for (const text of ['a good idea', 'I have a question', 'Maybe later', 'Banana', 'do apples']) {
+      expect(optionNamed(lettered, text), text).toBeUndefined();
+    }
+  });
+  it('still names an option by its whole label', () => {
+    expect(optionNamed(lettered, 'a: it greyed out, I think')).toBe('A: It greyed out');
+  });
+  it('takes the earliest when a letter and another option are named', () => {
+    expect(optionNamed(lettered, 'Do A, not B')).toBe('A: It greyed out');
+    expect(optionNamed(lettered, 'B: it did not, rather than A')).toBe('B: It did not');
+  });
+});
+
 describe('answeredByComment (mw-gq6.199)', () => {
   const at = '2026-10-01T13:00:00Z';
   it('reads the answer after the txid', () => {

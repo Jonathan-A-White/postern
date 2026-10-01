@@ -52,3 +52,9 @@ Feature: A decision card in a bead's thread goes dead when he answers it in word
     Then the thread shows the question and then "Do A"
     And every option on the post is disabled
     And the post says "Answered: Do A" and the time as HH:MM
+
+  Scenario: mw-gq6.222: a reply naming a lettered option by its letter greys the card in its thread out
+    Given a question post on a bead with the lettered options "A: It greyed out" and "B: It did not", open in its thread
+    When he typed "Do A" in that bead's channel after it was asked
+    Then every option on the lettered post is disabled
+    And the post says "Answered: A: It greyed out" and the time as HH:MM

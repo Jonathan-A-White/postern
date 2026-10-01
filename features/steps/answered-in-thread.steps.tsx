@@ -89,6 +89,11 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       for (const button of optionButtons(['Do A', 'Do B'])) expect(button).toBeDisabled();
     });
   };
+  const everyLetteredOptionDisabled = async () => {
+    await waitFor(() => {
+      for (const button of optionButtons(['A: It greyed out', 'B: It did not'])) expect(button).toBeDisabled();
+    });
+  };
   const saysAnswered = async (_c: unknown, line: string) => {
     await waitFor(() => expect(within(screen.getByTestId('conversation')).getByRole('status').textContent).toMatch(new RegExp(`${line} \\d{2}:\\d{2}`)));
   };
@@ -191,6 +196,13 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When("he types {string} in the thread's Reply… composer and sends it", typedInReplies);
     Then('the thread shows the question and then {string}', threadShows);
     And('every option on the post is disabled', everyOptionDisabled);
+    And('the post says {string} and the time as HH:MM', saysAnswered);
+  });
+
+  Scenario('mw-gq6.222: a reply naming a lettered option by its letter greys the card in its thread out', ({ Given, When, Then, And }) => {
+    Given('a question post on a bead with the lettered options {string} and {string}, open in its thread', given);
+    When("he typed {string} in that bead's channel after it was asked", typedInChannel('after'));
+    Then('every option on the lettered post is disabled', everyLetteredOptionDisabled);
     And('the post says {string} and the time as HH:MM', saysAnswered);
   });
 });

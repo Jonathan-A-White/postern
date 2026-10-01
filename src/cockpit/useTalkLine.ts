@@ -166,6 +166,11 @@ export function useTalkLine() {
     feed({ type: 'cancel' });
   }
 
+  function retry(): void {
+    setNotice(undefined);
+    feed({ type: 'retry' });
+  }
+
   function cut(): void {
     feed({ type: 'cut' });
   }
@@ -192,6 +197,7 @@ export function useTalkLine() {
     release,
     abort,
     cut,
+    retry,
     end,
     setModel: (model?: string) => feed({ type: 'setModel', model }),
   };

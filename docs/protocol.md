@@ -1166,7 +1166,10 @@ What `ct` seals to the recipient:
 - `talk` — which talk this turn belongs to: `id`, one talk from its first turn to its
   end, and `turn`, the turn's number within it. An answer carries the `id` and `turn`
   of the Governor's turn it answers.
-- `text` — the words, as spoken or to be spoken.
+- `text` — the words, as spoken or to be spoken. A record's payload may not pass 10,240 bytes
+  (spell-forge-bsv's `encodeRecordScript`), so the Governor's turn carries at most 7,000
+  bytes of text (as JSON writes it; about 1,100 words): a longer turn is cut at that and
+  ends with `...`, and is still sent.
 - `role`:
   - `turn`: the Governor's spoken turn.
   - `answer`: the Mayor's answer to it.

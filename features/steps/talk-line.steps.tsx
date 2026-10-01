@@ -15,7 +15,7 @@ import { db, type MessageRow } from '../../src/data/db';
 import { decryptMessage, type MessagePayload } from '../../src/services/messages';
 import { settledWrites } from '../../src/services/deliver';
 import { decodeTurn, deliverTurn, encodeTurn } from '../../src/services/talk';
-import { initialTalkLine, talkLine, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
+import { initialTalkLine, talkLine, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
 const MAYOR = PrivateKey.fromHex('77'.repeat(32));
@@ -296,6 +296,39 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('he then releases with the words {string}', (_c, text: string) => feed({ type: 'release', text }));
     Then('the turn to send is turn {number} of {string} saying {string} with no cut', (_c, n: number, id: string, text: string) => {
       expect(line.outgoing).toEqual(turnOf(id, Number(n), text));
+    });
+  });
+
+  Scenario('AC-1: a failed send keeps his words and Try again resends them as the same turn', ({ Given, When, And, Then }) => {
+    Given('the line is idle', () => {
+      line = initialTalkLine;
+    });
+    When('he holds the button for talk {string}', (_c, id: string) => feed({ type: 'hold', talkId: id }));
+    And('he releases with the words {string}', (_c, text: string) => feed({ type: 'release', text }));
+    And('the send fails', () => feed({ type: 'sendFailed' }));
+    Then('the line is idle', () => expect(line.phase).toBe('idle'));
+    And('the line says {string}', (_c, message: string) => expect(line.error).toBe(message));
+    And('the line still holds the unsent words {string}', (_c, text: string) => expect(line.unsent?.text).toBe(text));
+    When('he asks to try again', () => feed({ type: 'retry' }));
+    Then('the turn to send is turn {number} of {string} saying {string} with no cut', (_c, n: number, id: string, text: string) => {
+      expect(line.outgoing).toEqual(turnOf(id, Number(n), text));
+    });
+    When('the send goes through', () => feed({ type: 'sent', at: 1000 }));
+    Then('the line is waiting', () => expect(line.phase).toBe('waiting'));
+    And('the line holds no unsent words', () => expect(line.unsent).toBeUndefined());
+  });
+
+  Scenario('AC-1: a turn longer than the cap is cut with "..." and still sent', ({ Given, When, And, Then }) => {
+    Given('the line is idle', () => {
+      line = initialTalkLine;
+    });
+    When('he holds the button for talk {string}', (_c, id: string) => feed({ type: 'hold', talkId: id }));
+    And('he releases with {number} words', (_c, n: number) => feed({ type: 'release', text: Array.from({ length: Number(n) }, (_, i) => `word${i % 97}`).join(' ') }));
+    Then('the line is sending', () => expect(line.phase).toBe('sending'));
+    And('the turn to send ends with {string} and is within the cap', (_c, tail: string) => {
+      const text = line.outgoing?.text ?? '';
+      expect(text.endsWith(tail)).toBe(true);
+      expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
     });
   });
 

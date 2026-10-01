@@ -230,6 +230,11 @@ export function TalkLineScreen() {
             </Button>
           )}
           {line.phase === 'waiting' && <Button onClick={talk.cut}>Stop waiting</Button>}
+          {line.phase === 'idle' && line.unsent && (
+            <Button variant="primary" onClick={talk.retry}>
+              Try again
+            </Button>
+          )}
           <Button variant="ghost" disabled={line.talk === undefined || line.phase === 'sending'} onClick={talk.end}>
             End talk
           </Button>

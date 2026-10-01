@@ -92,6 +92,23 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the screen says "Could not send. Try again."
     And the talk button reads "Hold to talk"
 
+  Scenario: AC-1: a failed send keeps his words on the screen and Try again resends them
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn will fail
+    When he holds the talk button and says "Hello there" and lets go
+    Then the screen says "Could not send. Try again."
+    And his words "Hello there" are still on the screen
+    When sending a turn works again
+    And he taps "Try again"
+    Then the last turn sent says "Hello there" as turn 1
+    And the talk button reads "Waiting for the Mayor…"
+
+  Scenario: AC-1: a hold of about 2,000 words is cut at the cap with "..." and still sent
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says 2000 words and lets go
+    Then the last turn sent is cut at the cap and ends with "..."
+    And the talk button reads "Waiting for the Mayor…"
+
   Scenario: AC-1: a browser that cannot listen says so instead of a dead button
     Given the Talk line is open with no speech recogniser
     Then the screen says "This browser cannot turn speech into text."

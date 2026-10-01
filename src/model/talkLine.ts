@@ -38,6 +38,8 @@ export interface TalkLineState {
   speaking?: { text: string; holding: boolean };
   /** Why the line went back to idle without an answer. */
   error?: string;
+  /** The turn that failed to send, kept with his words so `retry` can send it again. */
+  unsent?: TalkTurn;
 }
 
 export type TalkLineEvent =
@@ -46,6 +48,7 @@ export type TalkLineEvent =
   | { type: 'cancel' }
   | { type: 'sent'; at: number }
   | { type: 'sendFailed'; message?: string }
+  | { type: 'retry' }
   | { type: 'incoming'; turn: TalkTurn }
   | { type: 'spoken' }
   | { type: 'cut' }
@@ -57,6 +60,45 @@ export type TalkLineEvent =
 export const TALK_TIMEOUT_MS = 30_000;
 export const NO_ANSWER_IN_TIME = 'The Mayor did not answer in time.';
 export const COULD_NOT_SEND = 'Could not send. Try again.';
+
+/**
+ * The most of one turn's words the line sends, as the bytes the text takes inside the turn's
+ * JSON (an escaped quote counts two). A record's payload may be at most 10,240 bytes
+ * (spell-forge-bsv's encodeRecordScript throws past it, which was the 'Could not send' of
+ * mw-j0f2d.15): the envelope, the BRC-78 header and base64 leave room for about 7,250 bytes
+ * of turn JSON, whose own fields take a hundred and some. 7,000 keeps a margin; it is about
+ * 1,100 spoken words, several minutes of talk. A turn over it is cut and ends with "...".
+ */
+export const TURN_TEXT_MAX_BYTES = 7_000;
+
+const CUT_MARK = '...';
+
+/** The bytes `ch` takes inside a JSON string. */
+function jsonBytes(ch: string): number {
+  const code = ch.codePointAt(0) ?? 0;
+  if (ch === '"' || ch === '\\') return 2;
+  if (code < 0x20) return code === 8 || code === 9 || code === 10 || code === 12 || code === 13 ? 2 : 6;
+  if (code < 0x80) return 1;
+  if (code < 0x800) return 2;
+  if (code >= 0xd800 && code <= 0xdfff) return 6; // a lone surrogate is written \uXXXX
+  return code < 0x10000 ? 3 : 4;
+}
+
+/** `text` as it is when it fits, otherwise cut at the cap, on a whole character, and ended with "...". */
+export function capTurnText(text: string): string {
+  let size = 0;
+  for (const ch of text) size += jsonBytes(ch);
+  if (size <= TURN_TEXT_MAX_BYTES) return text;
+  const room = TURN_TEXT_MAX_BYTES - CUT_MARK.length;
+  let kept = '';
+  size = 0;
+  for (const ch of text) {
+    size += jsonBytes(ch);
+    if (size > room) break;
+    kept += ch;
+  }
+  return kept.trimEnd() + CUT_MARK;
+}
 
 export const initialTalkLine: TalkLineState = { phase: 'idle', cutPending: false };
 
@@ -92,11 +134,13 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       if (state.phase === 'waiting' || state.phase === 'sending' || state.phase === 'listening') return state;
       // Holding the button over a spoken answer cuts it off.
       const cutPending = state.cutPending || state.phase === 'speaking';
-      return { ...state, phase: 'listening', talk: state.talk ?? { id: event.talkId, turn: 0 }, cutPending, speaking: undefined, error: undefined };
+      // Speaking again gives up the turn that failed: its number goes back to him.
+      const base = state.unsent ? { ...state, talk: state.unsent.talk.turn > 1 ? { id: state.unsent.talk.id, turn: state.unsent.talk.turn - 1 } : undefined, unsent: undefined } : state;
+      return { ...base, phase: 'listening', talk: base.talk ?? { id: event.talkId, turn: 0 }, cutPending, speaking: undefined, error: undefined };
     }
     case 'release': {
       if (state.phase !== 'listening' || !state.talk) return state;
-      const text = event.text.trim();
+      const text = capTurnText(event.text.trim());
       if (!text) return idle(state, { talk: state.talk.turn > 0 ? state.talk : undefined });
       const talk = { id: state.talk.id, turn: state.talk.turn + 1 };
       const outgoing: TalkTurn = { talk, text, role: 'turn', ...(state.model ? { model: state.model } : {}), ...(state.cutPending ? { cut: true } : {}) };
@@ -107,12 +151,15 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       return idle(state, { talk: state.talk && state.talk.turn > 0 ? state.talk : undefined });
     case 'sent':
       if (state.phase !== 'sending') return state;
-      return { ...state, phase: 'waiting', outgoing: undefined, sentAt: event.at, cutPending: false };
+      return { ...state, phase: 'waiting', outgoing: undefined, unsent: undefined, sentAt: event.at, cutPending: false };
     case 'sendFailed': {
-      if (state.phase !== 'sending' || !state.talk) return state;
-      const turn = state.talk.turn - 1;
-      return idle(state, { talk: turn > 0 ? { id: state.talk.id, turn } : undefined, error: event.message ?? COULD_NOT_SEND });
+      // His words stay: `retry` sends this very turn again, under the same number.
+      if (state.phase !== 'sending' || !state.talk || !state.outgoing) return state;
+      return idle(state, { unsent: state.outgoing, error: event.message ?? COULD_NOT_SEND });
     }
+    case 'retry':
+      if (state.phase !== 'idle' || !state.unsent) return state;
+      return { ...state, phase: 'sending', outgoing: { ...state.unsent }, unsent: undefined, error: undefined };
     case 'incoming':
       return incoming(state, event.turn);
     case 'spoken':

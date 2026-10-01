@@ -116,7 +116,7 @@ export function decodeThreadedMessage(text: string): ThreadedBody {
  * neither ever carries a separate `thread` field. Anything else reads the
  * `{ thread, text }` shape above. `undefined` means the general thread. */
 export function threadOf(messageClass: MessageClass, plaintext: string | undefined): ThreadRef | undefined {
-  if (plaintext === undefined || messageClass === 'talk') return undefined;
+  if (plaintext === undefined || messageClass === 'talk' || messageClass === 'call') return undefined;
   if (messageClass === 'decision-needed') {
     const question = decodeQuestion(plaintext);
     return question ? { bead: question.bead } : undefined;

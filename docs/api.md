@@ -512,8 +512,8 @@ Every record newly stored in the index — found on chain by the poller, or
 delivered to `POST /api/messages` — goes through one `notify.Fanout`
 (`server/internal/notify`): the push notifier, a `message` event on
 `GET /api/events`, and the on-message hook. A repeat delivery of a stored record
-goes through none of them. A `talk` record (`docs/protocol.md` §20) gets the
-`message` event only: no push, and no hook of either kind.
+goes through none of them. A `talk` record (`docs/protocol.md` §20) or a `call`
+record (§21) gets the `message` event only: no push, and no hook of either kind.
 
 ## The push notifier
 

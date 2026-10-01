@@ -29,7 +29,7 @@ JSON shape that only postern understands:
 - `kind` — always `"msg"`.
 - `class` — one of `"message"`, `"decision-needed"`, `"landing"`, `"alarm"`
   (`mw-f758y.5`), `"move-home"` (§18), `"grist"` (an app's AI work for the
-  factory and its answer, §19), or `"talk"` (a turn on the Talk line, §20). Sits in the clear beside the ciphertext on purpose
+  factory and its answer, §19), `"talk"` (a turn on the Talk line, §20), or `"call"` (a call record, §21). Sits in the clear beside the ciphertext on purpose
   (`mw-f758y.9` Q1): a classified-push backend, or anyone else reading the chain,
   can act on the class (e.g. wake the Mayor for `alarm`) without holding either
   party's private key.
@@ -491,8 +491,8 @@ The backend:
    the recipient's subscriptions (whose body is the record's clear `summary`, cut to
    80 runes, when it has one and is a `message`, `decision-needed`, `landing` or
    `alarm`; §1), a `message` event on §10's stream, and the
-   on-message hook (`POSTERN_ON_MESSAGE`, `docs/api.md`). A `talk` record gets
-   the `message` event only (§20).
+   on-message hook (`POSTERN_ON_MESSAGE`, `docs/api.md`). A `talk` record or a
+   `call` record gets the `message` event only (§20, §21).
 
 A body over 256 KiB is refused `413`. The chain channel (§4) keeps working
 unchanged: a reader must accept both kinds of record, in `seq` order.
@@ -1204,3 +1204,57 @@ What the Talk screen does with it:
 - When the line has given up waiting (`The Mayor did not answer in time.`) and the mark then
   turns from away to here, the phone buzzes (and chimes where it can) once: the Mayor is back
   and the turn can be tried again. Turning to here at any other time is silent.
+
+## 21. Call
+
+The Governor, 2026-10-01 (map `mw-a0ih0`): the Talk line answers within seconds when
+the Mayor is here, but the Mayor is sometimes away between waits. A **call** is the
+note he leaves then, and the Mayor's way of calling back. A call record is §1's
+envelope with `"class": "call"`, delivered with `POST /api/messages` (§9): his go `to`
+the Mayor's key, the Mayor's `to` his. It carries no `summary`, so no word of it is
+ever pushed, handed to a hook or logged.
+
+### What the backend does with a call record
+
+The same as with a Talk turn (§20) and for the same reason: a `call` record reaches
+§10's event stream (a `message` event) and nothing else, and runs no hook. The role is in
+the sealed plaintext, so the backend cannot tell a request from a ring; it never pushes a
+call record itself.
+
+- A **request** needs no push: the Mayor's `mw talk wait` is a reader of §10's stream and
+  prints it the moment it is indexed.
+- A **ring** is meant to reach his phone, and is pushed by the Mayor's host rather than
+  the backend (the ring's story wires that push).
+
+### The call plaintext
+
+What `ct` seals to the recipient is one JSON object, told apart by `role`:
+
+```json
+{ "role": "request", "text": "Call me", "at": 1790000000 }
+```
+
+```json
+{ "role": "ring", "text": "Back now: two landings.", "at": 1790000090 }
+```
+
+```json
+{ "role": "later", "ring_txid": "direct:<sha256 hex>" }
+```
+
+- `request` — his **Call me**: `text` is what he typed (the Postern screen prefills
+  `Call me`) and `at` the Unix seconds he sent it. The Mayor's host answers a request by
+  ringing, or by answering on the Talk line.
+- `ring` — the Mayor's call-back: `text` is a short line to show with the ring, `at` the
+  Unix seconds he sent it.
+- `later` — his **Later** tap on a ring: `ring_txid` is the `txid` (§9) of the `ring`
+  record he is putting off.
+
+`text` of a `request` is cut, as a turn's is (§20), so the record stays under 10,240
+bytes: at most 2,000 bytes of text as JSON writes it, ending `...`.
+
+### What the Talk screen shows
+
+After he sends a request the Talk line screen reads **Call sent HH:MM** (the phone's
+24-hour local time of `at`) under the presence mark, until a ring from the Mayor or an
+answer on the Talk line arrives after it; then the note goes.

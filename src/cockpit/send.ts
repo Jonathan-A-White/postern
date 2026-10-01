@@ -14,6 +14,7 @@ import type { HandsStep } from '../model/hands';
 import { buildApproval, stepUp } from '../services/hands';
 import type { HomeHost } from '../services/standby';
 import { deliverTurn } from '../services/talk';
+import { deliverCallRequest } from '../services/call';
 import type { TalkTurn } from '../model/talkLine';
 import type { Attachment, ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
@@ -45,6 +46,11 @@ export async function sendAction(action: GovernorAction): Promise<Delivered> {
 /** Sends one turn of the Talk line (docs/protocol.md §20): class `talk`, straight to the backend. */
 export function sendTurn(turn: TalkTurn): Promise<Delivered> {
   return deliverTurn(turn, options());
+}
+
+/** Leaves the Mayor a Call me request (docs/protocol.md §21): class `call`, straight to the backend. `at` is Unix seconds. */
+export function sendCallRequest(text: string, at: number): Promise<Delivered> {
+  return deliverCallRequest(text, at, options());
 }
 
 /** Asks the Mayor's host to make `host` the factory's home (docs/protocol.md §18).

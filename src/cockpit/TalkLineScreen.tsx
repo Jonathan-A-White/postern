@@ -8,6 +8,10 @@ import type { KeyboardEvent, PointerEvent } from 'react';
 import { Button, Chip, Icon, cx } from '../ui';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
+import { useCallLine } from './hooks';
+import { sendCallRequest } from './send';
+import { now } from '../services/clock';
+import { callSentAt, clockHHMM } from '../model/call';
 import { beadHref } from '../nav/route';
 import { formatSeconds, showsCutTag } from '../model/talkScreen';
 import type { TalkPhase } from '../model/talkLine';
@@ -145,6 +149,66 @@ function PresenceMark({ here }: { here: boolean | undefined }) {
   );
 }
 
+const CALL_ME = 'Call me';
+
+/**
+ * Leaves the Mayor a note to call him back (docs/protocol.md §21): a tap opens a short
+ * field, prefilled "Call me", and Send delivers it as a call record. Under the presence mark
+ * it says "Call sent HH:MM" until the Mayor rings or answers.
+ */
+function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [text, setText] = useState(CALL_ME);
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (!open) return null;
+  const send = () => {
+    const words = text.trim();
+    if (words === '' || sending) return;
+    setSending(true);
+    setFailed(false);
+    sendCallRequest(words, Math.floor(now() / 1000)).then(
+      () => {
+        setSending(false);
+        setText(CALL_ME);
+        onClose();
+      },
+      () => {
+        setSending(false);
+        setFailed(true);
+      },
+    );
+  };
+  return (
+    <form
+      data-testid="call-me-form"
+      className="flex w-full max-w-xl flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        send();
+      }}
+    >
+      <input
+        aria-label="What to tell the Mayor"
+        value={text}
+        maxLength={500}
+        autoFocus
+        disabled={sending}
+        onChange={(event) => setText(event.target.value)}
+        className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-[15px]"
+      />
+      {failed && <p className="text-[12.5px] text-danger">Could not send. Try again.</p>}
+      <span className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" disabled={sending} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" disabled={sending || text.trim() === ''}>
+          {sending ? 'Sending…' : 'Send'}
+        </Button>
+      </span>
+    </form>
+  );
+}
+
 export function TalkLineScreen() {
   const talk = useTalkLine();
   const { line } = talk;
@@ -153,6 +217,8 @@ export function TalkLineScreen() {
   const dead = !talk.supported || line.phase === 'sending' || line.phase === 'waiting';
   const micOpen = talk.mic === 'ready';
   const label = buttonLabel(line.phase, talk.supported, micOpen);
+  const [calling, setCalling] = useState(false);
+  const callSent = callSentAt(useCallLine());
 
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     try {
@@ -249,6 +315,11 @@ export function TalkLineScreen() {
           {listening && micOpen && talk.mode === 'on-device' && <p className="text-[11.5px] text-faint">Speech is recognised on this phone.</p>}
         </div>
         <PresenceMark here={talk.here} />
+        {callSent !== undefined && (
+          <p data-testid="call-sent" className="text-center text-[11.5px] text-faint">
+            Call sent {clockHHMM(callSent)}
+          </p>
+        )}
 
         <div role="group" aria-label="Model for this talk" className="flex items-center gap-2">
           {MODELS.map((model) => (
@@ -264,6 +335,8 @@ export function TalkLineScreen() {
             </Button>
           ))}
         </div>
+
+        <CallMe open={calling} onClose={() => setCalling(false)} />
 
         <button
           type="button"
@@ -296,6 +369,9 @@ export function TalkLineScreen() {
               Try again
             </Button>
           )}
+          <Button variant="ghost" disabled={calling} onClick={() => setCalling(true)}>
+            {CALL_ME}
+          </Button>
           <Button variant="ghost" disabled={!talk.canEnd} onClick={talk.end}>
             End talk
           </Button>

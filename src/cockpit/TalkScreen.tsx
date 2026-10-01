@@ -20,8 +20,9 @@ import { groupPosts } from '../model/postThreads';
 import { RepliesRow } from './RepliesRow';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
-import { messagesRepo, settingsRepo } from '../data/repositories';
+import { settingsRepo } from '../data/repositories';
 import { parseThreadKey, type ThreadRef } from '../services/threads';
+import { markThreadSeen } from '../services/seen';
 import { GENERAL, summariseThreads, titleFor, type ThreadSummary } from '../model/threads';
 
 function ThreadRow({ thread, active, onToggleArchive }: { thread: ThreadSummary; active: boolean; onToggleArchive: (thread: ThreadSummary) => void }) {
@@ -160,7 +161,7 @@ function ChannelPane({ threadKey }: { threadKey: string }) {
   };
 
   useEffect(() => {
-    void messagesRepo.markThreadRead(storeKey);
+    void markThreadSeen(storeKey);
   }, [storeKey, rows.length]);
 
   useEffect(() => {
@@ -209,7 +210,7 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
   const [quote, setQuote] = useState<{ speaker: string; text: string } | null>(null);
 
   useEffect(() => {
-    void messagesRepo.markThreadRead(storeKey);
+    void markThreadSeen(storeKey);
   }, [storeKey, rows.length]);
 
   return (

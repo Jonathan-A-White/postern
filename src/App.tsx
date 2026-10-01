@@ -22,6 +22,7 @@ import { ShareScreen } from './cockpit/ShareScreen';
 import { NoticeScreen } from './cockpit/NoticeScreen';
 import { AlarmScreen } from './cockpit/AlarmScreen';
 import { ToastHost } from './ui/toast';
+import { answerSeen } from './services/seen';
 import type { Route } from './nav/route';
 
 function Place({ route }: { route: Route }) {
@@ -84,8 +85,16 @@ export function App() {
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; url?: string } | undefined;
+      const data = event.data as { type?: string; url?: string; txid?: string } | undefined;
       if (data?.type === 'open' && data.url) navigate(data.url.replace(/^\//, '') || '?v=needs');
+      // The worker asks whether a pushed message is already on screen, to show no notification for it (mw-gq6.166).
+      if (data?.type === 'seen?' && data.txid) {
+        const txid = data.txid;
+        const reply = (event.source ?? navigator.serviceWorker.controller) as { postMessage(message: unknown): void } | null;
+        void answerSeen(txid)
+          .catch(() => false)
+          .then((seen) => reply?.postMessage({ type: 'seen', txid, seen }));
+      }
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);

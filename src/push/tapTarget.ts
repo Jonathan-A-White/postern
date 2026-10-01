@@ -73,14 +73,19 @@ async function chainOf(txid: string): Promise<MessageRow[]> {
   return chain;
 }
 
+/** The thread URL of the message with this txid when the phone holds it decrypted, else undefined. */
+export async function threadUrlOfTxid(txid: string): Promise<string | undefined> {
+  const chain = await chainOf(txid);
+  return threadUrlOfMessage(chain[0], chain);
+}
+
 /** Where a tap on a notification with this data opens: the message's thread when
  * the phone already holds it decrypted (a reply opens its post's reply thread),
  * else the URL the push was built with. A push carries no plaintext, so a message
  * not yet here lands on the notice screen, which does the same once it arrives. */
 export async function resolveTapUrl(data: TapData | undefined): Promise<string> {
   if (data?.txid) {
-    const chain = await chainOf(data.txid);
-    const thread = threadUrlOfMessage(chain[0], chain);
+    const thread = await threadUrlOfTxid(data.txid);
     if (thread) return thread;
   }
   return data?.url ?? (data?.class ? CLASS_URLS[data.class] : undefined) ?? '/?v=needs';

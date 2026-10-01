@@ -23,10 +23,10 @@ import { unsettledNeeds } from '../model/needs';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
-import { messagesRepo } from '../data/repositories';
 import { sendAction, useSend } from './send';
 import { priorityLabel, priorityTone, statusWord, typeIcon } from './labels';
 import { speak } from '../services/speech';
+import { markThreadSeen } from '../services/seen';
 
 function RelationChips({ ids, index, label }: { ids: string[]; index?: ViewIndex; label: string }) {
   if (ids.length === 0) return null;
@@ -280,7 +280,7 @@ export function BeadScreen({ id }: { id: string }) {
   const [quote, setQuote] = useState<{ speaker: string; text: string } | null>(null);
 
   useEffect(() => {
-    void messagesRepo.markThreadRead(threadKey);
+    void markThreadSeen(threadKey);
   }, [threadKey, rows.length]);
 
   const onQuote = (item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text });

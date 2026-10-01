@@ -6,6 +6,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'node:url';
 import { pwaManifest } from './pwa-manifest';
 import { injectManifestOptions } from './pwa-precache';
+import { buildVersion, shortCommit } from './build-version';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
@@ -55,6 +56,6 @@ export default defineConfig({
     }),
   ],
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(buildVersion(pkg.version, new Date(), shortCommit())),
   },
 });

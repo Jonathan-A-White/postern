@@ -4,10 +4,14 @@
 // event stream (§10) so a message or a change to the map arrives within a
 // second. A backend without the stream is polled instead. Screens read its
 // state through useLive(); everything they show comes from Dexie, which this
-// keeps current.
+// keeps current. While the backend cannot be reached it also reads the anchor
+// address from the chain itself every 30 s (docs/protocol.md §21): a record
+// found there is kept, a ring rings, and the backend is tried again at once.
 import { useSyncExternalStore } from 'react';
 import { apiFetch } from './apiAuth';
+import { readChain, CHAIN_POLL_MS } from './chainRead';
 import { syncMessages } from './inbox';
+import { freshRings, ringInApp } from './ringIn';
 import { fetchMe, LEGACY, NoLicenceError, reconcileMayorKey, type Me } from './me';
 import { refreshView } from './view';
 import { publicKeyHexFromMasterKey } from './vault';
@@ -46,6 +50,46 @@ let lastForeground = 0;
 function setState(patch: Partial<LiveState>): void {
   state = { ...state, ...patch };
   for (const listener of listeners) listener();
+  watchChainWhileDown();
+}
+
+/** The chain read that runs while the backend is out of reach, and the transactions it has read this session. */
+let chainWatch: AbortController | null = null;
+const chainSeen = new Set<string>();
+
+/** Whether the backend cannot be reached right now: the stream dropped, or it never came up. */
+function backendOutOfReach(): boolean {
+  return current !== null && (state.status === 'offline' || state.status === 'reconnecting');
+}
+
+/** Starts the chain read when the backend goes out of reach and stops it the moment the stream is back (or live stops). */
+function watchChainWhileDown(): void {
+  if (backendOutOfReach() && !chainWatch) {
+    const abort = new AbortController();
+    chainWatch = abort;
+    void pollChain(abort.signal);
+  } else if (!backendOutOfReach() && chainWatch) {
+    chainWatch.abort();
+    chainWatch = null;
+  }
+}
+
+async function pollChain(signal: AbortSignal): Promise<void> {
+  for (;;) {
+    await sleep(CHAIN_POLL_MS, signal);
+    const session = current;
+    if (signal.aborted || !session) return;
+    let rows;
+    try {
+      rows = await readChain({ publicKeyHex: publicKeyHexFromMasterKey(session.key), unlockedKey: session.key, seen: chainSeen });
+    } catch {
+      continue; // WhatsOnChain is out of reach too: the next read tries again
+    }
+    if (rows.length === 0) continue;
+    for (const ring of freshRings(rows, Date.now() / 1000)) await ringInApp(ring);
+    // Whatever is on chain, the backend may be back: cut the backoff short and try it now.
+    if (!signal.aborted) session.interrupt?.abort();
+  }
 }
 
 export function subscribeLive(listener: () => void): () => void {
@@ -234,6 +278,7 @@ export function startLive(key: Uint8Array): void {
 export function stopLive(): void {
   current?.abort.abort();
   current = null;
+  chainSeen.clear();
   lastForeground = 0;
   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibilityChange);
   if (typeof window !== 'undefined') window.removeEventListener('pageshow', onForeground);

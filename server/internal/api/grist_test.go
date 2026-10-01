@@ -108,6 +108,14 @@ func newGristServerHolding(t *testing.T, held map[string][]string, opts ...Optio
 			checker[entry.PublicKeyHex] = collections
 		}
 	}
+	return newGristServerChecking(t, checker, opts...)
+}
+
+// newGristServerChecking is newGristServer with checker deciding every
+// key's licences instead of the vectors.
+func newGristServerChecking(t *testing.T, checker auth.LicenceChecker, opts ...Option) gristServer {
+	t.Helper()
+	v := loadGristVectors(t)
 
 	wocServer := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(wocServer.Close)

@@ -68,7 +68,12 @@ func signedTx(signer *btcec.PrivateKey, funding byte, outputs ...[]byte) string 
 	buf.WriteByte(byte(len(outputs)))
 	for _, script := range outputs {
 		binary.Write(&buf, binary.LittleEndian, uint64(1))
-		buf.WriteByte(byte(len(script)))
+		if len(script) < 0xfd {
+			buf.WriteByte(byte(len(script)))
+		} else { // a gated M's script runs past 252 bytes
+			buf.WriteByte(0xfd)
+			binary.Write(&buf, binary.LittleEndian, uint16(len(script)))
+		}
 		buf.Write(script)
 	}
 	binary.Write(&buf, binary.LittleEndian, uint32(0))

@@ -266,3 +266,33 @@ export function longOptionRecords(governorKey: PrivateKey, now: number, firstSeq
     ask('Q2: And when does the extraction happen?', 5),
   ];
 }
+
+/** Forty posts in the channel 'long thread', numbered, newest last: enough to scroll on a phone (mw-f758y.35). */
+export function longThreadRecords(governorKey: PrivateKey, now: number, firstSeq: number): FixtureRecord[] {
+  const governorPub = governorKey.toPublicKey().toString();
+  const mayorPub = MAYOR.toPublicKey().toString();
+  const records: FixtureRecord[] = [];
+  for (let n = 1; n <= 40; n++) {
+    const fromMayor = n % 2 === 1;
+    const seq = firstSeq + n;
+    const text = encodeThreadedMessage({
+      thread: { topic: 'long thread' },
+      text: `Post ${n}: ${'The reading position is a promise to the reader. '.repeat(3)}`,
+    });
+    records.push({
+      seq,
+      txid: `direct:${hex64(seq)}`,
+      vout: 0,
+      payload: {
+        ...encryptMessage({
+          text,
+          class: 'message',
+          senderPrivateKeyHex: fromMayor ? MAYOR.toHex() : governorKey.toHex(),
+          recipientPublicKeyHex: fromMayor ? governorPub : mayorPub,
+        }),
+        ts: Math.floor((now - (60 - n) * 60_000) / 1000),
+      },
+    });
+  }
+  return records;
+}

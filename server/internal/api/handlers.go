@@ -271,7 +271,7 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 			return
 		}
 		key := strings.ToLower(pubKeyHex)
-		granted, err := rightsFor(key, checker, o)
+		granted, err := rightsForRoute(key, checker, o, who)
 		if err != nil && !who.admits(granted) {
 			writeError(w, http.StatusBadGateway, "checking licence: "+err.Error())
 			return

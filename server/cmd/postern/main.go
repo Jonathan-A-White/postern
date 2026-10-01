@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,6 +37,12 @@ const (
 	nonceTTL          = 2 * time.Minute
 	licenceCacheTTL   = 5 * time.Minute
 	blobSweepInterval = time.Hour
+
+	// licenceTxDir and licenceAnswersFile are what the licence walk keeps
+	// under POSTERN_DATA: every transaction it fetched, and each key's last
+	// answer.
+	licenceTxDir       = "licence-txs"
+	licenceAnswersFile = "licence-answers.json"
 )
 
 func main() {
@@ -136,7 +143,10 @@ func newApp(cfg config.Config) (*app, error) {
 		collections = append(collections, collection)
 	}
 	rule := licence.Rule{Collections: collections, IssuerKey: cfg.IssuerKey}
-	licenceChecker := auth.NewCachedChecker(client, licenceCacheTTL, auth.WithRule(rule))
+	// What the walk fetches and answers is kept in POSTERN_DATA, so a backend
+	// swap starts from the last answer instead of a cold walk (mw-gq6.215).
+	licenceChecker := auth.NewCachedChecker(licence.NewTxCache(client, filepath.Join(cfg.DataDir, licenceTxDir)), licenceCacheTTL,
+		auth.WithRule(rule), auth.WithPersistence(filepath.Join(cfg.DataDir, licenceAnswersFile)))
 
 	handler := api.NewHandler(store, client, vapidKeys.PublicKey, pushStore, blobStore, auth.NewNonceStore(nonceTTL, auth.WithKey(nonceKey)), licenceChecker,
 		api.WithNotifier(fanout),
@@ -156,6 +166,9 @@ func newApp(cfg config.Config) (*app, error) {
 		}
 		go poller.New(client, store, cfg.Anchor, poller.WithNotifier(fanout)).Run(stop)
 		go runBlobSweep(blobStore, stop)
+		if cfg.MayorKey != "" {
+			go licenceChecker.CachedCollections(cfg.MayorKey) // warm the Mayor's licence answer
+		}
 		if cfg.MillKey != "" {
 			go noteMillLicence(licenceChecker, cfg.MillKey, cfg.Apps)
 		}

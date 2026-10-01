@@ -54,18 +54,15 @@ export function talkScreen(state: TalkScreenState, { event, at }: TalkScreenActi
   let log = state.log;
   switch (event.type) {
     case 'hold':
-      // A new talk starts with a clean page.
+      // A new talk starts with a clean page; speaking over a turn that failed to send gives that turn up.
       if (!state.line.talk) log = [];
+      else if (state.line.unsent) log = log.slice(0, -1);
       break;
     case 'release':
       if (line.outgoing) {
         const { talk, text, cut, model } = line.outgoing;
         log = [...log, { turn: talk.turn, said: text, cut: cut === true, asked: model, releasedAt: at }];
       }
-      break;
-    case 'sendFailed':
-      // The turn number is given back, and so is the line it took.
-      log = log.slice(0, -1);
       break;
     case 'incoming':
       if (line.phase === 'speaking' && line.speaking && line.talk) log = withAnswer(log, line.talk.turn, line.speaking.text, line.answeredBy, at);

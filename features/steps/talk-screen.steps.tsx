@@ -14,7 +14,7 @@ import { messagesRepo } from '../../src/data/repositories';
 import { formatRoute, parseRoute, topViewOf } from '../../src/nav/route';
 import { navigate, useRoute } from '../../src/router';
 import { encodeTurn } from '../../src/services/talk';
-import type { TalkTurn } from '../../src/model/talkLine';
+import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 
 configure({ asyncUtilTimeout: 5000 });
 
@@ -181,6 +181,8 @@ async function holdAndSay(words: string): Promise<void> {
   fireEvent.pointerUp(button);
   await waitFor(() => expect(sendTurn.mock.calls.length).toBe(before + 1));
 }
+
+const longSpeech = (n: number) => Array.from({ length: n }, (_, i) => `word${i % 97}`).join(' ');
 
 const lastSent = () => sendTurn.mock.calls.at(-1)?.[0] as TalkTurn;
 
@@ -422,6 +424,46 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('he holds the talk button and says {string} and lets go', holdsAndSays);
     Then('the screen says {string}', async (_c, text: string) => {
       expect(await screen.findByText(text)).toBeInTheDocument();
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-1: a failed send keeps his words on the screen and Try again resends them', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn will fail', () => {
+      sendTurn.mockRejectedValue(new Error('boom'));
+    });
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    Then('the screen says {string}', async (_c, text: string) => {
+      expect(await screen.findByText(text)).toBeInTheDocument();
+    });
+    And('his words {string} are still on the screen', async (_c, words: string) => {
+      expect(await screen.findByTestId('talk-said')).toHaveTextContent(words);
+    });
+    When('sending a turn works again', () => {
+      sendTurn.mockResolvedValue({ txid: 'direct:x', channel: 'direct' });
+    });
+    And('he taps {string}', tapButton);
+    Then('the last turn sent says {string} as turn {number}', async (_c, words: string, n: number) => {
+      await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(2));
+      expect(lastSent().text).toBe(words);
+      expect(lastSent().talk.turn).toBe(Number(n));
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-1: a hold of about 2,000 words is cut at the cap with "..." and still sent', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {number} words and lets go', async (_c, n: number) => holdAndSay(longSpeech(Number(n))));
+    Then('the last turn sent is cut at the cap and ends with {string}', (_c, tail: string) => {
+      const text = lastSent().text;
+      expect(text.endsWith(tail)).toBe(true);
+      expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
+      expect(text.length).toBeGreaterThan(5000);
     });
     And('the talk button reads {string}', async (_c, name: string) => {
       expect(await talkButton(name)).toBeInTheDocument();

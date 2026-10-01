@@ -108,6 +108,27 @@ Feature: Talk line turns are records of their own, and the line is a small state
     And he then releases with the words "Hello again"
     Then the turn to send is turn 1 of "talk-14" saying "Hello again" with no cut
 
+  Scenario: AC-1: a failed send keeps his words and Try again resends them as the same turn
+    Given the line is idle
+    When he holds the button for talk "talk-30"
+    And he releases with the words "Hello there"
+    And the send fails
+    Then the line is idle
+    And the line says "Could not send. Try again."
+    And the line still holds the unsent words "Hello there"
+    When he asks to try again
+    Then the turn to send is turn 1 of "talk-30" saying "Hello there" with no cut
+    When the send goes through
+    Then the line is waiting
+    And the line holds no unsent words
+
+  Scenario: AC-1: a turn longer than the cap is cut with "..." and still sent
+    Given the line is idle
+    When he holds the button for talk "talk-31"
+    And he releases with 40000 words
+    Then the line is sending
+    And the turn to send ends with "..." and is within the cap
+
   Scenario: AC-2: the model is chosen per talk and rides on his turns
     Given the line is idle
     When he picks the model "opus"

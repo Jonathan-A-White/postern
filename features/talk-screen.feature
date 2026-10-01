@@ -82,6 +82,16 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he then holds the talk button and says "Skip that" and lets go
     Then the last turn sent is turn 2 saying "Skip that" with a cut
 
+  Scenario: AC-1: the cut tag stays on his turn only until the Mayor's next answer arrives (mw-j0f2d.22)
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "A very long answer indeed." on model "sonnet"
+    And he taps "Cut the answer"
+    And he then holds the talk button and says "Skip that" and lets go
+    Then the turn "Skip that" shows the tag "cut the last answer"
+    When the Mayor answers "Skipped." on model "sonnet"
+    Then the turn "Skip that" no longer shows the tag "cut the last answer"
+
   Scenario: AC-1: the model chip goes into the turn
     Given the Talk line is open with a believable speech recogniser
     When he picks the "Opus" chip

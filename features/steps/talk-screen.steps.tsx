@@ -421,6 +421,28 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario("AC-1: the cut tag stays on his turn only until the Mayor's next answer arrives (mw-j0f2d.22)", ({ Given, When, Then, And }) => {
+    const turnOf = async (words: string) => (await screen.findByText(words)).closest('[data-testid="talk-turn"]') as HTMLElement;
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('he taps {string}', async (_c, name: string) => {
+      await waitFor(() => expect(speak).toHaveBeenCalled());
+      fireEvent.click(await talkButton(name));
+    });
+    And('he then holds the talk button and says {string} and lets go', holdsAndSays);
+    Then('the turn {string} shows the tag {string}', async (_c, words: string, tag: string) => {
+      const turn = await turnOf(words);
+      await waitFor(() => expect(within(turn).getByText(tag)).toBeInTheDocument());
+    });
+    When('the Mayor answers {string} on model {string}', mayorAnswers);
+    Then('the turn {string} no longer shows the tag {string}', async (_c, words: string, tag: string) => {
+      const turn = await turnOf(words);
+      await within(turn).findByText('Skipped.');
+      expect(within(turn).queryByText(tag)).not.toBeInTheDocument();
+    });
+  });
+
   Scenario('AC-1: the model chip goes into the turn', ({ Given, When, Then, And }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     When('he picks the {string} chip', async (_c, name: string) => {

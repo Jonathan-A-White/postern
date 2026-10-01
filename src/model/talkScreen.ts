@@ -16,6 +16,8 @@ export interface TalkLogEntry {
   releasedAt: number;
   /** The Mayor's latest words for this turn: a holding answer until the real one comes. */
   answer?: string;
+  /** The Mayor's real answer has come (a holding answer does not count). */
+  answered?: boolean;
   /** The model the answer says it came from. */
   answeredBy?: string;
   /** From his release to the first of the Mayor's words reaching the phone (ms). */
@@ -40,10 +42,21 @@ export function formatSeconds(ms: number): string {
   return `${(Math.max(0, ms) / 1000).toFixed(1)} s`;
 }
 
-function withAnswer(log: TalkLogEntry[], turn: number, text: string, answeredBy: string | undefined, at: number): TalkLogEntry[] {
+/** The 'cut the last answer' tag stays on a turn that cut an answer only until the Mayor's next answer arrives. */
+export function showsCutTag(entry: Pick<TalkLogEntry, 'cut' | 'answered'>): boolean {
+  return entry.cut && entry.answered !== true;
+}
+
+function withAnswer(log: TalkLogEntry[], turn: number, text: string, holding: boolean, answeredBy: string | undefined, at: number): TalkLogEntry[] {
   return log.map((entry) =>
     entry.turn === turn
-      ? { ...entry, answer: text, answeredBy: answeredBy ?? entry.answeredBy, firstWordsMs: entry.firstWordsMs ?? at - entry.releasedAt }
+      ? {
+          ...entry,
+          answer: text,
+          answered: entry.answered === true || !holding,
+          answeredBy: answeredBy ?? entry.answeredBy,
+          firstWordsMs: entry.firstWordsMs ?? at - entry.releasedAt,
+        }
       : entry,
   );
 }
@@ -65,7 +78,7 @@ export function talkScreen(state: TalkScreenState, { event, at }: TalkScreenActi
       }
       break;
     case 'incoming':
-      if (line.phase === 'speaking' && line.speaking && line.talk) log = withAnswer(log, line.talk.turn, line.speaking.text, line.answeredBy, at);
+      if (line.phase === 'speaking' && line.speaking && line.talk) log = withAnswer(log, line.talk.turn, line.speaking.text, line.speaking.holding, line.answeredBy, at);
       break;
   }
   return { line, log };

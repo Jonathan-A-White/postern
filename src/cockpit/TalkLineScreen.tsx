@@ -8,7 +8,7 @@ import type { KeyboardEvent, PointerEvent } from 'react';
 import { Button, Chip, Icon, cx } from '../ui';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
-import { formatSeconds } from '../model/talkScreen';
+import { formatSeconds, showsCutTag } from '../model/talkScreen';
 import type { TalkPhase } from '../model/talkLine';
 import type { TalkLogEntry } from '../model/talkScreen';
 
@@ -141,7 +141,7 @@ export function TalkLineScreen() {
                     {entry.said}
                   </p>
                   <span className="flex gap-1.5">
-                    {entry.cut && <Chip>cut the last answer</Chip>}
+                    {showsCutTag(entry) && <Chip>cut the last answer</Chip>}
                     {entry.asked && <Chip>asked for {entry.asked}</Chip>}
                   </span>
                 </div>

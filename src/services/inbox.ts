@@ -8,6 +8,7 @@ import type { MessageRow } from '../data/db';
 import { apiFetch } from './apiAuth';
 import { decryptMessage, decryptMessageAsSender, type MessagePayload } from './messages';
 import { threadKey, threadOf } from './threads';
+import { decodeEventBatch, type EventBatch } from '../model/events';
 
 const CURSOR_SETTING_KEY = 'messages-cursor';
 
@@ -87,6 +88,8 @@ export interface RecordToStore {
  */
 export async function storeRecord(record: RecordToStore, publicKeyHex: string, unlockedKeyHex?: string): Promise<MessageRow | undefined> {
   const payload = record.payload;
+  // An events batch (§22) is no message: syncMessages hands it to the projector instead.
+  if (payload.class === 'events') return undefined;
   const isToMe = payload.to === publicKeyHex;
   const isFromMe = payload.from === publicKeyHex;
   if (!isToMe && !isFromMe) return undefined;
@@ -124,18 +127,36 @@ export interface SyncMessagesParams {
   publicKeyHex: string;
   /** Passed once the key is unlocked, so a received message can be decrypted as it arrives. */
   unlockedKey?: Uint8Array;
+  /** The pinned Mayor (§15): the one key whose events records (§22) are read. */
+  mayorKey?: string;
   apiBase?: string;
   fetchImpl?: typeof fetch;
+}
+
+export interface SyncMessagesResult {
+  /** The events batches (§22) this page held, decrypted, sent by the pinned Mayor to this key. */
+  events: EventBatch[];
+}
+
+/** An events record's batch, when it is the pinned Mayor's to this key and decrypts and parses; else undefined. */
+function eventBatchOf(payload: MessagePayload, params: SyncMessagesParams, unlockedKeyHex: string | undefined): EventBatch | undefined {
+  if (!unlockedKeyHex || !params.mayorKey || payload.from !== params.mayorKey || payload.to !== params.publicKeyHex) return undefined;
+  try {
+    return decodeEventBatch(decryptMessage(payload, unlockedKeyHex));
+  } catch {
+    return undefined;
+  }
 }
 
 /**
  * Fetches every record newer than the stored cursor, keeps the ones naming this
  * key as sender or recipient, decrypts what the unlocked key can, and advances the
- * cursor to the backend's new head. Throws (leaving the cursor and stored rows
+ * cursor to the backend's new head. An events record is not kept as a message: its
+ * batch is handed back for src/services/events.ts to project. Throws (leaving the cursor and stored rows
  * untouched) if the fetch itself fails — an offline caller should catch and fall
  * back to messagesRepo.getAll() for what's already stored.
  */
-export async function syncMessages(params: SyncMessagesParams): Promise<void> {
+export async function syncMessages(params: SyncMessagesParams): Promise<SyncMessagesResult> {
   const unlockedKeyHex = params.unlockedKey ? keyToHex(params.unlockedKey) : undefined;
 
   const since = ((await settingsRepo.get(CURSOR_SETTING_KEY)) as number | undefined) ?? 0;
@@ -147,8 +168,14 @@ export async function syncMessages(params: SyncMessagesParams): Promise<void> {
   if (!response.ok) throw new Error(`Could not fetch messages (${response.status}).`);
   const body = (await response.json()) as ApiResponse;
 
+  const events: EventBatch[] = [];
   for (const record of body.records ?? []) {
     if (!isMessagePayload(record.payload)) continue;
+    if (record.payload.class === 'events') {
+      const batch = eventBatchOf(record.payload, params, unlockedKeyHex);
+      if (batch) events.push(batch);
+      continue;
+    }
     await storeRecord({ seq: record.seq, txid: record.txid, vout: record.vout, payload: record.payload }, params.publicKeyHex, unlockedKeyHex);
   }
 
@@ -157,4 +184,5 @@ export async function syncMessages(params: SyncMessagesParams): Promise<void> {
   if (params.unlockedKey) {
     await decryptPendingMessages(params.unlockedKey);
   }
+  return { events };
 }

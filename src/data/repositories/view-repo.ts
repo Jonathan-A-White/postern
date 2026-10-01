@@ -11,6 +11,20 @@ export const viewRepo = {
   async save(row: Omit<ViewRow, 'id'>): Promise<void> {
     await db.view.put({ id: CURRENT, ...row });
   },
+
+  /** mw-jrx0s.7: the projector's write. Hands the stored plaintext to `change` and keeps
+   * what it returns in its place, in one transaction; the row's written time, fetch time,
+   * ETag and source stay as they were, since nothing was fetched. `change` returning
+   * undefined, or the same text, writes nothing. Resolves whether a view was there. */
+  async update(change: (plaintext: string) => string | undefined): Promise<boolean> {
+    return db.transaction('rw', db.view, async () => {
+      const row = await db.view.get(CURRENT);
+      if (!row) return false;
+      const next = change(row.plaintext);
+      if (next !== undefined && next !== row.plaintext) await db.view.put({ ...row, plaintext: next });
+      return true;
+    });
+  },
 };
 
 /** plans/0021: decrypted bead details (docs/protocol.md §12), newest fetch wins. */

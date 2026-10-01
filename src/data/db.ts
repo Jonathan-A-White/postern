@@ -8,7 +8,7 @@ export interface SettingRow {
 // docs/protocol.md's message classes (`talk`, §20, is the Talk line's turns and `call`, §21, its call records: never a channel, an unread or a Need). Defined here (not in src/services/messages.ts,
 // which re-exports it) so this file — the leaf data layer — never has to import from
 // the service layer.
-export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm' | 'move-home' | 'talk' | 'call';
+export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm' | 'move-home' | 'talk' | 'call' | 'events';
 
 export interface MessageRow {
   /** `${txid}:${vout}` — the record's own on-chain outpoint. */
@@ -100,6 +100,21 @@ export interface ViewRow {
   fetchedAt: number;
 }
 
+/** docs/protocol.md §22 (millwright's docs/events.md): one factory event, kept once by
+ * its `seq` (the home's log number) whichever record, lane or txid brought it.
+ * `ts` is RFC 3339 UTC. */
+export interface EventRow {
+  seq: number;
+  ts: string;
+  kind: string;
+  bead: string;
+  actor: string;
+  from: string;
+  to: string;
+  detail: string;
+  lane: string;
+}
+
 /** plans/0021: one bead's full detail (docs/protocol.md §12), decrypted, kept for
  * offline reading and for search over descriptions and comments. */
 export interface BeadDetailRow {
@@ -154,6 +169,7 @@ class PosternDB extends Dexie {
   beadDetails!: Table<BeadDetailRow, string>;
   session!: Table<SessionRow, string>;
   shares!: Table<ShareRow, string>;
+  events!: Table<EventRow, number>;
 
   constructor() {
     super('PosternDB');
@@ -217,6 +233,21 @@ class PosternDB extends Dexie {
       beadDetails: 'id, fetchedAt',
       session: 'id',
       shares: 'id, createdAt',
+    });
+
+    // mw-jrx0s.7: the factory's events (§22), by seq, projected onto the view.
+    this.version(9).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read, thread',
+      snapshot: 'id',
+      answers: 'bead',
+      pendingSpends: 'txid',
+      view: 'id',
+      beadDetails: 'id, fetchedAt',
+      session: 'id',
+      shares: 'id, createdAt',
+      events: 'seq, kind, bead',
     });
   }
 }

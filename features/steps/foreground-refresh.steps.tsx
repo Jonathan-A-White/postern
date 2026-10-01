@@ -29,7 +29,7 @@ vi.mock('../../src/services/apiAuth', () => ({
     };
   }),
 }));
-vi.mock('../../src/services/inbox', () => ({ syncMessages: vi.fn(async () => {}) }));
+vi.mock('../../src/services/inbox', () => ({ syncMessages: vi.fn(async () => ({ events: [] })) }));
 vi.mock('../../src/services/view', async (importOriginal) => {
   const { viewRepo: repo } = await import('../../src/data/repositories');
   const { fixtureView: fixture } = await import('../../tests/support/cockpit-fixture');

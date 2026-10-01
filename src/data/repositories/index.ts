@@ -5,3 +5,4 @@ export { snapshotRepo } from './snapshot-repo';
 export { answersRepo } from './answers-repo';
 export { pendingSpendsRepo } from './pending-spends-repo';
 export { viewRepo, beadDetailsRepo, sessionRepo, sharesRepo } from './view-repo';
+export { eventsRepo } from './events-repo';

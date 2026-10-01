@@ -210,3 +210,37 @@ describe('messages cursor storage', () => {
     expect(await settingsRepo.get('messages-cursor')).toBe(5);
   });
 });
+
+describe('syncMessages and events records (mw-jrx0s.7)', () => {
+  beforeEach(async () => {
+    await db.messages.clear();
+    await db.settings.clear();
+  });
+
+  const batchText = JSON.stringify({ from: 1, to: 1, lane: 'normal', events: [{ seq: 1, ts: '2026-10-01T12:00:00Z', kind: 'job', bead: '', actor: 'dispatch@laptop', from: 'scheduled', to: 'running', detail: '', lane: 'normal' }] });
+
+  it("hands an events record from the Mayor back as its batch, never as a message", async () => {
+    const payload = encryptMessage({ text: batchText, class: 'events', senderPrivateKeyHex: SENDER.toHex(), recipientPublicKeyHex: ME.toPublicKey().toString() });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+      isChallengeRequest(String(input)) ? challengeResponse() : apiResponse([recordFor(1, payload)], 1),
+    );
+
+    const result = await syncMessages({ publicKeyHex: ME.toPublicKey().toString(), unlockedKey: meKeyBytes(), mayorKey: SENDER.toPublicKey().toString(), fetchImpl });
+
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].events[0]).toMatchObject({ seq: 1, kind: 'job' });
+    expect(await messagesRepo.getAll()).toHaveLength(0);
+  });
+
+  it('drops an events record from any key but the pinned Mayor', async () => {
+    const payload = encryptMessage({ text: batchText, class: 'events', senderPrivateKeyHex: STRANGER.toHex(), recipientPublicKeyHex: ME.toPublicKey().toString() });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+      isChallengeRequest(String(input)) ? challengeResponse() : apiResponse([recordFor(1, payload)], 1),
+    );
+
+    const result = await syncMessages({ publicKeyHex: ME.toPublicKey().toString(), unlockedKey: meKeyBytes(), mayorKey: SENDER.toPublicKey().toString(), fetchImpl });
+
+    expect(result.events).toEqual([]);
+    expect(await messagesRepo.getAll()).toHaveLength(0);
+  });
+});

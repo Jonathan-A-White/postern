@@ -63,6 +63,8 @@ export interface Need {
   not_ready?: boolean;
   /** §11: what a not_ready card waits on: its open blockers' titles, or the Mayor's own words. */
   waiting_on?: string[];
+  /** mw-jrx0s.7: set on this phone's copy by a card_answered event (§22): what was answered, and when (RFC 3339). */
+  answered?: { option: string; at: string };
 }
 
 export interface HostState {
@@ -186,6 +188,7 @@ function decodeNeed(value: unknown): Need | undefined {
   if (!raw) return undefined;
   const kind = str(raw.kind) as NeedKind;
   if (!NEED_KINDS.includes(kind)) return undefined;
+  const answered = record(raw.answered);
   return {
     kind,
     bead: str(raw.bead),
@@ -201,6 +204,7 @@ function decodeNeed(value: unknown): Need | undefined {
     waits_for: WAITS_FOR.includes(raw.waits_for as WaitsFor) ? (raw.waits_for as WaitsFor) : raw.waits_for === undefined && raw.not_ready === true ? 'factory' : 'you',
     not_ready: raw.not_ready === true,
     waiting_on: strings(raw.waiting_on),
+    ...(answered ? { answered: { option: str(answered.option), at: str(answered.at) } } : {}),
   };
 }
 

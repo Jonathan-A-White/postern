@@ -31,6 +31,7 @@ vi.mock('../../src/services/apiAuth', () => ({
 vi.mock('../../src/services/inbox', () => ({
   syncMessages: vi.fn(async () => {
     if (net.syncFails) throw new Error('The backend did not answer.');
+    return { events: [] };
   }),
 }));
 vi.mock('../../src/services/view', () => ({

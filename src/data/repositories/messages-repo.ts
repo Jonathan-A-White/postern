@@ -8,14 +8,25 @@ const notTalk = (row: MessageRow) => row.class !== 'talk' && row.class !== 'call
  * it is never stored, and a row some older build stored is hidden here and removed when the app opens. */
 const isMessage = (row: MessageRow) => row.class !== 'events';
 
+/** A live card (§24) is kept as a row but is no message: no list, thread, unread count or search hit shows it (it is read from the cards table). */
+const isCard = (row: MessageRow) => row.class === 'card' || row.class === 'card-update';
+
+/** What a list may show: a message, which is neither an events batch nor a card record. */
+const listed = (row: MessageRow) => isMessage(row) && !isCard(row);
+
 export const messagesRepo = {
   async getAll(): Promise<MessageRow[]> {
+    return db.messages.orderBy('ts').reverse().filter(listed).toArray();
+  },
+
+  /** Every stored row that can be decrypted, cards included: what a later unlock reads again. */
+  async getAllStored(): Promise<MessageRow[]> {
     return db.messages.orderBy('ts').reverse().filter(isMessage).toArray();
   },
 
   /** Every message but the Talk line's turns, oldest first — the order a conversation reads in. */
   async getAllOldestFirst(): Promise<MessageRow[]> {
-    return db.messages.orderBy('ts').filter((row) => isMessage(row) && notTalk(row)).toArray();
+    return db.messages.orderBy('ts').filter((row) => listed(row) && notTalk(row)).toArray();
   },
 
   /** The Talk line's turns alone, oldest first. */
@@ -32,7 +43,7 @@ export const messagesRepo = {
   async inThread(key: string | undefined): Promise<MessageRow[]> {
     return db.messages
       .orderBy('ts')
-      .filter((row) => isMessage(row) && notTalk(row) && (key === undefined ? row.thread === undefined : row.thread === key))
+      .filter((row) => listed(row) && notTalk(row) && (key === undefined ? row.thread === undefined : row.thread === key))
       .toArray();
   },
 
@@ -56,13 +67,13 @@ export const messagesRepo = {
 
   /** Marks the thread's received messages read; resolves with the txids it just marked. */
   async markThreadRead(key: string | undefined): Promise<string[]> {
-    const unread = db.messages.filter((row) => isMessage(row) && notTalk(row) && row.direction === 'received' && !row.read && row.thread === key);
+    const unread = db.messages.filter((row) => listed(row) && notTalk(row) && row.direction === 'received' && !row.read && row.thread === key);
     const txids = (await unread.toArray()).map((row) => row.txid);
     await unread.modify({ read: true });
     return txids;
   },
 
   async countUnread(): Promise<number> {
-    return db.messages.filter((row) => isMessage(row) && notTalk(row) && row.direction === 'received' && !row.read).count();
+    return db.messages.filter((row) => listed(row) && notTalk(row) && row.direction === 'received' && !row.read).count();
   },
 };

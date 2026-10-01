@@ -23,6 +23,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
+	"github.com/Jonathan-A-White/postern/server/internal/prompts"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
 	"github.com/Jonathan-A-White/postern/server/internal/view"
@@ -58,6 +59,7 @@ type options struct {
 	millKey  string            // POSTERN_MILL_KEY, lower-cased; "" means no grist (§19)
 	apps     map[string]string // POSTERN_APPS: an app's licence collection -> the app
 	cors     []string          // POSTERN_CORS_ORIGINS
+	prompts  *prompts.Store    // the saved prompts; nil answers 501
 
 	cockpitCollections []string // POSTERN_COLLECTIONS, for GET /api/me (§15)
 	appCollections     []string // POSTERN_APPS' collections in the order configured
@@ -134,6 +136,12 @@ func WithCORS(origins []string) Option {
 	return func(o *options) { o.cors = origins }
 }
 
+// WithPrompts sets the store GET /api/prompts and its siblings serve. Without
+// it those routes answer 501.
+func WithPrompts(store *prompts.Store) Option {
+	return func(o *options) { o.prompts = store }
+}
+
 // WithView sets the view file GET /api/view serves (POSTERN_VIEW_FILE).
 // Without it, GET /api/view answers 404.
 func WithView(v *view.File) Option {
@@ -189,6 +197,10 @@ func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, p
 	here := newPresence()
 	mux.HandleFunc("GET /api/events", gate(cockpitKeys|mayorKey, handleEvents(store, o.hub, o.view, o.ping, here)))
 	mux.HandleFunc("GET /api/presence", gate(cockpitKeys, handlePresence(here, o.mayorKey)))
+	mux.HandleFunc("GET /api/prompts", gate(everyKey|mayorKey, handlePromptList(o.prompts)))
+	mux.HandleFunc("GET /api/prompts/{name}", gate(everyKey|mayorKey, handlePromptGet(o.prompts)))
+	mux.HandleFunc("PUT /api/prompts/{name}", gate(cockpitKeys, handlePromptPut(o.prompts)))
+	mux.HandleFunc("DELETE /api/prompts/{name}", gate(cockpitKeys, handlePromptDelete(o.prompts)))
 	mux.HandleFunc("GET /api/beads/{id}", gate(cockpitKeys, handleBead(o.beads)))
 	mux.HandleFunc("POST /api/broadcast", gate(cockpitKeys, handleBroadcast(client)))
 	mux.HandleFunc("GET /api/utxos/{address}", gate(cockpitKeys, handleUtxos(client)))

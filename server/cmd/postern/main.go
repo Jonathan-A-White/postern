@@ -19,6 +19,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/poller"
+	"github.com/Jonathan-A-White/postern/server/internal/prompts"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
 	"github.com/Jonathan-A-White/postern/server/internal/standby"
@@ -107,6 +108,12 @@ func newApp(cfg config.Config) (*app, error) {
 		return nil, fmt.Errorf("opening blob store: %w", err)
 	}
 
+	promptStore, err := prompts.OpenStore(cfg.DataDir)
+	if err != nil {
+		store.Close()
+		return nil, fmt.Errorf("opening prompt store: %w", err)
+	}
+
 	var home *standby.Monitor
 	if cfg.HomeCmd != "" {
 		home = standby.New(cfg.HomeCmd)
@@ -140,6 +147,7 @@ func newApp(cfg config.Config) (*app, error) {
 		api.WithGrist(cfg.MillKey, cfg.Apps),
 		api.WithCatalogue(cfg.Collections, cfg.AppCollections, cfg.IssuerKey),
 		api.WithCORS(cfg.CORSOrigins),
+		api.WithPrompts(promptStore),
 	)
 
 	start := func(stop <-chan struct{}) {

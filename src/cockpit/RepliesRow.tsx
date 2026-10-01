@@ -5,12 +5,11 @@ import { Icon, TimeAgo } from '../ui';
 import { formatRoute } from '../nav/route';
 import type { PostThread } from '../model/postThreads';
 
-export function RepliesRow({ channel, thread, onOpen }: { channel: string; thread: PostThread; onOpen?: () => void }) {
+export function RepliesRow({ channel, thread }: { channel: string; thread: PostThread }) {
   const fresh = thread.replies.some((reply) => reply.unread);
   return (
     <a
       href={formatRoute({ view: 'talk', thread: channel, root: thread.root.txid })}
-      onClick={onOpen}
       className="flex items-center gap-1.5 self-start px-1 text-[12.5px] font-semibold text-accent hover:underline"
     >
       <Icon name="talk" size={13} />

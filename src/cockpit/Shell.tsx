@@ -7,6 +7,7 @@ import { useRef, type ReactNode, type ComponentProps } from 'react';
 import { Banner, Icon, IconButton, cx, type IconName } from '../ui';
 import { formatRoute, topViewOf, type Route, type TopView } from '../nav/route';
 import { goBack, navigate } from '../router';
+import { useScrollMemory } from '../nav/scrollMemory';
 import { useLive } from '../services/live';
 import { hostsToMoveTo, useStandby } from '../services/standby';
 import { MoveHomeButtons } from './MoveHome';
@@ -217,6 +218,7 @@ export interface ScreenProps {
 /** One screen: a sticky header, a scrolling body, an optional footer. */
 export function Screen({ title, subtitle, back, actions, children, footer, bare, className }: ScreenProps) {
   const wide = useWide();
+  const remember = useScrollMemory('page');
   return (
     <section className={cx('flex min-h-0 flex-1 flex-col', className)}>
       <header className="pt-safe shrink-0 border-b border-line bg-canvas/90 backdrop-blur">
@@ -235,7 +237,7 @@ export function Screen({ title, subtitle, back, actions, children, footer, bare,
       {bare ? (
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       ) : (
-        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+        <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-5xl px-4 py-4 lg:px-8 lg:py-6">{children}</div>
         </div>
       )}

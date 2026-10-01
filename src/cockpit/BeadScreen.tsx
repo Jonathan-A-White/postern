@@ -24,6 +24,7 @@ import { unsettledNeeds, waitsFor, waitsOnLinks } from '../model/needs';
 import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
+import { useScrollMemory } from '../nav/scrollMemory';
 import { sendAction, useSend } from './send';
 import { priorityLabel, priorityTone, statusWord, typeIcon } from './labels';
 import { speak } from '../services/speech';
@@ -268,6 +269,10 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
 export function BeadScreen({ id }: { id: string }) {
   const view = useViewIndex();
   const wide = useWide();
+  // A phone scrolls details and conversation as one page; a wide screen scrolls them as two.
+  const rememberPage = useScrollMemory('page');
+  const rememberDetails = useScrollMemory('details');
+  const rememberConversation = useScrollMemory('conversation');
   const index = view?.index;
   const bead = index?.byId.get(id);
   const { detail, status, error, refresh } = useBeadDetail(id);
@@ -366,7 +371,7 @@ export function BeadScreen({ id }: { id: string }) {
     return (
       <Screen title={title} subtitle={id} back={back} actions={actions} bare>
         <div className="flex min-h-0 flex-1">
-          <div className="scroll-thin min-w-0 flex-1 overflow-y-auto border-r border-line px-8 py-6">
+          <div ref={rememberDetails} className="scroll-thin min-w-0 flex-1 overflow-y-auto border-r border-line px-8 py-6">
             <div className="mx-auto max-w-3xl">{detailsPane}</div>
           </div>
           <div className="flex w-[440px] shrink-0 flex-col xl:w-[520px]">
@@ -375,7 +380,7 @@ export function BeadScreen({ id }: { id: string }) {
               Conversation
               <span className="text-faint">{items.length}</span>
             </div>
-            <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">{conversation}</div>
+            <div ref={rememberConversation} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">{conversation}</div>
             {composer}
           </div>
         </div>
@@ -385,7 +390,7 @@ export function BeadScreen({ id }: { id: string }) {
 
   return (
     <Screen title={title} subtitle={id} back={back} actions={actions} bare footer={composer}>
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div ref={rememberPage} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {detailsPane}
         <div className="mt-6 flex flex-col gap-3">
           <SectionTitle>Conversation · {items.length}</SectionTitle>

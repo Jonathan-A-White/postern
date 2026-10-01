@@ -7,7 +7,7 @@
 // (mw-2y46l.6); search looks through both. In every channel a post with replies
 // shows one 'N replies' row; tapping it (or Reply on any post) opens that post's
 // own thread with a Reply… composer (mw-hkg17.2, mw-909ci.2).
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, EmptyState, Icon, IconButton, TimeAgo, cx } from '../ui';
 import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
@@ -20,6 +20,7 @@ import { groupPosts } from '../model/postThreads';
 import { RepliesRow } from './RepliesRow';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
+import { useScrollMemory } from '../nav/scrollMemory';
 import { messagesRepo, settingsRepo } from '../data/repositories';
 import { parseThreadKey, type ThreadRef } from '../services/threads';
 import { announceSeen, markThreadSeen } from '../services/seen';
@@ -135,9 +136,6 @@ function NewChannel() {
   );
 }
 
-/** Where each channel was scrolled to when a thread was opened from it, so Back lands at the same place. */
-const channelScroll = new Map<string, number>();
-
 function openReplies(channel: string, rootTxid: string) {
   navigate({ view: 'talk', thread: channel, root: rootTxid });
 }
@@ -153,38 +151,26 @@ function ChannelPane({ threadKey }: { threadKey: string }) {
   const threads = useMemo(() => groupPosts(mergeConversation(rows, detail?.comments ?? [])), [rows, detail]);
   const posts = useMemo(() => threads.map((thread) => thread.root), [threads]);
   const byRoot = useMemo(() => new Map(threads.map((thread) => [thread.root.id, thread])), [threads]);
-  const scroller = useRef<HTMLDivElement>(null);
+  const remember = useScrollMemory('channel');
   const [quote, setQuote] = useState<{ speaker: string; text: string } | null>(null);
-  const remember = () => {
-    const at = scroller.current?.scrollTop;
-    if (at !== undefined) channelScroll.set(threadKey, at);
-  };
 
   useEffect(() => {
     void markThreadSeen(storeKey);
   }, [storeKey, rows.length]);
 
-  useEffect(() => {
-    const at = channelScroll.get(threadKey);
-    if (at === undefined || posts.length === 0 || !scroller.current) return;
-    scroller.current.scrollTop = at;
-    channelScroll.delete(threadKey);
-  }, [threadKey, posts.length]);
-
   return (
     <>
-      <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-3xl">
           <Conversation
             items={posts}
             onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}
             onReply={(item) => {
-              remember();
               if (item.txid) openReplies(threadKey, item.txid);
             }}
             footer={(item) => {
               const thread = byRoot.get(item.id);
-              return thread && thread.replyCount > 0 ? <RepliesRow channel={threadKey} thread={thread} onOpen={remember} /> : null;
+              return thread && thread.replyCount > 0 ? <RepliesRow channel={threadKey} thread={thread} /> : null;
             }}
             empty={<EmptyState icon="talk" title="Nothing said here yet">Say anything; the Mayor answers in its thread.</EmptyState>}
           />
@@ -211,6 +197,7 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
     return groupPosts(mergeConversation(all, detail?.comments ?? [])).find((candidate) => candidate.root.txid?.toLowerCase() === wanted);
   }, [all, detail, rootTxid]);
   const items = useMemo(() => (thread ? [thread.root, ...thread.replies] : []), [thread]);
+  const remember = useScrollMemory('replies');
   const [quote, setQuote] = useState<{ speaker: string; text: string } | null>(null);
 
   useEffect(() => {
@@ -226,7 +213,7 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
 
   return (
     <>
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-3xl">
           <Conversation
             items={items}
@@ -246,6 +233,8 @@ function PaneFor({ threadKey, root }: { threadKey: string; root?: string }) {
 
 export function TalkScreen({ thread, root }: { thread?: string; root?: string }) {
   const wide = useWide();
+  // The channel list keeps its place whatever address opens beside it.
+  const rememberList = useScrollMemory('channels', false);
   const view = useViewIndex();
   const [filter, setFilter] = useState('');
   const messages = useMessages();
@@ -292,7 +281,7 @@ export function TalkScreen({ thread, root }: { thread?: string; root?: string })
         </label>
         <NewChannel />
       </div>
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+      <div ref={rememberList} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <ThreadList threads={threads} current={current} filter={filter} onToggleArchive={toggleArchive} />
       </div>
     </>

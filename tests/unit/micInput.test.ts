@@ -19,6 +19,21 @@ describe('chooseInput', () => {
     expect(chooseInput([])).toBeUndefined();
   });
 
+  it("never takes Android's own inputs for a Bluetooth one", () => {
+    expect(chooseInput([input('e1f2', 'Headset earpiece'), input('s3a4', 'Speakerphone')])).toBeUndefined();
+    expect(chooseInput([input('a', 'Headset')])).toBeUndefined();
+  });
+
+  it('still chooses the Bluetooth input when the earpiece is listed first', () => {
+    expect(chooseInput([input('e1f2', 'Headset earpiece'), input('b', 'Bluetooth headset')])?.deviceId).toBe('b');
+    expect(chooseInput([input('s3a4', 'Speakerphone'), input('c', 'Car kit (hands-free)')])?.deviceId).toBe('c');
+    expect(chooseInput([input('e1f2', 'Headset earpiece'), input('s3a4', 'Speakerphone'), input('buds', 'Galaxy Buds2 Pro (Bluetooth)')])?.deviceId).toBe('buds');
+  });
+
+  it('prefers an input that names Bluetooth over a hands-free or car one', () => {
+    expect(chooseInput([input('c', 'Car kit (hands-free)'), input('b', 'Bluetooth headset')])?.deviceId).toBe('b');
+  });
+
   it("ignores outputs and the browser's pseudo-inputs", () => {
     const devices = [input('default', 'Default - Bluetooth headset'), input('communications', 'Communications - Bluetooth headset'), input('out', 'Bluetooth headset', 'audiooutput')];
     expect(chooseInput(devices)).toBeUndefined();

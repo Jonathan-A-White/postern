@@ -18,6 +18,13 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the turn sent is "what landed"
     And the car's microphone is let go
 
+  Scenario: AC-1: Android's own Headset earpiece is not taken for a Bluetooth input, so the hold uses the default microphone (mw-j0f2d.33)
+    Given the phone has the inputs "Headset earpiece" and "Speakerphone"
+    And the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    Then the recogniser listens on the default input
+    And the screen says it is listening on the phone's own microphone
+
   Scenario: AC-1: with only the phone's own inputs the hold uses the default microphone and the screen says so (mw-j0f2d.26)
     Given the phone has the inputs "Speakerphone" and "Phone microphone"
     And the Talk line is open with a believable speech recogniser

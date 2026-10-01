@@ -12,15 +12,22 @@ export interface InputDevice {
   kind: string;
 }
 
-/** What names a Bluetooth audio input on Android and desktop Chrome: 'Bluetooth headset', 'Car kit (hands-free)', 'HFP', 'SCO'. */
-const BLUETOOTH_LABEL = /bluetooth|hands[- ]?free|\bhfp\b|\bsco\b|\bheadset\b|\bcar\b/i;
+/** What names a Bluetooth audio input on Android and desktop Chrome: 'Bluetooth headset', 'Galaxy Buds (Bluetooth)'. */
+const BLUETOOTH_LABEL = /bluetooth/i;
+
+/** The other names a car's or a headset's Bluetooth link goes by: 'Car kit (hands-free)', 'HFP', 'SCO'. A bare 'headset' is not enough. */
+const HANDS_FREE_LABEL = /hands[- ]?free|\bhfp\b|\bsco\b|\bcar\b/i;
+
+/** Android's own inputs ('Headset earpiece', 'Speakerphone'): the phone's, never a Bluetooth device, and they hear nothing when opened by id. */
+const BUILT_IN_LABEL = /earpiece|speaker/i;
 
 /** The pseudo-inputs the browser adds for 'whatever the system default is'; they name no real device. */
 const PSEUDO_IDS = new Set(['default', 'communications']);
 
 /** The Bluetooth input to listen on, or nothing when the phone has none (the default microphone is then used). */
 export function chooseInput(devices: readonly InputDevice[]): InputDevice | undefined {
-  return devices.find((device) => device.kind === 'audioinput' && !PSEUDO_IDS.has(device.deviceId) && BLUETOOTH_LABEL.test(device.label));
+  const candidates = devices.filter((device) => device.kind === 'audioinput' && !PSEUDO_IDS.has(device.deviceId) && !BUILT_IN_LABEL.test(device.label));
+  return candidates.find((device) => BLUETOOTH_LABEL.test(device.label)) ?? candidates.find((device) => HANDS_FREE_LABEL.test(device.label));
 }
 
 /** True once the browser names its inputs, which it does only after the microphone was allowed. */

@@ -303,6 +303,26 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario('AC-1: Android\'s own Headset earpiece is not taken for a Bluetooth input, so the hold uses the default microphone (mw-j0f2d.33)', ({ Given, When, Then, And }) => {
+    Given('the phone has the inputs {string} and {string}', (_c, a: string, b: string) => {
+      setInputs([
+        { deviceId: 'a', label: a },
+        { deviceId: 'b', label: b },
+      ]);
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    Then('the recogniser listens on the default input', async () => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      expect(recognizers.at(-1)?.startedWith).toBeUndefined();
+    });
+    And('the screen says it is listening on the phone\'s own microphone', async () => {
+      await waitFor(() => expect(screen.getByTestId('mic-name')).toHaveTextContent("Listening on the phone's own microphone."));
+    });
+  });
+
   Scenario('AC-1: with only the phone\'s own inputs the hold uses the default microphone and the screen says so (mw-j0f2d.26)', ({ Given, When, Then, And }) => {
     Given('the phone has the inputs {string} and {string}', (_c, a: string, b: string) => {
       setInputs([

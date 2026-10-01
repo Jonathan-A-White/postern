@@ -250,3 +250,71 @@ test.describe('phone viewport', () => {
     await shot(page, 'talk-line-long-answer');
   });
 });
+
+// mw-j0f2d.28: the small mark of whether the Mayor is here (the backend says so while his
+// `mw talk wait` holds the event stream open), and one buzz when he is back after a missed turn.
+async function presenceIs(page: Page): Promise<(here: boolean) => Promise<void>> {
+  let here = false;
+  await page.route('**/api/presence', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ mayor: here }) }));
+  // The screen asks again when the phone comes back to the foreground, which is quicker than waiting for its poll.
+  return async (next) => {
+    here = next;
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  };
+}
+
+test('talk line: a dot says Mayor here or Mayor away, grey while no wait of his is connected', async ({ page }) => {
+  await unlocked(page);
+  const setHere = await presenceIs(page);
+
+  await page.goto('/?v=line');
+  const mark = page.getByTestId('mayor-presence');
+  await expect(mark).toHaveText('Mayor away');
+  await expect(mark.locator('span')).toHaveClass(/bg-faint/);
+  await shot(page, 'talk-line-mayor-away');
+
+  await setHere(true);
+  await expect(mark).toHaveText('Mayor here');
+  await expect(mark.locator('span')).toHaveClass(/bg-done/);
+  await shot(page, 'talk-line-mayor-here');
+
+  await setHere(false); // a handoff: no wait connected
+  await expect(mark).toHaveText('Mayor away');
+  expect(await page.evaluate(() => window.__vibrations.length)).toBe(0);
+});
+
+test('talk line: after a missed turn the phone buzzes once when the mark turns to Mayor here', async ({ page }) => {
+  const { posted } = await unlocked(page);
+  const setHere = await presenceIs(page);
+  await setHere(true);
+
+  await page.goto('/?v=line');
+  const mark = page.getByTestId('mayor-presence');
+  await expect(mark).toHaveText('Mayor here');
+  await page.clock.install();
+
+  const button = page.getByRole('button', { name: 'Hold to talk' });
+  await expect(button).toBeEnabled();
+  const box = (await button.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(page.getByRole('button', { name: 'Release to send' })).toBeVisible();
+  await page.evaluate(() => window.__hear('What landed today?'));
+  await page.mouse.up();
+  await expect.poll(() => posted.length).toBe(1);
+  await expect(page.getByText('The Mayor is thinking…')).toBeVisible();
+
+  await page.clock.fastForward(31_000);
+  await expect(page.getByText('The Mayor did not answer in time.')).toBeVisible();
+  const buzzes = () => page.evaluate(() => window.__vibrations.length);
+  const before = await buzzes();
+
+  await setHere(false);
+  await expect(mark).toHaveText('Mayor away');
+  expect(await buzzes()).toBe(before);
+
+  await setHere(true);
+  await expect(mark).toHaveText('Mayor here');
+  await expect.poll(buzzes).toBe(before + 1);
+  await shot(page, 'talk-line-mayor-back');
+});

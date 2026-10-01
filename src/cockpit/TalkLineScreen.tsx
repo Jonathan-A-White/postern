@@ -134,6 +134,17 @@ function micName(input: string | undefined): string {
   return input ? `Listening on the Bluetooth microphone: ${input}.` : "Listening on the phone's own microphone.";
 }
 
+/** The small mark of whether the Mayor is here: a coloured dot, or a grey one while no wait of his is connected. Nothing until the backend has said. */
+function PresenceMark({ here }: { here: boolean | undefined }) {
+  if (here === undefined) return null;
+  return (
+    <p data-testid="mayor-presence" data-here={here} className="flex items-center justify-center gap-1.5 text-[11.5px] text-faint">
+      <span aria-hidden className={cx('inline-block h-2 w-2 rounded-full', here ? 'bg-done' : 'bg-faint/50')} />
+      {here ? 'Mayor here' : 'Mayor away'}
+    </p>
+  );
+}
+
 export function TalkLineScreen() {
   const talk = useTalkLine();
   const { line } = talk;
@@ -237,6 +248,7 @@ export function TalkLineScreen() {
           )}
           {listening && micOpen && talk.mode === 'on-device' && <p className="text-[11.5px] text-faint">Speech is recognised on this phone.</p>}
         </div>
+        <PresenceMark here={talk.here} />
 
         <div role="group" aria-label="Model for this talk" className="flex items-center gap-2">
           {MODELS.map((model) => (

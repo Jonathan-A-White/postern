@@ -4,16 +4,18 @@
 // answers from the stored `talk` records, speak them, count the wait, and keep the
 // screen awake while a talk is open.
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { initialTalkLine, endTurn, talkLine, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
+import { initialTalkLine, endTurn, talkLine, NO_ANSWER_IN_TIME, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
 import { initialTalkScreen, talkScreen } from '../model/talkScreen';
 import { isListenSupported, startListening, type ListenMode, type ListenSession } from '../services/listen';
 import { canChooseInput, openBluetoothInput } from '../services/micInput';
 import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import { decodeTurn, newTalkId } from '../services/talk';
+import { chime } from '../services/chime';
 import { now } from '../services/clock';
 import { holdAwake } from '../services/wakeLock';
 import { sendTurn } from './send';
 import { useTalkTurns } from './hooks';
+import { useMayorHere } from './useMayorHere';
 
 function buzz(ms: number): void {
   if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(ms);
@@ -91,6 +93,17 @@ export function useTalkLine() {
     const timer = setInterval(() => feed({ type: 'tick', now: now() }), 1000);
     return () => clearInterval(timer);
   }, [waiting, feed]);
+
+  // The Mayor turning from away to here, after the line gave up on his answer, is told once
+  // (a buzz and a note); turning to here at any other time is silent.
+  const here = useMayorHere();
+  const wasHere = useRef<boolean | undefined>(undefined);
+  const missed = line.error === NO_ANSWER_IN_TIME;
+  useEffect(() => {
+    if (here === undefined) return;
+    if (wasHere.current === false && here && missed) chime();
+    wasHere.current = here;
+  }, [here, missed]);
 
   // The screen stays awake for as long as a talk is open.
   const open = line.talk !== undefined;
@@ -201,6 +214,7 @@ export function useTalkLine() {
     mic,
     fellBack,
     input,
+    here,
     supported,
     press,
     release,

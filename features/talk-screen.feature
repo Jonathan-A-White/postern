@@ -309,3 +309,24 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
 
   Scenario: AC-3: the Talk line is a place of its own under the Channels tab
     Then the route ?v=line is the Talk line and belongs to the Channels tab
+
+  Scenario: AC-2: a small mark says whether the Mayor is here, and grey when no wait of his is connected (mw-j0f2d.28)
+    Given the Mayor is away
+    And the Talk line is open with a believable speech recogniser
+    Then the Talk line shows "Mayor away" in grey
+    When the Mayor is here and the phone comes back to the foreground
+    Then the Talk line shows "Mayor here" in colour
+    And the phone has not buzzed for it
+
+  Scenario: AC-2: the phone buzzes once when the Mayor is back after a missed turn (mw-j0f2d.28)
+    Given the Mayor is here
+    And the Talk line is open with a believable speech recogniser
+    When he holds the button, says "What landed" and lets go
+    And the wait runs out
+    Then the line says "The Mayor did not answer in time."
+    When the Mayor is away and the phone comes back to the foreground
+    Then the Talk line shows "Mayor away" in grey
+    And the phone has not buzzed for it
+    When the Mayor is here and the phone comes back to the foreground
+    Then the Talk line shows "Mayor here" in colour
+    And the phone buzzes once for it

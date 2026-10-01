@@ -13,6 +13,7 @@ import { db } from '../../src/data/db';
 import { messagesRepo } from '../../src/data/repositories';
 import { formatRoute, parseRoute, topViewOf } from '../../src/nav/route';
 import { navigate, useRoute } from '../../src/router';
+import { lock, setKey } from '../../src/services/keySession';
 import { encodeTurn } from '../../src/services/talk';
 import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 
@@ -26,6 +27,10 @@ vi.mock('../../src/cockpit/send', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/cockpit/send')>()),
   sendTurn: (...args: unknown[]) => sendTurn(...args),
 }));
+
+// Whether the Mayor is here is what the backend's presence route says; a test sets it.
+const mayor = vi.hoisted(() => ({ here: undefined as boolean | undefined }));
+vi.mock('../../src/services/presence', () => ({ fetchMayorHere: () => Promise.resolve(mayor.here) }));
 
 // The browser's speech, vibration and wake lock, as fakes.
 interface FakeRecognizer {
@@ -178,6 +183,8 @@ const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + silent
 async function fresh(): Promise<void> {
   cleanup();
   silentFor = 0;
+  mayor.here = undefined;
+  lock();
   vi.unstubAllGlobals();
   sequence = 0;
   clock.at = 1_000_000;
@@ -1010,6 +1017,72 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(parseRoute('?v=line')).toEqual({ view: 'line' });
       expect(formatRoute({ view: 'line' })).toBe('?v=line');
       expect(topViewOf({ view: 'line' })).toBe('talk');
+    });
+  });
+
+  // mw-j0f2d.28: the presence mark and the chime.
+  let buzzesBefore = 0;
+  const mayorIs = (here: boolean) => () => {
+    mayor.here = here;
+    setKey(new Uint8Array(32));
+  };
+  const comesBackToTheForeground = () => {
+    buzzesBefore = vibrate.mock.calls.length;
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  };
+  const markShows = async (_c: unknown, words: string, colour: string) => {
+    const mark = await screen.findByTestId('mayor-presence');
+    await waitFor(() => expect(mark).toHaveTextContent(words));
+    const dot = mark.querySelector('span')!;
+    if (colour === 'grey') expect(dot).toHaveClass('bg-faint/50');
+    else expect(dot).toHaveClass('bg-done');
+  };
+
+  Scenario('AC-2: a small mark says whether the Mayor is here, and grey when no wait of his is connected (mw-j0f2d.28)', ({ Given, And, When, Then }) => {
+    Given('the Mayor is away', mayorIs(false));
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    Then('the Talk line shows {string} in grey', (c, words: string) => markShows(c, words, 'grey'));
+    When('the Mayor is here and the phone comes back to the foreground', () => {
+      mayor.here = true;
+      comesBackToTheForeground();
+    });
+    Then('the Talk line shows {string} in colour', (c, words: string) => markShows(c, words, 'colour'));
+    And('the phone has not buzzed for it', () => {
+      expect(vibrate.mock.calls.length).toBe(buzzesBefore);
+    });
+  });
+
+  Scenario('AC-2: the phone buzzes once when the Mayor is back after a missed turn (mw-j0f2d.28)', ({ Given, And, When, Then }) => {
+    Given('the Mayor is here', mayorIs(true));
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the button, says {string} and lets go', async (_c, words: string) => {
+      await screen.findByText('Mayor here');
+      await holdAndSay(words);
+    });
+    And('the wait runs out', async () => {
+      await screen.findByText('The Mayor is thinking…');
+      clock.at += 31_000;
+    });
+    Then('the line says {string}', async (_c, words: string) => {
+      expect(await screen.findByText(words)).toBeInTheDocument();
+    });
+    When('the Mayor is away and the phone comes back to the foreground', () => {
+      mayor.here = false;
+      comesBackToTheForeground();
+    });
+    Then('the Talk line shows {string} in grey', (c, words: string) => markShows(c, words, 'grey'));
+    And('the phone has not buzzed for it', () => {
+      expect(vibrate.mock.calls.length).toBe(buzzesBefore);
+    });
+    When('the Mayor is here and the phone comes back to the foreground', () => {
+      mayor.here = true;
+      comesBackToTheForeground();
+    });
+    Then('the Talk line shows {string} in colour', (c, words: string) => markShows(c, words, 'colour'));
+    And('the phone buzzes once for it', async () => {
+      await waitFor(() => expect(vibrate.mock.calls.length).toBe(buzzesBefore + 1));
     });
   });
 });

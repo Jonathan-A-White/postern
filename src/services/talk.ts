@@ -2,7 +2,7 @@
 // turn, and its delivery as class `talk`. A turn is its own record: it never joins
 // a channel, an unread count or Needs, and the backend never pushes it.
 import { deliver, type Delivered, type DeliverOptions } from './deliver';
-import type { TalkRole, TalkTurn } from '../model/talkLine';
+import { ABOUT_KINDS, type TalkAbout, type TalkRole, type TalkTurn } from '../model/talkLine';
 
 export type { TalkRole, TalkTurn };
 
@@ -17,7 +17,17 @@ export function encodeTurn(turn: TalkTurn): string {
     ...(turn.model ? { model: turn.model } : {}),
     ...(turn.cut ? { cut: true } : {}),
     ...(turn.links?.length ? { links: turn.links } : {}),
+    ...(turn.about ? { about: { kind: turn.about.kind, id: turn.about.id, title: turn.about.title } } : {}),
   });
+}
+
+/** An `about` with all three keys and a known kind; anything else is no about. */
+export function readAbout(value: unknown): TalkAbout | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { kind, id, title } = value as Record<string, unknown>;
+  if (typeof kind !== 'string' || !ABOUT_KINDS.includes(kind as TalkAbout['kind'])) return undefined;
+  if (typeof id !== 'string' || id === '' || typeof title !== 'string') return undefined;
+  return { kind: kind as TalkAbout['kind'], id, title };
 }
 
 /** The turn a plaintext holds, or `undefined` for anything that is not one. */
@@ -44,6 +54,7 @@ export function decodeTurn(plaintext: string | undefined): TalkTurn | undefined 
     ...(typeof candidate.model === 'string' && candidate.model ? { model: candidate.model } : {}),
     ...(candidate.cut === true ? { cut: true } : {}),
     ...(links.length ? { links } : {}),
+    ...(readAbout(candidate.about) ? { about: readAbout(candidate.about) } : {}),
   };
 }
 

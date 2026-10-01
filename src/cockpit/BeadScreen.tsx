@@ -371,7 +371,12 @@ export function BeadScreen({ id }: { id: string }) {
     />
   );
   const composer = <Composer thread={{ bead: id }} placeholder={`Say something about ${id}…`} quote={quote} onClearQuote={() => setQuote(null)} />;
-  const actions = <SpeakAll items={items} />;
+  const actions = (
+    <>
+      <SpeakAll items={items} />
+      <IconButton icon="mic" label="Talk" onClick={() => navigate({ view: 'line', about: { kind: 'bead', id, title } })} />
+    </>
+  );
 
   if (wide) {
     return (

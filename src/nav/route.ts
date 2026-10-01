@@ -6,6 +6,7 @@
 
 import type { MessageClass } from '../data/db';
 import type { WaitsFor } from '../model/view';
+import { ABOUT_KINDS, type TalkAbout } from '../model/talkLine';
 
 export type MapLens = 'board' | 'graph' | 'list';
 
@@ -17,7 +18,7 @@ export type Route =
   /** `root` is the txid of a General post whose thread of replies is open (docs/protocol.md §14). */
   | { view: 'talk'; thread?: string; root?: string; prefill?: string }
   /** The Talk line: a spoken conversation with the Mayor (docs/protocol.md §20). `call` is the txid of the ring he answered (§21). */
-  | { view: 'line'; call?: string }
+  | { view: 'line'; call?: string; about?: TalkAbout }
   | { view: 'search'; q?: string }
   | { view: 'me' }
   /** The saved prompts, each with Run and Edit (src/cockpit/PromptsScreen.tsx). */
@@ -38,6 +39,15 @@ const LENSES: MapLens[] = ['board', 'graph', 'list'];
 
 function lens(value: string | null): MapLens | undefined {
   return LENSES.includes(value as MapLens) ? (value as MapLens) : undefined;
+}
+
+/** What a Talk button says the line is about (`ak`, `ai`, `an`): all three, or none. */
+function aboutOf(params: URLSearchParams): { about?: TalkAbout } {
+  const kind = params.get('ak');
+  const id = params.get('ai');
+  const title = params.get('an');
+  if (!kind || !ABOUT_KINDS.includes(kind as TalkAbout['kind']) || !id || title === null) return {};
+  return { about: { kind: kind as TalkAbout['kind'], id, title } };
 }
 
 function legacy(params: URLSearchParams): Route | undefined {
@@ -93,7 +103,7 @@ export function parseRoute(search: string): Route {
         ...(params.get('p') ? { prefill: params.get('p') as string } : {}),
       };
     case 'line':
-      return { view: 'line', ...(params.get('call') ? { call: params.get('call') as string } : {}) };
+      return { view: 'line', ...(params.get('call') ? { call: params.get('call') as string } : {}), ...aboutOf(params) };
     case 'search':
       return { view: 'search', q: params.get('q') ?? undefined };
     case 'me':
@@ -147,6 +157,11 @@ export function formatRoute(route: Route): string {
       break;
     case 'line':
       if (route.call) params.set('call', route.call);
+      if (route.about) {
+        params.set('ak', route.about.kind);
+        params.set('ai', route.about.id);
+        params.set('an', route.about.title);
+      }
       break;
     case 'search':
       if (route.q) params.set('q', route.q);

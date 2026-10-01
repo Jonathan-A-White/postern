@@ -238,6 +238,16 @@ export function TalkLineScreen() {
   const answered = useAnsweredRing();
   const ring = ringNote(callRows, calledFrom ?? answered);
 
+  // A Talk button elsewhere says what this talk is about; the first turn carries it until he clears it.
+  const routeAbout = route.view === 'line' ? route.about : undefined;
+  const aboutKey = routeAbout ? `${routeAbout.kind}\n${routeAbout.id}\n${routeAbout.title}` : '';
+  const { setAbout } = talk;
+  useEffect(() => {
+    setAbout(aboutKey ? routeAbout : undefined);
+    // keyed on the address's words, not the object parseRoute makes each time
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aboutKey, setAbout]);
+
   // Opening the line from a ring's Answer is answering that ring: it stays answered when he comes back.
   useEffect(() => {
     if (calledFrom) void settingsRepo.setAnsweredRing(calledFrom);
@@ -273,6 +283,14 @@ export function TalkLineScreen() {
       }
       bare
     >
+      {line.about && (
+        <div data-testid="talk-about" className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2 text-[13px]">
+          <span className="min-w-0 flex-1 truncate text-muted">About: {line.about.title}</span>
+          <Button variant="ghost" size="sm" onClick={() => talk.setAbout(undefined)}>
+            Clear
+          </Button>
+        </div>
+      )}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div ref={scroller} onScroll={onScroll} onWheel={onTouch} onTouchStart={onTouch} onPointerDown={onTouch} data-testid="talk-scroll" className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <ol className="mx-auto flex max-w-xl flex-col gap-4" data-testid="talk-log">

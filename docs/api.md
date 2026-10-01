@@ -66,7 +66,13 @@ in the issuer's, when `POSTERN_ISSUER_KEY` is set — carries a typed M record
 - names the key's own testnet address as `holder`, in one of `POSTERN_COLLECTIONS`;
 - is **issued**: when `POSTERN_ISSUER_KEY` is set, at least one input of the mint
   transaction has a P2PKH scriptSig (`<sig> <pubkey>`) whose public-key push is
-  that key. With no issuer configured the backend logs a warning at start and any
+  that key **and** spends an output that is P2PKH to hash160 of that key, so the
+  network checked the signature against it (a scriptSig that merely pushes the key
+  over, say, an `OP_2DROP OP_1` output proves nothing). The spent output's
+  transaction comes from the histories already read, or one `GET /tx/{txid}/hex`
+  per candidate mint or revoke otherwise; a read that fails fails the check (so the
+  checker's stale grace keeps the last answer), and one that does not parse or
+  has no such output means the mint does not count. With no issuer configured the backend logs a warning at start and any
   mint naming the key counts (the old self-mint rule);
 - is **not transferred away**: the licence token sits at output 0 of the mint (both
   of spell-forge-bsv's mint layouts; the contract mint writes `[0]` the License,

@@ -820,7 +820,9 @@ holds a licence when the chain carries a type-M record for it that is:
   re-minted into Postern's own collection);
 - **issued**: at least one input of the mint transaction is unlocked by the
   issuer's key (`POSTERN_ISSUER_KEY`: a P2PKH scriptSig whose public-key push is
-  that key). A self-minted record by anyone else no longer counts; with no issuer
+  that key, spending an output P2PKH to hash160 of that key, so the network
+  checked the signature; a pushed key over any other output proves nothing). A
+  self-minted record by anyone else no longer counts; with no issuer
   configured the backend logs a warning and keeps the old rule;
 - **not transferred away**: no later transaction spends the licence's token
   outpoint with a type-TR record naming someone else. A TR record's payload may be

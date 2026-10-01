@@ -1,7 +1,10 @@
 // Package licence checks whether a public key holds a licence to Postern
 // (docs/protocol.md §16): a typed M ('mint') record naming the key's own
 // testnet address as holder, in one of the configured collections, minted
-// by a transaction the issuer signed, whose licence token has not since been
+// by a transaction the issuer signed (one of its inputs spends an output
+// P2PKH to the issuer's key, which the network checked the signature
+// against: a scriptSig merely pushing the key proves nothing), whose
+// licence token has not since been
 // moved to someone else by a TR ('transfer') record spending it, and which
 // the issuer has not revoked with a signed W record {"kind":"revoke",
 // "origin"} naming the mint's output 0.
@@ -16,6 +19,7 @@
 package licence
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -54,7 +58,8 @@ type Rule struct {
 	Collections []string
 	// IssuerKey is the issuer's compressed public key, hex
 	// (POSTERN_ISSUER_KEY). When set, a mint counts only if one of its
-	// transaction's inputs has a P2PKH scriptSig pushing this key, and the
+	// transaction's inputs has a P2PKH scriptSig pushing this key and spends
+	// an output P2PKH to it, and the
 	// issuer's address history is searched for mints too (a contract mint
 	// pays nothing to the holder's address). Empty keeps the old rule: any
 	// mint naming the holder, found in the holder's own history.
@@ -94,7 +99,7 @@ func Held(reader Reader, address string, rule Rule) (bool, error) {
 // mint's output 0 through every spend of it those transactions show: a TR
 // record moves it to the address it names, anything else (a write) leaves
 // it with its holder, and each spend's output 0 is the token's next
-// outpoint. A licence the issuer revoked (revokedOrigins) is never held,
+// outpoint. A licence the issuer revoked (issuerCheck.revoked) is never held,
 // whatever later transfers did with it. A collection is held if any counting licence in it ends with
 // address. The collection is what a licence opens (docs/protocol.md §19).
 //
@@ -156,9 +161,11 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 		}
 	}
 
-	var revoked map[string]bool
+	var issuer *issuerCheck
+	var revokes map[string][]string
 	if issuerKey != "" {
-		revoked = revokedOrigins(txs, order, inIssuerHistory, issuerKey)
+		issuer = newIssuerCheck(reader, issuerKey, txs)
+		revokes = revokeCandidates(txs, order, inIssuerHistory, issuerKey)
 	}
 
 	collections := rule.Collections
@@ -167,22 +174,35 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 	}
 	var held []string
 	for _, txid := range order {
-		collection, ok := countsAsMint(txs[txid], address, collections, issuerKey)
-		if !ok || contains(held, collection) || revoked[txid+":0"] {
+		collection, ok := mintFor(txs[txid], address, collections)
+		if !ok || contains(held, collection) || holderNow(txid, address, txs, spentBy) != address {
 			continue
 		}
-		if holderNow(txid, address, txs, spentBy) == address {
-			held = append(held, collection)
+		if issuer != nil {
+			signed, err := issuer.signed(txs[txid])
+			if err != nil {
+				return nil, err
+			}
+			if !signed {
+				continue
+			}
+			revoked, err := issuer.revoked(txid+":0", revokes)
+			if err != nil {
+				return nil, err
+			}
+			if revoked {
+				continue
+			}
 		}
+		held = append(held, collection)
 	}
 	return held, nil
 }
 
-// countsAsMint reports whether tx carries an M record naming holder in one
-// of collections, signed (when issuerKey is set) by the issuer, and in
-// which collection.
-func countsAsMint(tx *record.Transaction, holder string, collections []string, issuerKey string) (string, bool) {
-	collection, minted := "", false
+// mintFor reports whether tx carries an M record naming holder in one of
+// collections, and in which collection. Who signed it is the caller's to
+// check.
+func mintFor(tx *record.Transaction, holder string, collections []string) (string, bool) {
 	for _, out := range tx.Outputs {
 		typed, ok := record.DecodeTypedScript(out.ScriptHex)
 		if !ok || typed.RecordType != "M" {
@@ -193,31 +213,23 @@ func countsAsMint(tx *record.Transaction, holder string, collections []string, i
 			continue
 		}
 		if payload.Holder == holder && contains(collections, payload.Collection) {
-			collection, minted = payload.Collection, true
-			break
+			return payload.Collection, true
 		}
-	}
-	if !minted || issuerKey == "" {
-		return collection, minted
-	}
-
-	if signedBy(tx, issuerKey) {
-		return collection, true
 	}
 	return "", false
 }
 
-// revokedOrigins names the licence tokens the issuer has revoked: the
-// origin ("txid:vout") of every typed W record {"kind":"revoke","origin"}
-// in a transaction of the issuer's own history that one of its inputs
-// unlocks with the issuer's key. A revoke names one mint output, so a mint
-// after it is a new licence; whether the origin is a counting mint is
-// left to the caller, which only ever looks up counting mints.
-func revokedOrigins(txs map[string]*record.Transaction, order []string, inIssuerHistory map[string]bool, issuerKey string) map[string]bool {
-	revoked := make(map[string]bool)
+// revokeCandidates names, for each origin ("txid:vout") a typed W record
+// {"kind":"revoke","origin"} names, the transactions in the issuer's own
+// history carrying one whose scriptSigs push the issuer's key. Whether the
+// issuer really signed one is issuerCheck.revoked's to check, and only for
+// a counting mint's origin. A revoke names one mint output, so a mint after
+// it is a new licence.
+func revokeCandidates(txs map[string]*record.Transaction, order []string, inIssuerHistory map[string]bool, issuerKey string) map[string][]string {
+	revokes := make(map[string][]string)
 	for _, txid := range order {
 		tx := txs[txid]
-		if !inIssuerHistory[txid] || !signedBy(tx, issuerKey) {
+		if !inIssuerHistory[txid] || !pushesKey(tx, issuerKey) {
 			continue
 		}
 		for _, out := range tx.Outputs {
@@ -227,22 +239,101 @@ func revokedOrigins(txs map[string]*record.Transaction, order []string, inIssuer
 			}
 			var payload revokePayload
 			if json.Unmarshal(typed.PayloadBytes, &payload) == nil && payload.Kind == "revoke" && payload.Origin != "" {
-				revoked[strings.ToLower(payload.Origin)] = true
+				origin := strings.ToLower(payload.Origin)
+				revokes[origin] = append(revokes[origin], txid)
 			}
 		}
 	}
-	return revoked
+	return revokes
 }
 
-// signedBy reports whether one of tx's inputs has a P2PKH scriptSig
-// pushing key.
-func signedBy(tx *record.Transaction, key string) bool {
+// pushesKey reports whether one of tx's inputs has a P2PKH-shaped
+// scriptSig pushing key: necessary for the key's owner to have signed tx,
+// never sufficient (issuerCheck.signed).
+func pushesKey(tx *record.Transaction, key string) bool {
 	for _, in := range tx.Inputs {
 		if pushed, ok := record.P2PKHPublicKey(in.ScriptSig); ok && pushed == key {
 			return true
 		}
 	}
 	return false
+}
+
+// issuerCheck decides whether the issuer signed a transaction, reading the
+// transactions its inputs spend from: those the address histories already
+// brought, or one read per other txid, remembered for the rest of the
+// check.
+type issuerCheck struct {
+	reader  Reader
+	key     string // the issuer's public key, lowercase hex
+	keyHash []byte // hash160 of it
+	known   map[string]*record.Transaction
+	fetched map[string]*record.Transaction // nil for one that does not parse
+}
+
+func newIssuerCheck(reader Reader, key string, known map[string]*record.Transaction) *issuerCheck {
+	keyBytes, _ := hex.DecodeString(key) // AddressForPublicKey has parsed it
+	return &issuerCheck{reader: reader, key: key, keyHash: hash160(keyBytes), known: known, fetched: map[string]*record.Transaction{}}
+}
+
+// signed reports whether one of tx's inputs pushes the issuer's key in a
+// P2PKH scriptSig AND spends an output P2PKH to that key: the network
+// checked that input's signature against that output, so the issuer signed
+// tx. A pushed key over any other output (a bare OP_2DROP OP_1, say) proves
+// nothing. An output that cannot be read is an error, never a yes, so the
+// mint does not count and the caller's stale answer can stand.
+func (c *issuerCheck) signed(tx *record.Transaction) (bool, error) {
+	var readErr error
+	for _, in := range tx.Inputs {
+		if pushed, ok := record.P2PKHPublicKey(in.ScriptSig); !ok || pushed != c.key {
+			continue
+		}
+		prev, err := c.transaction(in.PrevTxID)
+		if err != nil {
+			readErr = err
+			continue
+		}
+		if prev == nil || in.PrevVout < 0 || in.PrevVout >= len(prev.Outputs) {
+			continue
+		}
+		if hash, ok := record.P2PKHLockHash(prev.Outputs[in.PrevVout].ScriptHex); ok && bytes.Equal(hash, c.keyHash) {
+			return true, nil
+		}
+	}
+	return false, readErr
+}
+
+// revoked reports whether one of the revoke candidates naming origin was
+// signed by the issuer.
+func (c *issuerCheck) revoked(origin string, revokes map[string][]string) (bool, error) {
+	for _, txid := range revokes[origin] {
+		signed, err := c.signed(c.known[txid])
+		if err != nil || signed {
+			return signed, err
+		}
+	}
+	return false, nil
+}
+
+// transaction returns txid parsed (nil if it does not parse), from what the
+// histories brought or else read once.
+func (c *issuerCheck) transaction(txid string) (*record.Transaction, error) {
+	if tx := c.known[txid]; tx != nil {
+		return tx, nil
+	}
+	if tx, ok := c.fetched[txid]; ok {
+		return tx, nil
+	}
+	txHex, err := c.reader.GetTransactionHex(txid)
+	if err != nil {
+		return nil, fmt.Errorf("getting spent transaction %s: %w", txid, err)
+	}
+	tx, err := record.ParseTransaction(txHex)
+	if err != nil {
+		tx = nil
+	}
+	c.fetched[txid] = tx
+	return tx, nil
 }
 
 // holderNow follows the licence minted at mintTxid:0 through every spend
@@ -303,12 +394,16 @@ func AddressForPublicKey(pubKeyHex string) (string, error) {
 		return "", fmt.Errorf("parsing public key: %w", err)
 	}
 
-	sha := sha256.Sum256(pubKey.SerializeCompressed())
+	return base58CheckEncode(testnetAddressVersion, hash160(pubKey.SerializeCompressed())), nil
+}
+
+// hash160 is RIPEMD-160(SHA-256(data)), what OP_HASH160 computes and a
+// P2PKH output locks to.
+func hash160(data []byte) []byte {
+	sha := sha256.Sum256(data)
 	ripemd := ripemd160.New()
 	ripemd.Write(sha[:])
-	hash160 := ripemd.Sum(nil)
-
-	return base58CheckEncode(testnetAddressVersion, hash160), nil
+	return ripemd.Sum(nil)
 }
 
 const base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"

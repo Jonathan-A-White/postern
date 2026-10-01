@@ -100,6 +100,9 @@ type testInput struct {
 type testTx struct {
 	txid string
 	hex  string
+	// prevs are the transactions whose outputs its inputs spend, put on
+	// chain with it (but in no history) by fakeReader.add.
+	prevs []testTx
 }
 
 // buildTx serializes a transaction and names it by its real txid.
@@ -137,23 +140,45 @@ func buildTx(inputs []testInput, outputs [][]byte) testTx {
 	return testTx{txid: hex.EncodeToString(second[:]), hex: hex.EncodeToString(buf.Bytes())}
 }
 
-// fundingTxid is a UTXO the minter spends: any txid the chain never shows.
+// fundingTxid is an outpoint's txid the chain never shows.
 func fundingTxid(n byte) string {
 	return hex.EncodeToString(bytes.Repeat([]byte{n}, 32))
 }
 
+// p2pkhLockTo is a real P2PKH locking script to key: OP_DUP OP_HASH160
+// <hash160(key)> OP_EQUALVERIFY OP_CHECKSIG.
+func p2pkhLockTo(key *btcec.PrivateKey) []byte {
+	script := []byte{0x76, 0xa9}
+	script = append(script, pushData(hash160(key.PubKey().SerializeCompressed()))...)
+	return append(script, 0x88, 0xac)
+}
+
+// fundingFor is the transaction that paid signer the coin a mint or revoke
+// spends at vout: its output vout is P2PKH to signer (the outputs before it
+// pay someone else), and n makes its txid its own.
+func fundingFor(signer *btcec.PrivateKey, n byte, vout uint32) testTx {
+	outputs := make([][]byte, 0, vout+1)
+	for i := uint32(0); i < vout; i++ {
+		outputs = append(outputs, p2pkhLock("someone else"))
+	}
+	return buildTx(
+		[]testInput{{txid: fundingTxid(n), vout: 0, scriptSig: covenantUnlock()}},
+		append(outputs, p2pkhLockTo(signer)),
+	)
+}
+
+// fundedBy is a transaction whose one input signer unlocks, spending the
+// coin fundingFor(signer, n, vout) paid it.
+func fundedBy(signer *btcec.PrivateKey, n byte, vout uint32, outputs [][]byte) testTx {
+	funding := fundingFor(signer, n, vout)
+	tx := buildTx([]testInput{{txid: funding.txid, vout: vout, scriptSig: p2pkhUnlock(signer)}}, outputs)
+	tx.prevs = []testTx{funding}
+	return tx
+}
+
 // contractMint is buildContractMintTransaction's layout, funded by signer.
 func contractMint(signer *btcec.PrivateKey, collection, holder string) testTx {
-	signerAddress := addressOf(signer)
-	return buildTx(
-		[]testInput{{txid: fundingTxid(0xf1), vout: 2, scriptSig: p2pkhUnlock(signer)}},
-		[][]byte{
-			licenseScript,
-			fuelScript,
-			typedRecordScript("M", `{"collection":"`+collection+`","holder":"`+holder+`"}`),
-			p2pkhLock(signerAddress),
-		},
-	)
+	return contractMintFundedBy(signer, collection, holder, 0xf1)
 }
 
 // contractSpend is a License spend (transfer or write) of the licence at
@@ -189,19 +214,26 @@ func addressOf(key *btcec.PrivateKey) string {
 	return address
 }
 
-// fakeReader is a chain reader test double: address -> history, txid -> raw hex.
+// fakeReader is a chain reader test double: address -> history, txid -> raw
+// hex, txid -> the error reading it fails with; it counts each txid's reads.
 type fakeReader struct {
 	history map[string][]woc.HistoryEntry
 	txs     map[string]string
+	txErr   map[string]error
+	reads   map[string]int
 	err     error
 }
 
 func newFakeReader() *fakeReader {
-	return &fakeReader{history: map[string][]woc.HistoryEntry{}, txs: map[string]string{}}
+	return &fakeReader{history: map[string][]woc.HistoryEntry{}, txs: map[string]string{}, txErr: map[string]error{}, reads: map[string]int{}}
 }
 
-// add puts tx on chain, in the history of each of addresses.
+// add puts tx on chain, in the history of each of addresses, and the
+// transactions it spends from on chain in no history.
 func (f *fakeReader) add(tx testTx, addresses ...string) {
+	for _, prev := range tx.prevs {
+		f.txs[prev.txid] = prev.hex
+	}
 	f.txs[tx.txid] = tx.hex
 	for _, address := range addresses {
 		f.history[address] = append(f.history[address], woc.HistoryEntry{TxHash: tx.txid, Height: 100 + len(f.history[address])})
@@ -216,7 +248,20 @@ func (f *fakeReader) GetHistory(address string) ([]woc.HistoryEntry, error) {
 }
 
 func (f *fakeReader) GetTransactionHex(txid string) (string, error) {
+	f.reads[txid]++
+	if err := f.txErr[txid]; err != nil {
+		return "", err
+	}
 	return f.txs[txid], nil
+}
+
+// totalReads is how many transactions the reader has been asked for.
+func (f *fakeReader) totalReads() int {
+	total := 0
+	for _, n := range f.reads {
+		total += n
+	}
+	return total
 }
 
 func mustHeld(t *testing.T, reader Reader, address string, rule Rule) bool {
@@ -491,28 +536,22 @@ func TestHeldCollectionsEmptyWithNoLicence(t *testing.T) {
 // contractMintFundedBy is contractMint funded by a different UTXO, so two
 // mints of the same licence get txids of their own.
 func contractMintFundedBy(signer *btcec.PrivateKey, collection, holder string, funding byte) testTx {
-	return buildTx(
-		[]testInput{{txid: fundingTxid(funding), vout: 2, scriptSig: p2pkhUnlock(signer)}},
-		[][]byte{
-			licenseScript,
-			fuelScript,
-			typedRecordScript("M", `{"collection":"`+collection+`","holder":"`+holder+`"}`),
-			p2pkhLock(addressOf(signer)),
-		},
-	)
+	return fundedBy(signer, funding, 2, [][]byte{
+		licenseScript,
+		fuelScript,
+		typedRecordScript("M", `{"collection":"`+collection+`","holder":"`+holder+`"}`),
+		p2pkhLock(addressOf(signer)),
+	})
 }
 
 // revokeTx is the transaction the Key screen's Revoke writes: a typed W
 // record {"kind":"revoke","origin":origin} in a transaction whose P2PKH
 // input signer signed.
 func revokeTx(signer *btcec.PrivateKey, origin string, funding byte) testTx {
-	return buildTx(
-		[]testInput{{txid: fundingTxid(funding), vout: 0, scriptSig: p2pkhUnlock(signer)}},
-		[][]byte{
-			typedRecordScript("W", `{"kind":"revoke","origin":"`+origin+`"}`),
-			p2pkhLock(addressOf(signer)),
-		},
-	)
+	return fundedBy(signer, funding, 0, [][]byte{
+		typedRecordScript("W", `{"kind":"revoke","origin":"`+origin+`"}`),
+		p2pkhLock(addressOf(signer)),
+	})
 }
 
 func TestHeldCollectionsLeavesOutALicenceTheIssuerRevoked(t *testing.T) {

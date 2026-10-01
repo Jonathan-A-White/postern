@@ -13,6 +13,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 	"github.com/btcsuite/btcd/btcec/v2"
+	"golang.org/x/crypto/ripemd160" //nolint:staticcheck // a P2PKH output locks to RIPEMD-160(SHA-256(key)).
 )
 
 // chainFake is a licence.Reader over a few hand-built transactions:
@@ -30,16 +31,27 @@ func (c *chainFake) GetTransactionHex(txid string) (string, error) { return c.tx
 
 // add puts a transaction on chain in address's history and returns its txid.
 func (c *chainFake) add(address, txHex string) string {
+	txid := c.put(txHex)
+	c.history[address] = append(c.history[address], woc.HistoryEntry{TxHash: txid, Height: 100 + len(c.history[address])})
+	return txid
+}
+
+// put puts a transaction on chain in no history and returns its txid.
+func (c *chainFake) put(txHex string) string {
+	txid := txidOf(txHex)
+	c.txs[txid] = txHex
+	return txid
+}
+
+// txidOf is a raw transaction's txid, in display order.
+func txidOf(txHex string) string {
 	raw, _ := hex.DecodeString(txHex)
 	first := sha256.Sum256(raw)
 	second := sha256.Sum256(first[:])
 	for i, j := 0, len(second)-1; i < j; i, j = i+1, j-1 {
 		second[i], second[j] = second[j], second[i]
 	}
-	txid := hex.EncodeToString(second[:])
-	c.txs[txid] = txHex
-	c.history[address] = append(c.history[address], woc.HistoryEntry{TxHash: txid, Height: 100 + len(c.history[address])})
-	return txid
+	return hex.EncodeToString(second[:])
 }
 
 // typedScript is a typed record's locking script (docs/protocol.md §16's
@@ -52,16 +64,37 @@ func typedScript(recordType, payload string) []byte {
 	return script
 }
 
+// fundingTx is the transaction that paid signer the coin signedTx(signer,
+// funding, ...) spends: its output 0 is P2PKH to signer's key. Put it on
+// chain (chainFake.put) for the licence rule to see signer signed.
+func fundingTx(signer *btcec.PrivateKey, funding byte) string {
+	keyHash := ripemd160.New()
+	sha := sha256.Sum256(signer.PubKey().SerializeCompressed())
+	keyHash.Write(sha[:])
+	lock := append(append([]byte{0x76, 0xa9, 0x14}, keyHash.Sum(nil)...), 0x88, 0xac)
+	return rawTx(bytes.Repeat([]byte{funding}, 32), []byte{0x51}, lock)
+}
+
 // signedTx is a one-input transaction whose P2PKH scriptSig names signer,
-// with the given output scripts.
+// spending output 0 of fundingTx(signer, funding), with the given output
+// scripts.
 func signedTx(signer *btcec.PrivateKey, funding byte, outputs ...[]byte) string {
+	prev, _ := hex.DecodeString(txidOf(fundingTx(signer, funding)))
+	for i, j := 0, len(prev)-1; i < j; i, j = i+1, j-1 {
+		prev[i], prev[j] = prev[j], prev[i]
+	}
+	sig := append(bytes.Repeat([]byte{0x30}, 70), 0x41)
+	return rawTx(prev, append(pushBytes(sig), pushBytes(signer.PubKey().SerializeCompressed())...), outputs...)
+}
+
+// rawTx is a one-input transaction spending output 0 of the transaction
+// whose txid in internal byte order is prev, with the given output scripts.
+func rawTx(prev, scriptSig []byte, outputs ...[]byte) string {
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.LittleEndian, uint32(1))
 	buf.WriteByte(1)
-	buf.Write(bytes.Repeat([]byte{funding}, 32))
+	buf.Write(prev)
 	binary.Write(&buf, binary.LittleEndian, uint32(0))
-	sig := append(bytes.Repeat([]byte{0x30}, 70), 0x41)
-	scriptSig := append(pushBytes(sig), pushBytes(signer.PubKey().SerializeCompressed())...)
 	buf.WriteByte(byte(len(scriptSig)))
 	buf.Write(scriptSig)
 	binary.Write(&buf, binary.LittleEndian, uint32(0xffffffff))
@@ -88,6 +121,8 @@ func TestMeAnswers401OnceTheIssuerRevokedTheKeysLicence(t *testing.T) {
 	holderAddress, _ := licence.AddressForPublicKey(holderHex)
 
 	chain := &chainFake{history: map[string][]woc.HistoryEntry{}, txs: map[string]string{}}
+	chain.put(fundingTx(issuer, 0xf1))
+	chain.put(fundingTx(issuer, 0xe1))
 	mintID := chain.add(issuerAddress, signedTx(issuer, 0xf1,
 		bytes.Repeat([]byte{0x7e}, 10), bytes.Repeat([]byte{0x7c}, 10),
 		typedScript("M", `{"collection":"postern","holder":"`+holderAddress+`"}`)))

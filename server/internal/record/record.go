@@ -315,6 +315,20 @@ func P2PKHPublicKey(scriptSig []byte) (string, bool) {
 	return hex.EncodeToString(pubKey), true
 }
 
+// P2PKHLockHash returns the 20-byte public key hash a standard P2PKH
+// locking script OP_DUP OP_HASH160 <20 bytes> OP_EQUALVERIFY OP_CHECKSIG
+// (as hex) pays to, reporting ok=false for any other script.
+func P2PKHLockHash(scriptHex string) ([]byte, bool) {
+	script, err := hex.DecodeString(scriptHex)
+	if err != nil || len(script) != 25 {
+		return nil, false
+	}
+	if script[0] != 0x76 || script[1] != 0xa9 || script[2] != 0x14 || script[23] != 0x88 || script[24] != 0xac {
+		return nil, false
+	}
+	return script[3:23], true
+}
+
 // byteReader is a minimal forward-only cursor over a raw transaction's
 // bytes, with the CompactSize varint decoding transactions use throughout.
 type byteReader struct {

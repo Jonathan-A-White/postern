@@ -20,6 +20,9 @@ func freshKeyChain(t *testing.T, issuerAddress string, issuerTxs []testTx) *woc.
 	txHex := map[string]string{}
 	for _, tx := range issuerTxs {
 		txHex[tx.txid] = tx.hex
+		for _, prev := range tx.prevs {
+			txHex[prev.txid] = prev.hex
+		}
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path

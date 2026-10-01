@@ -42,15 +42,12 @@ func gatedMintPayload(collection, holder string) []byte {
 // gatedContractMint is buildContractMintTransaction today: signer's P2PKH
 // funding inputs, [0] License, [1] Fuel, [2] the 6-push M, [3] signer's change.
 func gatedContractMint(signer *btcec.PrivateKey, collection, holder string) testTx {
-	return buildTx(
-		[]testInput{{txid: fundingTxid(0xf1), vout: 2, scriptSig: p2pkhUnlock(signer)}},
-		[][]byte{
-			licenseScript,
-			fuelScript,
-			gatedRecordScript("M", gatedMintPayload(collection, holder)),
-			p2pkhLock(addressOf(signer)),
-		},
-	)
+	return fundedBy(signer, 0xf1, 2, [][]byte{
+		licenseScript,
+		fuelScript,
+		gatedRecordScript("M", gatedMintPayload(collection, holder)),
+		p2pkhLock(addressOf(signer)),
+	})
 }
 
 func spellforgeRule(issuer *btcec.PrivateKey) Rule {

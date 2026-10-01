@@ -4,7 +4,7 @@
 // answers from the stored `talk` records, speak them, count the wait, and keep the
 // screen awake while a talk is open.
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { initialTalkLine, endTurn, talkLine, NO_ANSWER_IN_TIME, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
+import { initialTalkLine, endTurn, talkLine, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
 import { initialTalkScreen, talkScreen } from '../model/talkScreen';
 import { isListenSupported, startListening, type ListenMode, type ListenSession } from '../services/listen';
 import { canChooseInput, openBluetoothInput } from '../services/micInput';
@@ -24,6 +24,7 @@ function buzz(ms: number): void {
 export function useTalkLine() {
   const [{ line, log }, dispatch] = useReducer(talkScreen, initialTalkLine, initialTalkScreen);
   const feed = useCallback((event: TalkLineEvent) => dispatch({ event, at: now() }), []);
+  const setAbout = useCallback((about?: TalkAbout) => feed({ type: 'setAbout', about }), [feed]);
   const turns = useTalkTurns();
   const [transcript, setTranscript] = useState('');
   const [notice, setNotice] = useState<string | undefined>();
@@ -223,5 +224,6 @@ export function useTalkLine() {
     retry,
     end,
     setModel: (model?: string) => feed({ type: 'setModel', model }),
+    setAbout,
   };
 }

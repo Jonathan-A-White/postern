@@ -18,7 +18,18 @@ export interface TalkTurn {
   cut?: boolean;
   /** Bead ids an answer points at: shown as chips under its text, never spoken. */
   links?: string[];
+  /** What the talk is about: carried on the first turn only. */
+  about?: TalkAbout;
 }
+
+/** What a talk is about (§20): a bead, a channel (its thread key) or a saved prompt (its name), with a title to show and say. */
+export interface TalkAbout {
+  kind: 'bead' | 'channel' | 'prompt';
+  id: string;
+  title: string;
+}
+
+export const ABOUT_KINDS: TalkAbout['kind'][] = ['bead', 'channel', 'prompt'];
 
 export type TalkPhase = 'idle' | 'listening' | 'sending' | 'waiting' | 'speaking';
 
@@ -26,6 +37,8 @@ export interface TalkLineState {
   phase: TalkPhase;
   /** The current talk: its id and the number of the last turn he made (or is making). */
   talk?: { id: string; turn: number };
+  /** What the talk is about, until he clears it: the talk's first turn carries it. */
+  about?: TalkAbout;
   /** The model chosen for this talk; absent means the Mayor's own choice. */
   model?: string;
   /** The model the last answer says it came from. */
@@ -56,6 +69,7 @@ export type TalkLineEvent =
   | { type: 'cut' }
   | { type: 'tick'; now: number }
   | { type: 'setModel'; model?: string }
+  | { type: 'setAbout'; about?: TalkAbout }
   | { type: 'end' };
 
 /** How long the line waits for an answer; the aim is about 8 s, so this is generous. */
@@ -113,6 +127,7 @@ function idle(state: TalkLineState, patch: Partial<TalkLineState> = {}): TalkLin
     phase: 'idle',
     talk: state.talk,
     model: state.model,
+    about: state.about,
     answeredBy: state.answeredBy,
     cutPending: state.cutPending,
     ...patch,
@@ -151,7 +166,8 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       const text = capTurnText(event.text.trim());
       if (!text) return idle(state, { talk: state.talk.turn > 0 ? state.talk : undefined });
       const talk = { id: state.talk.id, turn: state.talk.turn + 1 };
-      const outgoing: TalkTurn = { talk, text, role: 'turn', ...(state.model ? { model: state.model } : {}), ...(state.cutPending ? { cut: true } : {}) };
+      const about = talk.turn === 1 ? state.about : undefined;
+      const outgoing: TalkTurn = { talk, text, role: 'turn', ...(state.model ? { model: state.model } : {}), ...(state.cutPending ? { cut: true } : {}), ...(about ? { about } : {}) };
       return { ...state, phase: 'sending', talk, outgoing };
     }
     case 'cancel':
@@ -182,6 +198,8 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       return idle(state, { error: NO_ANSWER_IN_TIME });
     case 'setModel':
       return { ...state, model: event.model };
+    case 'setAbout':
+      return { ...state, about: event.about };
     case 'end':
       return { phase: 'idle', cutPending: false };
   }

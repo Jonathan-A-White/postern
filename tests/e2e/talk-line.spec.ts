@@ -318,3 +318,18 @@ test('talk line: after a missed turn the phone buzzes once when the mark turns t
   await expect.poll(buzzes).toBe(before + 1);
   await shot(page, 'talk-line-mayor-back');
 });
+
+// mw-nqur1n.6: a Talk button on a Needs card opens the line about it, with a Clear.
+test('talk line: Talk on a card opens the line about it, and Clear drops it', async ({ page }) => {
+  await unlocked(page);
+  const card = page.getByTestId('need-card').first();
+  const title = (await card.getByRole('link').first().textContent())!.trim();
+  await card.getByRole('button', { name: 'Talk' }).last().click();
+  await expect(page).toHaveURL(/\?v=line&/);
+  const about = page.getByTestId('talk-about');
+  await expect(about).toContainText(`About: ${title}`);
+  await shot(page, 'line-about');
+
+  await about.getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByTestId('talk-about')).toHaveCount(0);
+});

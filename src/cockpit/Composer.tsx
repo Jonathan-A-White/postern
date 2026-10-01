@@ -13,7 +13,7 @@ import type { ThreadRef } from '../services/threads';
 import { takePendingShare } from './shareInbox';
 import { quoteBlock } from './quote';
 import { usePrompts } from './usePrompts';
-import { beginsCall, checkPromptCall, matchPrompts } from '../model/prompts';
+import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext } from '../model/prompts';
 import { optionChip } from '../services/prompts';
 
 interface Pending extends OutgoingFile {
@@ -145,7 +145,11 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const offered = calling && prompts ? matchPrompts(call, prompts) : [];
   const verdict = calling && prompts ? checkPromptCall(call, prompts) : undefined;
   const checking = calling && prompts === undefined && fresh === undefined;
-  const callError = verdict && !verdict.ok && offered.length === 0 ? verdict.error : undefined;
+  // the grey text after the cursor: what one tap (or Tab, or →) adds to the box
+  const suggestion = calling && prompts && !recording ? suggestNext(call, prompts) : undefined;
+  // a half-typed option, or an option whose value is on offer in grey, is not an error yet (Send waits)
+  const unfinished = suggestion !== undefined || (calling && prompts ? halfTypedOption(call, prompts) : false);
+  const callError = verdict && !verdict.ok && offered.length === 0 && !unfinished ? verdict.error : undefined;
   const callBlocked = checking || (verdict !== undefined && !verdict.ok);
 
   function choosePrompt(name: string) {
@@ -154,6 +158,15 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     if (!area) return;
     area.focus();
     // the box has not re-rendered yet: put the caret after the words once it has
+    requestAnimationFrame(() => area.setSelectionRange(area.value.length, area.value.length));
+  }
+
+  function takeSuggestion() {
+    if (!suggestion) return;
+    setText(text + suggestion.rest);
+    const area = textarea.current;
+    if (!area) return;
+    area.focus();
     requestAnimationFrame(() => area.setSelectionRange(area.value.length, area.value.length));
   }
 
@@ -171,6 +184,13 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    const area = event.currentTarget;
+    const atEnd = area.selectionStart === area.value.length && area.selectionEnd === area.value.length;
+    if (suggestion && atEnd && (event.key === 'Tab' || event.key === 'ArrowRight') && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      takeSuggestion();
+      return;
+    }
     if (event.key === 'Enter' && !event.shiftKey && (event.metaKey || event.ctrlKey || window.matchMedia?.('(pointer: fine)').matches)) {
       event.preventDefault();
       void send();
@@ -273,18 +293,36 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           <>
             <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />
             <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} className="lg:hidden" />
-            <textarea
-              ref={textarea}
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-              rows={1}
-              aria-label="Message"
-              placeholder={placeholder}
-              autoFocus={autoFocus}
-              className="max-h-[200px] min-h-11 flex-1 resize-none rounded-2xl py-2.5 leading-snug"
-            />
+            <div className="relative min-w-0 flex-1">
+              <textarea
+                ref={textarea}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                onKeyDown={onKeyDown}
+                onPaste={onPaste}
+                rows={1}
+                aria-label="Message"
+                placeholder={placeholder}
+                autoFocus={autoFocus}
+                className="max-h-[200px] min-h-11 w-full resize-none rounded-2xl py-2.5 leading-snug"
+              />
+              {suggestion && (
+                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border border-transparent px-3 py-2.5 text-base leading-snug break-words whitespace-pre-wrap">
+                  <span className="invisible">{text}</span>
+                  <button
+                    type="button"
+                    data-testid="grey-suggestion"
+                    aria-label={`Add ${suggestion.text}`}
+                    tabIndex={-1}
+                    className="pointer-events-auto cursor-pointer text-faint"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={takeSuggestion}
+                  >
+                    {suggestion.rest}
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         )}
         {recording ? (

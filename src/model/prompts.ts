@@ -114,3 +114,75 @@ export function checkPromptCall(text: string, prompts: Prompt[]): CallCheck {
   if (missing) return { ok: false, error: `/${name} needs ${missing.flag}` };
   return { ok: true, name, options };
 }
+
+/** What the composer shows in grey after the text: `text` is the whole element, `rest` what taking it adds to the box. */
+export interface Suggestion {
+  kind: 'option' | 'value';
+  text: string;
+  rest: string;
+}
+
+function asWord(value: string): string {
+  return /\s/.test(value) ? `"${value}"` : value;
+}
+
+/**
+ * The next likely element of a call, zsh-style: a half-typed option ('-', '--', '--du')
+ * completes to the first option not yet given, with a space after; after a complete option
+ * name and a space, its default. Nothing when the text is not a call to a known prompt, when
+ * every option is given, or when the option has no default. Never fills anything in itself.
+ */
+export function suggestNext(text: string, prompts: Prompt[]): Suggestion | undefined {
+  if (!beginsCall(text)) return undefined;
+  const tokens = tokenizeCall(text);
+  if (!tokens || tokens.length === 0) return undefined;
+  const trailing = /\s$/.test(text);
+  if (tokens.length === 1 && !trailing) return undefined; // still the name
+  const prompt = prompts.find((candidate) => candidate.name === tokens[0].slice(1));
+  if (!prompt) return undefined;
+
+  const done = trailing ? tokens.slice(1) : tokens.slice(1, -1);
+  const partial = trailing ? undefined : tokens[tokens.length - 1];
+  const given = new Set<string>();
+  let awaiting: PromptOption | undefined;
+  for (let at = 0; at < done.length; at += 1) {
+    const option = prompt.signature.find((candidate) => candidate.flag === done[at]);
+    if (!option) return undefined;
+    given.add(option.flag);
+    if (option.type === 'bool') {
+      if (done[at + 1] === 'true' || done[at + 1] === 'false') at += 1;
+    } else if (at + 1 < done.length) at += 1;
+    else awaiting = option;
+  }
+
+  if (awaiting) {
+    const value = awaiting.default;
+    if (!value || partial?.startsWith('-')) return undefined;
+    const word = asWord(value);
+    const typed = partial ?? '';
+    if (!word.startsWith(typed) || word === typed) return undefined;
+    return { kind: 'value', text: word, rest: word.slice(typed.length) };
+  }
+  if (partial === undefined || !partial.startsWith('-')) return undefined;
+  const option = prompt.signature.find((candidate) => !given.has(candidate.flag) && candidate.flag.startsWith(partial) && candidate.flag !== partial);
+  if (!option) return undefined;
+  return { kind: 'option', text: option.flag, rest: `${option.flag.slice(partial.length)} ` };
+}
+
+/**
+ * True while the call's last word is the start of an option still being typed ('--', '--du',
+ * even a bare '--duration' with no space after it): that is not an error yet. A fault earlier
+ * in the call still is one, and so is a complete unknown option.
+ */
+export function halfTypedOption(text: string, prompts: Prompt[]): boolean {
+  if (!beginsCall(text) || /\s$/.test(text)) return false;
+  const raw = text.match(/\S+$/)?.[0];
+  if (!raw || !raw.startsWith('-') || /["']/.test(raw)) return false;
+  const tokens = tokenizeCall(text);
+  if (!tokens || tokens.length < 2) return false;
+  const name = tokens[0].slice(1);
+  const prompt = prompts.find((candidate) => candidate.name === name);
+  if (!prompt || !prompt.signature.some((option) => option.flag.startsWith(raw))) return false;
+  const before = checkPromptCall(text.slice(0, text.length - raw.length), prompts);
+  return before.ok || before.error.startsWith(`/${name} needs `);
+}

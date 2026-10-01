@@ -10,7 +10,8 @@ import { decodeQuestion, decodeReply, type QuestionBody } from '../services/ques
 import { attachmentsOf, decodeThreadedMessage, type Attachment } from '../services/threads';
 import type { BeadComment } from './view';
 
-export type Speaker = 'you' | 'mayor' | 'builder' | 'other';
+/** 'factory' is mw itself on a host (a comment by mw@<host>: a hands step's RAN line, a claim), never a Builder. */
+export type Speaker = 'you' | 'mayor' | 'builder' | 'factory' | 'other';
 
 export interface GovernorAction {
   action: 'release' | 'hold' | 'priority' | 'verified' | 'run' | string;
@@ -209,7 +210,8 @@ function recordedMessage(comment: string): RecordedMessage | undefined {
 export function speakerOfComment(author: string): { speaker: Speaker; label: string } {
   const who = author.trim().toLowerCase();
   if (who === 'root' || who === 'mayor' || who.startsWith('mayor@')) return { speaker: 'mayor', label: 'Mayor' };
-  if (who.startsWith('mw@') || who.startsWith('builder')) return { speaker: 'builder', label: `Builder${who.includes('@') ? ` · ${who.split('@')[1]}` : ''}` };
+  if (who.startsWith('mw@')) return { speaker: 'factory', label: `Factory · ${who.split('@')[1]}` };
+  if (who.startsWith('builder')) return { speaker: 'builder', label: `Builder${who.includes('@') ? ` · ${who.split('@')[1]}` : ''}` };
   if (who === 'governor' || who === 'jwhite' || who === 'jonathan') return { speaker: 'you', label: 'You' };
   return { speaker: 'other', label: author || 'Someone' };
 }

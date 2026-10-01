@@ -195,7 +195,7 @@ function QuestionBlock({ item }: { item: ConversationItem }) {
 
 function Bubble({ item, onQuote, onReply }: { item: ConversationItem; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
   const mine = item.speaker === 'you';
-  const builder = item.speaker === 'builder' || item.speaker === 'other';
+  const builder = item.speaker === 'builder' || item.speaker === 'factory' || item.speaker === 'other';
   if (item.kind === 'action' || item.kind === 'answer') {
     return (
       <div className={cx('flex', mine ? 'justify-end' : 'justify-start')}>

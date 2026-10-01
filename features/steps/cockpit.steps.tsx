@@ -436,8 +436,11 @@ describeFeature(feature, ({ Scenario }) => {
     Then('the Talk thread "Factory" shows "On it, thanks" and the Mayor\'s earlier "Good morning" message', async () => {
       expect(window.location.search).toBe('?v=talk&t=general');
       const conversation = await screen.findByTestId('conversation');
-      await waitFor(() => expect(conversation).toHaveTextContent('Good morning'));
-      expect(conversation).toHaveTextContent('On it, thanks');
+      // The sent copy is kept write-behind (deliver's rememberSent), after the toast: wait for it too.
+      await waitFor(() => {
+        expect(conversation).toHaveTextContent('Good morning');
+        expect(conversation).toHaveTextContent('On it, thanks');
+      });
     });
   });
 

@@ -25,7 +25,12 @@ export function useTalkLine() {
   const [transcript, setTranscript] = useState('');
   const [notice, setNotice] = useState<string | undefined>();
   const [mode, setMode] = useState<ListenMode | undefined>();
+  // 'starting' until the recogniser says the mic is open; 'fellBack' once on-device failed and the hold went on in cloud mode.
+  const [mic, setMic] = useState<'starting' | 'ready'>('starting');
+  const [fellBack, setFellBack] = useState(false);
   const listening = useRef<ListenSession | null>(null);
+  // Names the hold the recogniser's callbacks belong to; cleared when the hold ends, so a late event is ignored.
+  const hold = useRef<object | null>(null);
   const handled = useRef(new Set<string>());
   const sending = useRef<TalkTurn | undefined>(undefined);
   const supported = isListenSupported();
@@ -93,6 +98,7 @@ export function useTalkLine() {
 
   useEffect(
     () => () => {
+      hold.current = null;
       listening.current?.abort();
     },
     [],
@@ -102,13 +108,37 @@ export function useTalkLine() {
     if (!supported || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
     setNotice(undefined);
     buzz(30);
-    const started = startListening({ lang: typeof navigator === 'undefined' ? undefined : navigator.language, onInterim: setTranscript });
+    const thisHold = {};
+    hold.current = thisHold;
+    const started = startListening({
+      lang: typeof navigator === 'undefined' ? undefined : navigator.language,
+      onInterim: setTranscript,
+      onStart: () => hold.current === thisHold && setMic('ready'),
+      onFallback: () => {
+        if (hold.current !== thisHold) return;
+        setMode('cloud');
+        setFellBack(true);
+        setMic('starting');
+      },
+      // The recogniser failed while he is still holding: the hold is over, and he is told why.
+      onError: (error) => {
+        if (hold.current !== thisHold) return;
+        hold.current = null;
+        listening.current?.abort();
+        listening.current = null;
+        setNotice(error.message);
+        feed({ type: 'cancel' });
+      },
+    });
     if (!started.ok) {
+      hold.current = null;
       setNotice(started.error.message);
       return;
     }
     listening.current = started.session;
     setMode(started.session.mode);
+    setMic('starting');
+    setFellBack(false);
     setTranscript('');
     feed({ type: 'hold', talkId: line.talk?.id ?? newTalkId() });
   }
@@ -117,6 +147,7 @@ export function useTalkLine() {
     const session = listening.current;
     if (!session) return;
     listening.current = null;
+    hold.current = null;
     buzz(15);
     const result = await session.stop();
     if (!result.text.trim()) {
@@ -128,6 +159,7 @@ export function useTalkLine() {
   }
 
   function abort(): void {
+    hold.current = null;
     if (!listening.current) return;
     listening.current.abort();
     listening.current = null;
@@ -140,6 +172,7 @@ export function useTalkLine() {
 
   function end(): void {
     const turn = endTurn(line);
+    hold.current = null;
     listening.current?.abort();
     listening.current = null;
     feed({ type: 'end' });
@@ -152,6 +185,8 @@ export function useTalkLine() {
     transcript,
     notice: notice ?? line.error,
     mode,
+    mic,
+    fellBack,
     supported,
     press,
     release,

@@ -68,6 +68,49 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Given the Talk line is open with no speech recogniser
     Then the screen says "This browser cannot turn speech into text."
 
+  Scenario: AC-1: the screen says Listening only once the recogniser says the mic is open
+    Given the Talk line is open with a speech recogniser that has not opened the mic yet
+    When he presses and holds the talk button
+    Then the screen says "Starting the mic…"
+    And the screen does not say "Listening…"
+    And the talk button reads "Starting the mic…"
+    When the recogniser says the mic is open
+    Then the screen now says "Listening…"
+    And the talk button now reads "Release to send"
+
+  Scenario: AC-1: an error from the recogniser during the hold ends it in words and the button works again
+    Given the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    And the recogniser fails with "bad-grammar"
+    Then the screen says "The phone's speech service failed: bad-grammar."
+    And the talk button reads "Hold to talk"
+    And nothing is sent
+
+  Scenario: AC-1: a microphone that is not allowed says how to allow it
+    Given the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    And the recogniser fails with "not-allowed"
+    Then the screen says how to allow the microphone in the phone's Settings
+    And the talk button reads "Hold to talk"
+
+  Scenario: AC-1: a release the recogniser never answers gives up after three seconds
+    Given the Talk line is open with a speech recogniser that never ends
+    When he presses and holds the talk button
+    And he lets go of the talk button
+    Then within 4 seconds the screen says "No speech was heard."
+    And the talk button reads "Hold to talk"
+    And nothing is sent
+
+  Scenario: AC-1: on-device recognition that fails is retried once in network mode, and the screen says so
+    Given the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    And the recogniser fails with "language-not-supported"
+    Then a second recogniser is listening in network mode
+    And the screen says "Starting the mic…"
+    When the recogniser says the mic is open
+    Then the screen now says "Speech on this phone is not available, so your browser sends the audio to its speech service."
+    And the talk button reads "Release to send"
+
   Scenario: AC-3: the bottom tab that lists the channels is called Channels
     Given the cockpit shell on a phone with the Channels place open
     Then the bottom menu offers "Needs you", "Map", "Channels", "Search" and "Me"

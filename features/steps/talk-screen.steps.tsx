@@ -29,6 +29,9 @@ vi.mock('../../src/cockpit/send', async (importOriginal) => ({
 
 // The browser's speech, vibration and wake lock, as fakes.
 interface FakeRecognizer {
+  processLocally: boolean;
+  onstart: (() => void) | null;
+  onaudiostart: (() => void) | null;
   onresult: ((event: { results: unknown[] }) => void) | null;
   onend: (() => void) | null;
   onerror: ((event: { error: string }) => void) | null;
@@ -36,10 +39,15 @@ interface FakeRecognizer {
   stopped: boolean;
 }
 let recognizers: FakeRecognizer[] = [];
+// How the next recognisers behave: a real one says it started, and ends when stopped.
+const behaviour = { opensMic: true, endsOnStop: true };
 class Recognizer implements FakeRecognizer {
   lang = '';
   continuous = false;
   interimResults = false;
+  processLocally = false;
+  onstart: FakeRecognizer['onstart'] = null;
+  onaudiostart: FakeRecognizer['onaudiostart'] = null;
   onresult: FakeRecognizer['onresult'] = null;
   onend: FakeRecognizer['onend'] = null;
   onerror: FakeRecognizer['onerror'] = null;
@@ -48,10 +56,11 @@ class Recognizer implements FakeRecognizer {
   start() {
     this.started = true;
     recognizers.push(this);
+    if (behaviour.opensMic) queueMicrotask(() => this.onaudiostart?.());
   }
   stop() {
     this.stopped = true;
-    queueMicrotask(() => this.onend?.());
+    if (behaviour.endsOnStop) queueMicrotask(() => this.onend?.());
   }
   abort() {
     this.stopped = true;
@@ -70,6 +79,8 @@ const request = vi.fn(() => Promise.resolve({ release }));
 
 function installBrowser(listens: boolean): void {
   recognizers = [];
+  behaviour.opensMic = true;
+  behaviour.endsOnStop = true;
   if (listens) vi.stubGlobal('webkitSpeechRecognition', Recognizer);
   else vi.stubGlobal('webkitSpeechRecognition', undefined);
   Object.defineProperty(window, 'SpeechRecognition', { value: undefined, configurable: true, writable: true });
@@ -79,6 +90,11 @@ function installBrowser(listens: boolean): void {
   Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true, writable: true });
   Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true, writable: true });
 }
+
+const recogniserFails = (code: string) =>
+  act(() => {
+    recognizers.at(-1)?.onerror?.({ error: code });
+  });
 
 const hear = (text: string) =>
   act(() => {
@@ -178,6 +194,14 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     render(<Harness />);
     await screen.findByRole('navigation', { name: 'Places' });
   };
+  const holdsButton = async () => {
+    fireEvent.pointerDown(await talkButton('Hold to talk'));
+    await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+  };
+  const micOpens = () =>
+    act(() => {
+      recognizers.at(-1)?.onaudiostart?.();
+    });
   const holdsAndSays = async (_c: unknown, words: string) => holdAndSay(words);
   const mayorAnswers = async (_c: unknown, text: string, model: string) => mayorSays(text, 'answer', model);
   const tapButton = async (_c: unknown, name: string) => {
@@ -326,6 +350,105 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the screen says {string}', async (_c, text: string) => {
       expect(await screen.findByText(text)).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-1: the screen says Listening only once the recogniser says the mic is open', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a speech recogniser that has not opened the mic yet', async () => {
+      await lineOpen();
+      behaviour.opensMic = false;
+    });
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+    });
+    Then('the screen says {string}', async (_c, text: string) => {
+      expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
+    });
+    And('the screen does not say {string}', (_c, text: string) => {
+      expect(within(screen.getByRole('status')).queryByText(text)).toBeNull();
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+    When('the recogniser says the mic is open', () => micOpens());
+    Then('the screen now says {string}', async (_c, text: string) => {
+      expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
+    });
+    And('the talk button now reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-1: an error from the recogniser during the hold ends it in words and the button works again', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', holdsButton);
+    And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
+    Then('the screen says {string}', async (_c, text: string) => {
+      expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+    And('nothing is sent', () => {
+      expect(sendTurn).not.toHaveBeenCalled();
+    });
+  });
+
+  Scenario('AC-1: a microphone that is not allowed says how to allow it', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', holdsButton);
+    And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
+    Then("the screen says how to allow the microphone in the phone's Settings", async () => {
+      const said = await screen.findByText(/microphone is not allowed/i);
+      expect(said).toHaveTextContent(/Settings.*Permissions.*Microphone.*Allow/);
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-1: a release the recogniser never answers gives up after three seconds', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a speech recogniser that never ends', async () => {
+      await lineOpen();
+      behaviour.endsOnStop = false;
+    });
+    When('he presses and holds the talk button', holdsButton);
+    And('he lets go of the talk button', async () => {
+      fireEvent.pointerUp(await screen.findByRole('button', { name: 'Release to send' }));
+    });
+    Then('within 4 seconds the screen says {string}', async (_c, text: string) => {
+      expect(await screen.findByText(text, undefined, { timeout: 4000 })).toBeInTheDocument();
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+    And('nothing is sent', () => {
+      expect(sendTurn).not.toHaveBeenCalled();
+    });
+  });
+
+  Scenario('AC-1: on-device recognition that fails is retried once in network mode, and the screen says so', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', async () => {
+      await lineOpen();
+      behaviour.opensMic = false;
+    });
+    When('he presses and holds the talk button', holdsButton);
+    And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
+    Then('a second recogniser is listening in network mode', async () => {
+      await waitFor(() => expect(recognizers).toHaveLength(2));
+      expect(recognizers[0].processLocally).toBe(true);
+      expect(recognizers[1].processLocally).toBe(false);
+    });
+    And('the screen says {string}', async (_c, text: string) => {
+      expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
+    });
+    When('the recogniser says the mic is open', () => micOpens());
+    Then('the screen now says {string}', async (_c, text: string) => {
+      expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
     });
   });
 

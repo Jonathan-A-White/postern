@@ -23,11 +23,11 @@ const STATUS: Partial<Record<TalkPhase, string>> = {
 };
 
 /** What the big button says a hold will do (or why it cannot be held now). */
-function buttonLabel(phase: TalkPhase, supported: boolean): string {
+function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean): string {
   if (!supported) return 'Hold to talk';
   switch (phase) {
     case 'listening':
-      return 'Release to send';
+      return micOpen ? 'Release to send' : 'Starting the mic…';
     case 'sending':
       return 'Sending…';
     case 'waiting':
@@ -42,7 +42,8 @@ export function TalkLineScreen() {
   const { line } = talk;
   const listening = line.phase === 'listening';
   const dead = !talk.supported || line.phase === 'sending' || line.phase === 'waiting';
-  const label = buttonLabel(line.phase, talk.supported);
+  const micOpen = talk.mic === 'ready';
+  const label = buttonLabel(line.phase, talk.supported, micOpen);
 
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     try {
@@ -94,7 +95,7 @@ export function TalkLineScreen() {
         <div role="status" aria-live="polite" className="min-h-[2.75rem] w-full max-w-xl text-center text-[14px]">
           {listening ? (
             <p data-testid="live-transcript" className="text-fg">
-              {talk.transcript || 'Listening…'}
+              {micOpen ? talk.transcript || 'Listening…' : 'Starting the mic…'}
             </p>
           ) : (
             <p className={cx(talk.notice ? 'text-danger' : 'text-muted')}>
@@ -102,7 +103,14 @@ export function TalkLineScreen() {
             </p>
           )}
           {!talk.supported && <p className="text-danger">This browser cannot turn speech into text.</p>}
-          {listening && talk.mode === 'cloud' && <p className="text-[11.5px] text-faint">Your browser sends the audio to its speech service.</p>}
+          {listening && micOpen && talk.mode === 'cloud' && (
+            <p className="text-[11.5px] text-faint">
+              {talk.fellBack
+                ? 'Speech on this phone is not available, so your browser sends the audio to its speech service.'
+                : 'Your browser sends the audio to its speech service.'}
+            </p>
+          )}
+          {listening && micOpen && talk.mode === 'on-device' && <p className="text-[11.5px] text-faint">Speech is recognised on this phone.</p>}
         </div>
 
         <div role="group" aria-label="Model for this talk" className="flex items-center gap-2">

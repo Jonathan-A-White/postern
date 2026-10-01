@@ -31,11 +31,14 @@ async function fakeSpeech(page: Page): Promise<void> {
       lang = '';
       continuous = false;
       interimResults = false;
+      onaudiostart?: () => void;
       onresult?: (event: unknown) => void;
       onend?: () => void;
       onerror?: (event: unknown) => void;
       start() {
         Recognizer.active = this;
+        // a real recogniser says when the mic is open; the screen waits for it
+        setTimeout(() => this.onaudiostart?.(), 0);
       }
       stop() {
         setTimeout(() => this.onend?.(), 0);

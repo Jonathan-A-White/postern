@@ -61,6 +61,11 @@ export const messagesRepo = {
     await db.messages.put(row);
   },
 
+  /** Says the Mayor's Talk answer was played to its end or stopped by him. */
+  async markHeard(id: string): Promise<void> {
+    await db.messages.update(id, { heard: true });
+  },
+
   async markRead(id: string): Promise<void> {
     await db.messages.update(id, { read: true });
   },

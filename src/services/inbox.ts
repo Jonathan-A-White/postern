@@ -120,6 +120,8 @@ export async function storeRecord(record: RecordToStore, publicKeyHex: string, u
     // A Talk turn, a call record or a live card is never unread: it is heard on the Talk line, not counted (§20, §21).
     read: existing?.read ?? (payload.class === 'talk' || payload.class === 'call' || payload.class === 'card' || payload.class === 'card-update'),
     thread: existing?.thread ?? threadKey(threadOf(payload.class, plaintext)),
+    // What the Mayor says on the Talk line is unheard until it has been played or stopped (mw-am3yjh.1).
+    ...(payload.class === 'talk' && direction === 'received' ? { heard: existing?.heard ?? false } : {}),
   };
   await messagesRepo.put(row);
   await applyCardRow(row);

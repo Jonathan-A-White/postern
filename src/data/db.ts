@@ -58,6 +58,9 @@ export interface MessageRow {
   /** Set once decryption was attempted with the unlocked key and failed. */
   decryptFailed?: boolean;
   read: boolean;
+  /** A Mayor's Talk answer only: whether it was played to its end or stopped by him. Stored false
+   * (unheard); a row stored before this field existed has none, and counts as heard. */
+  heard?: boolean;
   /** The thread this message belongs to (docs/protocol.md §1 and §6), as
    * src/services/threads.ts's `threadKey` encodes it: `bead:<id>`, `topic:<name>`,
    * or absent for the general thread — including every row stored before this

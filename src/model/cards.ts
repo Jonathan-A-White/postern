@@ -163,18 +163,22 @@ export function liveCard(row: CardRow): LiveCard | undefined {
   };
 }
 
-/** Landing leads on to verified and closing (docs/events.md): an event at or past the state asked for settles it. */
-const PROGRESS = ['landed', 'verified', 'closed'];
+/** What settles an item, by the state it waits for (docs/protocol.md §24): landing leads on to
+ * verified and closing, so landed is also met by a move to either; a story closes at landing,
+ * before it is verified, so verified is met by verified alone. Any other state, by itself. */
+const MET_BY: Record<string, string[]> = {
+  landed: ['landed', 'verified', 'closed'],
+  verified: ['verified'],
+  closed: ['closed'],
+};
 
-/** Whether `event` is the one that item's expectation waits for: its bead reaching the state
- * (or one after it for landed, verified), or, for `answered`, a card on that bead answered. */
+/** Whether `event` is the one that item's expectation waits for: its bead moving (from differs from
+ * to; a comment leaves them equal) to the state, or to one that settles it, or, for `answered`, a card on that bead answered. */
 export function meetsExpectation(expect: { bead: string; state: string }, event: EventRow): boolean {
   if (event.bead !== expect.bead) return false;
   if (expect.state === 'answered') return event.kind === 'card_answered';
-  if (event.kind !== 'bead_changed') return false;
-  if (event.to === expect.state) return true;
-  const wanted = PROGRESS.indexOf(expect.state);
-  return wanted >= 0 && PROGRESS.indexOf(event.to) >= wanted;
+  if (event.kind !== 'bead_changed' || event.from === event.to) return false;
+  return (MET_BY[expect.state] ?? [expect.state]).includes(event.to);
 }
 
 /** The items of `card` that `events` (any order) tick: item number to the time (ms) of the first

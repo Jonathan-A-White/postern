@@ -207,6 +207,18 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario('mw-r3xq72.2: a comment on a closed bead is no state move and ticks nothing', ({ Given, When, Then }) => {
+    Given(GIVEN_CARD, openWithCard);
+    When('a comment arrives on the already closed bead {string}', async (_c, bead: string) => {
+      await sync([eventsRecord([beadEvent(bead, 'closed', 'closed')])]);
+    });
+    Then('no item shows a tick', async () => {
+      await waitFor(async () => expect(await db.events.count()).toBe(1));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      for (const row of itemRows()) expect(row).toHaveAttribute('data-done', 'false');
+    });
+  });
+
   Scenario('mw-nqur1n.11: a card-update adds a link to item 2 and the same card shows it', ({ Given, When, Then, And }) => {
     Given(GIVEN_CARD, openWithCard);
     When('the Mayor sends a card-update for that card adding the link {string} to item 2', async (_c, bead: string) => {

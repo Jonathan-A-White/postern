@@ -50,8 +50,17 @@ function Notifications() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void settingsRepo.getNotificationSettings().then(setSettings);
-    void isPushSubscribed().then(setSubscribed);
+    // A read that lands after the screen is gone must set no state (mw-j0f2d.42).
+    let gone = false;
+    void settingsRepo.getNotificationSettings().then((loaded) => {
+      if (!gone) setSettings(loaded);
+    });
+    void isPushSubscribed().then((on) => {
+      if (!gone) setSubscribed(on);
+    });
+    return () => {
+      gone = true;
+    };
   }, []);
 
   async function enable() {

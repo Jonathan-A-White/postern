@@ -4,6 +4,7 @@
 // the time it is asked at, and touches nothing.
 import type { MessageRow } from '../data/db';
 import { decodeTurn } from '../services/talk';
+import { clockHHMM } from './call';
 import { NO_ANSWER_IN_TIME, TALK_AWAY_TIMEOUT_MS, type TalkLineState, type TalkTurn } from './talkLine';
 import type { TalkLogEntry } from './talkScreen';
 
@@ -114,4 +115,31 @@ export function openTalk(rows: TalkRow[], nowMs: number): OpenTalk | undefined {
   }
   if (nowMs - last.releasedAt >= TALK_AWAY_TIMEOUT_MS) return { ...talk, line: { ...base, error: NO_ANSWER_IN_TIME } };
   return { ...talk, line: { ...base, phase: 'waiting', sentAt: last.releasedAt, thinking: false, mayorHere: false } };
+}
+
+/** An earlier talk as the screen lists it above the open one. */
+export interface EarlierTalk {
+  id: string;
+  /** When he let go of the button on its first turn (ms). */
+  startedAt: number;
+  log: TalkLogEntry[];
+}
+
+/** How many earlier talks the screen shows at a time, and adds with each scroll up. */
+export const EARLIER_PAGE = 5;
+
+/**
+ * The talks before the open one, oldest first: every talk the rows hold that has a turn of his,
+ * except `exceptId` (the talk the screen is showing as its own).
+ */
+export function earlierTalks(rows: TalkRow[], exceptId: string | undefined): EarlierTalk[] {
+  return talksFromRows(rows)
+    .filter((talk) => talk.id !== exceptId && talk.log.length > 0)
+    .map((talk) => ({ id: talk.id, startedAt: talk.log[0].releasedAt, log: talk.log }));
+}
+
+/** The words of a talk's divider: the day and the time of day it began, "Thu, Oct 1, 14:05". */
+export function talkDividerLabel(startedAtMs: number): string {
+  const day = new Date(startedAtMs).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return `${day}, ${clockHHMM(startedAtMs / 1000)}`;
 }

@@ -3,10 +3,10 @@
 // line asks: listen while the button is held, send the turn, take the Mayor's
 // answers from the stored `talk` records, speak them, count the wait, and keep the
 // screen awake while a talk is open.
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { initialTalkLine, endTurn, talkLine, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
 import { initialTalkScreen, talkScreenReducer } from '../model/talkScreen';
-import { openTalk } from '../model/talkLog';
+import { earlierTalks, openTalk } from '../model/talkLog';
 import { messagesRepo } from '../data/repositories';
 import { writeBehind } from '../services/deliver';
 import { isListenSupported, startListening, type ListenMode, type ListenSession } from '../services/listen';
@@ -81,6 +81,15 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     speakingRow.current = open.unheardRow;
     dispatch({ seed: open });
   }, [stored]);
+
+  // The talks before this one are listed above it. The talk the screen shows as its own (its id is kept after
+  // End, while its turns stay on the page) is left out, and so is the open talk until it has been read back.
+  const [shownId, setShownId] = useState<string | undefined>();
+  if (line.talk && line.talk.id !== shownId) setShownId(line.talk.id);
+  const earlier = useMemo(() => {
+    if (!stored) return [];
+    return earlierTalks(stored, shownId ?? (fresh ? undefined : openTalk(stored, 0)?.id));
+  }, [stored, shownId, fresh]);
 
   // His turn goes out once, whenever the line asks for it.
   const outgoing = line.outgoing;
@@ -284,6 +293,7 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   return {
     line,
     log,
+    earlier,
     transcript,
     notice: notice ?? line.error,
     canEnd: line.phase !== 'sending' && (line.talk !== undefined || notice !== undefined || line.error !== undefined),

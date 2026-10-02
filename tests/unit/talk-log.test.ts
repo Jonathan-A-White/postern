@@ -1,7 +1,7 @@
 // mw-am3yjh.1: the Talk screen's log, and the line under it, rebuilt from the stored `talk` rows.
 import { describe, expect, it } from 'vitest';
 import type { MessageRow } from '../../src/data/db';
-import { openTalk, talksFromRows } from '../../src/model/talkLog';
+import { earlierTalks, openTalk, talkDividerLabel, talksFromRows } from '../../src/model/talkLog';
 import { encodeTurn } from '../../src/services/talk';
 import { TALK_AWAY_TIMEOUT_MS, NO_ANSWER_IN_TIME, type TalkTurn } from '../../src/model/talkLine';
 
@@ -130,5 +130,44 @@ describe('openTalk', () => {
     expect(late.phase).toBe('idle');
     expect(late.error).toBe(NO_ANSWER_IN_TIME);
     expect(late.talk).toEqual({ id: 'a', turn: 1 });
+  });
+});
+
+// mw-am3yjh.2: the talks before the open one, for the Talk screen to list above it.
+describe('earlierTalks', () => {
+  const rows = [
+    his('one', 1, 'First talk', T0),
+    answer('one', 1, 'First answer', T0 + 2, { heard: true }),
+    ended('one', 1, T0 + 3),
+    his('two', 1, 'Second talk', T0 + 100),
+    answer('two', 1, 'Second answer', T0 + 102, { heard: true }),
+    his('three', 1, 'Open talk', T0 + 200),
+  ];
+
+  it('lists every talk but the one named, oldest first, each with the time of its first turn and its log', () => {
+    const talks = earlierTalks(rows, 'three');
+    expect(talks.map((talk) => talk.id)).toEqual(['one', 'two']);
+    expect(talks[0].startedAt).toBe(T0 * 1000);
+    expect(talks[1].startedAt).toBe((T0 + 100) * 1000);
+    expect(talks[1].log.map((entry) => [entry.said, entry.answer])).toEqual([['Second talk', 'Second answer']]);
+  });
+
+  it('lists them all when no talk is open', () => {
+    expect(earlierTalks(rows, undefined).map((talk) => talk.id)).toEqual(['one', 'two', 'three']);
+  });
+
+  it('leaves out a talk that holds no turn of his (an end alone, or an answer to nothing)', () => {
+    const odd = [ended('x', 1, T0), answer('y', 1, 'Orphan', T0 + 1), his('z', 1, 'Real', T0 + 2)];
+    expect(earlierTalks(odd, undefined).map((talk) => talk.id)).toEqual(['z']);
+  });
+});
+
+describe('talkDividerLabel', () => {
+  it('says the day and the time of day a talk began', () => {
+    // 14:05 UTC on Thursday 1 October 2026 (the tests run with TZ=UTC)
+    const label = talkDividerLabel(Date.UTC(2026, 9, 1, 14, 5));
+    expect(label).toContain('14:05');
+    expect(label).toMatch(/Oct/);
+    expect(label).toMatch(/\b1\b/);
   });
 });

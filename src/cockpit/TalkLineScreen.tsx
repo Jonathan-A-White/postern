@@ -4,15 +4,16 @@
 // (Opus, Sonnet or Fable) and each answered turn says how soon its first words came.
 // What the screen does is in useTalkLine; this only draws it.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { KeyboardEvent, PointerEvent } from 'react';
-import { Button, Chip, Icon, cx } from '../ui';
+import type { KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react';
+import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
-import { useAnsweredRing, useCallLine, useOutbox } from './hooks';
+import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
 import { sendCallRequest } from './send';
 import { useRoute } from '../router';
 import { settingsRepo } from '../data/repositories';
 import { now } from '../services/clock';
+import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import { callSent as waitingCall, clockHHMM, ringNote } from '../model/call';
 import { beadHref, formatRoute } from '../nav/route';
 import { formatSeconds, showsCutTag } from '../model/talkScreen';
@@ -20,6 +21,7 @@ import { isUnsent, pendingTurn } from '../model/outbox';
 import type { OutboxRow } from '../data/db';
 import { OutboxMark } from './OutboxMark';
 import { NOT_KEPT, type TalkPhase } from '../model/talkLine';
+import { EARLIER_PAGE, talkDividerLabel, type EarlierTalk } from '../model/talkLog';
 import type { TalkLogEntry } from '../model/talkScreen';
 
 /** How far from the end of the list still counts as reading the end. */
@@ -109,6 +111,44 @@ function useFollowEnd(log: TalkLogEntry[]) {
     gliding.current = false;
   };
   return { scroller, onScroll, onTouch, pill, showNew };
+}
+
+/** Puts a scrolling list at `top`. */
+function scrollTo(el: HTMLElement, top: number): void {
+  el.scrollTop = top;
+}
+
+/** How far from the top of the list still counts as reaching it, so the next page of talks is loaded before he gets there. */
+const NEAR_TOP_PX = 120;
+
+/**
+ * Shows the earlier talks a page at a time, the newest first, and adds a page when he scrolls to the top of
+ * the list (or taps "Show earlier talks"). The page he was reading stays where it was under his thumb.
+ */
+function useEarlierTalks(earlier: EarlierTalk[], scroller: RefObject<HTMLDivElement | null>) {
+  const [pages, setPages] = useState(1);
+  const count = Math.min(earlier.length, pages * EARLIER_PAGE);
+  const shown = earlier.slice(earlier.length - count);
+  const hidden = earlier.length - count;
+  // How far from the end of the list he was when a page was added: the list is put back that far from the end.
+  const fromEnd = useRef<number | undefined>(undefined);
+  const loadEarlier = () => {
+    const el = scroller.current;
+    if (hidden <= 0) return;
+    if (el) fromEnd.current = el.scrollHeight - el.scrollTop;
+    setPages((n) => n + 1);
+  };
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (fromEnd.current === undefined || !el) return;
+    scrollTo(el, el.scrollHeight - fromEnd.current);
+    fromEnd.current = undefined;
+  }, [count, scroller]);
+  const onScrolled = () => {
+    const el = scroller.current;
+    if (el && el.scrollTop <= NEAR_TOP_PX) loadEarlier();
+  };
+  return { shown, hidden, loadEarlier, onScrolled };
 }
 
 const MODELS = [
@@ -223,12 +263,114 @@ function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
+/** Reads an answer aloud, and stops it when tapped again: one answer at a time, so starting another replaces the first. */
+function useReadAloud() {
+  const titles = useBeadTitles();
+  const [playing, setPlaying] = useState<string | undefined>();
+  const current = useRef<string | undefined>(undefined);
+  useEffect(
+    () => () => {
+      if (current.current !== undefined) stopSpeaking();
+    },
+    [],
+  );
+  const toggle = (key: string, text: string) => {
+    if (current.current === key) {
+      current.current = undefined;
+      setPlaying(undefined);
+      stopSpeaking();
+      return;
+    }
+    current.current = key;
+    setPlaying(key);
+    speak(text, {
+      titles,
+      onEnd: () => {
+        if (current.current !== key) return;
+        current.current = undefined;
+        setPlaying(undefined);
+      },
+    });
+  };
+  return { playing, toggle, supported: canSpeak() };
+}
+type ReadAloud = ReturnType<typeof useReadAloud>;
+
+/** The line between talks, saying the day and time the talk below it began. */
+function TalkDivider({ at }: { at: number }) {
+  return (
+    <div data-testid="talk-divider" className="flex items-center gap-3 text-[11.5px] text-faint">
+      <span aria-hidden className="h-px flex-1 bg-line" />
+      {talkDividerLabel(at)}
+      <span aria-hidden className="h-px flex-1 bg-line" />
+    </div>
+  );
+}
+
+/** One turn of a talk: his words, and the Mayor's answer with its speaker button. `earlier` turns belong to a talk before the open one. */
+function TalkTurnItem({ entry, talkId, marks, earlier, reader }: { entry: TalkLogEntry; talkId: string; marks?: ReactNode; earlier?: boolean; reader: ReadAloud }) {
+  const id = (name: string) => (earlier ? `talk-earlier-${name}` : `talk-${name}`);
+  const key = `${talkId}:${entry.turn}`;
+  const reading = reader.playing === key;
+  return (
+    <li className="flex flex-col gap-2" data-testid={id('turn')}>
+      <div className="ml-auto flex max-w-[88%] flex-col items-end gap-1">
+        <p data-testid={id('said')} className="rounded-2xl bg-accent/15 px-3.5 py-2 text-[15px] break-words">
+          {entry.said}
+        </p>
+        <span className="flex gap-1.5">
+          {marks}
+          {showsCutTag(entry) && <Chip>cut the last answer</Chip>}
+          {entry.asked && <Chip>asked for {entry.asked}</Chip>}
+        </span>
+      </div>
+      {entry.answer !== undefined && (
+        <div data-testid={id('answer')} className="mr-auto flex max-w-[88%] flex-col gap-1">
+          <p className="rounded-2xl border border-line bg-surface px-3.5 py-2 text-[15px] break-words">{entry.answer}</p>
+          {entry.heard === false && !earlier && (
+            <span data-testid="talk-unheard" className="text-[11.5px] text-needs">
+              Not heard yet
+            </span>
+          )}
+          {entry.links && entry.links.length > 0 && (
+            <span className="flex flex-wrap gap-1.5" data-testid="talk-links">
+              {entry.links.map((bead) => (
+                <a
+                  key={bead}
+                  href={beadHref(bead)}
+                  className="inline-flex min-h-8 max-w-full items-center rounded-lg border border-line bg-surface px-2.5 py-1 font-mono text-[12.5px] text-fg hover:border-line-strong"
+                >
+                  <span className="truncate">{bead}</span>
+                </a>
+              ))}
+            </span>
+          )}
+          <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
+            {reader.supported && (
+              <IconButton
+                icon={reading ? 'stop' : 'speaker'}
+                label={reading ? 'Stop reading' : 'Read the answer aloud'}
+                size="sm"
+                onClick={() => reader.toggle(key, entry.answer ?? '')}
+              />
+            )}
+            {entry.answeredBy && <Chip tone="working">{entry.answeredBy}</Chip>}
+            {entry.firstWordsMs !== undefined && <span className="tabular-nums">first words in {formatSeconds(entry.firstWordsMs)}</span>}
+          </span>
+        </div>
+      )}
+    </li>
+  );
+}
+
 export function TalkLineScreen() {
   const route = useRoute();
   // A Talk button elsewhere says what a new talk is about; the open talk is left as it is.
   const talk = useTalkLine({ fresh: route.view === 'line' && route.about !== undefined });
   const { line } = talk;
+  const reader = useReadAloud();
   const { scroller, onScroll, onTouch, pill, showNew } = useFollowEnd(talk.log);
+  const { shown, hidden, loadEarlier, onScrolled } = useEarlierTalks(talk.earlier, scroller);
   const listening = line.phase === 'listening';
   const dead = !talk.supported || line.phase === 'sending' || line.phase === 'waiting';
   const micOpen = talk.mic === 'ready';
@@ -296,50 +438,41 @@ export function TalkLineScreen() {
         </div>
       )}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div ref={scroller} onScroll={onScroll} onWheel={onTouch} onTouchStart={onTouch} onPointerDown={onTouch} data-testid="talk-scroll" className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          <ol className="mx-auto flex max-w-xl flex-col gap-4" data-testid="talk-log">
-            {talk.log.map((entry) => (
-              <li key={entry.turn} className="flex flex-col gap-2" data-testid="talk-turn">
-                <div className="ml-auto flex max-w-[88%] flex-col items-end gap-1">
-                  <p data-testid="talk-said" className="rounded-2xl bg-accent/15 px-3.5 py-2 text-[15px] break-words">
-                    {entry.said}
-                  </p>
-                  <span className="flex gap-1.5">
-                    {line.talk && <TurnMark row={pendingTurn(outbox, line.talk.id, entry.turn)} />}
-                    {showsCutTag(entry) && <Chip>cut the last answer</Chip>}
-                    {entry.asked && <Chip>asked for {entry.asked}</Chip>}
-                  </span>
-                </div>
-                {entry.answer !== undefined && (
-                  <div data-testid="talk-answer" className="mr-auto flex max-w-[88%] flex-col gap-1">
-                    <p className="rounded-2xl border border-line bg-surface px-3.5 py-2 text-[15px] break-words">{entry.answer}</p>
-                    {entry.heard === false && (
-                      <span data-testid="talk-unheard" className="text-[11.5px] text-needs">
-                        Not heard yet
-                      </span>
-                    )}
-                    {entry.links && entry.links.length > 0 && (
-                      <span className="flex flex-wrap gap-1.5" data-testid="talk-links">
-                        {entry.links.map((id) => (
-                          <a
-                            key={id}
-                            href={beadHref(id)}
-                            className="inline-flex min-h-8 max-w-full items-center rounded-lg border border-line bg-surface px-2.5 py-1 font-mono text-[12.5px] text-fg hover:border-line-strong"
-                          >
-                            <span className="truncate">{id}</span>
-                          </a>
-                        ))}
-                      </span>
-                    )}
-                    <span className="flex flex-wrap gap-1.5 text-[11.5px] text-muted">
-                      {entry.answeredBy && <Chip tone="working">{entry.answeredBy}</Chip>}
-                      {entry.firstWordsMs !== undefined && <span className="tabular-nums">first words in {formatSeconds(entry.firstWordsMs)}</span>}
-                    </span>
-                  </div>
-                )}
-              </li>
+        <div
+          ref={scroller}
+          onScroll={() => {
+            onScroll();
+            onScrolled();
+          }} onWheel={onTouch} onTouchStart={onTouch} onPointerDown={onTouch} data-testid="talk-scroll" className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <div className="mx-auto flex max-w-xl flex-col gap-4">
+            {hidden > 0 && (
+              <Button variant="ghost" size="sm" className="self-center" onClick={loadEarlier}>
+                Show earlier talks
+              </Button>
+            )}
+            {shown.map((earlier) => (
+              <section key={earlier.id} data-testid="talk-earlier" className="flex flex-col gap-4">
+                <TalkDivider at={earlier.startedAt} />
+                <ol className="flex flex-col gap-4">
+                  {earlier.log.map((entry) => (
+                    <TalkTurnItem key={entry.turn} entry={entry} talkId={earlier.id} earlier reader={reader} />
+                  ))}
+                </ol>
+              </section>
             ))}
-          </ol>
+            {shown.length > 0 && talk.log.length > 0 && <TalkDivider at={talk.log[0].releasedAt} />}
+            <ol className="flex flex-col gap-4" data-testid="talk-log">
+              {talk.log.map((entry) => (
+                <TalkTurnItem
+                  key={entry.turn}
+                  entry={entry}
+                  talkId={line.talk?.id ?? ''}
+                  marks={line.talk && <TurnMark row={pendingTurn(outbox, line.talk.id, entry.turn)} />}
+                  reader={reader}
+                />
+              ))}
+            </ol>
+          </div>
         </div>
         {pill && (
           <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">

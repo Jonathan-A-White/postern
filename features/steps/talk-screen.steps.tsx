@@ -240,6 +240,35 @@ async function storeCall(call: CallRecord, direction: 'sent' | 'received', ts: n
 const at1405 = Date.UTC(2026, 9, 1, 14, 5) / 1000;
 const atMinute = (hhmm: string) => at1405 + (Number(hhmm.slice(3)) - 5) * 60;
 
+/** A talk's rows as the phone keeps them: each turn of his and the Mayor's answer to it, a minute apart from `startTs` (seconds). */
+let talkRowSequence = 0;
+async function storeTalk(id: string, startTs: number, turns: { said: string; answer: string }[]): Promise<void> {
+  const put = async (turn: TalkTurn, direction: 'sent' | 'received', ts: number) => {
+    talkRowSequence += 1;
+    const txid = `direct:stored${String(talkRowSequence).padStart(4, '0')}`;
+    await messagesRepo.put({
+      id: `${txid}:0`,
+      txid,
+      vout: 0,
+      seq: talkRowSequence,
+      class: 'talk',
+      to: '03'.padEnd(66, '0'),
+      from: '02'.padEnd(66, '0'),
+      ts,
+      ciphertext: '',
+      plaintext: encodeTurn(turn),
+      direction,
+      read: true,
+      ...(direction === 'received' ? { heard: true } : {}),
+    });
+  };
+  for (const [index, { said, answer }] of turns.entries()) {
+    const at = startTs + index * 60;
+    await put({ talk: { id, turn: index + 1 }, text: said, role: 'turn' }, 'sent', at);
+    await put({ talk: { id, turn: index + 1 }, text: answer, role: 'answer', model: 'sonnet' }, 'received', at + 5);
+  }
+}
+
 // A silence the recogniser lives through: the page's clock, moved on without waiting.
 let silentFor = 0;
 const realNow = Date.now.bind(Date);
@@ -1647,6 +1676,119 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the screen shows no turns', async () => {
       expect(await screen.findByTestId('talk-about')).toHaveTextContent('Nine');
       expect(screen.queryAllByTestId('talk-turn')).toHaveLength(0);
+    });
+  });
+
+  // mw-am3yjh.2: the earlier talks above the open one.
+  const DAY = 24 * 60 * 60;
+  const storesTalks = async (earlier: number) => {
+    const first = at1405 - 3 * DAY;
+    const known = [
+      { said: 'Why did the build fail?', answer: 'A cache went stale.' },
+      { said: 'What is next?', answer: 'The Talk screen.' },
+    ];
+    for (let i = 0; i < earlier; i++) {
+      const turn = earlier === 2 ? known[i] : { said: `Earlier question ${i + 1}`, answer: `Earlier answer ${i + 1}` };
+      await storeTalk(`earlier-${i + 1}`, first + i * DAY, [turn]);
+    }
+    await storeTalk('open', at1405, [{ said: 'Any news?', answer: 'Not yet.' }]);
+  };
+  const earlierSections = () => screen.queryAllByTestId('talk-earlier');
+  const lastSpoken = () => (speak.mock.calls.at(-1)?.[0] as Utterance | undefined)?.text;
+  let tapped: HTMLElement | undefined;
+  const tapsSpeaker = async (_c: unknown, answer: string) => {
+    const section = (await screen.findAllByTestId('talk-earlier-answer')).find((node) => node.textContent?.includes(answer));
+    tapped = within(section!).getByRole('button', { name: /Read the answer aloud|Stop reading/ });
+    fireEvent.click(tapped);
+  };
+
+  Scenario('AC-12: his earlier talks are listed above the open one, oldest first, each under a divider with its day and time (mw-am3yjh.2)', ({ Given, When, Then, And }) => {
+    Given('two earlier talks and an open talk are stored', () => storesTalks(2));
+    When('the Talk line is opened', lineOpen);
+    Then('the screen lists the earlier talks {string} then {string} above the open talk {string}', async (_c, first: string, second: string, open: string) => {
+      await waitFor(() => expect(screen.getByTestId('talk-said')).toHaveTextContent(open));
+      const said = screen.getAllByTestId('talk-earlier-said');
+      expect(said.map((node) => node.textContent)).toEqual([first, second]);
+      const openTurn = screen.getByTestId('talk-said');
+      for (const node of said) expect(node.compareDocumentPosition(openTurn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+    And('each earlier talk is under a divider with its day and time', () => {
+      const sections = earlierSections();
+      expect(sections).toHaveLength(2);
+      const labels = sections.map((section) => within(section).getByTestId('talk-divider').textContent);
+      // started three and two days before 14:05 on 1 October (the tests run with TZ=UTC)
+      expect(labels[0]).toMatch(/Mon.*Sep 28.*14:05/);
+      expect(labels[1]).toMatch(/Tue.*Sep 29.*14:05/);
+      for (const section of sections) expect(section.firstElementChild).toBe(within(section).getByTestId('talk-divider'));
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-13: every Mayor answer, earlier or open, has a speaker button that reads it and, tapped again, stops it (mw-am3yjh.2)', ({ Given, When, Then, And }) => {
+    Given('two earlier talks and an open talk are stored', () => storesTalks(2));
+    When('the Talk line is opened', lineOpen);
+    And('he taps the speaker button of the earlier answer {string}', tapsSpeaker);
+    Then('the phone speaks {string}', async (_c, text: string) => {
+      await waitFor(() => expect(lastSpoken()).toBe(text));
+    });
+    And('that speaker button reads {string}', async (_c, name: string) => {
+      await waitFor(() => expect(tapped).toHaveAccessibleName(name));
+    });
+    When('he taps that speaker button again', () => {
+      fireEvent.click(tapped!);
+    });
+    Then('speech is stopped', async () => {
+      await waitFor(() => expect(cancel).toHaveBeenCalled());
+    });
+    And('that speaker button now reads {string}', async (_c, name: string) => {
+      await waitFor(() => expect(tapped).toHaveAccessibleName(name));
+    });
+    When('he taps the speaker button of the open answer {string}', async (_c, answer: string) => {
+      const open = (await screen.findAllByTestId('talk-answer')).find((node) => node.textContent?.includes(answer));
+      fireEvent.click(within(open!).getByRole('button', { name: 'Read the answer aloud' }));
+    });
+    Then('the phone then speaks {string}', async (_c, text: string) => {
+      await waitFor(() => expect(lastSpoken()).toBe(text));
+    });
+  });
+
+  Scenario('AC-14: a long history loads a page of talks at a time as he scrolls up (mw-am3yjh.2)', ({ Given, When, Then, And }) => {
+    Given('7 earlier talks and an open talk are stored', () => storesTalks(7));
+    When('the Talk line is opened', lineOpen);
+    Then('the screen lists {int} earlier talks', async (_c, count: number) => {
+      await waitFor(() => expect(earlierSections()).toHaveLength(count));
+    });
+    When('he scrolls up to the top of the talk', async () => {
+      await screen.findByTestId('talk-said');
+      const scroller = screen.getByTestId('talk-scroll');
+      scroller.scrollTop = 0;
+      fireEvent.scroll(scroller);
+    });
+    Then('the screen now lists {int} earlier talks', async (_c, count: number) => {
+      await waitFor(() => expect(earlierSections()).toHaveLength(count));
+    });
+    And('the oldest earlier talk is at the top', () => {
+      expect(within(earlierSections()[0]).getByTestId('talk-earlier-said')).toHaveTextContent('Earlier question 1');
+    });
+  });
+
+  Scenario('AC-15: the earlier talks leave the open talk and the controls as they were (mw-am3yjh.2)', ({ Given, When, Then, And }) => {
+    Given('two earlier talks and an open talk are stored', () => storesTalks(2));
+    When('the Talk line is opened', lineOpen);
+    And('the open talk {string} has been read back', async (_c, said: string) => {
+      await waitFor(() => expect(screen.getByTestId('talk-said')).toHaveTextContent(said));
+    });
+    And('he holds the talk button and says {string} and lets go', holdsAndSays);
+    Then('the last turn sent is turn 2 of the open talk', () => {
+      expect(lastSent().talk).toEqual({ id: 'open', turn: 2 });
+    });
+    And('the screen lists {int} earlier talks', async (_c, count: number) => {
+      await waitFor(() => expect(earlierSections()).toHaveLength(count));
+    });
+    And('the open talk shows {int} turns', async (_c, count: number) => {
+      await waitFor(() => expect(screen.getAllByTestId('talk-turn')).toHaveLength(count));
     });
   });
 });

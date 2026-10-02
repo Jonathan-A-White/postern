@@ -69,7 +69,14 @@ async function fakeSpeech(page: Page): Promise<void> {
   });
 }
 
-async function unlocked(page: Page): Promise<{ posted: string[]; answerAfterTurn: (text: string) => void }> {
+/** A talk stored on the phone before the test starts: each turn of his and the Mayor's answer, `daysAgo` days back. */
+interface StoredTalk {
+  id: string;
+  daysAgo: number;
+  turns: { said: string; answer: string }[];
+}
+
+async function unlocked(page: Page, history: StoredTalk[] = []): Promise<{ posted: string[]; answerAfterTurn: (text: string) => void }> {
   await fakeSpeech(page);
   const mnemonic = createMnemonic();
   const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
@@ -91,9 +98,30 @@ async function unlocked(page: Page): Promise<{ posted: string[]; answerAfterTurn
       ts: Math.floor(Date.now() / 1000),
     },
   });
+  // The stored talks come as records of the Mayor's feed: his turns sealed by him, the answers by the Mayor.
+  const stored = history.flatMap((talk, index) =>
+    talk.turns.flatMap((turn, number) => {
+      const at = Math.floor(Date.now() / 1000) - talk.daysAgo * 86_400 + number * 60;
+      const seal = (text: string, role: 'turn' | 'answer', mine: boolean, ts: number) => ({
+        ...encryptMessage({
+          text: encodeTurn({ talk: { id: talk.id, turn: number + 1 }, text, role }),
+          class: 'talk',
+          senderPrivateKeyHex: mine ? governor.toHex() : MAYOR.toHex(),
+          recipientPublicKeyHex: mine ? MAYOR.toPublicKey().toString() : governor.toPublicKey().toString(),
+        }),
+        ts,
+      });
+      const base = 2000 + index * 100 + number * 2;
+      return [
+        { seq: base, txid: `direct:${String(base).padStart(64, 'a')}`, vout: 0, payload: seal(turn.said, 'turn', true, at) },
+        { seq: base + 1, txid: `direct:${String(base + 1).padStart(64, 'b')}`, vout: 0, payload: seal(turn.answer, 'answer', false, at + 5) },
+      ];
+    }),
+  );
   await page.route('**/api/messages**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
     const since = Number(new URL(route.request().url()).searchParams.get('since') ?? 0);
+    if (stored.length > 0 && since < 2000) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: stored, next: 2000 + history.length * 100 }) });
     const records = answer && posted.length > 0 && since < 1000 ? [record()] : [];
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records, next: records.length ? 1000 : since }) });
   });
@@ -375,4 +403,70 @@ test('talk line: the talk is still on the screen after Channels and back, and af
   await talkIsThere();
   // the reload starts the page over; nothing was spoken again after it, nor on the way back
   expect(await page.evaluate(() => window.__spoken)).toEqual([]);
+});
+
+// mw-am3yjh.2: his earlier talks sit above the open one on the same screen, a page of talks at a time.
+test('talk line: earlier talks are above the open one, the screen opens on its newest turn, and scrolling up shows them', async ({ page }) => {
+  const history: StoredTalk[] = Array.from({ length: 7 }, (_, i) => ({
+    id: `talk-old-${i + 1}`,
+    daysAgo: 9 - i,
+    turns: [
+      { said: `Old question ${i + 1}a`, answer: `Old answer ${i + 1}a: a few sentences so that each earlier talk takes a fair share of the phone's screen and the list has to scroll.` },
+      { said: `Old question ${i + 1}b`, answer: `Old answer ${i + 1}b: and a second answer to the same talk, as long as the first one was, for the same reason.` },
+    ],
+  }));
+  history.push({ id: 'talk-open', daysAgo: 0, turns: [{ said: 'Any news today?', answer: 'Nothing new since this morning.' }] });
+  await unlocked(page, history);
+  // the Talk screen reads the open talk back once, as it opens: let the rows reach the phone first
+  const rows = history.reduce((sum, talk) => sum + talk.turns.length * 2, 0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<number>((resolve) => {
+            const open = indexedDB.open('PosternDB');
+            open.onsuccess = () => {
+              const all = open.result.transaction('messages').objectStore('messages').getAll();
+              all.onsuccess = () => resolve((all.result as { class: string }[]).filter((row) => row.class === 'talk').length);
+            };
+          }),
+      ),
+    )
+    .toBe(rows);
+
+  await page.goto('/?v=line');
+  const scroller = page.getByTestId('talk-scroll');
+  // the open talk's newest turn is in view, and the list is at its end
+  await expect(page.getByTestId('talk-answer')).toContainText('Nothing new since this morning.');
+  await expect(page.getByTestId('talk-answer')).toBeInViewport();
+  await expect.poll(() => scroller.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThan(60);
+  // the push-to-talk button is where it was
+  await expect(page.getByRole('button', { name: 'Hold to talk' })).toBeInViewport();
+  await shot(page, 'talk-line-with-history');
+
+  // a page of five earlier talks is on the screen; the two oldest wait
+  const earlier = page.getByTestId('talk-earlier');
+  await expect(earlier).toHaveCount(5);
+  await expect(page.getByTestId('talk-earlier-said').first()).toHaveText('Old question 3a');
+
+  // scrolling up shows an earlier talk's divider and turns
+  await scroller.evaluate((el) => (el.scrollTop = 0));
+  await expect(earlier).toHaveCount(7);
+  await scroller.evaluate((el) => (el.scrollTop = 0));
+  const oldest = earlier.first();
+  await expect(oldest.getByTestId('talk-divider')).toBeInViewport();
+  await expect(oldest.getByTestId('talk-divider')).toContainText(/\d{2}:\d{2}/);
+  await expect(oldest.getByTestId('talk-earlier-said').first()).toHaveText('Old question 1a');
+  await expect(oldest.getByTestId('talk-earlier-answer').first()).toContainText('Old answer 1a');
+  await shot(page, 'talk-line-history-top');
+
+  // an earlier answer has its speaker button: tap to read it, tap again to stop
+  const speaker = oldest.getByRole('button', { name: 'Read the answer aloud' }).first();
+  await speaker.click();
+  await expect.poll(() => page.evaluate(() => window.__spoken.at(-1))).toContain('Old answer 1a');
+  await expect(oldest.getByRole('button', { name: 'Stop reading' })).toBeVisible();
+  const cancels = await page.evaluate(() => window.__cancels);
+  await oldest.getByRole('button', { name: 'Stop reading' }).click();
+  await expect(oldest.getByRole('button', { name: 'Stop reading' })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__cancels)).toBeGreaterThan(cancels);
 });

@@ -60,11 +60,14 @@ export interface MarkdownProps {
   text: string;
   /** Wrap a fenced block's long lines instead of scrolling them (a thread message on a phone). */
   wrap?: boolean;
+  /** Take the size, line height and colour of the surroundings and no space between paragraphs (a card's item). */
+  inline?: boolean;
 }
 
-export function Markdown({ text, wrap = false }: MarkdownProps) {
+export function Markdown({ text, wrap = false, inline = false }: MarkdownProps) {
+  const className = ['markdown', wrap && 'markdown-wrap', inline && 'markdown-item'].filter(Boolean).join(' ');
   return (
-    <div className={wrap ? 'markdown markdown-wrap' : 'markdown'}>
+    <div className={className}>
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkBeadLinks]} components={components}>
         {text}
       </ReactMarkdown>

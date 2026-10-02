@@ -3,6 +3,7 @@
 // listens (useEvents) to the beads and kinds it names and ticks an item off itself, with the
 // event's time, when the state that item expects arrives; a card-update changes this same card.
 import { useEffect, useMemo } from 'react';
+import { Markdown } from '../markdown';
 import { Chip, Icon, cx } from '../ui';
 import { clockTime } from '../services/age';
 import { beadHref } from '../nav/route';
@@ -49,10 +50,10 @@ export function LiveCard({ card, titleOf }: LiveCardProps) {
               {item.done ? <Icon name="check" size={14} /> : item.n}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <p className={cx('text-[14.5px] leading-snug break-words', item.done && 'text-muted')}>
+              <div className={cx('text-[14.5px] leading-snug break-words', item.done && 'text-muted')} data-testid="live-card-item-text">
                 <span className="sr-only">{item.n}. </span>
-                {item.text}
-              </p>
+                <Markdown text={item.text} inline />
+              </div>
               {item.links.length > 0 && (
                 <ul className="flex flex-wrap gap-x-3 gap-y-1" aria-label={`Links for item ${item.n}`}>
                   {item.links.map((id) => (

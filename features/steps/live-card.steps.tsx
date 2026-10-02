@@ -146,11 +146,31 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('its items are numbered 1, 2 and 3 with their texts', () => {
       const rows = itemRows();
       expect(rows).toHaveLength(3);
-      expect(rows.map((row) => row.querySelector('p')?.textContent)).toEqual(['1. VERIFIED on mw-a.1', '2. VERIFIED on mw-b.1', '3. VERIFIED on mw-c.1']);
+      expect(rows.map((row) => within(row).getByTestId('live-card-item-text').textContent)).toEqual(['1. VERIFIED on mw-a.1', '2. VERIFIED on mw-b.1', '3. VERIFIED on mw-c.1']);
     });
     And('item 2 links to bead {string}', (_c, bead: string) => {
       const link = within(itemRows()[1]).getByRole('link', { name: `Title of ${bead}` });
       expect(link).toHaveAttribute('href', `?v=bead&id=${bead}`);
+    });
+  });
+
+  Scenario('mw-debsil.1: a web address and a bead id in an item are links as in a message', ({ Given, Then, And }) => {
+    Given('Needs you is open and the Mayor has sent a card titled {string} with an item {string}', async (_c, title: string, text: string) => {
+      await storeView(['mw-gq6.222']);
+      const body = { title, items: [{ n: 1, text, links: [] }], subscribe: { kinds: ['bead_changed'], beads: [] } };
+      await sync([sealed('card', body)]);
+      render(<NeedsScreen />);
+      await screen.findByRole('article', { name: `Card: ${title}` });
+    });
+    Then('item 1 has a link to {string} that opens in a new tab', (_c, url: string) => {
+      const link = within(itemRows()[0]).getByRole('link', { name: url });
+      expect(link).toHaveAttribute('href', url);
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+    And('item 1 has a link to bead {string} in the app', (_c, bead: string) => {
+      const link = within(itemRows()[0]).getByRole('link', { name: bead });
+      expect(link).toHaveAttribute('href', `?v=bead&id=${bead}`);
+      expect(link).not.toHaveAttribute('target');
     });
   });
 
@@ -193,7 +213,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await sync([sealed('card-update', { re: cardTxid, links: { 2: [bead] } })]);
     });
     Then('item 2 links to bead {string} and to bead {string}', async (_c, first: string, second: string) => {
-      await waitFor(() => expect(within(itemRows()[1]).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([`?v=bead&id=${first}`, `?v=bead&id=${second}`]));
+      await waitFor(() => expect(within(within(itemRows()[1]).getByRole('list', { name: 'Links for item 2' })).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([`?v=bead&id=${first}`, `?v=bead&id=${second}`]));
     });
     And('there is still one card {string} in the You list', (_c, title: string) => {
       expect(screen.getAllByRole('article', { name: `Card: ${title}` })).toHaveLength(1);

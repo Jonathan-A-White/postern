@@ -196,6 +196,15 @@ html {
   @apply mb-0;
 }
 
+.markdown-item {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.markdown-item p {
+  margin: 0;
+}
+
 .markdown a {
   @apply text-ready underline underline-offset-2;
 }

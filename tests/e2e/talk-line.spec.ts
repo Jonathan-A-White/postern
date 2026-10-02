@@ -336,3 +336,43 @@ test('talk line: Talk on a card opens the line about it, and Clear drops it', as
   await about.getByRole('button', { name: 'Clear' }).click();
   await expect(page.getByTestId('talk-about')).toHaveCount(0);
 });
+
+// mw-am3yjh.1: the talk is rebuilt from its stored rows, so leaving the screen or reloading keeps it.
+test('talk line: the talk is still on the screen after Channels and back, and after a reload', async ({ page }) => {
+  const { posted, answerAfterTurn } = await unlocked(page);
+  answerAfterTurn('Three things landed.');
+
+  await page.goto('/?v=line');
+  const button = page.getByRole('button', { name: 'Hold to talk' });
+  await expect(button).toBeEnabled();
+  const box = (await button.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(page.getByRole('button', { name: 'Release to send' })).toBeVisible();
+  await page.evaluate(() => window.__hear('What landed today?'));
+  await page.mouse.up();
+  await expect.poll(() => posted.length).toBe(1);
+  await expect(page.getByTestId('talk-answer')).toContainText('Three things landed.', { timeout: 15_000 });
+  // he stops it: an answer he has stopped counts as heard and is not played again
+  await page.getByRole('button', { name: 'Cut the answer' }).click();
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(1);
+
+  const talkIsThere = async () => {
+    await expect(page.getByTestId('talk-said')).toHaveText('What landed today?');
+    await expect(page.getByTestId('talk-answer')).toContainText('Three things landed.');
+    await expect(page.getByTestId('talk-turn')).toHaveCount(1);
+    await expect(page.getByTestId('talk-unheard')).toHaveCount(0);
+  };
+
+  await page.getByRole('navigation', { name: 'Places' }).getByRole('link', { name: /Channels$/ }).click();
+  await expect(page.getByRole('heading', { name: 'Channels' })).toBeVisible();
+  await page.getByRole('button', { name: 'Talk to the Mayor' }).click();
+  await expect(page).toHaveURL(/\?v=line$/);
+  await talkIsThere();
+  await shot(page, 'talk-line-back-from-channels');
+
+  await page.reload();
+  await talkIsThere();
+  // the reload starts the page over; nothing was spoken again after it, nor on the way back
+  expect(await page.evaluate(() => window.__spoken)).toEqual([]);
+});

@@ -27,6 +27,10 @@ export interface WorkerHarness {
   deliver(data: unknown): Promise<void>;
   /** A tap on the notification, or on one of its buttons when `action` names it ('' is the body). */
   click(notification: { data?: unknown }, action?: string): Promise<void>;
+  /** The 'activate' event: resolves when everything the worker handed waitUntil has settled. */
+  activate(): Promise<void>;
+  /** A GET the page makes through the worker: the response the worker answered with, or undefined when it did not respond (the browser goes to the network itself). */
+  fetch(url: string, method?: string): Promise<Response | undefined>;
 }
 
 export interface FakeNotification {
@@ -50,10 +54,10 @@ export async function loadWorker(): Promise<WorkerHarness> {
     loaded.openWindow.mockClear();
     return loaded;
   }
-  const handlers = new Map<string, (event: unknown) => void>();
+  const handlers = new Map<string, Array<(event: unknown) => void>>();
   const realAdd = window.addEventListener.bind(window);
   vi.spyOn(window, 'addEventListener').mockImplementation(((type: string, listener: (event: unknown) => void, ...rest: unknown[]) => {
-    if (type === 'push' || type === 'notificationclick' || type === 'fetch' || type === 'message') handlers.set(type, listener);
+    if (type === 'push' || type === 'notificationclick' || type === 'fetch' || type === 'message' || type === 'activate') handlers.set(type, [...(handlers.get(type) ?? []), listener]);
     else (realAdd as (...args: unknown[]) => void)(type, listener, ...rest);
   }) as typeof window.addEventListener);
 
@@ -64,18 +68,32 @@ export async function loadWorker(): Promise<WorkerHarness> {
     open: [],
     async push(payload) {
       const waits: Promise<unknown>[] = [];
-      handlers.get('push')?.({ data: { json: () => payload }, waitUntil: (p: Promise<unknown>) => waits.push(p) });
+      for (const h of handlers.get('push') ?? []) h({ data: { json: () => payload }, waitUntil: (p: Promise<unknown>) => waits.push(p) });
       await Promise.all(waits);
     },
     async deliver(data) {
       const waits: Promise<unknown>[] = [];
-      handlers.get('message')?.({ data, waitUntil: (p: Promise<unknown>) => waits.push(p) });
+      for (const h of handlers.get('message') ?? []) h({ data, waitUntil: (p: Promise<unknown>) => waits.push(p) });
       await Promise.all(waits);
     },
     async click(notification, action = '') {
       const waits: Promise<unknown>[] = [];
-      handlers.get('notificationclick')?.({ notification: { ...notification, close: vi.fn() }, action, waitUntil: (p: Promise<unknown>) => waits.push(p) });
+      for (const h of handlers.get('notificationclick') ?? []) h({ notification: { ...notification, close: vi.fn() }, action, waitUntil: (p: Promise<unknown>) => waits.push(p) });
       await Promise.all(waits);
+    },
+    async activate() {
+      const waits: Promise<unknown>[] = [];
+      for (const h of handlers.get('activate') ?? []) h({ waitUntil: (p: Promise<unknown>) => waits.push(p) });
+      await Promise.all(waits);
+    },
+    async fetch(url, method = 'GET') {
+      let answer: Promise<Response> | undefined;
+      const request = { url, method, mode: 'no-cors', destination: '' } as unknown as Request;
+      for (const h of handlers.get('fetch') ?? []) {
+        h({ request, respondWith: (p: Promise<Response>) => (answer ??= p) });
+        if (answer) break;
+      }
+      return answer;
     },
   };
   Object.assign(window, {

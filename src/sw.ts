@@ -20,12 +20,29 @@
 //  - files shared from another app (the manifest's share_target) are parked in
 //    IndexedDB and the app opens on the Share screen to place them.
 import { precacheAndRoute } from 'workbox-precaching';
+import { healPrecache, isGuardedAsset, serveAsset } from './precacheGuard';
 import { notificationSpecForClass, notificationSpecForEmergency, notificationSpecForRing, notificationSpecForTalkAnswer, type PushClass } from './push/classOptions';
 import { resolveTapUrl, type TapData } from './push/tapTarget';
 import { settingsRepo } from './data/repositories/settings-repo';
 import { sharesRepo } from './data/repositories/view-repo';
 
 declare const self: ServiceWorkerGlobalScope;
+
+// A script or stylesheet whose precached copy is not what its extension says (nginx once answered a
+// missing one with the app page, mw-j0f2d.41) is never served from the precache. This listener comes
+// BEFORE precacheAndRoute's own, which would otherwise answer first.
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.method === 'GET' && url.origin === self.location.origin && isGuardedAsset(url.pathname)) {
+    event.respondWith(serveAsset(event.request, self.caches));
+  }
+});
+
+// ...and on activate, the entries already poisoned are deleted and fetched again, so a phone that
+// holds one heals when this worker takes over.
+self.addEventListener('activate', (event) => {
+  event.waitUntil(healPrecache(self.caches));
+});
 
 precacheAndRoute(self.__WB_MANIFEST);
 

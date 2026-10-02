@@ -760,6 +760,19 @@ location /api/ {
 }
 ```
 
+The static site's own `location /` falls back to `index.html` (the app's routes are
+`?v=` URLs, but a deep link or a reload must still land on the app). That fallback
+must not cover `/assets/`: a hashed file that is missing has to be a 404, because
+an answer of `200 text/html` for a missing `/assets/index-X.css` is what the
+service worker once precached as a stylesheet (mw-j0f2d.41; the worker now refuses
+and heals such entries, `src/precacheGuard.ts`, but the server should not say it):
+
+```nginx
+location /assets/ {
+    try_files $uri =404;
+}
+```
+
 The watchdog runs on the VPS with `POSTERN_WATCH_URL=http://10.88.0.3:8787/healthz`
 (or the desktop's WireGuard name) and a copy of the desktop's
 `postern-vapid.json` and `postern-push-subscriptions.json` in its own

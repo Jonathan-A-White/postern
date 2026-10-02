@@ -20,7 +20,7 @@ import (
 // written. The subscription is taken before the hello is built, so nothing
 // indexed in between is missed; it is dropped when the client goes (the
 // request's context ends) or the hub drops a subscriber that fell behind. While
-// it is open its key counts as present (presence).
+// it is open its key counts as present, and for PRESENCE_GRACE after (presence).
 func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.Duration, here *presence) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)

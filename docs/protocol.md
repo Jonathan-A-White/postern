@@ -1260,10 +1260,15 @@ The Governor, 2026-10-01: he wants to see, very subtly, when the Mayor is there 
 when he is not, and to be told when the Mayor is back after a turn went unanswered.
 
 The Mayor is **here** while his key (`POSTERN_MAYOR_KEY`) holds `GET /api/events` open,
-which is what `mw talk wait` does for as long as it waits. He is **away** the rest of the
-time: between waits (as during a handoff, when no wait is armed), while his host is off, or
-when no Mayor key is configured. The backend counts open streams by key and nothing else;
-it reads no record and learns no word of any talk.
+which is what `mw talk wait` does for as long as it waits, **and for 120 seconds after the
+last such stream closed** (the backend's `PRESENCE_GRACE`, one named constant). The grace is
+there because his wait ends on every turn (when it brings him a message, and he answers) and
+is armed again a moment later: the gap between two waits is not him going away, and without
+the grace the mark would flicker to away on each turn. A stream opened again inside the grace
+counts at once, and the grace runs from the close of the *last* open stream. He is **away**
+once 120 seconds have passed with no stream open: a handoff, his host off, or no Mayor key
+configured. The backend counts open streams by key, and remembers when each key's last one
+closed, and nothing else; it reads no record and learns no word of any talk.
 
 `GET /api/presence` (a cockpit key; `docs/api.md`) answers `{"mayor": true}` while he is
 here and `{"mayor": false}` when he is away. The Talk screen asks it every few seconds while

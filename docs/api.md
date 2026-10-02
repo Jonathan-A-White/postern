@@ -453,9 +453,11 @@ Whether the Mayor is here (`docs/protocol.md` §20, "Presence"). A cockpit key o
 ```
 
 `mayor` is `true` while the Mayor's key (`POSTERN_MAYOR_KEY`) holds `GET /api/events`
-open (that is, while an `mw talk wait` is armed), and `false` otherwise, including when
+open (that is, while an `mw talk wait` is armed) and for 120 seconds (`PRESENCE_GRACE`)
+after the last such stream closed, and `false` otherwise, including when
 `POSTERN_MAYOR_KEY` is unset. `Cache-Control: no-store`. The backend counts open
-streams per key in memory: a restart forgets them until the streams reconnect.
+streams per key, and when each key's last one closed, in memory: a restart forgets them
+until the streams reconnect.
 
 ## GET /api/view
 

@@ -39,9 +39,10 @@ self.addEventListener('fetch', (event) => {
 });
 
 // ...and on activate, the entries already poisoned are deleted and fetched again, so a phone that
-// holds one heals when this worker takes over.
+// holds one heals when this worker takes over, and it claims the open windows, so the page's
+// controllerchange tells it the new build is in control (mw-yxwtth.1).
 self.addEventListener('activate', (event) => {
-  event.waitUntil(healPrecache(self.caches));
+  event.waitUntil(Promise.all([healPrecache(self.caches), self.clients.claim()]));
 });
 
 precacheAndRoute(self.__WB_MANIFEST);
@@ -143,8 +144,13 @@ self.addEventListener('push', (event) => {
 
 // The app answers a 'seen?' with {type:'seen', txid, seen}, and tells the worker
 // {type:'seen', txid} when it has shown a message: that one closes its notification.
+// A tap on its 'Update ready' banner sends {type:'SKIP_WAITING'}: this build takes over at once.
 self.addEventListener('message', (event) => {
   const data = event.data as SeenMessage | undefined;
+  if (data?.type === 'SKIP_WAITING') {
+    void self.skipWaiting();
+    return;
+  }
   if (data?.type !== 'seen' || !data.txid) return;
   for (const waiter of [...seenWaiters]) waiter(data);
   if (data.seen !== false) event.waitUntil(closeNotificationsFor(data.txid));

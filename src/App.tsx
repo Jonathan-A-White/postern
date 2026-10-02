@@ -13,6 +13,7 @@ import { startOutbox } from './services/outbox';
 import { useUnlockedKey } from './cockpit/hooks';
 import { Shell, Screen } from './cockpit/Shell';
 import { Loading, Unlock, Welcome } from './cockpit/Gate';
+import { UpdateBanner } from './cockpit/UpdateBanner';
 import { NeedsScreen } from './cockpit/NeedsScreen';
 import { MapScreen } from './cockpit/MapScreen';
 import { BeadScreen } from './cockpit/BeadScreen';
@@ -142,19 +143,26 @@ export function App() {
   }, [key]);
 
   let content;
-  if (route.view === 'key') content = key ? <Shell route={route}><KeyPlace inShell /></Shell> : <KeyPlace inShell={false} />;
-  else if (!resumed || vault === undefined) content = <Loading />;
+  // The door (loading, welcome, unlock) has no Shell, so the update banner sits above it here.
+  let door = true;
+  if (route.view === 'key') {
+    door = !key;
+    content = key ? <Shell route={route}><KeyPlace inShell /></Shell> : <KeyPlace inShell={false} />;
+  } else if (!resumed || vault === undefined) content = <Loading />;
   else if (vault === null) content = <Welcome />;
   else if (!key) content = <Unlock vault={vault} />;
-  else
+  else {
+    door = false;
     content = (
       <Shell route={route}>
         <Place route={route} />
       </Shell>
     );
+  }
 
   return (
     <>
+      {door && <UpdateBanner />}
       {content}
       <ToastHost />
     </>

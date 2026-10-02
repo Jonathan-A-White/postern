@@ -29,6 +29,10 @@ export interface WorkerHarness {
   click(notification: { data?: unknown }, action?: string): Promise<void>;
   /** The 'activate' event: resolves when everything the worker handed waitUntil has settled. */
   activate(): Promise<void>;
+  /** self.skipWaiting(), which the worker calls when a window posts {type:'SKIP_WAITING'}. */
+  skipWaiting: ReturnType<typeof vi.fn>;
+  /** clients.claim(), which the worker calls on activate. */
+  claim: ReturnType<typeof vi.fn>;
   /** A GET the page makes through the worker: the response the worker answered with, or undefined when it did not respond (the browser goes to the network itself). */
   fetch(url: string, method?: string): Promise<Response | undefined>;
 }
@@ -52,6 +56,8 @@ export async function loadWorker(): Promise<WorkerHarness> {
     loaded.shown.length = 0;
     loaded.open.length = 0;
     loaded.openWindow.mockClear();
+    loaded.skipWaiting.mockClear();
+    loaded.claim.mockClear();
     return loaded;
   }
   const handlers = new Map<string, Array<(event: unknown) => void>>();
@@ -64,6 +70,8 @@ export async function loadWorker(): Promise<WorkerHarness> {
   const harness: WorkerHarness = {
     openWindows: [],
     openWindow: vi.fn(async () => null),
+    skipWaiting: vi.fn(async () => undefined),
+    claim: vi.fn(async () => undefined),
     shown: [],
     open: [],
     async push(payload) {
@@ -98,7 +106,8 @@ export async function loadWorker(): Promise<WorkerHarness> {
   };
   Object.assign(window, {
     __WB_MANIFEST: [],
-    clients: { matchAll: vi.fn(async () => harness.openWindows), openWindow: harness.openWindow },
+    skipWaiting: harness.skipWaiting,
+    clients: { matchAll: vi.fn(async () => harness.openWindows), openWindow: harness.openWindow, claim: harness.claim },
     registration: {
       showNotification: vi.fn(async (title: string, options: Record<string, unknown>) => {
         harness.shown.push({ title, options });

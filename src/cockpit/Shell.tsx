@@ -14,6 +14,7 @@ import { MoveHomeButtons } from './MoveHome';
 import { EmergencyBanner } from './EmergencyBanner';
 import { RingBanner } from './RingBanner';
 import { OutboxNote } from './OutboxNote';
+import { UpdateBanner } from './UpdateBanner';
 import { liveLabel } from './liveLabel';
 import { useAnswers, useMessages, useViewIndex, useWide } from './hooks';
 import { needsByWaiter, unsettledNeeds } from '../model/needs';
@@ -195,6 +196,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
     <div className="flex h-dvh overflow-hidden bg-canvas text-fg">
       {wide && <Sidebar current={top} />}
       <div className="flex min-w-0 flex-1 flex-col">
+        <UpdateBanner />
         <EmergencyBanner />
         <HomeDown />
         <RingBanner />

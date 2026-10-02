@@ -303,6 +303,17 @@ function Bubble({ item, given, until, onQuote, onReply }: { item: ConversationIt
   );
 }
 
+/** The nearest ancestor that scrolls on its own, or null when only the page does. The page is never
+ * one: html and body are overflow:hidden but can still be moved by a script, and on a phone with its
+ * keyboard open that leaves the screen pushed up (mw-jkrnxu.1). */
+function scrollBoxOf(el: HTMLElement): HTMLElement | null {
+  for (let up = el.parentElement; up && up !== document.body && up !== document.documentElement; up = up.parentElement) {
+    const { overflowY } = getComputedStyle(up);
+    if (overflowY === 'auto' || overflowY === 'scroll') return up;
+  }
+  return null;
+}
+
 export function Conversation({
   items,
   onQuote,
@@ -329,7 +340,11 @@ export function Conversation({
   const count = items.length;
   useLayoutEffect(() => {
     const first = seen.current === null;
-    if ((first && scrollOnOpen) || (!first && count > (seen.current ?? 0))) end.current?.scrollIntoView?.({ block: 'end' });
+    if ((first && scrollOnOpen) || (!first && count > (seen.current ?? 0))) {
+      // Move the conversation's own scroll box, never an ancestor outside it (what scrollIntoView does).
+      const box = end.current && scrollBoxOf(end.current);
+      if (box) box.scrollTop = box.scrollHeight;
+    }
     seen.current = count;
   }, [count, scrollOnOpen]);
 

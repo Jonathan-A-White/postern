@@ -19,12 +19,14 @@ import (
 
 const fileName = "prompts.json"
 
-// The four types an option may have.
+// The five types an option may have. TypeText is the free-text option: the
+// words of a call that no flag takes; a prompt has at most one.
 const (
 	TypeDuration = "duration"
 	TypeString   = "string"
 	TypeInt      = "int"
 	TypeBool     = "bool"
+	TypeText     = "text"
 )
 
 var (
@@ -58,13 +60,14 @@ type Prompt struct {
 func ValidName(name string) bool { return namePattern.MatchString(name) }
 
 // Validate says, in one line, what is wrong with p: its name, a flag that does
-// not begin "--" or is given twice, a type that is not one of the four, or a
-// default that does not parse as its type.
+// not begin "--" or is given twice, a type that is not one of the five, a second
+// free-text option, or a default that does not parse as its type.
 func (p Prompt) Validate() error {
 	if !ValidName(p.Name) {
 		return errors.New("name must be 1 to 32 characters of a-z, 0-9 and -")
 	}
 	seen := map[string]bool{}
+	text := ""
 	for _, opt := range p.Signature {
 		if !flagPattern.MatchString(opt.Flag) {
 			return fmt.Errorf("option flag %q must begin with -- and have no spaces", opt.Flag)
@@ -73,6 +76,12 @@ func (p Prompt) Validate() error {
 			return fmt.Errorf("option flag %s is given twice", opt.Flag)
 		}
 		seen[opt.Flag] = true
+		if opt.Type == TypeText {
+			if text != "" {
+				return fmt.Errorf("options %s and %s are both free-text: a prompt has one", text, opt.Flag)
+			}
+			text = opt.Flag
+		}
 		if err := opt.checkDefault(); err != nil {
 			return err
 		}
@@ -83,7 +92,7 @@ func (p Prompt) Validate() error {
 func (o Option) checkDefault() error {
 	var err error
 	switch o.Type {
-	case TypeString:
+	case TypeString, TypeText:
 	case TypeDuration:
 		if o.Default != "" {
 			_, err = time.ParseDuration(o.Default)
@@ -97,7 +106,7 @@ func (o Option) checkDefault() error {
 			_, err = strconv.ParseBool(o.Default)
 		}
 	default:
-		return fmt.Errorf("option %s has type %q, want duration, string, int or bool", o.Flag, o.Type)
+		return fmt.Errorf("option %s has type %q, want duration, string, int, bool or text", o.Flag, o.Type)
 	}
 	if err != nil {
 		return fmt.Errorf("option %s default %q is not a %s", o.Flag, o.Default, o.Type)

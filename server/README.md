@@ -39,8 +39,11 @@ A backend started without a prompt store answers `501`.
 - `name`: lowercase, `[a-z0-9-]`, 1 to 32 characters. On `PUT` it comes from the
   path; a body that names a different prompt is a `400`.
 - `signature`: the options, in order. Each `flag` begins `--` and appears once;
-  `type` is one of `duration` (Go syntax, `30m`), `string`, `int` or `bool`;
-  `default` is a string that parses as the type (`""` or absent means none);
+  `type` is one of `duration` (Go syntax, `30m`), `string`, `int`, `bool` or `text`
+  (the free-text option: the words of a call that no flag takes; at most one per
+  signature, a second is a `400`);
+  `default` is a string that parses as the type (`""` or absent means none; any
+  string is a `text` default);
   `required` and `help` are optional.
 - `updatedAt` and `updatedBy` are stamped by the backend on every `PUT`; whatever
   the body says for them is ignored.

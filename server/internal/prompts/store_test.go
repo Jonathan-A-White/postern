@@ -142,3 +142,16 @@ func TestValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestOneTextOptionIsValidWithAnyDefaultAndTwoAreNot(t *testing.T) {
+	p := sample("later")
+	p.Signature = []Option{{Flag: "--text", Type: TypeText, Default: "anything at all: 12?", Required: false}}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("one text option: %v", err)
+	}
+	p.Signature = append(p.Signature, Option{Flag: "--more", Type: TypeText})
+	err := p.Validate()
+	if err == nil || !strings.Contains(err.Error(), "free-text") || strings.Contains(err.Error(), "\n") {
+		t.Fatalf("two text options: got %v, want a one-line free-text refusal", err)
+	}
+}

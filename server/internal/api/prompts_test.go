@@ -103,6 +103,34 @@ func TestEveryLicensedKeyReadsThePromptsAndOnlyACockpitKeyWritesThem(t *testing.
 	}
 }
 
+const laterPrompt = `{"name":"later","summary":"Park a want","signature":[{"flag":"--text","type":"text","required":true}],"body":"Park <text>."}`
+
+// A prompt may take one free-text option, the words no flag takes (docs/protocol.md section 23).
+func TestAPromptWithOneTextOptionIsSavedAndTwoAreRefused(t *testing.T) {
+	s := newPromptsServer(t)
+	if status, body := s.putPrompt(t, "governor", "later", laterPrompt); status != http.StatusOK {
+		t.Fatalf("PUT with one text option: status %d (%s), want 200", status, body)
+	}
+	resp := s.do(t, "governor", http.MethodGet, "/api/prompts/later", "")
+	defer resp.Body.Close()
+	var got prompts.Prompt
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil || len(got.Signature) != 1 || got.Signature[0].Type != "text" || !got.Signature[0].Required {
+		t.Fatalf("stored prompt = %+v (%v), want the text option kept", got, err)
+	}
+
+	two := `{"signature":[{"flag":"--text","type":"text"},{"flag":"--more","type":"text"}]}`
+	status, body := s.putPrompt(t, "governor", "twice", two)
+	if status != http.StatusBadRequest {
+		t.Fatalf("PUT with two text options: status %d (%s), want 400", status, body)
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil || !strings.Contains(out.Error, "free-text") || strings.Contains(out.Error, "\n") {
+		t.Fatalf("body %q is not a one-line {error} naming the free-text rule", body)
+	}
+}
+
 func TestABadPromptIsA400WithAOneLineReason(t *testing.T) {
 	s := newPromptsServer(t)
 	cases := []struct{ why, name, body string }{

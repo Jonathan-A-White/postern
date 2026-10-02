@@ -11,6 +11,7 @@ import { db, type MessageRow } from '../../src/data/db';
 import { beadDetailsRepo, messagesRepo } from '../../src/data/repositories';
 import { indexView } from '../../src/model/tree';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
+import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import type { Need, View } from '../../src/model/view';
 
 configure({ asyncUtilTimeout: 5000 });
@@ -50,6 +51,7 @@ function typed(text: string, thread: string | undefined, atMs: number): MessageR
 }
 
 async function fresh(): Promise<void> {
+  freezeClock();
   cleanup();
   forgetTaps();
   await Promise.all([db.settings.clear(), db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.outbox.clear()]);
@@ -59,13 +61,15 @@ async function fresh(): Promise<void> {
 const when = (relative: 'after' | 'before') => (relative === 'after' ? ASKED + 60_000 : ASKED - 60_000);
 
 afterAll(() => {
+  thawClock();
   cleanup();
 });
 
 const feature = await loadFeature('features/answered-in-words.feature');
 
-describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
+describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) => {
   BeforeEachScenario(fresh);
+  AfterEachScenario(thawClock);
 
   const everyOptionDisabled = async (_c: unknown, words: string) => {
     await waitFor(() => {

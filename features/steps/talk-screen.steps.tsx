@@ -1500,4 +1500,153 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(screen.queryByRole('textbox', { name: 'What to tell the Mayor' })).not.toBeInTheDocument();
     });
   });
+  // mw-am3yjh.1: the open talk is rebuilt from its stored rows.
+  const keepsSentCopy = () => {
+    sendTurn.mockImplementation(async (turn: TalkTurn) => {
+      sequence += 1;
+      const txid = `direct:sent${sequence}`;
+      await messagesRepo.put({
+        id: `${txid}:0`,
+        txid,
+        vout: 0,
+        seq: Number.MAX_SAFE_INTEGER,
+        class: 'talk',
+        to: '02'.padEnd(66, '0'),
+        from: '03'.padEnd(66, '0'),
+        ts: 1_759_990_000 + sequence,
+        ciphertext: '',
+        plaintext: encodeTurn(turn),
+        direction: 'sent',
+        read: true,
+      });
+      return { txid, channel: 'direct' };
+    });
+  };
+  const voiceFinishes = async () => {
+    await waitFor(() => expect(speak).toHaveBeenCalled());
+    act(() => {
+      (speak.mock.calls.at(-1)?.[0] as Utterance).onend?.();
+    });
+  };
+  const leavesTheLine = async () => {
+    act(() => navigate('?v=talk'));
+    await screen.findByRole('navigation', { name: 'Places' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Hold to talk|Waiting for the Mayor/ })).not.toBeInTheDocument());
+  };
+  const comesBack = async () => {
+    act(() => navigate('?v=line'));
+    await talkButton('Hold to talk');
+  };
+  const showsTurnAndAnswer = async (_c: unknown, said: string, answer: string) => {
+    await waitFor(() => expect(screen.getByTestId('talk-said')).toHaveTextContent(said));
+    await waitFor(() => expect(screen.getByTestId('talk-answer')).toHaveTextContent(answer));
+    expect(screen.getAllByTestId('talk-turn')).toHaveLength(1);
+  };
+  const spokenOnce = () => {
+    expect(speak).toHaveBeenCalledTimes(1);
+  };
+
+  Scenario('AC-7: the open talk is on the screen again when he leaves and comes back, and its answer is not spoken again (mw-am3yjh.1)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the voice finishes speaking', voiceFinishes);
+    And('he leaves the Talk line and comes back', async () => {
+      await leavesTheLine();
+      await comesBack();
+    });
+    Then('the screen shows his turn {string} and the answer {string}', showsTurnAndAnswer);
+    And('the phone has spoken only once', spokenOnce);
+  });
+
+  Scenario('AC-8: an answer that came while the screen was closed is marked unheard, plays once on his return and is then heard (mw-am3yjh.1)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('he leaves the Talk line', leavesTheLine);
+    And("a sync pages the Mayor's answer {string} and the event for that talk turn", async (_c, text: string) => {
+      await syncAnswer(text);
+    });
+    And('he comes back to the Talk line', comesBack);
+    Then('the screen shows his turn {string} and the answer {string}', showsTurnAndAnswer);
+    And('the answer is marked {string}', async (_c, mark: string) => {
+      expect(await within(screen.getByTestId('talk-answer')).findByText(mark)).toBeInTheDocument();
+    });
+    And('the phone has spoken {string} once', async (_c, text: string) => {
+      await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
+      expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
+    });
+    When('the voice finishes speaking', voiceFinishes);
+    Then('the answer is no longer marked {string}', async (_c, mark: string) => {
+      await waitFor(() => expect(within(screen.getByTestId('talk-answer')).queryByText(mark)).not.toBeInTheDocument());
+    });
+    And('the stored answer is heard', async () => {
+      await waitFor(async () => {
+        const answers = (await messagesRepo.talkTurns()).filter((row) => row.direction === 'received');
+        expect(answers).toHaveLength(1);
+        expect(answers[0].heard).toBe(true);
+      });
+    });
+    When('he leaves the Talk line and comes back', async () => {
+      await leavesTheLine();
+      await comesBack();
+    });
+    Then('the screen again shows his turn {string} and the answer {string}', showsTurnAndAnswer);
+    And('the phone has spoken only once', spokenOnce);
+  });
+
+  Scenario('AC-9: a hold after he comes back continues the same talk (mw-am3yjh.1)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the voice finishes speaking', voiceFinishes);
+    And('he leaves the Talk line and comes back', async () => {
+      await leavesTheLine();
+      await comesBack();
+      // the talk is read back from its rows a moment after the screen opens
+      await screen.findByTestId('talk-turn');
+    });
+    And('he holds the talk button again and says {string} and lets go', holdsAndSays);
+    Then('the last turn sent is turn 2 of the same talk as the first', () => {
+      const [first, second] = sendTurn.mock.calls.map((call) => call[0] as TalkTurn);
+      expect(second.talk).toEqual({ id: first.talk.id, turn: 2 });
+    });
+  });
+
+  Scenario('AC-10: a talk he ended is not on the screen when he comes back (mw-am3yjh.1)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('he taps {string}', async (_c, name: string) => {
+      fireEvent.click(await talkButton(name));
+      await waitFor(() => expect(sendTurn.mock.calls.at(-1)?.[0]).toMatchObject({ role: 'end' }));
+    });
+    And('he leaves the Talk line and comes back', async () => {
+      await leavesTheLine();
+      await comesBack();
+    });
+    Then('the screen shows no turns', async () => {
+      await talkButton('Hold to talk');
+      expect(screen.queryAllByTestId('talk-turn')).toHaveLength(0);
+    });
+  });
+
+  Scenario("AC-11: a Talk button's about starts a new talk rather than continuing the open one (mw-am3yjh.1)", ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('he opens the line about the bead {string} titled {string}', async (_c, id: string, title: string) => {
+      await leavesTheLine();
+      act(() => navigate(formatRoute({ view: 'line', about: { kind: 'bead', id, title } })));
+      await talkButton('Hold to talk');
+    });
+    Then('the screen shows no turns', async () => {
+      expect(await screen.findByTestId('talk-about')).toHaveTextContent('Nine');
+      expect(screen.queryAllByTestId('talk-turn')).toHaveLength(0);
+    });
+  });
 });

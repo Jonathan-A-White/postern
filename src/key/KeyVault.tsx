@@ -15,7 +15,8 @@ import {
   unwrapKey,
 } from '../services/vault';
 import { fetchBalanceSatoshis, mintCostSatoshis, mintMyLicence } from '../services/mint';
-import { addressForPublicKey, getCachedLicenceStatus } from '../services/licence';
+import { addressForPublicKey, checkLicence, getCachedLicenceStatus, type LicenceStatus } from '../services/licence';
+import { LEGACY_LICENCE_COLLECTION } from '../services/collections';
 import { LicenceExplainer } from '../licence';
 import { MyPublicKey } from './KeyQr';
 import { IssueLicences } from './IssueLicences';
@@ -35,15 +36,28 @@ type BalanceState =
   | { name: 'loaded'; satoshis: number }
   | { name: 'error'; message: string };
 
-type LicenceState = { name: 'checking' } | { name: 'not-licensed' } | { name: 'licensed'; txid: string };
+type LicenceState =
+  | { name: 'checking' }
+  | { name: 'not-licensed' }
+  | { name: 'licensed'; txid: string }
+  | { name: 'licensed-legacy'; txid: string };
 
-// Pure: reads the cached licence-status settings row the gate's own checks keep up to
-// date (src/services/licence.ts), so opening the key screen never has to touch the
-// chain itself. Called as `void determineLicenceState().then(setLicenceState)` so the
-// setter is applied at the call site (see the balance effect for the same pattern).
-async function determineLicenceState(): Promise<LicenceState> {
-  const cached = await getCachedLicenceStatus();
-  return cached?.held ? { name: 'licensed', txid: cached.outpoint.txid } : { name: 'not-licensed' };
+// Reads the cached licence-status settings row the gate's own checks keep up to date
+// (src/services/licence.ts), so opening the key screen only touches the chain for a held
+// row cached before the collection was recorded (mw-kiubh7.1): that one is checked afresh,
+// and if the chain cannot be reached it shows as plain licensed. Called as
+// `void determineLicenceState(hex).then(setLicenceState)` so the setter is applied at the
+// call site (see the balance effect for the same pattern).
+async function determineLicenceState(publicKeyHex: string): Promise<LicenceState> {
+  let status: LicenceStatus | undefined = await getCachedLicenceStatus();
+  if (status?.held && status.collection === undefined) {
+    status = await checkLicence(publicKeyHex).catch(() => status);
+  }
+  if (!status?.held) return { name: 'not-licensed' };
+  const txid = status.outpoint.txid;
+  return status.collection === LEGACY_LICENCE_COLLECTION
+    ? { name: 'licensed-legacy', txid }
+    : { name: 'licensed', txid };
 }
 
 type Screen =
@@ -171,7 +185,7 @@ export function KeyVault() {
 
   useEffect(() => {
     if (screen.name !== 'unlocked') return;
-    void determineLicenceState().then(setLicenceState);
+    void determineLicenceState(publicKeyHexFromMasterKey(screen.key)).then(setLicenceState);
   }, [screen]);
 
   function handleRefreshBalance() {
@@ -187,6 +201,24 @@ export function KeyVault() {
     } catch (err) {
       setMintOutcome({ name: 'error', message: (err as Error).message });
     }
+  }
+
+  // The one mint button, labelled for the state it is shown in: the balance rules and the
+  // pending marker (mint.ts) are the same whichever collection the old licence is in.
+  function renderMintButton(label: string, key: Uint8Array) {
+    return (
+      <button
+        className="inline-flex h-11 items-center justify-center rounded-xl bg-accent px-4 font-semibold text-accent-fg disabled:opacity-45"
+        disabled={
+          balanceState.name !== 'loaded' ||
+          balanceState.satoshis < mintCostSatoshis() ||
+          mintOutcome.name === 'minting'
+        }
+        onClick={() => void handleMint(key)}
+      >
+        {label}
+      </button>
+    );
   }
 
   async function handleGenerate() {
@@ -454,7 +486,7 @@ export function KeyVault() {
             </>
           )}
 
-          {licenceState.name === 'licensed' ? (
+          {licenceState.name === 'licensed' || licenceState.name === 'licensed-legacy' ? (
             <>
               <p>Licensed</p>
               <p>
@@ -463,20 +495,16 @@ export function KeyVault() {
                   {licenceState.txid}
                 </a>
               </p>
+              {licenceState.name === 'licensed-legacy' && (
+                <>
+                  <p>This licence is in the old collection (spell-forge's). Mint one in postern.</p>
+                  {renderMintButton('Mint my licence in postern', screen.key)}
+                </>
+              )}
             </>
           ) : (
             <>
-              <button
-                className="inline-flex h-11 items-center justify-center rounded-xl bg-accent px-4 font-semibold text-accent-fg disabled:opacity-45"
-                disabled={
-                  balanceState.name !== 'loaded' ||
-                  balanceState.satoshis < mintCostSatoshis() ||
-                  mintOutcome.name === 'minting'
-                }
-                onClick={() => void handleMint(screen.key)}
-              >
-                Mint my licence (testnet)
-              </button>
+              {renderMintButton('Mint my licence (testnet)', screen.key)}
               <LicenceExplainer />
             </>
           )}

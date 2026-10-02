@@ -15,6 +15,7 @@ import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { chainConfig } from 'spell-forge-bsv';
 import { KeyVault } from '../../src/key';
+import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../../src/services/collections';
 import { db } from '../../src/data/db';
 import { addressForPublicKey, checkLicence, getCachedLicenceStatus } from '../../src/services/licence';
 import { mintCostSatoshis } from '../../src/services/mint';
@@ -334,7 +335,7 @@ describeFeature(feature, ({ Scenario }) => {
       const key = await deriveMasterKey(FUNDED_MNEMONIC);
       const publicKeyHex = publicKeyHexFromMasterKey(key);
       const address = addressForPublicKey(publicKeyHex);
-      fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(chainConfig.collectionId, address));
+      fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(COCKPIT_COLLECTION, address));
       await checkLicence(publicKeyHex, fakeProvider);
     });
 
@@ -396,7 +397,7 @@ describeFeature(feature, ({ Scenario }) => {
       const key = await deriveMasterKey(FUNDED_MNEMONIC);
       const publicKeyHex = publicKeyHexFromMasterKey(key);
       const address = addressForPublicKey(publicKeyHex);
-      fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(chainConfig.collectionId, address));
+      fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(COCKPIT_COLLECTION, address));
       await checkLicence(publicKeyHex, fakeProvider);
     });
 
@@ -411,6 +412,65 @@ describeFeature(feature, ({ Scenario }) => {
     Then('no "What is a licence?" control is offered', async () => {
       await screen.findByText('Licensed');
       expect(screen.queryByText('What is a licence?')).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario(
+    'mw-kiubh7.1 AC1: a licence in the old collection says so and offers the mint in postern',
+    ({ Given, When, Then, And }) => {
+      Given('a key already holds a licence in the old collection', async () => {
+        await freshScreen();
+        const key = await deriveMasterKey(FUNDED_MNEMONIC);
+        const publicKeyHex = publicKeyHexFromMasterKey(key);
+        const address = addressForPublicKey(publicKeyHex);
+        fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+        await checkLicence(publicKeyHex, fakeProvider);
+      });
+
+      When('the key screen is opened and unlocked', async () => {
+        render(<KeyVault />);
+        await userEvent.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
+        await userEvent.type(screen.getByLabelText('Recovery phrase'), FUNDED_MNEMONIC);
+        await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+        await screen.findByText('Key unlocked');
+      });
+
+      Then('the screen says "Licensed" and that the licence is in the old collection', async () => {
+        expect(await screen.findByText('Licensed')).toBeInTheDocument();
+        expect(
+          screen.getByText("This licence is in the old collection (spell-forge's). Mint one in postern."),
+        ).toBeInTheDocument();
+      });
+
+      And('"Mint my licence in postern" is offered and "Mint my licence (testnet)" is not', () => {
+        expect(screen.getByRole('button', { name: 'Mint my licence in postern' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Mint my licence (testnet)' })).not.toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario('mw-kiubh7.1 AC2: a licence in postern shows no mint button', ({ Given, When, Then }) => {
+    Given('a key already holds a licence in postern', async () => {
+      await freshScreen();
+      const key = await deriveMasterKey(FUNDED_MNEMONIC);
+      const publicKeyHex = publicKeyHexFromMasterKey(key);
+      const address = addressForPublicKey(publicKeyHex);
+      fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(COCKPIT_COLLECTION, address));
+      await checkLicence(publicKeyHex, fakeProvider);
+    });
+
+    When('the key screen is opened and unlocked', async () => {
+      render(<KeyVault />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
+      await userEvent.type(screen.getByLabelText('Recovery phrase'), FUNDED_MNEMONIC);
+      await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      await screen.findByText('Key unlocked');
+    });
+
+    Then('the screen says "Licensed" with no mint button of either kind', async () => {
+      await screen.findByText('Licensed');
+      expect(screen.queryByText(/old collection/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();
     });
   });
 });

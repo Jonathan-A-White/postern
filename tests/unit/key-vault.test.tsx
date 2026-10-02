@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { chainConfig } from 'spell-forge-bsv';
 import { db } from '../../src/data/db';
 import { KeyVault } from '../../src/key';
 import { addressForPublicKey, checkLicence } from '../../src/services/licence';
@@ -9,6 +8,7 @@ import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../.
 import { installMockAuthenticator, removeMockAuthenticator } from '../support/webauthn-mock';
 import { lock } from '../../src/services/keySession';
 import { FakeChainProvider } from '../support/fake-chain-provider';
+import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../../src/services/collections';
 import { mintRecordTxHex } from '../support/nftgate-fixtures';
 
 let fakeProvider = new FakeChainProvider();
@@ -151,7 +151,7 @@ describe('KeyVault', () => {
     const key = await deriveMasterKey(mnemonic);
     const publicKeyHex = publicKeyHexFromMasterKey(key);
     const address = addressForPublicKey(publicKeyHex);
-    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(chainConfig.collectionId, address));
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(COCKPIT_COLLECTION, address));
     await checkLicence(publicKeyHex, fakeProvider);
 
     const user = userEvent.setup();
@@ -167,12 +167,96 @@ describe('KeyVault', () => {
     expect(screen.queryByText(/Needs .* testnet sats/)).not.toBeInTheDocument();
   });
 
+  async function openUnlocked(mnemonic: string) {
+    const user = userEvent.setup();
+    render(<KeyVault />);
+    await user.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
+    await user.type(screen.getByLabelText('Recovery phrase'), mnemonic);
+    await user.click(screen.getByRole('button', { name: 'Restore' }));
+    await screen.findByText('Key unlocked');
+  }
+
+  it("says a counted licence in the old collection is old, and offers 'Mint my licence in postern'", async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    const publicKeyHex = publicKeyHexFromMasterKey(key);
+    const address = addressForPublicKey(publicKeyHex);
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+    await checkLicence(publicKeyHex, fakeProvider);
+
+    await openUnlocked(mnemonic);
+
+    expect(await screen.findByText('Licensed')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'e'.repeat(64) })).toBeInTheDocument();
+    expect(
+      screen.getByText("This licence is in the old collection (spell-forge's). Mint one in postern."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mint my licence in postern' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mint my licence (testnet)' })).not.toBeInTheDocument();
+  });
+
+  it("applies the not-licensed balance rules to 'Mint my licence in postern'", async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    const publicKeyHex = publicKeyHexFromMasterKey(key);
+    const address = addressForPublicKey(publicKeyHex);
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+    await checkLicence(publicKeyHex, fakeProvider);
+
+    await openUnlocked(mnemonic);
+
+    expect(await screen.findByText(/Needs .* testnet sats/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mint my licence in postern' })).toBeDisabled();
+  });
+
+  it('shows a licence in postern as plain Licensed, with no mint button and no old-collection line', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    const publicKeyHex = publicKeyHexFromMasterKey(key);
+    const address = addressForPublicKey(publicKeyHex);
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(COCKPIT_COLLECTION, address));
+    await checkLicence(publicKeyHex, fakeProvider);
+
+    await openUnlocked(mnemonic);
+
+    expect(await screen.findByText('Licensed')).toBeInTheDocument();
+    expect(screen.queryByText(/old collection/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();
+  });
+
+  it("offers today's 'Mint my licence (testnet)' when no licence is held", async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    await checkLicence(publicKeyHexFromMasterKey(key), fakeProvider);
+
+    await openUnlocked(mnemonic);
+
+    expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mint my licence in postern' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/old collection/)).not.toBeInTheDocument();
+  });
+
+  it('checks the chain afresh when the cached held status has no collection (an old row)', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    const address = addressForPublicKey(publicKeyHexFromMasterKey(key));
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+    await db.settings.put({
+      key: 'licence-status',
+      value: { held: true, outpoint: { txid: 'e'.repeat(64), vout: 0 }, checkedAt: new Date().toISOString() },
+    });
+
+    await openUnlocked(mnemonic);
+
+    expect(await screen.findByRole('button', { name: 'Mint my licence in postern' })).toBeInTheDocument();
+  });
+
   it('wraps the testnet address and the minted licence link so long hex does not overflow the screen', async () => {
     const mnemonic = createMnemonic();
     const key = await deriveMasterKey(mnemonic);
     const publicKeyHex = publicKeyHexFromMasterKey(key);
     const address = addressForPublicKey(publicKeyHex);
-    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(chainConfig.collectionId, address));
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(COCKPIT_COLLECTION, address));
     await checkLicence(publicKeyHex, fakeProvider);
 
     const user = userEvent.setup();

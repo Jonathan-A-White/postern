@@ -72,3 +72,14 @@ Feature: Minting a licence
     Given a key already holds a licence
     When the key screen is opened and unlocked
     Then no "What is a licence?" control is offered
+
+  Scenario: mw-kiubh7.1 AC1: a licence in the old collection says so and offers the mint in postern
+    Given a key already holds a licence in the old collection
+    When the key screen is opened and unlocked
+    Then the screen says "Licensed" and that the licence is in the old collection
+    And "Mint my licence in postern" is offered and "Mint my licence (testnet)" is not
+
+  Scenario: mw-kiubh7.1 AC2: a licence in postern shows no mint button
+    Given a key already holds a licence in postern
+    When the key screen is opened and unlocked
+    Then the screen says "Licensed" with no mint button of either kind

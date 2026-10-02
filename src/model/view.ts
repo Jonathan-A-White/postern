@@ -24,6 +24,14 @@ export interface BeadPath {
   harness: string;
 }
 
+/**
+ * Whether a bead can be dispatched: its keys name a rig and a target branch. Release un-holds a bead
+ * so dispatch takes it; with no path there is nothing for dispatch to take, so Release has no meaning.
+ */
+export function hasDispatchPath(path: BeadPath | undefined): boolean {
+  return !!path && path.rig !== '' && path.branch !== '';
+}
+
 export interface ViewBead {
   id: string;
   title: string;

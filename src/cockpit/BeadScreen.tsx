@@ -24,7 +24,7 @@ import { mergeConversation, type ConversationItem } from '../model/conversation'
 import { groupPosts } from '../model/postThreads';
 import { detailAsOf } from '../model/events';
 import { unsettledNeeds, waitsFor, waitsOnLinks } from '../model/needs';
-import type { BeadDetail, BeadPath, ViewBead } from '../model/view';
+import { hasDispatchPath, type BeadDetail, type BeadPath, type ViewBead } from '../model/view';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
 import { useScrollMemory } from '../nav/scrollMemory';
@@ -93,6 +93,8 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
   const verified = useOneTap(id, 'verified');
   // An epic's Release is the Map's Release N held, offered only while a story under it is held, whatever the epic's own status.
   const held = bead && index && epic ? epicStats(id, index).counts.held : 0;
+  // Release un-holds a bead for dispatch, which needs a rig and a target branch: no path, no Release.
+  const canRelease = hasDispatchPath(detail?.path ?? bead?.path);
   const hasStories = (detail?.children.length ?? 0) > 0 || (index?.children.get(id)?.length ?? 0) > 0;
   const verify = index?.needsByBead.get(id)?.some((need) => need.kind === 'verify');
   const stale = index?.needsByBead.get(id)?.some((need) => need.kind === 'stale');
@@ -100,6 +102,7 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
     <div className="flex flex-wrap items-center gap-2" aria-label="Actions">
       {!epic &&
         status === 'deferred' &&
+        canRelease &&
         (release.waiting ? (
           <WaitingNote />
         ) : (

@@ -18,6 +18,8 @@ var MessageClasses = map[string]bool{
 	ClassTalk:         true,
 	ClassCall:         true,
 	ClassEvents:       true,
+	ClassCard:         true,
+	ClassCardUpdate:   true,
 }
 
 // ClassGrist is an app's AI work for the factory, and the mill's answer to
@@ -48,6 +50,13 @@ const ClassEvents = "events"
 
 // LaneEmergency is the clear `lane` of an unbatched emergency events record, the one events record that is pushed.
 const LaneEmergency = "emergency"
+
+// ClassCard is a live card from the Mayor to the Governor (docs/protocol.md §24): like a
+// talk turn it reaches the event stream and nothing else, never a push or a hook.
+const ClassCard = "card"
+
+// ClassCardUpdate is a change to a live card (docs/protocol.md §24), evented like the card.
+const ClassCardUpdate = "card-update"
 
 // Envelope is docs/protocol.md §1's clear message payload. The backend never
 // decrypts Ct; it only checks the envelope's shape.

@@ -182,11 +182,11 @@ func newApp(cfg config.Config) (*app, error) {
 }
 
 // buildFanout is the one fan-out for "a record was indexed": web push (silent
-// while this host is in standby) for every record but talk, call and events, the event hub,
+// while this host is in standby) for every record but talk, call, events and card, the event hub,
 // the on-message hook when configured (which runs in standby too: mw decides
-// what to apply) for every record but grist, talk, call and events, and the on-grist hook
-// for grist addressed to the mill. A talk, call or events record reaches the hub
-// only (docs/protocol.md §20-§22), but for the Mayor's ring, which is pushed too (§21), an
+// what to apply) for every record but grist, talk, call, events and card, and the on-grist hook
+// for grist addressed to the mill. A talk, call, events, card or card-update record reaches the hub
+// only (docs/protocol.md §20-§22, §24), but for the Mayor's ring, which is pushed too (§21), an
 // events record in the emergency lane (§22), and a talk answer from the Mayor's key (§20),
 // which is pushed with no words so a backgrounded phone hears of it.
 func buildFanout(cfg config.Config, home *standby.Monitor, pusher, hub notify.Notifier) notify.Fanout {
@@ -213,11 +213,12 @@ func isGrist(rec index.Record) bool {
 }
 
 // isTalk reports whether a record is a turn on the Talk line
-// (docs/protocol.md §20), a call record (§21) or an events batch (§22): no push
-// and no hook runs for one, but for a ring (isRing).
+// (docs/protocol.md §20), a call record (§21), an events batch (§22) or a live card or
+// its update (§24): no push and no hook runs for one, but for a ring (isRing).
 func isTalk(rec index.Record) bool {
 	env, err := record.ParseEnvelope(rec.Payload)
-	return err == nil && (env.Class == record.ClassTalk || env.Class == record.ClassCall || env.Class == record.ClassEvents)
+	return err == nil && (env.Class == record.ClassTalk || env.Class == record.ClassCall || env.Class == record.ClassEvents ||
+		env.Class == record.ClassCard || env.Class == record.ClassCardUpdate)
 }
 
 // isTalkAnswer reports whether a record is a turn on the Talk line from the Mayor's key to

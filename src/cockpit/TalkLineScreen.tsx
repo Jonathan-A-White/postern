@@ -224,7 +224,9 @@ function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 export function TalkLineScreen() {
-  const talk = useTalkLine();
+  const route = useRoute();
+  // A Talk button elsewhere says what a new talk is about; the open talk is left as it is.
+  const talk = useTalkLine({ fresh: route.view === 'line' && route.about !== undefined });
   const { line } = talk;
   const { scroller, onScroll, onTouch, pill, showNew } = useFollowEnd(talk.log);
   const listening = line.phase === 'listening';
@@ -236,7 +238,6 @@ export function TalkLineScreen() {
   const callSent = waitingCall(callRows);
   const outbox = useOutbox();
   const callWaiting = outbox.find((row) => row.kind === 'call' && isUnsent(row));
-  const route = useRoute();
   const calledFrom = route.view === 'line' ? route.call : undefined;
   const answered = useAnsweredRing();
   const ring = ringNote(callRows, calledFrom ?? answered);
@@ -312,6 +313,11 @@ export function TalkLineScreen() {
                 {entry.answer !== undefined && (
                   <div data-testid="talk-answer" className="mr-auto flex max-w-[88%] flex-col gap-1">
                     <p className="rounded-2xl border border-line bg-surface px-3.5 py-2 text-[15px] break-words">{entry.answer}</p>
+                    {entry.heard === false && (
+                      <span data-testid="talk-unheard" className="text-[11.5px] text-needs">
+                        Not heard yet
+                      </span>
+                    )}
                     {entry.links && entry.links.length > 0 && (
                       <span className="flex flex-wrap gap-1.5" data-testid="talk-links">
                         {entry.links.map((id) => (

@@ -5,7 +5,10 @@
 // screen awake while a talk is open.
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { initialTalkLine, endTurn, talkLine, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
-import { initialTalkScreen, talkScreen } from '../model/talkScreen';
+import { initialTalkScreen, talkScreenReducer } from '../model/talkScreen';
+import { openTalk } from '../model/talkLog';
+import { messagesRepo } from '../data/repositories';
+import { writeBehind } from '../services/deliver';
 import { isListenSupported, startListening, type ListenMode, type ListenSession } from '../services/listen';
 import { canChooseInput, openBluetoothInput } from '../services/micInput';
 import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
@@ -27,11 +30,15 @@ function pageHidden(): boolean {
   return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 }
 
-export function useTalkLine() {
-  const [{ line, log }, dispatch] = useReducer(talkScreen, initialTalkLine, initialTalkScreen);
+const NO_ROWS: never[] = [];
+
+/** `fresh`: the screen was opened to start a new talk (a Talk button says what it is about), so the open one is left as it is. */
+export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
+  const [{ line, log }, dispatch] = useReducer(talkScreenReducer, initialTalkLine, initialTalkScreen);
   const feed = useCallback((event: TalkLineEvent) => dispatch({ event, at: now() }), []);
   const setAbout = useCallback((about?: TalkAbout) => feed({ type: 'setAbout', about }), [feed]);
-  const turns = useTalkTurns();
+  const stored = useTalkTurns();
+  const turns = stored ?? NO_ROWS;
   const [transcript, setTranscript] = useState('');
   const [notice, setNotice] = useState<string | undefined>();
   const [mode, setMode] = useState<ListenMode | undefined>();
@@ -59,6 +66,22 @@ export function useTalkLine() {
     hereNow.current = here;
   }, [here]);
 
+  // The open talk is read back from its stored rows once they are read, so leaving the screen or
+  // reloading the app loses nothing: his turns and the Mayor's answers are on the screen again, the next
+  // hold continues the same talk, and an answer he never heard waits to be played.
+  const seeded = useRef(fresh);
+  // The row of the Mayor's answer the line is speaking, so that playing it can be written down.
+  const speakingRow = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (stored === undefined || seeded.current) return;
+    seeded.current = true;
+    const open = openTalk(stored, now());
+    if (!open) return;
+    for (const id of open.rows) handled.current.add(id);
+    speakingRow.current = open.unheardRow;
+    dispatch({ seed: open });
+  }, [stored]);
+
   // His turn goes out once, whenever the line asks for it.
   const outgoing = line.outgoing;
   useEffect(() => {
@@ -82,6 +105,7 @@ export function useTalkLine() {
       }
       if (talkLine(line, { type: 'incoming', turn }) !== line) {
         handled.current.add(row.id);
+        if (turn.role === 'answer') speakingRow.current = row.id;
         feed({ type: 'incoming', turn, hidden: pageHidden() });
         return;
       }
@@ -106,6 +130,17 @@ export function useTalkLine() {
       stopSpeaking();
     };
   }, [spoken, feed]);
+
+  // An answer is heard once it has been played to its end or he has stopped it: that is written on its row,
+  // so it never plays by itself again. One he left the screen on while it played is not heard.
+  const playingNow = line.phase === 'speaking' && line.speaking?.holding === false && line.speaking.unspoken !== true;
+  const wasPlaying = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const playing = playingNow ? speakingRow.current : undefined;
+    const before = wasPlaying.current;
+    wasPlaying.current = playing;
+    if (before !== undefined && before !== playing) writeBehind(messagesRepo.markHeard(before), 'that the answer was heard');
+  }, [playingNow]);
 
   // An answer that came while he had left the app (Android suspends the voice of a page that is
   // not showing) is told by a notification with no words, and spoken the moment he returns.

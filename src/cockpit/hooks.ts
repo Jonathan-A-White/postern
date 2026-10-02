@@ -69,9 +69,9 @@ export function useMessages(): MessageRow[] {
   return useLiveQuery(() => messagesRepo.getAllOldestFirst(), [], [] as MessageRow[]);
 }
 
-/** The Talk line's turns, oldest first (class `talk`, docs/protocol.md §20). */
-export function useTalkTurns(): MessageRow[] {
-  return useLiveQuery(() => messagesRepo.talkTurns(), [], [] as MessageRow[]);
+/** The Talk line's turns, oldest first (class `talk`, docs/protocol.md §20); undefined until they have been read. */
+export function useTalkTurns(): MessageRow[] | undefined {
+  return useLiveQuery(() => messagesRepo.talkTurns(), [], undefined as MessageRow[] | undefined);
 }
 
 /** The ring he last opened the Talk line from (docs/protocol.md §21), or undefined. */

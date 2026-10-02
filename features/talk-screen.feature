@@ -426,3 +426,58 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he holds the talk button and says "What landed today?" and lets go
     And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
     Then the screen shows "Three things landed." as the answer
+
+  # mw-am3yjh.1: the open talk is rebuilt from its stored rows, so leaving or reloading loses nothing.
+  Scenario: AC-7: the open talk is on the screen again when he leaves and comes back, and its answer is not spoken again (mw-am3yjh.1)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet"
+    And the voice finishes speaking
+    And he leaves the Talk line and comes back
+    Then the screen shows his turn "What landed today?" and the answer "Three things landed."
+    And the phone has spoken only once
+
+  Scenario: AC-8: an answer that came while the screen was closed is marked unheard, plays once on his return and is then heard (mw-am3yjh.1)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And he leaves the Talk line
+    And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
+    And he comes back to the Talk line
+    Then the screen shows his turn "What landed today?" and the answer "Three things landed."
+    And the answer is marked "Not heard yet"
+    And the phone has spoken "Three things landed." once
+    When the voice finishes speaking
+    Then the answer is no longer marked "Not heard yet"
+    And the stored answer is heard
+    When he leaves the Talk line and comes back
+    Then the screen again shows his turn "What landed today?" and the answer "Three things landed."
+    And the phone has spoken only once
+
+  Scenario: AC-9: a hold after he comes back continues the same talk (mw-am3yjh.1)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet"
+    And the voice finishes speaking
+    And he leaves the Talk line and comes back
+    And he holds the talk button again and says "Tell me the second" and lets go
+    Then the last turn sent is turn 2 of the same talk as the first
+
+  Scenario: AC-10: a talk he ended is not on the screen when he comes back (mw-am3yjh.1)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet"
+    And he taps "End talk"
+    And he leaves the Talk line and comes back
+    Then the screen shows no turns
+
+  Scenario: AC-11: a Talk button's about starts a new talk rather than continuing the open one (mw-am3yjh.1)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet"
+    And he opens the line about the bead "mw-9" titled "Nine"
+    Then the screen shows no turns

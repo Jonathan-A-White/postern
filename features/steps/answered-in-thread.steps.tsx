@@ -15,6 +15,7 @@ import { beadDetailsRepo, messagesRepo, viewRepo } from '../../src/data/reposito
 import { encodeQuestion } from '../../src/services/questions';
 import { encodeThreadedMessage } from '../../src/services/threads';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
+import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 
 configure({ asyncUtilTimeout: 5000 });
 
@@ -45,6 +46,7 @@ function row(plaintext: string, options: { cls?: string; direction: 'sent' | 're
 }
 
 async function fresh(): Promise<void> {
+  freezeClock();
   cleanup();
   forgetTaps();
   sequence = 0;
@@ -74,14 +76,16 @@ async function openThread(a: string, b: string): Promise<void> {
 const when = (relative: 'after' | 'before') => (relative === 'after' ? ASKED + 60_000 : ASKED - 60_000);
 
 afterAll(() => {
+  thawClock();
   cleanup();
   window.history.pushState({}, '', '/');
 });
 
 const feature = await loadFeature('features/answered-in-thread.feature');
 
-describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
+describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) => {
   BeforeEachScenario(fresh);
+  AfterEachScenario(thawClock);
 
   const optionButtons = (options: string[]) => options.map((name) => screen.getByRole('button', { name: new RegExp(`^${name}`) }));
   const everyOptionDisabled = async () => {

@@ -19,6 +19,7 @@ import { encodeReply } from '../../src/services/questions';
 import { encodeThreadedMessage } from '../../src/services/threads';
 import type { BeadComment, BeadDetail, Need, View, ViewBead } from '../../src/model/view';
 import { fixtureView, handsStep, MAYOR } from '../../tests/support/cockpit-fixture';
+import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
 configure({ asyncUtilTimeout: 5000 });
@@ -119,6 +120,7 @@ async function openPage(): Promise<void> {
 }
 
 async function fresh(): Promise<void> {
+  freezeClock();
   cleanup();
   lock();
   vi.unstubAllGlobals();
@@ -133,6 +135,7 @@ async function fresh(): Promise<void> {
 }
 
 afterAll(() => {
+  thawClock();
   cleanup();
   lock();
   vi.unstubAllGlobals();
@@ -141,8 +144,9 @@ afterAll(() => {
 
 const feature = await loadFeature('features/events-screens.feature');
 
-describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
+describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) => {
   BeforeEachScenario(fresh);
+  AfterEachScenario(thawClock);
 
   const pageOpen = async () => {
     await storeView();

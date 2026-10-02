@@ -16,6 +16,7 @@ import { encryptMessage } from '../../src/services/messages';
 import { encodeReply } from '../../src/services/questions';
 import { decodeView, type Need, type View, type ViewBead } from '../../src/model/view';
 import { fixtureView, MAYOR } from '../../tests/support/cockpit-fixture';
+import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
 configure({ asyncUtilTimeout: 5000 });
@@ -92,6 +93,7 @@ async function storedStatus(): Promise<string | undefined> {
 }
 
 async function fresh(): Promise<void> {
+  freezeClock();
   cleanup();
   page = [];
   viewFetches = 0;
@@ -101,14 +103,16 @@ async function fresh(): Promise<void> {
 }
 
 afterAll(() => {
+  thawClock();
   cleanup();
   window.history.pushState({}, '', '/');
 });
 
 const feature = await loadFeature('features/events-projection.feature');
 
-describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
+describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) => {
   BeforeEachScenario(fresh);
+  AfterEachScenario(thawClock);
 
   const viewAndCursor = async (_c: unknown, _bead: string, cursor: number) => {
     await storeView(viewWith('open'));

@@ -517,7 +517,8 @@ The backend:
    80 runes, when it has one and is a `message`, `decision-needed`, `landing` or
    `alarm`; §1), a `message` event on §10's stream, and the
    on-message hook (`POSTERN_ON_MESSAGE`, `docs/api.md`). A `talk` record or a
-   `call` record or an `events` record gets the `message` event only (§20, §21, §22), but
+   `call` record or an `events` record or a `card` or `card-update` record gets the `message`
+   event only (§20, §21, §22, §24: evented, never pushed), but
    for the Mayor's ring (a `call` record whose clear `role` is `ring`), which is pushed too,
    titled `The Mayor is calling`, its `summary` the body (§21).
 

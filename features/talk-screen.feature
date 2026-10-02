@@ -481,3 +481,39 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the Mayor answers "Three things landed." on model "sonnet"
     And he opens the line about the bead "mw-9" titled "Nine"
     Then the screen shows no turns
+
+  Scenario: AC-12: his earlier talks are listed above the open one, oldest first, each under a divider with its day and time (mw-am3yjh.2)
+    Given two earlier talks and an open talk are stored
+    When the Talk line is opened
+    Then the screen lists the earlier talks "Why did the build fail?" then "What is next?" above the open talk "Any news?"
+    And each earlier talk is under a divider with its day and time
+    And the talk button reads "Hold to talk"
+
+  Scenario: AC-13: every Mayor answer, earlier or open, has a speaker button that reads it and, tapped again, stops it (mw-am3yjh.2)
+    Given two earlier talks and an open talk are stored
+    When the Talk line is opened
+    And he taps the speaker button of the earlier answer "A cache went stale."
+    Then the phone speaks "A cache went stale."
+    And that speaker button reads "Stop reading"
+    When he taps that speaker button again
+    Then speech is stopped
+    And that speaker button now reads "Read the answer aloud"
+    When he taps the speaker button of the open answer "Not yet."
+    Then the phone then speaks "Not yet."
+
+  Scenario: AC-14: a long history loads a page of talks at a time as he scrolls up (mw-am3yjh.2)
+    Given 7 earlier talks and an open talk are stored
+    When the Talk line is opened
+    Then the screen lists 5 earlier talks
+    When he scrolls up to the top of the talk
+    Then the screen now lists 7 earlier talks
+    And the oldest earlier talk is at the top
+
+  Scenario: AC-15: the earlier talks leave the open talk and the controls as they were (mw-am3yjh.2)
+    Given two earlier talks and an open talk are stored
+    When the Talk line is opened
+    And the open talk "Any news?" has been read back
+    And he holds the talk button and says "What else?" and lets go
+    Then the last turn sent is turn 2 of the open talk
+    And the screen lists 2 earlier talks
+    And the open talk shows 2 turns

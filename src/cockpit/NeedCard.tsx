@@ -13,12 +13,13 @@ import type { TalkAbout } from '../model/talkLine';
 import { navigate } from '../router';
 import { threadKey } from '../services/threads';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
-import { speak } from '../services/speech';
+import { speak, stop as stopSpeaking } from '../services/speech';
 import type { Need } from '../model/view';
 import { answeredByComment, answeredInWords, orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
+import { useSpeaking } from './useSpeaking';
 import { useAnswers, useBeadTitles, useOutbox, useStoredComments, useThreadMessages } from './hooks';
 import { pendingAnswer } from '../model/outbox';
 import { OutboxMark } from './OutboxMark';
@@ -59,6 +60,8 @@ function questionWords(text: string): { headline: string; rest: string } {
 
 export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardProps) {
   const titles = useBeadTitles();
+  const speakKey = `need:${need.kind}:${need.since}`;
+  const reading = useSpeaking(speakKey);
   const meta = NEED_META[need.kind];
   const { busy, run } = useSend();
   // An approval or a verification is one signed transaction: one tap, then it waits for the view.
@@ -311,7 +314,13 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
             Open
           </a>
         )}
-        <IconButton icon="speaker" label="Read aloud" size="sm" className="ml-auto" onClick={() => speak(spokenText(need), { titles })} />
+        <IconButton
+          icon={reading ? 'stop' : 'speaker'}
+          label={reading ? 'Stop reading' : 'Read aloud'}
+          size="sm"
+          className="ml-auto"
+          onClick={() => (reading ? stopSpeaking() : speak(spokenText(need), { titles, key: speakKey }))}
+        />
       </div>
     </article>
   );

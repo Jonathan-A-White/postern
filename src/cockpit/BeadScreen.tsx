@@ -30,7 +30,8 @@ import { navigate } from '../router';
 import { useScrollMemory } from '../nav/scrollMemory';
 import { sendAction, useSend } from './send';
 import { priorityLabel, priorityTone, statusWord, typeIcon } from './labels';
-import { speak } from '../services/speech';
+import { speak, stop as stopSpeaking } from '../services/speech';
+import { useSpeaking } from './useSpeaking';
 import { markThreadSeen } from '../services/seen';
 
 function RelationChips({ ids, index, label }: { ids: string[]; index?: ViewIndex; label: string }) {
@@ -168,6 +169,8 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
 
 function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewBead; detail?: BeadDetail; index?: ViewIndex; status: string }) {
   const titles = useBeadTitles();
+  const speakKey = `bead:${id}`;
+  const reading = useSpeaking(speakKey);
   const [showAcceptance, setShowAcceptance] = useState(false);
   const title = detail?.title ?? bead?.title ?? id;
   const type = detail?.type ?? bead?.type ?? 'task';
@@ -235,7 +238,16 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
 
       <section className="flex flex-col gap-2" aria-label="Description">
         <SectionTitle
-          action={description ? <IconButton icon="speaker" label="Read the description aloud" size="sm" onClick={() => speak(`${title}. ${description}`, { titles })} /> : undefined}
+          action={
+            description ? (
+              <IconButton
+                icon={reading ? 'stop' : 'speaker'}
+                label={reading ? 'Stop reading' : 'Read the description aloud'}
+                size="sm"
+                onClick={() => (reading ? stopSpeaking() : speak(`${title}. ${description}`, { titles, key: speakKey }))}
+              />
+            ) : undefined
+          }
         >
           Description
         </SectionTitle>

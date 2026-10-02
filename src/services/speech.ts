@@ -71,6 +71,34 @@ export interface SpeakOptions {
   onEnd?: () => void;
   /** Bead titles, so an id is said as its title (mw-gq6.224). */
   titles?: TitleLookup;
+  /** Who started this speech, so that speaker's button can show Stop while it reads (mw-ym1qi9.1). */
+  key?: string;
+}
+
+// Who is speaking now, as a tiny store a component reads with useSpeaking(key). A cancelled
+// utterance reports its end late, after the next one began, so only the current utterance may clear it.
+let speakingKey: string | null = null;
+let current: SpeechSynthesisUtterance | null = null;
+const listeners = new Set<() => void>();
+
+function setSpeaking(key: string | null, utterance: SpeechSynthesisUtterance | null): void {
+  if (key === speakingKey && utterance === current) return;
+  speakingKey = key;
+  current = utterance;
+  for (const listener of [...listeners]) listener();
+}
+
+/** Calls `listener` whenever who is speaking changes; returns the unsubscribe. */
+export function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** True while the speech started under `key` is reading. */
+export function isSpeaking(key: string): boolean {
+  return speakingKey === key;
 }
 
 /** Cancels any utterance already speaking, then speaks `text`. */
@@ -80,11 +108,20 @@ export function speak(text: string, options: SpeakOptions = {}): void {
   const utterance = new SpeechSynthesisUtterance(speechText(text, options.titles));
   const voice = preferredVoice(synth.getVoices());
   if (voice) utterance.voice = voice;
-  if (options.onEnd) utterance.onend = options.onEnd;
+  const finished = () => {
+    if (current === utterance) setSpeaking(null, null);
+  };
+  utterance.onend = () => {
+    finished();
+    options.onEnd?.();
+  };
+  utterance.onerror = finished;
+  setSpeaking(options.key ?? null, utterance);
   synth.speak(utterance);
 }
 
 export function stop(): void {
+  setSpeaking(null, null);
   if (!isSupported()) return;
   window.speechSynthesis.cancel();
 }

@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { isSupported, speak, speechText, stop } from '../../src/services/speech';
+import { isSpeaking, isSupported, speak, speechText, stop, subscribe } from '../../src/services/speech';
 
 class FakeUtterance {
   text: string;
   voice: unknown = null;
   onend: (() => void) | null = null;
+  onerror: (() => void) | null = null;
   constructor(text: string) {
     this.text = text;
   }
@@ -132,5 +133,77 @@ describe('speechText with a lookup: a bead id is spoken as its title (mw-gq6.224
     const { speakFn } = installFakeSynthesis();
     speak('Landed mw-nqur1n.4.', { titles });
     expect((speakFn.mock.calls[0][0] as FakeUtterance).text).toBe('Landed Prompts screen.');
+  });
+});
+
+describe('speech tracks who is speaking, by a key', () => {
+  afterEach(() => {
+    stop();
+    vi.unstubAllGlobals();
+  });
+
+  const lastUtterance = (speakFn: ReturnType<typeof vi.fn>) => speakFn.mock.calls.at(-1)![0] as FakeUtterance;
+
+  it('says the key that started the speech is speaking, and no other', () => {
+    installFakeSynthesis();
+    speak('one', { key: 'a' });
+    expect(isSpeaking('a')).toBe(true);
+    expect(isSpeaking('b')).toBe(false);
+  });
+
+  it('a speak() with no key speaks and names nobody', () => {
+    installFakeSynthesis();
+    speak('one');
+    expect(isSpeaking('a')).toBe(false);
+  });
+
+  it('clears when the utterance ends, and still calls onEnd', () => {
+    const { speakFn } = installFakeSynthesis();
+    const onEnd = vi.fn();
+    speak('one', { key: 'a', onEnd });
+    lastUtterance(speakFn).onend!();
+    expect(isSpeaking('a')).toBe(false);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears when the utterance errors', () => {
+    const { speakFn } = installFakeSynthesis();
+    speak('one', { key: 'a' });
+    lastUtterance(speakFn).onerror!();
+    expect(isSpeaking('a')).toBe(false);
+  });
+
+  it('clears on stop(), which cancels', () => {
+    const { cancelFn } = installFakeSynthesis();
+    speak('one', { key: 'a' });
+    cancelFn.mockClear();
+    stop();
+    expect(cancelFn).toHaveBeenCalledTimes(1);
+    expect(isSpeaking('a')).toBe(false);
+  });
+
+  it('starting another key hands the speaking over, and the cancelled one ending late changes nothing', () => {
+    const { speakFn } = installFakeSynthesis();
+    speak('one', { key: 'a' });
+    const first = lastUtterance(speakFn);
+    speak('two', { key: 'b' });
+    expect(isSpeaking('a')).toBe(false);
+    expect(isSpeaking('b')).toBe(true);
+    first.onerror!(); // a real synth reports the cancelled utterance after the new one began
+    first.onend!();
+    expect(isSpeaking('b')).toBe(true);
+  });
+
+  it('tells subscribers on every change and stops when they unsubscribe', () => {
+    const { speakFn } = installFakeSynthesis();
+    const listener = vi.fn();
+    const off = subscribe(listener);
+    speak('one', { key: 'a' });
+    expect(listener).toHaveBeenCalledTimes(1);
+    lastUtterance(speakFn).onend!();
+    expect(listener).toHaveBeenCalledTimes(2);
+    off();
+    speak('two', { key: 'a' });
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 });

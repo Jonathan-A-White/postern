@@ -11,7 +11,8 @@ import { answeredQuestion, needOfQuestion } from '../model/needs';
 import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
 import { useLive } from '../services/live';
-import { speak } from '../services/speech';
+import { speak, stop as stopSpeaking } from '../services/speech';
+import { useSpeaking } from './useSpeaking';
 import { useAnswers, useBeadTitles, useOutbox, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { pendingAnswer } from '../model/outbox';
 import { FailedNote, OutboxMark } from './OutboxMark';
@@ -248,6 +249,8 @@ function QuestionBlock({ item, given, until }: { item: ConversationItem; given?:
 
 function Bubble({ item, given, until, onQuote, onReply }: { item: ConversationItem; given?: GivenAnswer; until?: number; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
   const titles = useBeadTitles();
+  const speakKey = `message:${item.id}`;
+  const reading = useSpeaking(speakKey);
   const mine = item.speaker === 'you';
   const builder = item.speaker === 'builder' || item.speaker === 'factory' || item.speaker === 'other';
   if (item.kind === 'action' || item.kind === 'answer') {
@@ -284,8 +287,13 @@ function Bubble({ item, given, until, onQuote, onReply }: { item: ConversationIt
         {item.pending && (item.failure !== undefined && item.outboxId !== undefined ? <FailedNote id={item.outboxId} failure={item.failure} /> : <PendingMark />)}
         {item.unread && <span className="font-semibold text-accent">· new</span>}
         {item.speaker !== 'you' && item.text && (
-          <button type="button" aria-label="Read aloud" className="rounded p-0.5 hover:text-fg" onClick={() => speak(item.text, { titles })}>
-            <Icon name="speaker" size={13} />
+          <button
+            type="button"
+            aria-label={reading ? 'Stop reading' : 'Read aloud'}
+            className="rounded p-0.5 hover:text-fg"
+            onClick={() => (reading ? stopSpeaking() : speak(item.text, { titles, key: speakKey }))}
+          >
+            <Icon name={reading ? 'stop' : 'speaker'} size={13} />
           </button>
         )}
         {onReply && item.txid && (item.kind === 'text' || item.kind === 'attachment') && (
@@ -378,7 +386,14 @@ export function Conversation({
 
 export function SpeakAll({ items }: { items: ConversationItem[] }) {
   const titles = useBeadTitles();
+  const reading = useSpeaking('last-mayor-message');
   const last = [...items].reverse().find((item) => item.speaker === 'mayor' && item.text);
   if (!last) return null;
-  return <IconButton icon="speaker" label="Read the Mayor's last message aloud" onClick={() => speak(last.text, { titles })} />;
+  return (
+    <IconButton
+      icon={reading ? 'stop' : 'speaker'}
+      label={reading ? 'Stop reading' : "Read the Mayor's last message aloud"}
+      onClick={() => (reading ? stopSpeaking() : speak(last.text, { titles, key: 'last-mayor-message' }))}
+    />
+  );
 }

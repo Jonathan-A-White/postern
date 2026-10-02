@@ -51,6 +51,7 @@ function entryOf(talk: Accumulated, number: number): TalkLogEntry | undefined {
   if (answer.turn.links?.length) entry.links = answer.turn.links;
   entry.answeredBy = answer.turn.model;
   entry.firstWordsMs = Math.max(0, (answer.firstTs - ts) * 1000);
+  if (entry.answered) entry.tookMs = Math.max(0, (answer.ts - ts) * 1000);
   if (entry.answered && answer.heard !== undefined) entry.heard = answer.heard;
   return entry;
 }

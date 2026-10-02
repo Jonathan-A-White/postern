@@ -2,7 +2,7 @@
 // state machine (src/model/talkLine.ts): the turns of this talk as he sees them,
 // each with his words, the Mayor's answer and how soon the first words of it came.
 // Pure: the screen feeds it events with the time they happened.
-import { talkLine, type TalkLineEvent, type TalkLineState } from './talkLine';
+import { isLateAnswer, talkLine, TALK_AWAY_TIMEOUT_MS, type TalkLineEvent, type TalkLineState } from './talkLine';
 
 export interface TalkLogEntry {
   turn: number;
@@ -24,6 +24,8 @@ export interface TalkLogEntry {
   answeredBy?: string;
   /** From his release to the first of the Mayor's words reaching the phone (ms). */
   firstWordsMs?: number;
+  /** From his release to the Mayor's real answer reaching the phone (ms). */
+  tookMs?: number;
   /** False while the real answer has not been played to its end or stopped by him; true once it has; unknown (absent) for an answer spoken as it came. */
   heard?: boolean;
 }
@@ -56,7 +58,7 @@ export function showsCutTag(entry: Pick<TalkLogEntry, 'cut' | 'answered'>): bool
   return entry.cut && entry.answered !== true;
 }
 
-function withAnswer(log: TalkLogEntry[], turn: number, speaking: { text: string; holding: boolean; links?: string[] }, answeredBy: string | undefined, at: number): TalkLogEntry[] {
+function withAnswer(log: TalkLogEntry[], turn: number, speaking: { text: string; holding: boolean; links?: string[] }, answeredBy: string | undefined, at: number, extra: Partial<TalkLogEntry> = {}): TalkLogEntry[] {
   return log.map((entry) =>
     entry.turn === turn
       ? {
@@ -66,10 +68,15 @@ function withAnswer(log: TalkLogEntry[], turn: number, speaking: { text: string;
           answered: entry.answered === true || !speaking.holding,
           answeredBy: answeredBy ?? entry.answeredBy,
           firstWordsMs: entry.firstWordsMs ?? at - entry.releasedAt,
+          ...(speaking.holding ? {} : { tookMs: at - entry.releasedAt }),
+          ...extra,
         }
       : entry,
   );
 }
+
+/** The answer came after the line's wait window: the screen then says how long it took instead of how soon the first words came (mw-am3yjh.5). */
+export const tookLong = (entry: Pick<TalkLogEntry, 'tookMs'>): boolean => entry.tookMs !== undefined && entry.tookMs >= TALK_AWAY_TIMEOUT_MS;
 
 /** True while the line is speaking a real answer (a holding one is followed by the real one). */
 const speakingAnswer = (line: TalkLineState): boolean => line.phase === 'speaking' && line.speaking?.holding === false;
@@ -85,10 +92,17 @@ export function talkScreenReducer(state: TalkScreenState, action: TalkScreenActi
 
 export function talkScreen(state: TalkScreenState, { event, at }: TalkScreenAction): TalkScreenState {
   const line = talkLine(state.line, event);
-  if (line === state.line) return state;
+  if (line === state.line) {
+    // The line is busy with a newer turn: the late answer waits on its own turn in the log, not heard yet.
+    if (event.type === 'incoming' && isLateAnswer(state.line, event.turn)) {
+      const { talk, text, links, model } = event.turn;
+      return { line: state.line, log: withAnswer(state.log, talk.turn, { text, holding: false, links }, model, at, { heard: false }) };
+    }
+    return state;
+  }
   let log = state.log;
   // The answer being spoken is heard once the line moves off it: it finished, or he stopped it.
-  const turn = state.line.talk?.turn;
+  const turn = state.line.speaking?.turn ?? state.line.talk?.turn;
   const played = speakingAnswer(state.line) && !state.line.speaking?.unspoken && !(speakingAnswer(line) && !line.speaking?.unspoken);
   if (played && turn !== undefined) log = log.map((entry) => (entry.turn === turn && entry.heard === false ? { ...entry, heard: true } : entry));
   switch (event.type) {
@@ -104,7 +118,7 @@ export function talkScreen(state: TalkScreenState, { event, at }: TalkScreenActi
       }
       break;
     case 'incoming':
-      if (line.phase === 'speaking' && line.speaking && line.talk) log = withAnswer(log, line.talk.turn, line.speaking, line.answeredBy, at);
+      if (line.phase === 'speaking' && line.speaking && line.talk) log = withAnswer(log, line.speaking.turn ?? line.talk.turn, line.speaking, line.answeredBy, at);
       break;
   }
   return { line, log };

@@ -19,7 +19,7 @@ import { deliver, deliverThreaded, settledWrites, type Delivered } from '../../s
 import { itemFromMessage } from '../../src/model/conversation';
 import type { Attachment } from '../../src/services/threads';
 import { notificationSpecForTalkAnswer } from '../../src/push/classOptions';
-import { initialTalkLine, talkLine, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
+import { initialTalkLine, isLateAnswer, talkLine, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-woc';
 
@@ -42,6 +42,8 @@ let failure: unknown;
 let line: TalkLineState = initialTalkLine;
 /** Whether the Mayor is here, as the scenario's ticks tell the line. */
 let mayorHere: boolean | undefined;
+let lateTurn: TalkTurn | undefined;
+let lateLine: TalkLineState = initialTalkLine;
 const feed = (event: TalkLineEvent) => {
   line = talkLine(line, event);
 };
@@ -324,7 +326,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the line says {string}', (_c, message: string) => expect(line.error).toBe(message));
   });
 
-  Scenario('AC-2: the Mayor is away: give-up at 30 s (mw-j0f2d.30)', ({ Given, When, Then, And }) => {
+  Scenario('AC-2: the Mayor is away: give-up at 60 s (mw-j0f2d.30, mw-am3yjh.5)', ({ Given, When, Then, And }) => {
     Given('the line is waiting on turn {number} of {string} since {number} and the Mayor is away', (_c, n: number, id: string, since: number) => waitingWith(n, id, since, false));
     When('the clock reads {number}', (_c, now: number) => tick(now));
     Then('the line is still waiting', () => expect(line.phase).toBe('waiting'));
@@ -360,6 +362,46 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(line.speaking?.text).toBe(text);
     });
     And('the line says nothing went wrong', () => expect(line.error).toBeUndefined());
+  });
+
+  const answersTurn = (_c: unknown, n: number, text: string, model: string) => {
+    const turn: TalkTurn = { talk: { id: line.talk!.id, turn: Number(n) }, text, role: 'answer', model };
+    lateTurn = turn;
+    lateLine = line;
+    feed({ type: 'incoming', turn });
+  };
+
+  Scenario('AC-2: an answer to an earlier turn that lands once he has gone on is spoken when the line is idle (mw-am3yjh.5)', ({ Given, When, And, Then }) => {
+    Given('the line is waiting on turn {number} of {string} since {number} and the Mayor is away', (_c, n: number, id: string, since: number) => waitingWith(n, id, since, false));
+    When('the clock reads {number}', (_c, now: number) => tick(now));
+    And('he holds the button for talk {string}', (_c, id: string) => feed({ type: 'hold', talkId: id }));
+    And('he releases with the words {string}', (_c, text: string) => feed({ type: 'release', text }));
+    And('the turn has been sent at {number}', (_c, at: number) => feed({ type: 'sent', at: Number(at) }));
+    And('he cuts the wait', () => feed({ type: 'cut' }));
+    And('the Mayor answers turn {number} with {string} on model {string}', answersTurn);
+    Then('the line is speaking {string}', (_c, text: string) => {
+      expect(line.phase).toBe('speaking');
+      expect(line.speaking?.text).toBe(text);
+      expect(line.speaking?.turn).toBe(1);
+    });
+    And('the line says nothing went wrong', () => expect(line.error).toBeUndefined());
+    When('the speaking ends', () => feed({ type: 'spoken' }));
+    Then('the line is idle', () => expect(line.phase).toBe('idle'));
+  });
+
+  Scenario('AC-2: an answer to an earlier turn that lands while the next turn is waiting is left to the log, not spoken over it (mw-am3yjh.5)', ({ Given, When, And, Then }) => {
+    Given('the line is waiting on turn {number} of {string} since {number} and the Mayor is away', (_c, n: number, id: string, since: number) => waitingWith(n, id, since, false));
+    When('the clock reads {number}', (_c, now: number) => tick(now));
+    And('he holds the button for talk {string}', (_c, id: string) => feed({ type: 'hold', talkId: id }));
+    And('he releases with the words {string}', (_c, text: string) => feed({ type: 'release', text }));
+    And('the turn has been sent at {number}', (_c, at: number) => feed({ type: 'sent', at: Number(at) }));
+    And('the Mayor answers turn {number} with {string} on model {string}', answersTurn);
+    Then('the line is waiting for turn {number}', (_c, n: number) => {
+      expect(line.phase).toBe('waiting');
+      expect(line.talk?.turn).toBe(Number(n));
+      expect(line).toBe(lateLine);
+    });
+    And('the late answer is for the log', () => expect(isLateAnswer(line, lateTurn!)).toBe(true));
   });
 
   Scenario('AC-2: an answer while hidden is announced, not spoken (mw-j0f2d.29)', ({ Given, When, Then, And }) => {

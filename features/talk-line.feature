@@ -94,18 +94,18 @@ Feature: Talk line turns are records of their own, and the line is a small state
     Then the line is waiting still
     When the clock reads 91000 once more
     Then the line is idle
-    And the line says "The Mayor did not answer in time."
+    And the line says "The Mayor has not answered yet. If it lands, it will play."
 
-  Scenario: AC-2: the Mayor is away: give-up at 30 s (mw-j0f2d.30)
+  Scenario: AC-2: the Mayor is away: give-up at 60 s (mw-j0f2d.30, mw-am3yjh.5)
     Given the line is waiting on turn 1 of "talk-11" since 1000 and the Mayor is away
-    When the clock reads 20000
+    When the clock reads 31000
     Then the line is still waiting
     And the line is not yet thinking
-    When the clock then reads 30000
+    When the clock then reads 60000
     Then the line is waiting still
-    When the clock afterwards reads 31000
+    When the clock afterwards reads 61000
     Then the line is idle
-    And the line says "The Mayor did not answer in time."
+    And the line says "The Mayor has not answered yet. If it lands, it will play."
 
   Scenario: AC-2: the Mayor seen here while he thinks keeps the longer wait even when his wait drops (mw-j0f2d.30)
     Given the line is waiting on turn 1 of "talk-17" since 1000 and the Mayor is here
@@ -117,11 +117,34 @@ Feature: Talk line turns are records of their own, and the line is a small state
 
   Scenario: AC-2: a late answer replaces the give-up line (mw-j0f2d.30)
     Given the line is waiting on turn 1 of "talk-16" since 1000 and the Mayor is away
-    When the clock reads 31000
-    Then the line says "The Mayor did not answer in time."
+    When the clock reads 61000
+    Then the line says "The Mayor has not answered yet. If it lands, it will play."
     When the Mayor answers "Late." on model "sonnet"
     Then the line is speaking "Late."
     And the line says nothing went wrong
+
+  Scenario: AC-2: an answer to an earlier turn that lands once he has gone on is spoken when the line is idle (mw-am3yjh.5)
+    Given the line is waiting on turn 1 of "talk-62" since 1000 and the Mayor is away
+    When the clock reads 61000
+    And he holds the button for talk "talk-62"
+    And he releases with the words "Can you answer that?"
+    And the turn has been sent at 62000
+    And he cuts the wait
+    And the Mayor answers turn 1 with "The late answer." on model "sonnet"
+    Then the line is speaking "The late answer."
+    And the line says nothing went wrong
+    When the speaking ends
+    Then the line is idle
+
+  Scenario: AC-2: an answer to an earlier turn that lands while the next turn is waiting is left to the log, not spoken over it (mw-am3yjh.5)
+    Given the line is waiting on turn 1 of "talk-63" since 1000 and the Mayor is away
+    When the clock reads 61000
+    And he holds the button for talk "talk-63"
+    And he releases with the words "Can you answer that?"
+    And the turn has been sent at 62000
+    And the Mayor answers turn 1 with "The late answer." on model "sonnet"
+    Then the line is waiting for turn 2
+    And the late answer is for the log
 
   Scenario: AC-2: an answer while hidden is announced, not spoken (mw-j0f2d.29)
     Given the line is waiting on turn 1 of "talk-40"

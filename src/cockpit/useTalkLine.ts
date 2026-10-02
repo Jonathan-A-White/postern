@@ -4,7 +4,7 @@
 // answers from the stored `talk` records, speak them, count the wait, and keep the
 // screen awake while a talk is open.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { initialTalkLine, endTurn, talkLine, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
+import { initialTalkLine, endTurn, isLateAnswer, talkLine, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
 import { initialTalkScreen, talkScreenReducer } from '../model/talkScreen';
 import { earlierTalks, openTalk } from '../model/talkLog';
 import { messagesRepo } from '../data/repositories';
@@ -112,7 +112,8 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
         handled.current.add(row.id);
         continue;
       }
-      if (talkLine(line, { type: 'incoming', turn }) !== line) {
+      // A late answer (to a turn before the one he is on) is always fed: the line plays it when free, the log shows it otherwise.
+      if (talkLine(line, { type: 'incoming', turn }) !== line || isLateAnswer(line, turn)) {
         handled.current.add(row.id);
         if (turn.role === 'answer') speakingRow.current = row.id;
         feed({ type: 'incoming', turn, hidden: pageHidden() });

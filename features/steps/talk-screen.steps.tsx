@@ -196,8 +196,9 @@ function Harness() {
 }
 
 let sequence = 0;
-async function mayorSays(text: string, role: TalkTurn['role'], model?: string, links?: string[]): Promise<void> {
+async function mayorSays(text: string, role: TalkTurn['role'], model?: string, links?: string[], turnNumber?: number): Promise<void> {
   const sent = sendTurn.mock.calls.at(-1)?.[0] as TalkTurn;
+  const talk = turnNumber === undefined ? sent.talk : { id: sent.talk.id, turn: turnNumber };
   sequence += 1;
   const txid = `direct:${String(sequence).padStart(64, '0')}`;
   await messagesRepo.put({
@@ -210,7 +211,7 @@ async function mayorSays(text: string, role: TalkTurn['role'], model?: string, l
     from: '02'.padEnd(66, '0'),
     ts: 1_760_000_000 + sequence,
     ciphertext: '',
-    plaintext: encodeTurn({ talk: sent.talk, text, role, ...(model ? { model } : {}), ...(links ? { links } : {}) }),
+    plaintext: encodeTurn({ talk, text, role, ...(model ? { model } : {}), ...(links ? { links } : {}) }),
     direction: 'received',
     read: true,
   });
@@ -750,7 +751,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('AC-1: with the Mayor away the line gives up at 30 s and says nothing of thinking (mw-j0f2d.30)', ({ Given, And, When, Then }) => {
+  Scenario('AC-1: with the Mayor away the line gives up at 60 s and says nothing of thinking (mw-j0f2d.30, mw-am3yjh.5)', ({ Given, And, When, Then }) => {
     Given('the Mayor is away', () => {
       mayor.here = false;
       setKey(new Uint8Array(32));
@@ -776,6 +777,65 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the screen says {string}', async (_c, words: string) => {
       expect(await screen.findByText(words)).toBeInTheDocument();
+    });
+  });
+
+  const GAVE_UP = 'The Mayor has not answered yet. If it lands, it will play.';
+  const awayLineOpen = async () => {
+    mayor.here = false;
+    setKey(new Uint8Array(32));
+  };
+  const heldAway = async (_c: unknown, words: string) => {
+    await screen.findByText('Mayor away');
+    await holdsAndSays(_c, words);
+  };
+  const secondsPass = (_c: unknown, seconds: number) => {
+    clock.at += Number(seconds) * 1000;
+  };
+  const turnShows = (index: number) => within(screen.getAllByTestId('talk-turn')[index]);
+
+  Scenario('AC-1: an answer that lands after the wait window is shown, spoken, and says how long it took (mw-am3yjh.5)', ({ Given, And, When, Then }) => {
+    Given('the Mayor is away', awayLineOpen);
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go with the Mayor shown away', heldAway);
+    And('{number} seconds pass with no answer', secondsPass);
+    Then('the screen says {string}', async (_c, words: string) => {
+      expect(await screen.findByText(words)).toBeInTheDocument();
+    });
+    When('the Mayor answers {string} on model {string}', mayorAnswers);
+    Then('the screen shows {string} as the answer', async (_c, text: string) => {
+      await waitFor(() => expect(screen.getByTestId('talk-answer')).toHaveTextContent(text));
+    });
+    And('the phone speaks {string}', async (_c, text: string) => {
+      await waitFor(() => expect(speak).toHaveBeenCalled());
+      expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
+    });
+    And('the answer says it took {number} seconds', async (_c, seconds: number) => {
+      await waitFor(() => expect(screen.getByTestId('talk-answer')).toHaveTextContent(new RegExp(`answer took ${Number(seconds)}\\.\\d s`)));
+    });
+    And('the screen no longer says the Mayor has not answered', () => {
+      expect(screen.queryByText(GAVE_UP)).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-1: an answer that lands while he is already on his next turn is shown under the turn it answers, marked not heard yet (mw-am3yjh.5)', ({ Given, And, When, Then }) => {
+    Given('the Mayor is away', awayLineOpen);
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go with the Mayor shown away', heldAway);
+    And('{number} seconds pass with no answer', secondsPass);
+    And('he then holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers his turn {number} with {string}', async (_c, n: number, text: string) => mayorSays(text, 'answer', 'sonnet', undefined, Number(n)));
+    Then('the first turn shows the answer {string}', async (_c, text: string) => {
+      await waitFor(() => expect(turnShows(0).getByTestId('talk-answer')).toHaveTextContent(text));
+    });
+    And('the first turn is marked {string}', (_c, mark: string) => {
+      expect(turnShows(0).getByText(mark)).toBeInTheDocument();
+    });
+    And("the first turn's answer says it took {number} seconds", (_c, seconds: number) => {
+      expect(turnShows(0).getByTestId('talk-answer')).toHaveTextContent(new RegExp(`answer took ${Number(seconds)}\\.\\d s`));
+    });
+    And('the phone has not spoken', () => {
+      expect(speak).not.toHaveBeenCalled();
     });
   });
 

@@ -1,8 +1,11 @@
 // The Talk line's wait, counted by a fake clock: the Mayor here is waited on for 90 s and
-// reads 'thinking' from 8 s; the Mayor away is given up on at 30 s (mw-j0f2d.30).
+// reads 'thinking' from 8 s; the Mayor away is given up on at 60 s (mw-j0f2d.30, mw-am3yjh.5);
+// an answer that lands after the give-up is still taken (mw-am3yjh.5).
 import { describe, expect, it } from 'vitest';
+import { initialTalkScreen, talkScreen } from '../../src/model/talkScreen';
 import {
   initialTalkLine,
+  isLateAnswer,
   talkLine,
   NO_ANSWER_IN_TIME,
   TALK_AWAY_TIMEOUT_MS,
@@ -13,6 +16,18 @@ import {
 } from '../../src/model/talkLine';
 
 const SENT_AT = 5_000;
+
+describe('the Talk line wait window', () => {
+  it('is at least 60 s whether the Mayor is here or away', () => {
+    expect(TALK_AWAY_TIMEOUT_MS).toBeGreaterThanOrEqual(60_000);
+    expect(TALK_TIMEOUT_MS).toBeGreaterThanOrEqual(TALK_AWAY_TIMEOUT_MS);
+  });
+
+  it('does not say the Mayor did not answer, since one may be on its way', () => {
+    expect(NO_ANSWER_IN_TIME).not.toMatch(/did not answer/i);
+    expect(NO_ANSWER_IN_TIME).toMatch(/will play/);
+  });
+});
 
 function waiting(here?: boolean): TalkLineState {
   const events: TalkLineEvent[] = [
@@ -59,7 +74,7 @@ describe('the Talk line wait with the Mayor here', () => {
 });
 
 describe('the Talk line wait with the Mayor away', () => {
-  it('never says thinking, and gives up at 30 s', () => {
+  it('never says thinking, and gives up at 60 s', () => {
     for (const start of [waiting(false), waiting(undefined)]) {
       expect(waitedFor(start, TALK_AWAY_TIMEOUT_MS - 1_000).phase).toBe('waiting');
       expect(waitedFor(start, TALK_AWAY_TIMEOUT_MS - 1_000).thinking).toBeFalsy();
@@ -77,5 +92,55 @@ describe('a late answer after the give-up', () => {
     expect(late.phase).toBe('speaking');
     expect(late.speaking?.text).toBe('Late.');
     expect(late.error).toBeUndefined();
+  });
+});
+
+const answerTo = (turn: number, text = 'Late.') => ({ type: 'incoming', turn: { talk: { id: 't1', turn }, text, role: 'answer' } }) as const;
+
+/** Turn 1 unanswered past the window, then turn 2 sent. */
+function onNextTurn(): TalkLineState {
+  const gaveUp = waitedFor(waiting(false), TALK_AWAY_TIMEOUT_MS);
+  const events: TalkLineEvent[] = [{ type: 'hold', talkId: 't1' }, { type: 'release', text: 'Did you get that?' }, { type: 'sent', at: SENT_AT + TALK_AWAY_TIMEOUT_MS + 5_000 }];
+  return events.reduce(talkLine, gaveUp);
+}
+
+describe('an answer to an earlier turn once he has gone on', () => {
+  it('is a late answer, not an answer to the turn being waited on', () => {
+    const state = onNextTurn();
+    expect(isLateAnswer(state, answerTo(1).turn)).toBe(true);
+    expect(isLateAnswer(state, answerTo(2).turn)).toBe(false);
+    expect(isLateAnswer(state, { ...answerTo(1).turn, talk: { id: 'other', turn: 1 } })).toBe(false);
+    expect(isLateAnswer(state, { ...answerTo(1).turn, role: 'holding' })).toBe(false);
+  });
+
+  it('leaves the line alone while it is busy', () => {
+    const state = onNextTurn();
+    expect(talkLine(state, answerTo(1))).toBe(state);
+  });
+
+  it('is spoken when the line is idle, and the turn it answers is named', () => {
+    const idleAgain = talkLine(onNextTurn(), { type: 'cut' });
+    const late = talkLine(idleAgain, answerTo(1));
+    expect(late.phase).toBe('speaking');
+    expect(late.speaking).toMatchObject({ text: 'Late.', holding: false, turn: 1 });
+    expect(talkLine(late, { type: 'spoken' }).phase).toBe('idle');
+  });
+
+  it('is shown on the turn it answers in the log, marked not heard, with how long it took', () => {
+    const at = SENT_AT + TALK_AWAY_TIMEOUT_MS + 20_000;
+    const events = [
+      { event: { type: 'hold', talkId: 't1' }, at: 0 },
+      { event: { type: 'release', text: 'Hello' }, at: SENT_AT },
+      { event: { type: 'sent', at: SENT_AT }, at: SENT_AT },
+      { event: { type: 'tick', now: SENT_AT + TALK_AWAY_TIMEOUT_MS }, at: SENT_AT + TALK_AWAY_TIMEOUT_MS },
+      { event: { type: 'hold', talkId: 't1' }, at: SENT_AT + 61_000 },
+      { event: { type: 'release', text: 'Again' }, at: SENT_AT + 62_000 },
+      { event: { type: 'sent', at: SENT_AT + 62_000 }, at: SENT_AT + 62_000 },
+      { event: answerTo(1), at },
+    ] as const;
+    const state = events.reduce((acc, action) => talkScreen(acc, action as never), initialTalkScreen(initialTalkLine));
+    expect(state.line.phase).toBe('waiting');
+    expect(state.log[0]).toMatchObject({ answer: 'Late.', answered: true, heard: false, tookMs: at - SENT_AT });
+    expect(state.log[1].answer).toBeUndefined();
   });
 });

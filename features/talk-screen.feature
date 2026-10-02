@@ -123,15 +123,39 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When 70 seconds pass with no answer too
     Then the screen still says the Mayor is thinking
 
-  Scenario: AC-1: with the Mayor away the line gives up at 30 s and says nothing of thinking (mw-j0f2d.30)
+  Scenario: AC-1: with the Mayor away the line gives up at 60 s and says nothing of thinking (mw-j0f2d.30, mw-am3yjh.5)
     Given the Mayor is away
     And the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "Hello" and lets go with the Mayor shown away
     Then the screen says the turn was sent and does not yet say the Mayor is thinking
     When 9 seconds pass with no answer
     Then the screen does not say the Mayor is thinking
-    When 22 seconds pass with no answer too
-    Then the screen says "The Mayor did not answer in time."
+    When 52 seconds pass with no answer too
+    Then the screen says "The Mayor has not answered yet. If it lands, it will play."
+
+  Scenario: AC-1: an answer that lands after the wait window is shown, spoken, and says how long it took (mw-am3yjh.5)
+    Given the Mayor is away
+    And the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Hello" and lets go with the Mayor shown away
+    And 61 seconds pass with no answer
+    Then the screen says "The Mayor has not answered yet. If it lands, it will play."
+    When the Mayor answers "The late answer." on model "sonnet"
+    Then the screen shows "The late answer." as the answer
+    And the phone speaks "The late answer."
+    And the answer says it took 61 seconds
+    And the screen no longer says the Mayor has not answered
+
+  Scenario: AC-1: an answer that lands while he is already on his next turn is shown under the turn it answers, marked not heard yet (mw-am3yjh.5)
+    Given the Mayor is away
+    And the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Hello" and lets go with the Mayor shown away
+    And 61 seconds pass with no answer
+    And he then holds the talk button and says "Did you get that?" and lets go
+    And the Mayor answers his turn 1 with "The late answer."
+    Then the first turn shows the answer "The late answer."
+    And the first turn is marked "Not heard yet"
+    And the first turn's answer says it took 61 seconds
+    And the phone has not spoken
 
   Scenario: AC-1: an answer is shown and spoken aloud
     Given the Talk line is open with a believable speech recogniser
@@ -376,7 +400,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the Talk line is open with a believable speech recogniser
     When he holds the button, says "What landed" and lets go
     And the wait runs out
-    Then the line says "The Mayor did not answer in time."
+    Then the line says "The Mayor has not answered yet. If it lands, it will play."
     When the Mayor is away and the phone comes back to the foreground
     Then the Talk line shows "Mayor away" in grey
     And the phone has not buzzed for it

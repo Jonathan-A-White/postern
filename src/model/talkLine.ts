@@ -54,7 +54,7 @@ export interface TalkLineState {
   /** The Mayor was here (his wait connected) when the turn went out or at any tick since; away it waits only TALK_AWAY_TIMEOUT_MS. */
   mayorHere?: boolean;
   /** What is being spoken; `holding` ones are followed by the real answer. */
-  speaking?: { text: string; holding: boolean; links?: string[]; unspoken?: boolean };
+  speaking?: { text: string; holding: boolean; links?: string[]; unspoken?: boolean; turn?: number };
   /** Why the line went back to idle without an answer. */
   error?: string;
   /** The turn that failed to send, kept with his words so `retry` can send it again. */
@@ -81,9 +81,10 @@ export type TalkLineEvent =
 export const TALK_THINKING_MS = 8_000;
 /** How long the line waits for an answer while the Mayor is here; his answers take 20-40 s (mw-j0f2d.30), so this is generous. */
 export const TALK_TIMEOUT_MS = 90_000;
-/** How long it waits while he is away (or not known to be here): nobody is reading, so it says so sooner. */
-export const TALK_AWAY_TIMEOUT_MS = 30_000;
-export const NO_ANSWER_IN_TIME = 'The Mayor did not answer in time.';
+/** How long it waits while he is away (or not known to be here): nobody is reading, so it says so sooner; never under a minute, since an answer 12 s after a turn was lost to a 30 s window (mw-am3yjh.5). */
+export const TALK_AWAY_TIMEOUT_MS = 60_000;
+/** What the line says once its wait window is over: the Mayor's answer may still be on its way, and plays when it lands. */
+export const NO_ANSWER_IN_TIME = 'The Mayor has not answered yet. If it lands, it will play.';
 /** A turn is queued on the phone and sent when a backend answers; this is what he is told only if the phone itself cannot keep it. */
 export const NOT_KEPT = 'Could not keep that on this phone. Try again.';
 
@@ -145,9 +146,19 @@ function idle(state: TalkLineState, patch: Partial<TalkLineState> = {}): TalkLin
 
 const linksOf = (turn: TalkTurn): { links?: string[] } => (turn.links?.length ? { links: turn.links } : {});
 
+/** The Mayor's real answer to a turn of this talk before the one the line is on: it came after he went on (mw-am3yjh.5). */
+export function isLateAnswer(state: TalkLineState, turn: TalkTurn): boolean {
+  return turn.role === 'answer' && state.talk !== undefined && turn.talk.id === state.talk.id && turn.talk.turn < state.talk.turn;
+}
+
 function incoming(state: TalkLineState, turn: TalkTurn, hidden: boolean): TalkLineState {
   if (!state.talk || turn.talk.id !== state.talk.id) return state;
   if (turn.role === 'end') return talkLine(state, { type: 'end' });
+  // A late answer is played at once when the line is free; while he is holding the button, sending or waiting on a newer turn it is left to the screen's log (marked not heard).
+  if (isLateAnswer(state, turn)) {
+    if (state.phase !== 'idle') return state;
+    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: false, turn: turn.talk.turn, ...linksOf(turn), ...(hidden ? { unspoken: true } : {}) }, answeredBy: turn.model ?? state.answeredBy, error: undefined, thinking: undefined };
+  }
   if (turn.talk.turn !== state.talk.turn) return state;
   // An answer that comes after the line gave up still replaces the give-up line.
   const gaveUp = state.phase === 'idle' && state.error === NO_ANSWER_IN_TIME;

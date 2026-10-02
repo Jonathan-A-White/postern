@@ -16,7 +16,7 @@ import { now } from '../services/clock';
 import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import { callSent as waitingCall, clockHHMM, ringNote } from '../model/call';
 import { beadHref, formatRoute } from '../nav/route';
-import { formatSeconds, showsCutTag } from '../model/talkScreen';
+import { formatSeconds, showsCutTag, tookLong } from '../model/talkScreen';
 import { isUnsent, pendingTurn } from '../model/outbox';
 import type { OutboxRow } from '../data/db';
 import { OutboxMark } from './OutboxMark';
@@ -355,7 +355,11 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader }: { entry: TalkLo
               />
             )}
             {entry.answeredBy && <Chip tone="working">{entry.answeredBy}</Chip>}
-            {entry.firstWordsMs !== undefined && <span className="tabular-nums">first words in {formatSeconds(entry.firstWordsMs)}</span>}
+            {tookLong(entry) ? (
+              <span className="tabular-nums">answer took {formatSeconds(entry.tookMs ?? 0)}</span>
+            ) : (
+              entry.firstWordsMs !== undefined && <span className="tabular-nums">first words in {formatSeconds(entry.firstWordsMs)}</span>
+            )}
           </span>
         </div>
       )}

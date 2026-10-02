@@ -48,7 +48,7 @@ describe('talksFromRows', () => {
   it('gives each turn its answer, how soon the first words came, the model, the links and whether it was heard', () => {
     const rows = [his('a', 1, 'Hello', T0, { model: 'opus', cut: true }), answer('a', 1, 'Hi.', T0 + 3, { model: 'sonnet', links: ['mw-1'], heard: false })];
     expect(talksFromRows(rows)[0].log).toEqual([
-      { turn: 1, said: 'Hello', cut: true, asked: 'opus', releasedAt: T0 * 1000, answer: 'Hi.', answered: true, links: ['mw-1'], answeredBy: 'sonnet', firstWordsMs: 3000, heard: false },
+      { turn: 1, said: 'Hello', cut: true, asked: 'opus', releasedAt: T0 * 1000, answer: 'Hi.', answered: true, links: ['mw-1'], answeredBy: 'sonnet', firstWordsMs: 3000, tookMs: 3000, heard: false },
     ]);
   });
 

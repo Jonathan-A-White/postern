@@ -1279,9 +1279,13 @@ What the Talk screen does with it:
 - A small dot beside the screen's status says **Mayor here** (a coloured dot) or **Mayor
   away** (a grey one). Until the first answer, and when the backend cannot be asked or has
   no such route (an older backend), it shows no dot rather than a guess.
-- When the line has given up waiting (`The Mayor did not answer in time.`) and the mark then
+- When the line has given up waiting (`The Mayor has not answered yet. If it lands, it will play.`) and the mark then
   turns from away to here, the phone buzzes (and chimes where it can) once: the Mayor is back
   and the turn can be tried again. Turning to here at any other time is silent.
+- The give-up is only the line's wait window (60 s with the Mayor away, 90 s with him here); it never
+  drops an answer. An answer that lands after it is played when the line is free, or shown under the
+  turn it answers, marked *Not heard yet*, when he has already gone on to a newer turn; the turn then
+  reads `answer took N s` in place of `first words in N s` (mw-am3yjh.5).
 
 ## 21. Call
 

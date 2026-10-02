@@ -336,7 +336,7 @@ test('talk line: after a missed turn the phone buzzes once when the mark turns t
   await expect(page.getByText('The Mayor is thinking…')).toBeVisible();
 
   await page.clock.fastForward(82_000);
-  await expect(page.getByText('The Mayor did not answer in time.')).toBeVisible();
+  await expect(page.getByText('The Mayor has not answered yet. If it lands, it will play.')).toBeVisible();
   const buzzes = () => page.evaluate(() => window.__vibrations.length);
   const before = await buzzes();
 

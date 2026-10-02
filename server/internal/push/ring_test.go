@@ -98,3 +98,20 @@ func TestARingReachesTheDeviceAndARequestDoesNot(t *testing.T) {
 		t.Fatalf("a ring sent %d pushes, want 1", fake.requestCount())
 	}
 }
+
+// A talk answer's push (docs/protocol.md §20) names the class, the record and the time and
+// nothing else: the words are sealed in ct and a talk record carries no summary.
+func TestATalkAnswerPushCarriesNoWords(t *testing.T) {
+	payload, err := json.Marshal(map[string]any{
+		"v": 1, "kind": "msg", "class": "talk", "to": "recipient-key", "from": "sender-key",
+		"ts": 1758700000, "ct": "AAAA", "summary": "the answer's words",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := mustPush(t, "direct:ab", payload)
+	want := `{"class":"talk","txid":"direct:ab","ts":1758700000}`
+	if got := wireJSON(t, p); got != want {
+		t.Fatalf("talk answer push = %s, want %s", got, want)
+	}
+}

@@ -186,10 +186,13 @@ func newApp(cfg config.Config) (*app, error) {
 // the on-message hook when configured (which runs in standby too: mw decides
 // what to apply) for every record but grist, talk, call and events, and the on-grist hook
 // for grist addressed to the mill. A talk, call or events record reaches the hub
-// only (docs/protocol.md §20-§22), but for the Mayor's ring, which is pushed too (§21), and an
-// events record in the emergency lane (§22).
+// only (docs/protocol.md §20-§22), but for the Mayor's ring, which is pushed too (§21), an
+// events record in the emergency lane (§22), and a talk answer from the Mayor's key (§20),
+// which is pushed with no words so a backgrounded phone hears of it.
 func buildFanout(cfg config.Config, home *standby.Monitor, pusher, hub notify.Notifier) notify.Fanout {
-	fanout := notify.Fanout{notify.Only{Notifier: standby.Gate(home, pusher), Keep: func(rec index.Record) bool { return !isTalk(rec) || isRing(rec) || isEmergency(rec) }}, hub}
+	fanout := notify.Fanout{notify.Only{Notifier: standby.Gate(home, pusher), Keep: func(rec index.Record) bool {
+		return !isTalk(rec) || isRing(rec) || isEmergency(rec) || isTalkAnswer(rec, cfg.MayorKey)
+	}}, hub}
 	forMill := gristForMill(cfg.MillKey)
 	if cfg.OnMessage != "" {
 		fanout = append(fanout, notify.Only{Notifier: hook.New(cfg.OnMessage), Keep: func(rec index.Record) bool { return !isGrist(rec) && !isTalk(rec) }})
@@ -215,6 +218,16 @@ func isGrist(rec index.Record) bool {
 func isTalk(rec index.Record) bool {
 	env, err := record.ParseEnvelope(rec.Payload)
 	return err == nil && (env.Class == record.ClassTalk || env.Class == record.ClassCall || env.Class == record.ClassEvents)
+}
+
+// isTalkAnswer reports whether a record is a turn on the Talk line from the Mayor's key to
+// anyone else (docs/protocol.md §20): the Mayor's answer, the one talk record that is pushed.
+// The Governor's own turns go to the Mayor and are never pushed; with no Mayor key configured
+// no turn is an answer.
+func isTalkAnswer(rec index.Record, mayorKey string) bool {
+	env, err := record.ParseEnvelope(rec.Payload)
+	return err == nil && mayorKey != "" && env.Class == record.ClassTalk &&
+		strings.EqualFold(env.From, mayorKey) && !strings.EqualFold(env.To, mayorKey)
 }
 
 // isEmergency reports whether a record is an events record in the emergency lane

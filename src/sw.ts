@@ -13,12 +13,14 @@
 //    the open app if there is one;
 //  - the Mayor's ring (class call, docs/protocol.md §21) rings like an incoming call:
 //    Answer opens the Talk line, Later leaves a missed call on it (src/push/classOptions.ts);
+//  - the Mayor's talk answer (class talk, docs/protocol.md §20) is pushed with no words in it: the
+//    notification says only that the Mayor answered, unless a window already shows the app, and a tap opens the Talk line;
 //  - an emergency events record (class events, docs/protocol.md §22) is pushed too, at once and until
 //    dealt with (src/push/classOptions.ts); the app's banner shows what it was;
 //  - files shared from another app (the manifest's share_target) are parked in
 //    IndexedDB and the app opens on the Share screen to place them.
 import { precacheAndRoute } from 'workbox-precaching';
-import { notificationSpecForClass, notificationSpecForEmergency, notificationSpecForRing, type PushClass } from './push/classOptions';
+import { notificationSpecForClass, notificationSpecForEmergency, notificationSpecForRing, notificationSpecForTalkAnswer, type PushClass } from './push/classOptions';
 import { resolveTapUrl, type TapData } from './push/tapTarget';
 import { settingsRepo } from './data/repositories/settings-repo';
 import { sharesRepo } from './data/repositories/view-repo';
@@ -28,7 +30,7 @@ declare const self: ServiceWorkerGlobalScope;
 precacheAndRoute(self.__WB_MANIFEST);
 
 interface PushPayload {
-  class: PushClass | 'call' | 'events';
+  class: PushClass | 'call' | 'events' | 'talk';
   txid?: string;
   ts: number;
   title?: string;
@@ -93,6 +95,15 @@ async function onPush(payload: PushPayload): Promise<void> {
   if (payload.class === 'events') {
     const emergency = notificationSpecForEmergency(payload.txid ?? '', { title: payload.title });
     await self.registration.showNotification(emergency.title, emergency.options);
+    return;
+  }
+  // The Mayor's talk answer (§20), pushed with no words: a page the browser has frozen cannot show
+  // this itself. A window he is looking at speaks the answer already, so only then is it not shown.
+  if (payload.class === 'talk') {
+    const showing = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).filter(isShowingTheApp);
+    if (showing.length > 0) return;
+    const answered = notificationSpecForTalkAnswer();
+    await self.registration.showNotification(answered.title, answered.options);
     return;
   }
   // A message already on a window he is looking at needs no notification, whatever its class.

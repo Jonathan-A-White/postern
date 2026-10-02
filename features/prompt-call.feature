@@ -68,3 +68,22 @@ Feature: The composer offers the saved prompts as he types and checks a call bef
     When he types "/top5 --nope " in the composer
     Then the error "/top5 has no option --nope" shows
     And no grey text shows
+
+  Scenario: mw-gq6.236: free words after the name are the text option, so a /later call can be sent
+    Given the backend has the prompts "top5", "sweep" and "later"
+    When he types "/later a licence for Luke" in the composer
+    Then Send is enabled and no error shows
+    When he taps Send
+    Then the message "/later a licence for Luke" is sent
+
+  Scenario: mw-gq6.236: a prompt without a text option still refuses stray words
+    Given the backend has the prompts "top5", "sweep" and "later"
+    When he types "/top5 a licence" in the composer
+    Then the error "Expected an option like --duration" shows
+    And Send is disabled
+
+  Scenario: mw-gq6.236: a text option wanted and left out says what to type
+    Given the backend has the prompts "top5", "sweep" and "later"
+    When he types "/later " in the composer
+    Then the error "/later needs some words" shows
+    And Send is disabled

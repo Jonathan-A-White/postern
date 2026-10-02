@@ -526,6 +526,15 @@ Who the caller is, who the Mayor is and who the mill is (`docs/protocol.md` §15
 - `401` — as for every endpoint, which includes a key holding no licence: the
   app's cue to offer the licence screen.
 
+## Saved prompts (`/api/prompts`)
+
+`GET /api/prompts`, `GET|PUT|DELETE /api/prompts/{name}`: the routes, keys and the
+record are in `server/README.md` and `docs/protocol.md` §23. An option's `type` is
+`duration`, `string`, `int`, `bool` or `text`. `text` is the free-text option, the
+words of a call that no flag takes (`/later a licence for Luke`): a signature has at
+most one, and a `PUT` with two answers `400 {"error": "options --a and --b are both
+free-text: a prompt has one"}`.
+
 ## The record fan-out
 
 Every record newly stored in the index — found on chain by the poller, or

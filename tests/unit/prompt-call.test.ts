@@ -19,6 +19,8 @@ const PROMPTS: Prompt[] = [
     ],
   },
   { ...base, name: 'top-ten', summary: 'Ten', signature: [] },
+  { ...base, name: 'later', summary: 'Park a want', signature: [{ flag: '--text', type: 'text', required: true }] },
+  { ...base, name: 'note', summary: 'A note', signature: [{ flag: '--loud', type: 'bool' }, { flag: '--text', type: 'text', default: 'nothing' }] },
 ];
 
 describe('beginsCall', () => {
@@ -43,7 +45,7 @@ describe('tokenizeCall', () => {
 
 describe('matchPrompts', () => {
   it('lists the prompts whose names start with what is typed after the slash', () => {
-    expect(matchPrompts('/', PROMPTS).map((p) => p.name)).toEqual(['sweep', 'top5', 'top-ten']);
+    expect(matchPrompts('/', PROMPTS).map((p) => p.name)).toEqual(['sweep', 'top5', 'top-ten', 'later', 'note']);
     expect(matchPrompts('/top', PROMPTS).map((p) => p.name)).toEqual(['top5', 'top-ten']);
     expect(matchPrompts('/top5', PROMPTS).map((p) => p.name)).toEqual(['top5']);
   });
@@ -179,5 +181,29 @@ describe('halfTypedOption (mw-nqur1n.16)', () => {
     expect(halfTypedOption('/top5 --duration soon --', PROMPTS)).toBe(false);
     expect(halfTypedOption('/top5 --duration 15m', PROMPTS)).toBe(false);
     expect(halfTypedOption('/top5', PROMPTS)).toBe(false);
+  });
+});
+
+describe('checkPromptCall with a text option', () => {
+  it('takes the words no flag consumes as the text, joined by single spaces', () => {
+    expect(checkPromptCall('/later a licence for Luke', PROMPTS)).toEqual({ ok: true, name: 'later', options: { '--text': 'a licence for Luke' } });
+    expect(checkPromptCall('/later   a   licence \n for  Luke', PROMPTS)).toEqual({ ok: true, name: 'later', options: { '--text': 'a licence for Luke' } });
+  });
+  it('leaves a bool flag its own words and still reads the words after it as the text', () => {
+    expect(checkPromptCall('/note --loud true buy milk', PROMPTS)).toEqual({ ok: true, name: 'note', options: { '--loud': 'true', '--text': 'buy milk' } });
+    expect(checkPromptCall('/note buy milk --loud', PROMPTS)).toEqual({ ok: true, name: 'note', options: { '--loud': 'true', '--text': 'buy milk' } });
+  });
+  it('still wants a required text, and accepts one left out when it has a default', () => {
+    expect(checkPromptCall('/later', PROMPTS)).toEqual({ ok: false, error: '/later needs some words' });
+    expect(checkPromptCall('/note', PROMPTS)).toEqual({ ok: true, name: 'note', options: {} });
+  });
+  it('takes the text by its flag too, refuses it given both ways, and still refuses an unknown flag', () => {
+    expect(checkPromptCall('/later --text one', PROMPTS)).toEqual({ ok: true, name: 'later', options: { '--text': 'one' } });
+    expect(checkPromptCall('/later --text one two', PROMPTS)).toEqual({ ok: false, error: '--text is given twice' });
+    expect(checkPromptCall('/later one --text two', PROMPTS)).toEqual({ ok: false, error: '--text is given twice' });
+    expect(checkPromptCall('/later some words --nope', PROMPTS)).toEqual({ ok: false, error: '/later has no option --nope' });
+  });
+  it('refuses stray words as today when the prompt has no text option', () => {
+    expect(checkPromptCall('/top5 a licence', PROMPTS)).toEqual({ ok: false, error: 'Expected an option like --duration, not "a"' });
   });
 });

@@ -44,6 +44,14 @@ const PROMPTS: Record<string, Prompt> = {
     updatedAt: '2026-10-01T12:00:00Z',
     updatedBy: '02'.padEnd(66, '0'),
   },
+  later: {
+    name: 'later',
+    summary: 'Park a want',
+    signature: [{ flag: '--text', type: 'text', required: true }],
+    body: 'Park <text>.',
+    updatedAt: '2026-10-02T12:00:00Z',
+    updatedBy: '02'.padEnd(66, '0'),
+  },
 };
 
 function backendHas(...names: string[]): void {
@@ -79,6 +87,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   BeforeEachScenario(fresh);
 
   const backendHasTwo = () => backendHas('top5', 'sweep');
+  const backendHasThree = () => backendHas('top5', 'sweep', 'later');
   const box = () => screen.getByRole('textbox', { name: 'Message' });
   const sendButton = () => screen.getByRole('button', { name: 'Send' });
   const list = () => screen.queryByRole('listbox', { name: 'Saved prompts' });
@@ -226,5 +235,27 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('no grey text shows', async () => {
       expect(screen.queryByTestId('grey-suggestion')).not.toBeInTheDocument();
     });
+  });
+
+  Scenario('mw-gq6.236: free words after the name are the text option, so a /later call can be sent', ({ Given, When, Then }) => {
+    Given('the backend has the prompts {string}, {string} and {string}', backendHasThree);
+    When('he types {string} in the composer', types);
+    Then('Send is enabled and no error shows', sendIsEnabled);
+    When('he taps Send', taps);
+    Then('the message {string} is sent', messageSent);
+  });
+
+  Scenario('mw-gq6.236: a prompt without a text option still refuses stray words', ({ Given, When, Then, And }) => {
+    Given('the backend has the prompts {string}, {string} and {string}', backendHasThree);
+    When('he types {string} in the composer', types);
+    Then('the error {string} shows', errorShows);
+    And('Send is disabled', sendIsDisabled);
+  });
+
+  Scenario('mw-gq6.236: a text option wanted and left out says what to type', ({ Given, When, Then, And }) => {
+    Given('the backend has the prompts {string}, {string} and {string}', backendHasThree);
+    When('he types {string} in the composer', types);
+    Then('the error {string} shows', errorShows);
+    And('Send is disabled', sendIsDisabled);
   });
 });

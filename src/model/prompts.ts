@@ -90,8 +90,14 @@ export function checkPromptCall(text: string, prompts: Prompt[]): CallCheck {
   if (!prompt) return { ok: false, error: `Unknown prompt /${name}` };
 
   const options: Record<string, string> = {};
+  const textOption = prompt.signature.find((candidate) => candidate.type === 'text');
+  const words: string[] = [];
   for (let at = 1; at < tokens.length; at += 1) {
     const flag = tokens[at];
+    if (!flag.startsWith('--') && textOption) {
+      words.push(flag); // the words no flag consumes are the text option's value
+      continue;
+    }
     if (!flag.startsWith('--')) return { ok: false, error: `Expected an option like ${prompt.signature[0]?.flag ?? '--option'}, not "${flag}"` };
     const option = prompt.signature.find((candidate) => candidate.flag === flag);
     if (!option) return { ok: false, error: `/${name} has no option ${flag}` };
@@ -110,8 +116,12 @@ export function checkPromptCall(text: string, prompts: Prompt[]): CallCheck {
     options[flag] = next;
     at += 1;
   }
+  if (textOption && words.length > 0) {
+    if (textOption.flag in options) return { ok: false, error: `${textOption.flag} is given twice` };
+    options[textOption.flag] = words.join(' ');
+  }
   const missing = prompt.signature.find((option) => option.required && !(option.flag in options));
-  if (missing) return { ok: false, error: `/${name} needs ${missing.flag}` };
+  if (missing) return { ok: false, error: `/${name} needs ${missing.type === 'text' ? 'some words' : missing.flag}` };
   return { ok: true, name, options };
 }
 

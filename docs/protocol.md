@@ -1628,9 +1628,11 @@ app only reads them.
 
 - `name` — 1 to 32 characters of `a-z`, `0-9` and `-`.
 - `signature` — the options it takes (an empty array, never absent, when none). Each option has
-  `flag` (begins `--`, no spaces, not given twice), `type` (`duration`, `string`, `int` or `bool`),
-  an optional `default` (a string that parses as its type; empty means none), `required`
-  and `help`. The signature is what a call is checked against.
+  `flag` (begins `--`, no spaces, not given twice), `type` (`duration`, `string`, `int`, `bool` or `text`),
+  an optional `default` (a string that parses as its type; empty means none; any string for
+  `text`), `required` and `help`. The signature is what a call is checked against.
+  A `text` option is the free-text option: a signature has at most one (a second is a `400`),
+  and it takes every word of a call that no flag consumes, joined by single spaces.
 - `body` — the prompt itself. `updatedAt` and `updatedBy` are stamped by the server on every
   write, whatever the request says.
 
@@ -1658,7 +1660,10 @@ A call is an **ordinary message** (§1, class `message`) whose text begins `/`:
 ```
 
 Words split on whitespace; single or double quotes keep a value whole. A `bool` option on its
-own means `true` (`true` or `false` after it says so). The app checks it against the
+own means `true` (`true` or `false` after it says so). When the prompt has a `text` option, the
+words no flag consumes are its value (`/later a licence for Luke` gives `--text` the value
+`a licence for Luke`); giving it both ways is `--text is given twice`, and leaving a required
+one out is `/later needs some words`. A prompt with no `text` option refuses a stray word. The app checks it against the
 signature before Send and refuses, with one inline line, an unknown prompt, an option the
 prompt lacks, one given twice, a value that does not fit its type, a missing required
 option or an unclosed quote. It fills no defaults: the text he typed is what goes out, and the

@@ -32,6 +32,7 @@ describe('the prompt helpers', () => {
   it('writes an option as its flag and its default', () => {
     expect(optionChip({ flag: '--duration', type: 'duration', default: '30m' })).toBe('--duration 30m');
     expect(optionChip({ flag: '--who', type: 'string', required: true })).toBe('--who');
+    expect(optionChip({ flag: '--text', type: 'text', required: true })).toBe('<text>');
   });
 
   it("names the prompt a 'prompt:' channel is about", () => {

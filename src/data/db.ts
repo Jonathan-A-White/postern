@@ -8,7 +8,7 @@ export interface SettingRow {
 // The saved prompts (server/README.md) and what the phone last heard of them; defined here for the same reason as MessageClass, and re-exported by src/services/prompts.ts.
 export interface PromptOption {
   flag: string;
-  type: 'duration' | 'string' | 'int' | 'bool';
+  type: 'duration' | 'string' | 'int' | 'bool' | 'text';
   default?: string;
   required?: boolean;
   help?: string;

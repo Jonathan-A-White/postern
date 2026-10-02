@@ -29,8 +29,9 @@ export function promptOfChannel(channel: string): string | undefined {
   return channel.startsWith('prompt:') && channel.length > 7 ? channel.slice(7) : undefined;
 }
 
-/** An option as a chip reads: '--duration 30m' with a default, else just '--who'. */
+/** An option as a chip reads: '--duration 30m' with a default, else just '--who'; the free-text option is '<text>'. */
 export function optionChip(option: PromptOption): string {
+  if (option.type === 'text') return `<${option.flag.replace(/^-+/, '')}>`;
   return option.default ? `${option.flag} ${option.default}` : option.flag;
 }
 

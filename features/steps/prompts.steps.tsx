@@ -39,6 +39,14 @@ const PROMPTS: Record<string, Prompt> = {
     updatedAt: '2026-10-01T12:00:00Z',
     updatedBy: '02'.padEnd(66, '0'),
   },
+  later: {
+    name: 'later',
+    summary: 'Park a want',
+    signature: [{ flag: '--text', type: 'text', required: true }],
+    body: 'Park <text>.',
+    updatedAt: '2026-10-02T12:00:00Z',
+    updatedBy: '02'.padEnd(66, '0'),
+  },
 };
 
 const listOf = (...names: string[]): Prompt[] => names.map((name) => PROMPTS[name]).sort((a, b) => a.name.localeCompare(b.name));
@@ -120,6 +128,12 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the row {string} shows the summary {string}', summaryShown);
     And('the row {string} shows the option chip {string}', chipShown);
     And('the row {string} lists the option chip {string}', chipShown);
+  });
+
+  Scenario('mw-gq6.236: a prompt that takes free text shows it as <text>', ({ Given, When, Then }) => {
+    Given('the backend has the prompts {string}', () => backendHas('later'));
+    When('the Prompts screen opens', open);
+    Then('the row {string} shows the option chip {string}', chipShown);
   });
 
   Scenario("mw-nqur1n.4: Run opens the general channel with the composer saying the prompt's name", ({ Given, When, And, Then }) => {

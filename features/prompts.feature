@@ -7,6 +7,11 @@ Feature: The Prompts screen lists the saved prompts and opens a conversation to 
     And the row "/top5" shows the option chip "--duration 30m"
     And the row "/sweep" lists the option chip "--who"
 
+  Scenario: mw-gq6.236: a prompt that takes free text shows it as <text>
+    Given the backend has the prompts "later"
+    When the Prompts screen opens
+    Then the row "/later" shows the option chip "<text>"
+
   Scenario: mw-nqur1n.4: Run opens the general channel with the composer saying the prompt's name
     Given the backend has the prompts "top5" and "sweep"
     When the Prompts screen opens

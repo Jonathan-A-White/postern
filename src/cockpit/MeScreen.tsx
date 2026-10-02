@@ -10,6 +10,7 @@ import { useUnlockedKey, useViewIndex } from './hooks';
 import { MoveHomeButtons } from './MoveHome';
 import { HOMES, useStandby } from '../services/standby';
 import { lock, sessionExpiresAt } from '../services/keySession';
+import { describeBuild } from '../services/buildLine';
 import { refreshNow, stopLive, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
 import { isPushSubscribed, pushSupported, rememberPushSubscribed, subscribeToPush } from '../services/push';
@@ -151,6 +152,7 @@ export function MeScreen() {
   const live = useLive();
   const expires = sessionExpiresAt();
   const label = liveLabel(live);
+  const build = describeBuild(__APP_VERSION__);
   const standby = useStandby();
   const viewState = useViewIndex();
   // In standby the view on the phone may be from a home that has since changed hands.
@@ -159,6 +161,11 @@ export function MeScreen() {
   return (
     <Screen title="Me" subtitle="Key, Mayor, connection, notifications">
       <div className="flex flex-col gap-6">
+        <p aria-label="Build" className="flex flex-col gap-0.5">
+          <span className="text-[14px] text-fg">{build.build}</span>
+          {build.version && <span className="text-[11.5px] text-faint">{build.version}</span>}
+        </p>
+
         <section className="flex flex-col gap-2" aria-label="Key">
           <SectionTitle>Key</SectionTitle>
           <Card className="divide-y divide-line">
@@ -271,8 +278,6 @@ export function MeScreen() {
         </section>
 
         <Notifications />
-
-        <p className="text-center text-[12px] text-faint">Postern v{__APP_VERSION__}</p>
       </div>
     </Screen>
   );

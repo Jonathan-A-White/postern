@@ -36,7 +36,7 @@ describe('Me, a result that arrives after the screen is gone', () => {
     vi.spyOn(push, 'isPushSubscribed').mockReturnValue(subscribed.thenable);
 
     const { unmount } = render(<MeScreen />);
-    expect(await screen.findByText(`Postern v${__APP_VERSION__}`)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Build')).toBeInTheDocument();
     expect(settings.wasAsked()).toBe(true);
     expect(subscribed.wasAsked()).toBe(true);
     unmount();

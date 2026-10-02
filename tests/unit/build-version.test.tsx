@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildVersion, shortCommit } from '../../build-version';
+import { describeBuild } from '../../src/services/buildLine';
 import { MeScreen } from '../../src/cockpit/MeScreen';
 import { Welcome } from '../../src/cockpit/Gate';
 
@@ -46,6 +47,16 @@ describe('shortCommit', () => {
   });
 });
 
+describe('describeBuild', () => {
+  it('splits the version string into the build line and the package version', () => {
+    expect(describeBuild('0.1.0 · 2026-10-02 12:53Z · 242e766')).toEqual({ build: 'Build 2026-10-02 12:53Z · 242e766', version: '0.1.0' });
+  });
+
+  it('keeps a string it cannot split whole rather than showing nothing', () => {
+    expect(describeBuild('whatever')).toEqual({ build: 'Build whatever', version: '' });
+  });
+});
+
 describe('the version the app shows', () => {
   const shape = /^\d+\.\d+\.\d+ · \d{4}-\d{2}-\d{2} \d{2}:\d{2}Z · ([0-9a-f]{7,}|dev)$/;
 
@@ -54,9 +65,12 @@ describe('the version the app shows', () => {
     expect(__APP_VERSION__).toContain(shortCommit(process.cwd()));
   });
 
-  it("Me ends with 'Postern v' then the version", async () => {
+  it('Me opens with the build time and commit, then the package version smaller', async () => {
     render(<MeScreen />);
-    expect(await screen.findByText(`Postern v${__APP_VERSION__}`)).toBeInTheDocument();
+    const [version, built, commit] = __APP_VERSION__.split(' · ');
+    const line = await screen.findByLabelText('Build');
+    expect(line.firstElementChild).toHaveTextContent(`Build ${built} · ${commit}`);
+    expect(line.lastElementChild).toHaveTextContent(version);
     // Let the screen's own reads land before it goes, so none outlives the test (mw-j0f2d.42).
     await waitFor(() => expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeInTheDocument());
     cleanup();

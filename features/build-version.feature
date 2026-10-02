@@ -1,8 +1,9 @@
 Feature: Each build has its own version, so he can tell on his phone which build has loaded (mw-gq6.196)
 
-  Scenario: AC-1: the Me screen's last line is Postern v, the version, the build time and the commit
+  Scenario: AC-1: the Me screen's first line under its heading is Build, the build time and the commit, then the version smaller (mw-yxwtth.1)
     When the Me screen is opened
-    Then its last line reads "Postern v" then the version, the UTC build time and the short commit
+    Then its first line reads "Build " then the UTC build time, a dot and the short commit
+    And the package version follows it, smaller
 
   Scenario: AC-2: the gate shows the same version
     When the gate is opened

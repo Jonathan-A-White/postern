@@ -19,15 +19,26 @@ const feature = await loadFeature('features/build-version.feature');
 describeFeature(feature, ({ Scenario }) => {
   afterAll(() => cleanup());
 
-  Scenario('AC-1: the Me screen\'s last line is Postern v, the version, the build time and the commit', ({ When, Then }) => {
+  Scenario("AC-1: the Me screen's first line under its heading is Build, the build time and the commit, then the version smaller (mw-yxwtth.1)", ({ When, Then, And }) => {
     When('the Me screen is opened', () => {
       cleanup();
       render(<MeScreen />);
     });
-    Then('its last line reads "Postern v" then the version, the UTC build time and the short commit', async () => {
-      const line = await screen.findByText(`Postern v${__APP_VERSION__}`);
-      expect(line.textContent).toMatch(/^Postern v\d+\.\d+\.\d+ · \d{4}-\d{2}-\d{2} \d{2}:\d{2}Z · \S+$/);
+    Then('its first line reads "Build " then the UTC build time, a dot and the short commit', async () => {
+      const line = await screen.findByLabelText('Build');
+      expect(line.firstElementChild?.textContent).toMatch(/^Build \d{4}-\d{2}-\d{2} \d{2}:\d{2}Z · \S+$/);
+      const [, built, commit] = __APP_VERSION__.split(' · ');
       expect(__APP_VERSION__).toMatch(VERSION_SHAPE);
+      expect(line.firstElementChild?.textContent).toBe(`Build ${built} · ${commit}`);
+      // ...and it comes before every section of the screen.
+      const keySection = screen.getByRole('region', { name: 'Key' });
+      expect(line.compareDocumentPosition(keySection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+    And('the package version follows it, smaller', () => {
+      const line = screen.getByLabelText('Build');
+      const version = line.lastElementChild as HTMLElement;
+      expect(version.textContent).toBe(__APP_VERSION__.split(' · ')[0]);
+      expect(version.className).toMatch(/text-\[1[01](\.\d)?px\]/);
     });
   });
 

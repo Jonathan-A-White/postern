@@ -160,3 +160,28 @@ func TestGetTimeoutReasonAndElapsed(t *testing.T) {
 		t.Fatalf("Reason = %q, Msg = %q, Elapsed = %s", cmdErr.Reason, cmdErr.Msg, cmdErr.Elapsed)
 	}
 }
+
+
+// A timed-out call's Elapsed must never be shorter than the timeout: the clock
+// starts before the deadline is set, so the gap between setting the deadline
+// and reading the clock cannot make the command look as if it gave up early.
+// The runner returns the instant ctx is done, so the deadline is the only
+// thing that ends each run; many runs at a tiny timeout make the gap visible.
+func TestGetTimeoutElapsedNeverBelowTimeout(t *testing.T) {
+	const timeout = 50 * time.Microsecond
+	blocking := func(ctx context.Context, argv []string) (Result, error) {
+		<-ctx.Done()
+		return Result{ExitCode: -1}, ctx.Err()
+	}
+	f := New("mw", WithRunner(blocking), WithTimeout(timeout))
+	for i := 0; i < 2000; i++ {
+		_, err := f.Get(context.Background(), "mw-abc")
+		var cmdErr *CommandError
+		if !errors.As(err, &cmdErr) {
+			t.Fatalf("run %d: Get = %v, want a *CommandError", i, err)
+		}
+		if cmdErr.Elapsed < timeout {
+			t.Fatalf("run %d: Elapsed = %s, shorter than the timeout %s", i, cmdErr.Elapsed, timeout)
+		}
+	}
+}

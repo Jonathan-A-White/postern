@@ -110,11 +110,13 @@ func (f *Fetcher) Get(ctx context.Context, id string) ([]byte, error) {
 		return nil, ErrNotConfigured
 	}
 
+	// The clock starts before the deadline is set, so a timed-out call's
+	// Elapsed is never shorter than the timeout.
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, f.timeout)
 	defer cancel()
 
 	argv := append(append(make([]string, 0, len(f.argv)+1), f.argv...), id)
-	start := time.Now()
 	result, err := f.run(ctx, argv)
 	elapsed := time.Since(start)
 	switch {

@@ -51,6 +51,8 @@ the purchaser's QR must carry the wrap key as well as the device key.
 
 ## Design points
 
+Me's own mint (*Mint my licence*) goes to the `postern` collection, not the package's default `spellforge-leaderboard-testnet`; the gate still counts a mint in the old collection until he has re-minted (mw-6ww.63).
+
 **(a) The issuer: one key for every collection.** Keep the one `IssuerKey`, the
 Governor's, for `postern` and every app collection; no `POSTERN_APP_ISSUERS`. Why:
 only he moves sats and his key stays on his phone (the map's decisions); Postern's

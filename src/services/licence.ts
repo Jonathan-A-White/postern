@@ -17,7 +17,9 @@ import {
   type TypedRecordInTransaction,
 } from 'spell-forge-bsv';
 import { settingsRepo } from '../data/repositories';
+import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from './collections';
 
+const COUNTED_COLLECTIONS = new Set([COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION]);
 const LICENCE_STATUS_SETTING_KEY = 'licence-status';
 const LICENCE_MINT_PENDING_SETTING_KEY = 'licence-mint-pending';
 
@@ -65,8 +67,9 @@ export function addressForPublicKey(publicKeyHex: string): string {
 }
 
 /**
- * Walks the key's own address history for a mint record naming it holder of this
- * build's collection, then checks no later transfer record moves that origin away.
+ * Walks the key's own address history for a mint record naming it holder of the
+ * cockpit collection (or the legacy one, see collections.ts), then checks no later
+ * transfer record moves that origin away.
  * The License token itself is always output 0 of its mint transaction (the shape
  * every builder in the package writes), so the origin is the mint's txid at vout 0.
  */
@@ -95,7 +98,8 @@ export async function findLicence(
     for (const record of findTypedRecordsInTransaction(txHex)) {
       const payload = decodeTypedPayload(record);
       if (!payload) continue;
-      if (payload.kind === 'mint' && payload.collection === chainConfig.collectionId && payload.holder === address) {
+      // LEGACY_LICENCE_COLLECTION is accepted only during the mw-6ww.63 transition, until he has re-minted in 'postern'.
+      if (payload.kind === 'mint' && COUNTED_COLLECTIONS.has(payload.collection) && payload.holder === address) {
         origin = { txid: entry.txid, vout: 0 };
       } else if (payload.kind === 'transfer') {
         transferredOrigins.add(payload.origin);

@@ -3,6 +3,7 @@ import { chainConfig } from 'spell-forge-bsv';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { db } from '../../src/data/db';
 import { addressForPublicKey, getCachedLicenceStatus, getMintPending } from '../../src/services/licence';
+import { COCKPIT_COLLECTION } from '../../src/services/collections';
 import { mintCostSatoshis, mintMyLicence } from '../../src/services/mint';
 import { FakeChainProvider } from '../support/fake-chain-provider';
 
@@ -54,5 +55,17 @@ describe('mintMyLicence', () => {
     expect(result.txid).toBe('b'.repeat(64));
     expect(await getCachedLicenceStatus()).toBeUndefined();
     expect(await getMintPending()).toMatchObject({ txid: 'b'.repeat(64) });
+  });
+
+  it("builds the mint in the cockpit collection 'postern', not the package's default", async () => {
+    const provider = new FakeChainProvider();
+    provider.setUtxos(ADDRESS, [{ txid: 'a'.repeat(64), vout: 0, satoshis: 20_000 }]);
+
+    await mintMyLicence(new Uint8Array(KEY.toArray('be', 32)), provider);
+
+    expect(COCKPIT_COLLECTION).toBe('postern');
+    const params = buildContractMintTransactionMock.mock.calls[0][0] as { config: typeof chainConfig };
+    expect(params.config.collectionId).toBe('postern');
+    expect(params.config.network).toBe(chainConfig.network);
   });
 });

@@ -11,6 +11,7 @@ import {
   type ChainConfig,
   type ChainProvider,
 } from 'spell-forge-bsv';
+import { COCKPIT_COLLECTION } from './collections';
 import { addressForPublicKey, setMintPending } from './licence';
 
 const TESTNET_WIF_PREFIX = [0xef];
@@ -77,7 +78,7 @@ export async function mintMyLicence(key: Uint8Array, provider: ChainProvider = c
     utxos,
     holderPubKey: publicKeyHex,
     mintFuelSatoshis: chainConfig.mintFuelSatoshis,
-    config: chainConfig,
+    config: { ...chainConfig, collectionId: COCKPIT_COLLECTION },
     provider,
   });
 

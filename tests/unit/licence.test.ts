@@ -37,6 +37,26 @@ describe('licence', () => {
     expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid, vout: 0 });
   });
 
+  it("finds a mint in the cockpit collection 'postern'", async () => {
+    const provider = new FakeChainProvider();
+    const txid = 'f'.repeat(64);
+    provider.addTransaction(ADDRESS, txid, mintRecordTxHex('postern', ADDRESS));
+    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid, vout: 0 });
+  });
+
+  it("still finds a mint in the old collection 'spellforge-leaderboard-testnet' (mw-6ww.63 transition)", async () => {
+    const provider = new FakeChainProvider();
+    const txid = '1'.repeat(64);
+    provider.addTransaction(ADDRESS, txid, mintRecordTxHex('spellforge-leaderboard-testnet', ADDRESS));
+    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid, vout: 0 });
+  });
+
+  it("ignores a mint in another app's collection, 'cairn'", async () => {
+    const provider = new FakeChainProvider();
+    provider.addTransaction(ADDRESS, '2'.repeat(64), mintRecordTxHex('cairn', ADDRESS));
+    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toBeNull();
+  });
+
   it('treats a transferred-away token as no longer held', async () => {
     const provider = new FakeChainProvider();
     const mintTxid = 'c'.repeat(64);

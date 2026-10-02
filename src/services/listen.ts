@@ -11,7 +11,9 @@
 // is down (Android Chrome on a pause or a no-speech/network blip): until stop() the
 // hold goes on, the recogniser is started again and the earlier words are kept; only a
 // recogniser that keeps ending at once is given up on, never one that lasted through a pause
-// (mw-j0f2d.27). The recogniser always gets a full language tag (en-US when none is given, a bare 'en'
+// (mw-j0f2d.27), and never once he has said words: then it is given a moment and started again
+// until he lets go, and a phrase the restarted recogniser hears again is said once (mw-j0f2d.37).
+// The recogniser always gets a full language tag (en-US when none is given, a bare 'en'
 // widened to it), and a language-not-supported error is retried once with en-US
 // before it is shown, because the phone's service rejects tags it has no pack for.
 // The recogniser listens on the phone's default microphone unless it is handed an audio
@@ -163,6 +165,13 @@ export const MAX_IDLE_RESTARTS = 5;
  */
 export const MIN_LIVE_STRETCH_MS = 1500;
 
+/**
+ * How long a recogniser that has ended at once MAX_IDLE_RESTARTS times in a row waits before it is started again, once he
+ * has said words: his turn is never cut while he holds, and a recogniser that keeps ending (another sound on the phone
+ * taking the microphone) is not started over and over at once.
+ */
+export const IDLE_RESTART_WAIT_MS = 500;
+
 /** What an on-device attempt can fail with when the phone lacks the speech pack or service for it. */
 const ON_DEVICE_FAILURES = new Set(['language-not-supported', 'service-not-allowed']);
 
@@ -173,21 +182,58 @@ function extendsPhrase(previous: string, next: string): boolean {
   return after.startsWith(before) && (after.length === before.length || after[before.length] === ' ');
 }
 
+const wordsOf = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.replace(/[.,!?;:]+$/, ''))
+    .filter(Boolean);
+
+/** How many words of `a` are in `b` in the same order. */
+function wordsInOrder(a: readonly string[], b: readonly string[]): number {
+  let row = new Array<number>(b.length + 1).fill(0);
+  for (const word of a) {
+    const next = [0];
+    for (let j = 0; j < b.length; j++) next.push(word === b[j] ? row[j] + 1 : Math.max(row[j + 1], next[j]));
+    row = next;
+  }
+  return row[b.length];
+}
+
+/** True when `next` is `previous` heard again with a word changed on the way (Kieran, Chiron): same opening, most words kept, no shorter. */
+function revisesPhrase(previous: string, next: string): boolean {
+  const before = wordsOf(previous);
+  const after = wordsOf(next);
+  let lead = 0;
+  while (lead < before.length && before[lead] === after[lead]) lead++;
+  return after.length >= before.length && lead >= 2 && wordsInOrder(before, after) >= 0.75 * before.length;
+}
+
+/** `next` taken as the phrase `previous` grown or corrected, or `previous` kept when `next` is only its start; undefined when `next` is a new phrase. */
+function samePhrase(previous: string, next: string): string | undefined {
+  if (extendsPhrase(previous, next) || revisesPhrase(previous, next)) return next;
+  if (extendsPhrase(next, previous)) return previous;
+  return undefined;
+}
+
 /**
- * The words so far. Desktop Chrome updates one result in place and adds a new one for each
- * utterance, so the results are joined in order. Android Chrome sends every growing hypothesis
- * as a new result, each the whole phrase so far: a result that extends the one before replaces
- * it, so the phrase is said once.
+ * The phrases so far, after `before` (those heard before the recogniser last restarted). Desktop
+ * Chrome updates one result in place and adds a new one for each utterance, so the results are
+ * joined in order. Android Chrome sends every hypothesis as a new result, each the whole phrase so
+ * far: a result that grows the one before, or changes one of its words, replaces it, so the phrase
+ * is said once; the same holds for the first phrase after a restart, which can be the last one
+ * before it heard again.
  */
-function transcript(results: ArrayLike<RecognitionResult>): string {
-  const parts: string[] = [];
+function phrases(before: readonly string[], results: ArrayLike<RecognitionResult>): string[] {
+  const parts = [...before];
   for (let i = 0; i < results.length; i++) {
     const text = results[i][0]?.transcript.trim();
     if (!text) continue;
-    if (parts.length > 0 && extendsPhrase(parts[parts.length - 1], text)) parts[parts.length - 1] = text;
+    const same = parts.length > 0 ? samePhrase(parts[parts.length - 1], text) : undefined;
+    if (same !== undefined) parts[parts.length - 1] = same;
     else parts.push(text);
   }
-  return parts.join(' ');
+  return parts;
 }
 
 /** Asks for on-device recognition; true only when the browser offers it and accepts it. */
@@ -234,8 +280,9 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   }
 
   let text = '';
-  // The words from the stretches of listening before the recogniser last restarted.
-  let carried = '';
+  // The phrases heard so far, and those from the stretches of listening before the recogniser last restarted.
+  let heard: string[] = [];
+  let carried: string[] = [];
   // The last transient error: reported only if the hold ends with nothing heard.
   let transient = null as ListenError | null;
   let idleRestarts = 0;
@@ -253,6 +300,8 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   let inputHeard = false;
   let pending = options.openInput !== undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // A restart put off by IDLE_RESTART_WAIT_MS; released while it waits, the hold settles at once.
+  let waiting: ReturnType<typeof setTimeout> | undefined;
   let settle: (result: ListenResult) => void = () => {};
   const settled = new Promise<ListenResult>((resolve) => {
     settle = resolve;
@@ -289,6 +338,8 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   const finish = () => {
     if (outcome) return;
     clearTimeout(timer);
+    clearTimeout(waiting);
+    waiting = undefined;
     dropInput();
     const failure = error ?? (text ? null : transient);
     outcome = failure ? { ok: false, text, error: failure } : { ok: true, text, mode };
@@ -324,7 +375,8 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     recognizer.onstart = recognizer.onaudiostart = () => live() && announce();
     recognizer.onresult = (event) => {
       if (!live()) return;
-      text = [carried, transcript(event.results)].filter(Boolean).join(' ');
+      heard = phrases(carried, event.results);
+      text = heard.join(' ');
       transient = null;
       idleRestarts = 0;
       if (input) inputHeard = true;
@@ -371,15 +423,28 @@ export function startListening(options: ListenOptions = {}): ListenStart {
           dropInput();
           options.onInput?.(undefined);
         }
+        carried = heard;
         if (idleRestarts < MAX_IDLE_RESTARTS) {
           try {
-            carried = text;
             begin(recognizer);
             idleRestarts++;
             return;
           } catch {
             // cannot restart: settle with what was heard
           }
+        } else if (text) {
+          // He has said words and still holds: a recogniser that keeps ending at once never ends his turn.
+          // It is given a moment and started again, for as long as he holds.
+          waiting = setTimeout(() => {
+            waiting = undefined;
+            if (outcome || stopping || recognizer !== current) return;
+            try {
+              begin(recognizer);
+            } catch {
+              finish();
+            }
+          }, IDLE_RESTART_WAIT_MS);
+          return;
         }
         if (!text) {
           error = transient ?? errorFor('no-speech');
@@ -426,8 +491,8 @@ export function startListening(options: ListenOptions = {}): ListenStart {
       return mode;
     },
     stop() {
-      if (!outcome && !stopping && pending) {
-        // Released before the input opened: nothing was heard.
+      if (!outcome && !stopping && (pending || waiting !== undefined)) {
+        // Released before the input opened (nothing was heard), or while the recogniser waits to start again (nothing more is coming).
         stopping = true;
         finish();
       } else if (!outcome && !stopping) {
@@ -451,6 +516,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     },
     abort() {
       clearTimeout(timer);
+      clearTimeout(waiting);
       dropInput();
       outcome = outcome ?? { ok: true, text: '', mode };
       settle(outcome);

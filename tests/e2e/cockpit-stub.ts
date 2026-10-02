@@ -8,7 +8,7 @@ import { deriveMasterKey, deriveAesKeyFromPhrase, wrapKey, publicKeyHexFromMaste
 import { sealDocument } from '../../src/services/documents';
 import { encryptAttachment } from '../../src/services/messages';
 import type { Need, View, ViewBead } from '../../src/model/view';
-import { MAYOR, fixtureDetail, fixtureRecords, fixtureView, longOptionRecords, longThreadRecords } from '../support/cockpit-fixture';
+import { MAYOR, fixtureDetail, fixtureRecords, fixtureView, liveCardRecords, longOptionRecords, longThreadRecords } from '../support/cockpit-fixture';
 
 export async function seedVault(page: Page, mnemonic: string): Promise<string> {
   const key = await deriveMasterKey(mnemonic);
@@ -63,6 +63,8 @@ export interface StubExtras {
   longOptions?: boolean;
   /** Adds forty numbered posts to the channel 'long thread' (mw-f758y.35). */
   longThread?: boolean;
+  /** Adds a live card, an update to it and an events record that ticks one of its items (mw-nqur1n.11). */
+  liveCard?: boolean;
 }
 
 export async function stubBackend(
@@ -83,6 +85,7 @@ export async function stubBackend(
   const records = fixtureRecords(governor, now, voiceAttachment);
   if (extras.longOptions) records.push(...longOptionRecords(governor, now, records.length));
   if (extras.longThread) records.push(...longThreadRecords(governor, now, records.length));
+  if (extras.liveCard) records.push(...liveCardRecords(governor, now, records.length));
   const posted: string[] = [];
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 

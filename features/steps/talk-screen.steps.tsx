@@ -100,6 +100,23 @@ const showNotification = vi.fn<(title: string, options?: unknown) => Promise<voi
 const getNotifications = vi.fn(() => Promise.resolve([] as { close(): void }[]));
 const release = vi.fn(() => Promise.resolve());
 const request = vi.fn(() => Promise.resolve({ release }));
+// mw-j0f2d.37: the talk's silent loop (src/services/silentLoop.ts), as audio elements that say whether they are playing.
+let audios: FakeAudio[] = [];
+class FakeAudio {
+  loop = false;
+  playing = false;
+  constructor(public src: string) {
+    audios.push(this);
+  }
+  play() {
+    this.playing = true;
+    return Promise.resolve();
+  }
+  pause() {
+    this.playing = false;
+  }
+}
+const loopPlaying = () => audios.some((audio) => audio.playing);
 
 function installBrowser(listens: boolean): void {
   recognizers = [];
@@ -119,6 +136,8 @@ function installBrowser(listens: boolean): void {
     writable: true,
   });
   Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true, writable: true });
+  audios = [];
+  vi.stubGlobal('Audio', FakeAudio);
 }
 
 /** The phone's audio inputs: none listed (a browser that cannot choose), or these, whose tracks are returned when opened. */
@@ -597,6 +616,62 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('one turn is sent saying {string} as turn 1', (_c, words: string) => {
       expect(sendTurn).toHaveBeenCalledTimes(1);
       expect(lastSent()).toMatchObject({ text: words, role: 'turn', talk: { turn: 1 } });
+    });
+  });
+
+  Scenario('AC-1: a pause where the recogniser ends at once with no words, over and over, on his earbuds does not cut the turn, and no silent loop plays while he holds (mw-j0f2d.37)', ({ Given, When, And, Then }) => {
+    Given('the phone has the inputs {string} and {string}', (_c, a: string, b: string) => {
+      setInputs([
+        { deviceId: 'phone', label: a },
+        { deviceId: 'buds', label: b },
+      ]);
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    Then('the recogniser listens on the {string} input', async (_c, label: string) => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      expect((recognizers.at(-1)?.startedWith as { label: string }).label).toBe(label);
+    });
+    And('no silent loop is playing', () => {
+      expect(loopPlaying()).toBe(false);
+    });
+    When('the recogniser hears {string} so far', async (_c, words: string) => hear(words));
+    And('he pauses, the recogniser ending at once with no words {int} times over', async (_c, times: number) => {
+      for (let i = 0; i < times; i++) {
+        const before = recognizers.length;
+        act(() => {
+          if (i % 2 === 0) recognizers.at(-1)?.onerror?.({ error: 'no-speech' });
+          recognizers.at(-1)?.onend?.();
+        });
+        await waitFor(() => expect(recognizers.length).toBe(before + 1));
+      }
+    });
+    And('the recogniser then hears {string} so far', async (_c, words: string) => hear(words));
+    Then('the talk button reads {string}', async (_c, name: string) => {
+      await waitFor(() => expect(screen.getByRole('button', { name })).toBeInTheDocument());
+    });
+    And('the live transcript reads exactly {string}', async (_c, words: string) => {
+      await waitFor(() => expect(screen.getByTestId('live-transcript').textContent?.trim()).toBe(words));
+    });
+    And('the recogniser still listens on the {string} input, which was not let go', (_c, label: string) => {
+      expect((recognizers.at(-1)?.startedWith as { label: string }).label).toBe(label);
+      expect(inputTrack.stop).not.toHaveBeenCalled();
+    });
+    And('still no silent loop is playing', () => {
+      expect(loopPlaying()).toBe(false);
+    });
+    When('he lets go of the talk button', async () => {
+      fireEvent.pointerUp(await talkButton('Release to send'));
+      await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
+    });
+    Then('one turn is sent saying {string} as turn 1', (_c, words: string) => {
+      expect(sendTurn).toHaveBeenCalledTimes(1);
+      expect(lastSent()).toMatchObject({ text: words, role: 'turn', talk: { turn: 1 } });
+    });
+    And('a silent loop plays once he has let go', async () => {
+      await waitFor(() => expect(loopPlaying()).toBe(true));
     });
   });
 

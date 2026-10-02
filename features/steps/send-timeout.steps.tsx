@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
+import { chainConfig } from 'spell-forge-bsv';
 import { Composer } from '../../src/cockpit/Composer';
 import { ToastHost } from '../../src/ui/toast';
 import { dismissAllToasts } from '../../src/ui/toastStore';
@@ -56,6 +57,8 @@ async function fresh(answer: (url: string, init?: RequestInit) => Promise<Respon
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/messages')) posted += 1;
+      // The chain road for a typed post (docs/protocol.md §21) is out of reach too: these scenarios are about the backend not answering.
+      if (url.startsWith(chainConfig.providerBaseUrl)) return Promise.reject(new TypeError('Failed to fetch'));
       return Promise.resolve(answer(url, init));
     }),
   );

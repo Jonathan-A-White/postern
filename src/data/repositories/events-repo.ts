@@ -29,6 +29,11 @@ export const eventsRepo = {
     return db.events.where('seq').above(seq).sortBy('seq');
   },
 
+  /** Every held event about any of `beads`, in seq order. */
+  async forBeads(beads: string[]): Promise<EventRow[]> {
+    return (await db.events.where('bead').anyOf(beads).toArray()).sort((a, b) => a.seq - b.seq);
+  },
+
   /** Whether an event naming `txid` (a card_answered's answer record, say) is held. */
   async hasDetail(txid: string): Promise<boolean> {
     return (await db.events.where('detail').equals(txid).first()) !== undefined;

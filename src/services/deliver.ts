@@ -2,8 +2,8 @@
 // decisions 5, 7 and 10): the §1 envelope, encrypted to the pinned Mayor, posted
 // straight to the backend (docs/protocol.md §9) — one round trip, no coins. An
 // old backend that has no direct delivery gets today's funded transaction
-// instead; a Call me whose backend cannot be reached gets that transaction too,
-// sent through WhatsOnChain (§21). Either way the sent message is stored at
+// instead; a typed post (any class, a picture excepted) whose backend cannot be
+// reached gets that transaction too, sent through WhatsOnChain (§21). Either way the sent message is stored at
 // once, so it shows in its thread before the event stream echoes it back.
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { encodeRecordScript } from 'spell-forge-bsv';
@@ -22,7 +22,7 @@ export interface DeliverOptions {
   mayorKey: string;
   /** Whether the backend takes direct delivery (docs/protocol.md §15). */
   direct: boolean;
-  /** The phone knows the backend is out of reach (the live status is offline): a Call me skips the direct post and goes on chain (docs/protocol.md §21). */
+  /** The phone knows the backend is out of reach (the live status is offline): a typed post skips the direct post and goes on chain (docs/protocol.md §21). */
   offline?: boolean;
   /** The outbox row's client id, sent with a direct post so the backend stores a retry once (docs/protocol.md §9). */
   clientId?: string;
@@ -98,26 +98,27 @@ async function rememberSent(
   });
 }
 
-/** Encrypts `plaintext` to the Mayor and delivers it; resolves with its id. */
-export async function deliver(plaintext: string, messageClass: MessageClass, options: DeliverOptions): Promise<Delivered> {
+/** Encrypts `plaintext` to the Mayor and delivers it; resolves with its id. A post that carries
+ * a picture or other file passes `carriesFiles`: it is never put on chain from the phone (§21), it waits. */
+export async function deliver(plaintext: string, messageClass: MessageClass, options: DeliverOptions, carriesFiles = false): Promise<Delivered> {
   if (!options.mayorKey) throw new Error("The Mayor's key is not known yet — connect to the backend once first.");
   const senderPrivateKeyHex = Utils.toHex(Array.from(options.key));
   const payload = encryptMessage({ text: plaintext, class: messageClass, senderPrivateKeyHex, recipientPublicKeyHex: options.mayorKey });
 
-  // Only a Call me (docs/protocol.md §21) goes on chain when the backend cannot be reached:
-  // a network failure leaves the rule for every other class as it was.
-  const callsOnChainWhenDown = messageClass === 'call';
+  // A text post of any class (docs/protocol.md §21) goes on chain when the backend cannot be
+  // reached; one with a file waits for the backend as before.
+  const onChainWhenDown = !carriesFiles;
   let via: ChainVia = 'backend';
   let delivered: Delivered | undefined;
-  if (options.direct && !(callsOnChainWhenDown && options.offline)) {
+  if (options.direct && !(onChainWhenDown && options.offline)) {
     try {
       const script = encodeRecordScript(Utils.toArray(JSON.stringify(payload), 'utf8'));
       delivered = { txid: await postDirect(script.toHex(), options), channel: 'direct' };
     } catch (err) {
-      if (callsOnChainWhenDown && isNetworkFailure(err)) via = 'whatsonchain';
+      if (onChainWhenDown && isNetworkFailure(err)) via = 'whatsonchain';
       else if (!(err instanceof DirectUnsupported)) throw err;
     }
-  } else if (callsOnChainWhenDown && options.offline) {
+  } else if (onChainWhenDown && options.offline) {
     via = 'whatsonchain';
   }
   if (!delivered) {
@@ -148,7 +149,8 @@ export interface ThreadedMessage {
 }
 
 export function deliverThreaded(message: ThreadedMessage, options: DeliverOptions): Promise<Delivered> {
-  return deliver(encodeThreadedMessage(message), 'message', options);
+  const carriesFiles = message.attachment !== undefined || (message.attachments?.length ?? 0) > 0;
+  return deliver(encodeThreadedMessage(message), 'message', options, carriesFiles);
 }
 
 /** docs/protocol.md §6: his answer to a question on `bead`. */

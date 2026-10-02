@@ -44,6 +44,8 @@ export interface ConversationItem {
   /** What the Mayor's host heard in this voice note (docs/protocol.md §14). */
   transcript?: string;
   txid?: string;
+  /** His own post went on chain from the phone, not through the backend (docs/protocol.md §21): its id is a transaction, not a `direct:` name. */
+  onChain?: boolean;
   /** The txid this message answers or annotates (its record's `re`), when it names one. */
   re?: string;
   unread?: boolean;
@@ -158,6 +160,7 @@ export function itemFromMessage(row: MessageRow): ConversationItem & { transcrip
     speaker,
     speakerLabel: label,
     txid: row.txid,
+    ...(row.direction === 'sent' && !row.txid.startsWith('direct:') ? { onChain: true } : {}),
     unread: row.direction === 'received' && !row.read,
     source: 'message' as const,
   };

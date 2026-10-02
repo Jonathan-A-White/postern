@@ -740,3 +740,56 @@ func TestFanoutPushesARingButNotARequestOrATalkTurn(t *testing.T) {
 type txidNotifier struct{ txids []string }
 
 func (r *txidNotifier) RecordIndexed(rec index.Record) { r.txids = append(r.txids, rec.TxID) }
+
+// A talk ANSWER (docs/protocol.md §20), a talk record signed by the Mayor's key to anyone
+// else, is pushed so a backgrounded phone hears of it; the Governor's own turn and every
+// other talk record are not. The hub hears of all of them, and no hook runs for any.
+func TestATalkAnswerIsPushedAndNoOtherTalkRecordIs(t *testing.T) {
+	const mayor = "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+	const governor = "023c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+	const stranger = "02" + "1111111111111111111111111111111111111111111111111111111111111111"
+	dir := t.TempDir()
+	onMessage := filepath.Join(dir, "on-message")
+	cfg := config.Config{MayorKey: mayor, OnMessage: "echo x >> " + onMessage, HomeCmd: "exit 0"}
+	mon := standby.New(cfg.HomeCmd)
+	mon.Check()
+	push, hub := &recordingNotifier{}, &recordingNotifier{}
+	fanout := buildFanout(cfg, mon, push, hub)
+	talk := func(from, to string) index.Record {
+		return index.Record{Payload: []byte(`{"v":1,"kind":"msg","class":"talk","to":"` + to + `","from":"` + from + `","ts":1,"ct":"x"}`)}
+	}
+
+	fanout.RecordIndexed(talk(governor, mayor)) // the Governor's own turn
+	fanout.RecordIndexed(talk(stranger, governor))
+	fanout.RecordIndexed(talk(mayor, mayor))
+	time.Sleep(500 * time.Millisecond)
+	if push.n.Load() != 0 {
+		t.Fatalf("push was told about %d talk records that are not the Mayor's answer, want 0", push.n.Load())
+	}
+	fanout.RecordIndexed(talk(mayor, governor)) // the Mayor's answer
+	time.Sleep(500 * time.Millisecond)
+	if push.n.Load() != 1 {
+		t.Fatalf("push was told about %d records after the Mayor's answer, want 1", push.n.Load())
+	}
+	if hub.n.Load() != 4 {
+		t.Fatalf("the hub was told about %d talk records, want 4", hub.n.Load())
+	}
+	if b, _ := os.ReadFile(onMessage); len(b) != 0 {
+		t.Fatalf("the on-message hook ran for a talk record: %q", b)
+	}
+}
+
+func TestATalkAnswerIsNotPushedWhenNoMayorKeyIsConfigured(t *testing.T) {
+	const governor = "023c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+	const other = "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+	cfg := config.Config{HomeCmd: "exit 0"}
+	mon := standby.New(cfg.HomeCmd)
+	mon.Check()
+	push := &recordingNotifier{}
+	fanout := buildFanout(cfg, mon, push, events.NewHub())
+	fanout.RecordIndexed(index.Record{Payload: []byte(`{"v":1,"kind":"msg","class":"talk","to":"` + governor + `","from":"` + other + `","ts":1,"ct":"x"}`)})
+	time.Sleep(300 * time.Millisecond)
+	if push.n.Load() != 0 {
+		t.Fatalf("push was told about %d talk records with no Mayor key, want 0", push.n.Load())
+	}
+}

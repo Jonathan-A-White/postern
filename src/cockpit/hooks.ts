@@ -4,8 +4,9 @@
 // fetching on its own.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { liveQuery } from 'dexie';
-import type { AnswerRow, ArchiveChoices, BeadDetailRow, EventRow, MessageRow, OutboxRow, ViewRow } from '../data/db';
-import { answersRepo, beadDetailsRepo, eventsRepo, messagesRepo, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
+import type { AnswerRow, ArchiveChoices, BeadDetailRow, CardRow, EventRow, MessageRow, OutboxRow, ViewRow } from '../data/db';
+import { answersRepo, beadDetailsRepo, cardsRepo, eventsRepo, messagesRepo, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
+import { liveCard, type LiveCard } from '../model/cards';
 import { decodeBeadDetail, decodeView, type BeadComment, type BeadDetail } from '../model/view';
 import { indexView, type ViewIndex } from '../model/tree';
 import { getKey, onKeyChange } from '../services/keySession';
@@ -52,6 +53,12 @@ export function useViewIndex(): ViewState | undefined | null {
   }, [row]);
 }
 
+/** Every bead's title by id, for the speaker to say a bead's title in place of its id (mw-gq6.224). */
+export function useBeadTitles(): ReadonlyMap<string, string> {
+  const view = useViewIndex();
+  return useMemo(() => new Map([...(view?.index.byId ?? [])].map(([id, bead]) => [id, bead.title])), [view]);
+}
+
 /** The newest emergency event (§22) he has not tapped away; undefined when there is none. */
 export function useEmergency(): EventRow | undefined {
   return useLiveQuery(() => eventsRepo.latestEmergency(), [], undefined);
@@ -79,6 +86,12 @@ export function useCallLine(): MessageRow[] {
 
 export function useThreadMessages(threadKey: string | undefined): MessageRow[] {
   return useLiveQuery(() => messagesRepo.inThread(threadKey), [threadKey], [] as MessageRow[]);
+}
+
+/** Every live card (§24) as it now reads, newest first. */
+export function useCards(): LiveCard[] {
+  const rows = useLiveQuery(() => cardsRepo.getAll(), [], [] as CardRow[]);
+  return useMemo(() => rows.map(liveCard).filter((card): card is LiveCard => card !== undefined).sort((a, b) => b.sentAt - a.sentAt), [rows]);
 }
 
 /** What he archived or brought back by hand in Talk, on this device. */

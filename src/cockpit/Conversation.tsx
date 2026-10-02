@@ -12,7 +12,7 @@ import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
 import { useLive } from '../services/live';
 import { speak } from '../services/speech';
-import { useAnswers, useOutbox, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
+import { useAnswers, useBeadTitles, useOutbox, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { pendingAnswer } from '../model/outbox';
 import { FailedNote, OutboxMark } from './OutboxMark';
 import { PendingMark } from './PendingMark';
@@ -247,6 +247,7 @@ function QuestionBlock({ item, given, until }: { item: ConversationItem; given?:
 }
 
 function Bubble({ item, given, until, onQuote, onReply }: { item: ConversationItem; given?: GivenAnswer; until?: number; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
+  const titles = useBeadTitles();
   const mine = item.speaker === 'you';
   const builder = item.speaker === 'builder' || item.speaker === 'factory' || item.speaker === 'other';
   if (item.kind === 'action' || item.kind === 'answer') {
@@ -279,11 +280,11 @@ function Bubble({ item, given, until, onQuote, onReply }: { item: ConversationIt
         {item.kind === 'question' && <QuestionBlock item={item} given={given} until={until} />}
       </div>
       <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-faint">
-        <span>{clockTime(new Date(item.at))}</span>
+        <span>{item.onChain ? `Sent on chain ${clockTime(new Date(item.at))}` : clockTime(new Date(item.at))}</span>
         {item.pending && (item.failure !== undefined && item.outboxId !== undefined ? <FailedNote id={item.outboxId} failure={item.failure} /> : <PendingMark />)}
         {item.unread && <span className="font-semibold text-accent">· new</span>}
         {item.speaker !== 'you' && item.text && (
-          <button type="button" aria-label="Read aloud" className="rounded p-0.5 hover:text-fg" onClick={() => speak(item.text)}>
+          <button type="button" aria-label="Read aloud" className="rounded p-0.5 hover:text-fg" onClick={() => speak(item.text, { titles })}>
             <Icon name="speaker" size={13} />
           </button>
         )}
@@ -361,7 +362,8 @@ export function Conversation({
 }
 
 export function SpeakAll({ items }: { items: ConversationItem[] }) {
+  const titles = useBeadTitles();
   const last = [...items].reverse().find((item) => item.speaker === 'mayor' && item.text);
   if (!last) return null;
-  return <IconButton icon="speaker" label="Read the Mayor's last message aloud" onClick={() => speak(last.text)} />;
+  return <IconButton icon="speaker" label="Read the Mayor's last message aloud" onClick={() => speak(last.text, { titles })} />;
 }

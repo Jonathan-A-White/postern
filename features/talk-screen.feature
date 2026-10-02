@@ -89,6 +89,23 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he lets go of the talk button
     Then one turn is sent saying "twenty Mississippi and now the rest" as turn 1
 
+  Scenario: AC-1: a pause where the recogniser ends at once with no words, over and over, on his earbuds does not cut the turn, and no silent loop plays while he holds (mw-j0f2d.37)
+    Given the phone has the inputs "Phone microphone" and "Bluetooth headset"
+    And the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    Then the recogniser listens on the "Bluetooth headset" input
+    And no silent loop is playing
+    When the recogniser hears "I'd love to see" so far
+    And he pauses, the recogniser ending at once with no words 8 times over
+    And the recogniser then hears "Kieran where you can take pictures" so far
+    Then the talk button reads "Release to send"
+    And the live transcript reads exactly "I'd love to see Kieran where you can take pictures"
+    And the recogniser still listens on the "Bluetooth headset" input, which was not let go
+    And still no silent loop is playing
+    When he lets go of the talk button
+    Then one turn is sent saying "I'd love to see Kieran where you can take pictures" as turn 1
+    And a silent loop plays once he has let go
+
   Scenario: AC-1: releasing vibrates and sends his words as a turn
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "What landed today?" and lets go

@@ -3,12 +3,13 @@
 // most blocking first, then anything new from the Mayor he has not read. This
 // replaces the old Inbox and Projects' "Needs you" (decision 10).
 import { useEffect, useMemo, useState } from 'react';
-import { Banner, Button, EmptyState, IconButton, SectionTitle, Segmented, Spinner, TimeAgo } from '../ui';
+import { Banner, Button, EmptyState, Icon, IconButton, SectionTitle, Segmented, Spinner, TimeAgo } from '../ui';
 import { Screen } from './Shell';
 import { FactoryPulse } from './FactoryPulse';
 import { OpenLists } from './OpenLists';
 import { NeedCard } from './NeedCard';
-import { useAnswers, useMessages, useUnlockedKey, useViewIndex } from './hooks';
+import { LiveCard } from './LiveCard';
+import { useAnswers, useCards, useMessages, useUnlockedKey, useViewIndex } from './hooks';
 import type { MessageRow } from '../data/db';
 import { refreshNow, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
@@ -19,6 +20,7 @@ import { previewText } from '../model/conversation';
 import { needsByWaiter, unsettledNeeds } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
 import type { WaitsFor } from '../model/view';
+import type { LiveCard as LiveCardData } from '../model/cards';
 import { navigate } from '../router';
 import { toast } from '../ui/toastStore';
 
@@ -90,6 +92,45 @@ function NotifyPrompt() {
   );
 }
 
+/** The live cards (mw-nqur1n.11): those with an item still open under You, and the finished ones under 'Done · N'. */
+function LiveCards({ open, finished, titleOf }: { open: LiveCardData[]; finished: LiveCardData[]; titleOf: (bead: string) => string | undefined }) {
+  const [showDone, setShowDone] = useState(false);
+  return (
+    <>
+      {open.length > 0 && (
+        <section className="flex flex-col gap-3" aria-label="Cards">
+          <SectionTitle>Cards · {open.length}</SectionTitle>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {open.map((card) => (
+              <LiveCard key={card.id} card={card} titleOf={titleOf} />
+            ))}
+          </div>
+        </section>
+      )}
+      {finished.length > 0 && (
+        <section className="flex flex-col gap-3" aria-label="Done cards">
+          <button
+            type="button"
+            aria-expanded={showDone}
+            onClick={() => setShowDone((was) => !was)}
+            className="inline-flex h-9 w-fit items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 text-[13px] font-medium text-muted hover:border-line-strong"
+          >
+            Done · {finished.length}
+            <Icon name={showDone ? 'down' : 'forward'} size={13} />
+          </button>
+          {showDone && (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {finished.map((card) => (
+                <LiveCard key={card.id} card={card} titleOf={titleOf} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+    </>
+  );
+}
+
 const EMPTY: Record<WaitsFor, { title: string; text: string }> = {
   you: { title: 'Nothing needs you', text: 'The factory is working on its own. You will get a notification when the Mayor needs a decision.' },
   mayor: { title: 'Nothing waits on the Mayor', text: 'Every card he owes you something on has been dealt with.' },
@@ -104,6 +145,10 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
   const index = view?.index;
   const split = useMemo(() => needsByWaiter(index ? unsettledNeeds(index.view.needs, answers) : []), [index, answers]);
   const needs = split[who];
+  const cards = useCards();
+  const openCards = useMemo(() => cards.filter((card) => !card.done), [cards]);
+  const doneCards = useMemo(() => cards.filter((card) => card.done), [cards]);
+  const youCount = split.you.length + openCards.length;
   const choose = (next: WaitsFor) => navigate(formatRoute({ view: 'needs', who: next }), { replace: true });
 
   async function refresh() {
@@ -154,34 +199,36 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
           </EmptyState>
         )}
 
+        {who === 'you' && <LiveCards open={openCards} finished={doneCards} titleOf={(bead) => index?.byId.get(bead)?.title} />}
+
         {index && (
           <section className="flex flex-col gap-3" aria-label="Waiting on you">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <SectionTitle>{who === 'you' && needs.length ? `Waiting on you · ${needs.length}` : 'Waiting on you'}</SectionTitle>
+              <SectionTitle>{who === 'you' && youCount ? `Waiting on you · ${youCount}` : 'Waiting on you'}</SectionTitle>
               <Segmented<WaitsFor>
                 label="Who the cards wait on"
                 value={who}
                 onChange={choose}
                 options={[
-                  { value: 'you', label: `You · ${split.you.length}` },
+                  { value: 'you', label: `You · ${youCount}` },
                   { value: 'mayor', label: `Mayor · ${split.mayor.length}` },
                   { value: 'factory', label: `Factory · ${split.factory.length}` },
                 ]}
               />
             </div>
-            {needs.length === 0 ? (
+            {needs.length === 0 && (who !== 'you' || openCards.length === 0) ? (
               <div className="rounded-2xl border border-dashed border-line">
                 <EmptyState icon="check" title={EMPTY[who].title}>
                   {EMPTY[who].text}
                 </EmptyState>
               </div>
-            ) : (
+            ) : needs.length > 0 ? (
               <div className="grid gap-3 xl:grid-cols-2">
                 {needs.map((need) => (
                   <NeedCard key={`${need.kind}:${need.bead}:${need.since}`} need={need} epicTitle={index.byId.get(need.epic)?.title} index={index} />
                 ))}
               </div>
-            )}
+            ) : null}
           </section>
         )}
 

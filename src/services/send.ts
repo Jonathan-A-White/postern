@@ -4,7 +4,7 @@
 // (docs/api.md) — not talking to WhatsOnChain directly, the same reason
 // spell-forge-bsv's ChainProvider exists, except the PWA has no ChainProvider of its
 // own and goes through the backend's proxy endpoints instead. The one exception is
-// `via: 'whatsonchain'` (docs/protocol.md §21): a Call me whose backend cannot be
+// `via: 'whatsonchain'` (docs/protocol.md §21): a text post whose backend cannot be
 // reached lists coins and broadcasts at WhatsOnChain itself.
 import { P2PKH, PrivateKey, SatoshisPerKilobyte, Transaction, Utils } from '@bsv/sdk';
 import {

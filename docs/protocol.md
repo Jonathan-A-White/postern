@@ -29,7 +29,7 @@ JSON shape that only postern understands:
 - `kind` — always `"msg"`.
 - `class` — one of `"message"`, `"decision-needed"`, `"landing"`, `"alarm"`
   (`mw-f758y.5`), `"move-home"` (§18), `"grist"` (an app's AI work for the
-  factory and its answer, §19), `"talk"` (a turn on the Talk line, §20), `"call"` (a call record, §21), or `"events"` (a batch of factory events, §22). Sits in the clear beside the ciphertext on purpose
+  factory and its answer, §19), `"talk"` (a turn on the Talk line, §20), `"call"` (a call record, §21), `"events"` (a batch of factory events, §22), `"card"` (a live card, §24) or `"card-update"` (a change to one, §24). Sits in the clear beside the ciphertext on purpose
   (`mw-f758y.9` Q1): a classified-push backend, or anyone else reading the chain,
   can act on the class (e.g. wake the Mayor for `alarm`) without holding either
   party's private key.
@@ -117,7 +117,7 @@ One P2PKH-funded transaction, the same shape `spell-forge-bsv`'s `write-record.t
 already builds for version-1 records (`buildRecordTransaction`), but built directly
 against `docs/api.md`'s `/api/utxos` and `/api/broadcast` rather than through a
 `ChainProvider`, since the PWA does not talk to WhatsOnChain directly (the exceptions
-are §21's, with the backend out of reach: a Call me builds this same transaction and
+are §21's, with the backend out of reach: a text post (a Call me among them) builds this same transaction and
 lists coins and broadcasts at WhatsOnChain, and the phone reads the anchor address's
 records back from WhatsOnChain itself):
 
@@ -1163,15 +1163,25 @@ answers `to` the Governor's.
 
 ### What the backend does with a turn
 
-A `talk` record reaches §10's event stream and nothing else: no web push, no
-on-message hook, no on-grist hook. It carries no `summary` (§1), so no word of either
-side is ever pushed, handed to a hook or logged; the clear class tells the backend a
-turn's time and size, never its words.
+A `talk` record reaches §10's event stream, and no on-message or on-grist hook runs for
+it. It carries no `summary` (§1), so no word of either side is ever pushed, handed to a
+hook or logged; the clear class tells the backend a turn's time and size, never its words.
+
+The one talk record that is pushed is the Mayor's **answer**: a turn whose `from` is the
+Mayor's key (`POSTERN_MAYOR_KEY`) and whose `to` is anyone else. Its push is `{class: "talk",
+txid, ts}` with **no words in it**, no title and no body: the answer's text, its talk `id` and its
+`turn` are sealed in `ct`, and the push says only that the Mayor answered. The Governor's own
+turns (to the Mayor's key), and every talk record when no Mayor key is configured, are never
+pushed. A holding turn is an answer for this rule: the backend cannot tell them apart in the clear.
 
 ### An answer that comes while he has left the app
 
-Android suspends the voice of an app that is in the background, and the backend pushes
-no talk record, so the phone does what it can itself (mw-j0f2d.29). While a talk is open
+Android suspends the voice of an app that is in the background, and freezes a hidden page
+outright, so a page cannot be counted on to hear the answer at all. The backend therefore pushes the
+Mayor's answer, with no words in the push (above, mw-j0f2d.38), and the service worker shows
+a notification titled "The Mayor answered" unless a focused window already shows the app; a tap
+opens the Talk line, where the answer speaks. A page that is still alive does what it can itself
+too (mw-j0f2d.29). While a talk is open
 the page holds the screen awake and loops a silent audio element, to try to keep the
 voice alive with the screen off. An answer the page reads while it is hidden is not
 spoken: the page shows a notification titled "The Mayor answered", with the talk chime's
@@ -1355,17 +1365,20 @@ swipe, a locked phone). The note stays until a turn he sends at or after the rin
 
 ### When the backend cannot be reached
 
-A Call me must still leave when the direct line is down. For a `call` record, and for no
-other class, the phone puts the record on chain itself:
+A Call me, and every typed post, must still leave when the direct line is down. For a text
+post of any class (a Call me, a message, an answer, an action, a Talk turn), the phone puts the
+record on chain itself. **A post that carries a picture or any other file is not put on
+chain**: the file goes up through the backend (§8), so the post waits in the phone's outbox
+and goes the usual way once the backend answers:
 
 - **When.** The live status is `offline` (the phone already knows; it then skips the direct
   post), or the `POST /api/messages` of §9 fails as a network failure: no connection, no
   answer within the API timeout, no sign-in code from `GET /api/challenge`, or a 502, 503
   or 504 from the gateway in front of the backend. A 404 or 405 (a backend without direct
   delivery) keeps today's rule for every class: the funded transaction goes through the
-  backend's own `/api/utxos` and `/api/broadcast`. Every other class (a message, an answer,
-  an action, a Talk turn) keeps today's rule on a network failure too: it fails, and he
-  taps again.
+  backend's own `/api/utxos` and `/api/broadcast`. A refusal in the backend's own words (any
+  other 4xx) is final for every class and is not retried on chain. A post with a file waits
+  in the outbox on a network failure and is tried again.
 - **How.** The same §4 transaction to the same §3 anchor address: output 0 the record,
   output 1 the 1-sat anchor payment, output 2 change. Its coins come from WhatsOnChain's
   `GET <provider>/address/<address>/unspent` (a bare list of `tx_hash`, `tx_pos`, `value`,
@@ -1380,8 +1393,9 @@ other class, the phone puts the record on chain itself:
   a minute once the backend is back.
 - **What it costs.** One small transaction: the miner fee at `chainConfig.feeRateSatPerKb`
   (a few satoshis for a record this size) plus the 1-sat anchor payment, from his own
-  coins. Testnet today. A call sent on chain is final: it cannot be taken back.
-- **What he sees.** The Talk line screen reads **Sent on chain HH:MM, txid <first 8 hex>…**
+  coins. Testnet today. A post sent on chain is final: it cannot be taken back.
+- **What he sees.** A typed post's bubble reads **Sent on chain HH:MM** in place of its plain
+  time, because its sent copy is kept under a transaction id and not a `direct:` id. The Talk line screen reads **Sent on chain HH:MM, txid <first 8 hex>…**
   in place of **Call sent HH:MM**, until a ring or an answer arrives; the connection mark
   keeps saying the backend is reconnecting. The sent copy is kept under the transaction id,
   not a `direct:` id, and the backend's later echo of the same record lands on that row.
@@ -1657,3 +1671,66 @@ thread.
 Edit on a prompt opens the named channel `prompt:<name>` (for example `prompt:top5`), an
 ordinary text conversation (§1) with the Mayor about that prompt; the screen shows the current
 body. It changes nothing by itself: the Mayor saves the revised prompt with `PUT`.
+
+## 24. Live cards
+
+The Governor, 2026-10-01 (map `mw-6ww.56`, Q2 B and Q5 B): the Mayor's answer to a saved prompt
+(§23) can be one card that is alive: a numbered list in which every item links to the beads
+where he can go and do it, says what it waits for, and ticks itself off when that happens. The
+same card is updated in place, so coming back a few minutes later he finds a link where there
+was none. Two classes carry it, each §1's envelope from the Mayor's key `to` the Governor's,
+sealed as any message is, delivered by `POST /api/messages` (§9) or put on chain (§4). Neither
+is pushed or handed to a hook: like a Talk turn, each gets the `message` event only.
+
+### The card
+
+A `card` record's plaintext is JSON; the card's id is the record's own `txid`, which no
+plaintext can name:
+
+```json
+{
+  "title": "Top 5 for the next 30 minutes",
+  "prompt": "top5",
+  "thread": { "bead": "mw-abc" },
+  "items": [
+    { "n": 1, "text": "VERIFIED on the stream story", "links": ["mw-f758y.30.2"],
+      "expect": { "bead": "mw-f758y.30.2", "state": "verified" } }
+  ],
+  "subscribe": { "kinds": ["bead_changed"], "beads": ["mw-f758y.30.2"] }
+}
+```
+
+- `thread` — optional; the bead whose channel the card was sent to. Absent, the card is in
+  Factory.
+- `items[]` — `n` (from 1), `text`, `links` (bead ids: where to go), an optional `expect` (the
+  bead and the state that ticks the item: `open`, `landed`, `verified`, `closed` or `answered`),
+  and `done` and `done_at` (Unix seconds) once ticked. A card is sent with neither.
+- `subscribe` — the event kinds and beads the card listens to (§22).
+
+### The update
+
+A `card-update` record's plaintext names its card by `re` (the card's `txid`) and changes it:
+
+```json
+{ "re": "<card txid>", "items": [ { "n": 4, "text": "…", "links": [] } ],
+  "links": { "2": ["mw-f758y.30.5"] }, "tick": [1] }
+```
+
+`items` are added, or replace the item with the same `n`; `links` adds bead ids to an item;
+`tick` marks items done at the update's time. Updates apply in the order sent (record `seq`),
+whatever order they page in; one that pages in before its card waits for it.
+
+### What the app does with them
+
+`mw-nqur1n.11`. A card or update is kept as a message row (so a phone that was locked reads
+it once unlocked) but is never a message: no thread, unread count or search hit shows it, and
+only one received by this key is read. It is folded into the Dexie `cards` table, keyed by the
+card's `txid`: the record, its updates, and this phone's own ticks. The card shows in Needs you
+under You while any item is open (`Cards · N`), and in the thread named by `thread` (the bead's
+page and its channel), as a numbered list with each link a link to that bead's page.
+
+The card listens to its `subscribe` through `useEvents` (§22). An item with an `expect` is done,
+with the event's time, when a held event is the bead reaching that state (a `bead_changed` whose
+`to` is the state, or, for `landed` and `verified`, a later one), or a `card_answered` on the bead for
+`answered`, no earlier than the item was sent. That tick is the app's own: nothing is sent, and no
+view or record is fetched. A card with every item done leaves You and shows under `Done · N`.

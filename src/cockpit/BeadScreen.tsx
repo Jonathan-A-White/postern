@@ -12,8 +12,9 @@ import { Conversation, SpeakAll } from './Conversation';
 import { Composer } from './Composer';
 import { RepliesRow } from './RepliesRow';
 import { NeedCard } from './NeedCard';
+import { ThreadCards } from './LiveCard';
 import { StepUnderComment } from './HandsSteps';
-import { useAnswers, useBeadDetail, useOutbox, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { useAnswers, useBeadDetail, useBeadTitles, useOutbox, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { pendingMessageItems } from '../model/outbox';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
@@ -166,6 +167,7 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
 }
 
 function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewBead; detail?: BeadDetail; index?: ViewIndex; status: string }) {
+  const titles = useBeadTitles();
   const [showAcceptance, setShowAcceptance] = useState(false);
   const title = detail?.title ?? bead?.title ?? id;
   const type = detail?.type ?? bead?.type ?? 'task';
@@ -233,7 +235,7 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
 
       <section className="flex flex-col gap-2" aria-label="Description">
         <SectionTitle
-          action={description ? <IconButton icon="speaker" label="Read the description aloud" size="sm" onClick={() => speak(`${title}. ${description}`)} /> : undefined}
+          action={description ? <IconButton icon="speaker" label="Read the description aloud" size="sm" onClick={() => speak(`${title}. ${description}`, { titles })} /> : undefined}
         >
           Description
         </SectionTitle>
@@ -345,7 +347,7 @@ export function BeadScreen({ id }: { id: string }) {
     </>
   );
 
-  const conversation = (
+  const messages = (
     <Conversation
       items={posts}
       onQuote={onQuote}
@@ -369,6 +371,12 @@ export function BeadScreen({ id }: { id: string }) {
         </p>
       }
     />
+  );
+  const conversation = (
+    <>
+      <ThreadCards threadKey={threadKey} />
+      {messages}
+    </>
   );
   const composer = <Composer thread={{ bead: id }} placeholder={`Say something about ${id}…`} quote={quote} onClearQuote={() => setQuote(null)} />;
   const actions = (

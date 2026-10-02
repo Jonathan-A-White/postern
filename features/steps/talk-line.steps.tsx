@@ -15,7 +15,9 @@ import { db, type MessageRow } from '../../src/data/db';
 import { ANCHOR_ADDRESS, decryptMessage, type MessagePayload } from '../../src/services/messages';
 import { decodeTurn, deliverTurn, encodeTurn } from '../../src/services/talk';
 import { decodeCall, deliverCallRequest } from '../../src/services/call';
-import { deliver, settledWrites, type Delivered } from '../../src/services/deliver';
+import { deliver, deliverThreaded, settledWrites, type Delivered } from '../../src/services/deliver';
+import { itemFromMessage } from '../../src/model/conversation';
+import type { Attachment } from '../../src/services/threads';
 import { notificationSpecForTalkAnswer } from '../../src/push/classOptions';
 import { initialTalkLine, talkLine, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
@@ -510,10 +512,30 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('AC-3: a message does not fall back to chain on a network error (mw-a0ih0.4)', ({ Given, When, Then }) => {
+  Scenario('AC-3: a typed post goes on chain when the backend cannot be reached (mw-a0ih0.12)', ({ Given, When, Then, And }) => {
     Given("the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin", mayorKnownBackendDown);
-    When('he tries to deliver a message saying {string}', async (_c, text: string) => {
-      failure = await deliver(text, 'message', chainOptions()).then(() => undefined, (err: unknown) => err ?? new Error('failed'));
+    When('he delivers a message saying {string}', async (_c, text: string) => {
+      delivered = await deliver(text, 'message', chainOptions());
+      await settledWrites();
+    });
+    Then('the message went on chain and its sent row reads {string}', async (_c, words: string) => {
+      expect(delivered?.channel).toBe('chain');
+      const kept = await db.messages.get(`${delivered?.txid}:0`);
+      expect(kept?.class).toBe('message');
+      expect(itemFromMessage(kept as MessageRow).onChain).toBe(true);
+      expect(words).toBe('Sent on chain');
+    });
+    And('WhatsOnChain was sent one section 4 transaction with the record, the anchor payment and change', () => {
+      expect(down.broadcasts).toHaveLength(1);
+      expect(broadcastTx().outputs).toHaveLength(3);
+    });
+  });
+
+  Scenario('AC-3: a post with a picture does not go on chain, it waits (mw-a0ih0.12)', ({ Given, When, Then }) => {
+    Given("the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin", mayorKnownBackendDown);
+    When('he tries to deliver a message with a picture while the phone is offline', async () => {
+      const picture = { id: 'a'.repeat(64), name: 'shot.png', mime: 'image/png', size: 10, key: 'b'.repeat(64) } as unknown as Attachment;
+      failure = await deliverThreaded({ text: 'look', attachments: [picture] }, chainOptions({ offline: true })).then(() => undefined, (err: unknown) => err ?? new Error('failed'));
     });
     Then('the delivery fails and WhatsOnChain was never asked', () => {
       expect(failure).toBeInstanceOf(TypeError);

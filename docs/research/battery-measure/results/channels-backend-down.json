@@ -1,0 +1,147 @@
+{
+  "label": "channels-backend-down",
+  "route": "/?v=talk",
+  "options": {
+    "label": "channels-backend-down",
+    "route": "/?v=talk",
+    "backendDown": true
+  },
+  "wallSeconds": 60,
+  "hostLoadAvg1m": 10.81,
+  "eventStreamConnections": 0,
+  "requests": {
+    "total": 27,
+    "perMinute": {
+      "WhatsOnChain /v1/bsv/test/address/…/unconfirmed/history": 12,
+      "WhatsOnChain /v1/bsv/test/address/…/confirmed/history": 12,
+      "/api/challenge": 3
+    },
+    "raw": {
+      "WhatsOnChain /v1/bsv/test/address/…/unconfirmed/history": 12,
+      "WhatsOnChain /v1/bsv/test/address/…/confirmed/history": 12,
+      "/api/challenge": 3
+    }
+  },
+  "cpuSecondsByProcess": {
+    "browser": 0.21,
+    "renderer": 3.96,
+    "GPU": 0,
+    "network.mojom.NetworkService": 0.04,
+    "storage.mojom.StorageService": 0
+  },
+  "cpuPercentOfOneCore": {
+    "browser": 0.3,
+    "renderer": 6.6,
+    "GPU": 0,
+    "network.mojom.NetworkService": 0.1,
+    "storage.mojom.StorageService": 0
+  },
+  "page": {
+    "taskSeconds": 0.205,
+    "scriptSeconds": 0.011,
+    "layoutSeconds": 0,
+    "recalcStyleSeconds": 0,
+    "layoutCount": 1,
+    "recalcStyleCount": 1,
+    "jsHeapUsedMB": 11.4,
+    "jsHeapGrowthKB": 654,
+    "domNodes": 431,
+    "domNodeGrowth": 0,
+    "eventListeners": 1378,
+    "eventListenerGrowth": 314,
+    "rafCallbacks": 0
+  },
+  "longTasks": {
+    "count": 0,
+    "list": []
+  },
+  "timers": [
+    {
+      "site": "setTimeout 5000ms index-BLh6KNSZ.js:43854:19 < new Promise (<anonymous>)",
+      "fired": 12,
+      "scheduled": 12
+    },
+    {
+      "site": "setInterval 15000ms index-BLh6KNSZ.js:63838:19 < commitHookEffectListMount (index-BLh6KNSZ.js:7382:26)",
+      "fired": 4,
+      "scheduled": 0
+    },
+    {
+      "site": "setTimeout 20000ms index-BLh6KNSZ.js:43854:19 < new Promise (<anonymous>)",
+      "fired": 3,
+      "scheduled": 3
+    },
+    {
+      "site": "setTimeout 30000ms index-BLh6KNSZ.js:40861:13 < new Promise (<anonymous>)",
+      "fired": 0,
+      "scheduled": 3
+    }
+  ],
+  "indexedDbTransactionsPerMinute": {
+    "readonly outbox": 28,
+    "readwrite outbox": 14,
+    "readwrite settings": 4,
+    "readonly settings": 3
+  },
+  "wakeLocks": {
+    "requested": 0,
+    "released": 0
+  },
+  "pageHidden": false,
+  "profile": {
+    "sampledMs": 60007,
+    "idleMs": 59904,
+    "busyMs": 103.1,
+    "top": [
+      {
+        "name": "(program) :0",
+        "ms": 25.9
+      },
+      {
+        "name": "(garbage collector) :0",
+        "ms": 15.7
+      },
+      {
+        "name": "fetch :0",
+        "ms": 10.4
+      },
+      {
+        "name": "jpAdd index-BLh6KNSZ.js:26685",
+        "ms": 5.8
+      },
+      {
+        "name": "jpDouble index-BLh6KNSZ.js:26673",
+        "ms": 4.8
+      },
+      {
+        "name": "red index-BLh6KNSZ.js:26615",
+        "ms": 3.3
+      },
+      {
+        "name": "historyPage index-BLh6KNSZ.js:42999",
+        "ms": 2.4
+      },
+      {
+        "name": "mulCT index-BLh6KNSZ.js:27236",
+        "ms": 2.3
+      },
+      {
+        "name": "readChain index-BLh6KNSZ.js:43059",
+        "ms": 2.3
+      },
+      {
+        "name": "(anonymous) index-BLh6KNSZ.js:43776",
+        "ms": 2.2
+      },
+      {
+        "name": "r2._trans index-BLh6KNSZ.js:15078",
+        "ms": 2.2
+      },
+      {
+        "name": "abort :0",
+        "ms": 2.2
+      }
+    ]
+  },
+  "framesDrawnIn15s": 0
+}

@@ -1,0 +1,140 @@
+{
+  "label": "channels-foreground-burst",
+  "route": "/?v=talk",
+  "options": {
+    "label": "channels-foreground-burst",
+    "route": "/?v=talk",
+    "foreground": true,
+    "seconds": 8
+  },
+  "wallSeconds": 8,
+  "hostLoadAvg1m": 18.92,
+  "eventStreamConnections": 1,
+  "requests": {
+    "total": 4,
+    "perMinute": {
+      "/api/challenge": 15,
+      "/api/messages": 7.5,
+      "/api/view": 7.5
+    },
+    "raw": {
+      "/api/challenge": 2,
+      "/api/messages": 1,
+      "/api/view": 1
+    }
+  },
+  "cpuSecondsByProcess": {
+    "browser": 0.03,
+    "renderer": 0.8,
+    "GPU": 0.42,
+    "network.mojom.NetworkService": 0,
+    "storage.mojom.StorageService": 0
+  },
+  "cpuPercentOfOneCore": {
+    "browser": 0.4,
+    "renderer": 10,
+    "GPU": 5.2,
+    "network.mojom.NetworkService": 0,
+    "storage.mojom.StorageService": 0
+  },
+  "page": {
+    "taskSeconds": 0.108,
+    "scriptSeconds": 0.004,
+    "layoutSeconds": 0,
+    "recalcStyleSeconds": 0.001,
+    "layoutCount": 0,
+    "recalcStyleCount": 15,
+    "jsHeapUsedMB": 12.3,
+    "jsHeapGrowthKB": 138,
+    "domNodes": 434,
+    "domNodeGrowth": 0,
+    "eventListeners": 1397,
+    "eventListenerGrowth": 122,
+    "rafCallbacks": 0
+  },
+  "longTasks": {
+    "count": 0,
+    "list": []
+  },
+  "timers": [
+    {
+      "site": "setTimeout 0ms st (index-BLh6KNSZ.js:14976:91) < index-BLh6KNSZ.js:17351:106",
+      "fired": 2,
+      "scheduled": 2
+    },
+    {
+      "site": "setTimeout 30000ms index-BLh6KNSZ.js:40861:13 < new Promise (<anonymous>)",
+      "fired": 0,
+      "scheduled": 4
+    }
+  ],
+  "indexedDbTransactionsPerMinute": {
+    "readonly outbox": 60,
+    "readonly settings": 7.5,
+    "readwrite outbox": 30,
+    "readwrite settings": 7.5,
+    "readonly messages": 7.5,
+    "readonly view": 22.5,
+    "readwrite view": 7.5
+  },
+  "wakeLocks": {
+    "requested": 0,
+    "released": 0
+  },
+  "pageHidden": false,
+  "profile": {
+    "sampledMs": 8010,
+    "idleMs": 7959,
+    "busyMs": 51.7,
+    "top": [
+      {
+        "name": "(program) :0",
+        "ms": 28.4
+      },
+      {
+        "name": "(garbage collector) :0",
+        "ms": 3.3
+      },
+      {
+        "name": "jpAdd index-BLh6KNSZ.js:26685",
+        "ms": 3.3
+      },
+      {
+        "name": "jpDouble index-BLh6KNSZ.js:26673",
+        "ms": 2.9
+      },
+      {
+        "name": "ghash index-BLh6KNSZ.js:30569",
+        "ms": 1.4
+      },
+      {
+        "name": "(anonymous) :0",
+        "ms": 1.1
+      },
+      {
+        "name": "decodeView index-BLh6KNSZ.js:43222",
+        "ms": 1.1
+      },
+      {
+        "name": "set :0",
+        "ms": 1.1
+      },
+      {
+        "name": "openCursor :0",
+        "ms": 1.1
+      },
+      {
+        "name": "fetch :0",
+        "ms": 1.1
+      },
+      {
+        "name": "strings index-BLh6KNSZ.js:43145",
+        "ms": 1.1
+      },
+      {
+        "name": "TextEncoder :0",
+        "ms": 1.1
+      }
+    ]
+  }
+}

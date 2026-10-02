@@ -2,7 +2,7 @@
 // phone whether the new build has loaded: '<package version> · <UTC date time>Z · <commit>'.
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -57,6 +57,8 @@ describe('the version the app shows', () => {
   it("Me ends with 'Postern v' then the version", async () => {
     render(<MeScreen />);
     expect(await screen.findByText(`Postern v${__APP_VERSION__}`)).toBeInTheDocument();
+    // Let the screen's own reads land before it goes, so none outlives the test (mw-j0f2d.42).
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeInTheDocument());
     cleanup();
   });
 

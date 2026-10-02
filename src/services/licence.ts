@@ -28,8 +28,15 @@ export interface LicenceOutpoint {
   vout: number;
 }
 
+/** A found licence: where its mint is, and the collection that mint names. */
+export interface FoundLicence extends LicenceOutpoint {
+  collection: string;
+}
+
+/** `collection` is absent on a row cached before it was recorded (mw-kiubh7.1): read such a
+ * row as unknown and check afresh. */
 export type LicenceStatus =
-  | { held: true; outpoint: LicenceOutpoint; checkedAt: string }
+  | { held: true; outpoint: LicenceOutpoint; collection?: string; checkedAt: string }
   | { held: false; checkedAt: string };
 
 interface MintPayload {
@@ -69,14 +76,16 @@ export function addressForPublicKey(publicKeyHex: string): string {
 /**
  * Walks the key's own address history for a mint record naming it holder of the
  * cockpit collection (or the legacy one, see collections.ts), then checks no later
- * transfer record moves that origin away.
+ * transfer record moves that origin away. A live mint in the cockpit collection wins over
+ * one in the legacy collection whatever their order in the history; the result names the
+ * collection it was found in.
  * The License token itself is always output 0 of its mint transaction (the shape
  * every builder in the package writes), so the origin is the mint's txid at vout 0.
  */
 export async function findLicence(
   publicKeyHex: string,
   provider: ChainProvider = createChainProvider(),
-): Promise<LicenceOutpoint | null> {
+): Promise<FoundLicence | null> {
   const address = addressForPublicKey(publicKeyHex);
   const [confirmed, unconfirmed] = await Promise.all([
     provider.getAddressHistory(address),
@@ -90,7 +99,7 @@ export async function findLicence(
     return true;
   });
 
-  let origin: LicenceOutpoint | null = null;
+  const mints: FoundLicence[] = [];
   const transferredOrigins = new Set<string>();
 
   for (const entry of history) {
@@ -100,15 +109,17 @@ export async function findLicence(
       if (!payload) continue;
       // LEGACY_LICENCE_COLLECTION is accepted only during the mw-6ww.63 transition, until he has re-minted in 'postern'.
       if (payload.kind === 'mint' && COUNTED_COLLECTIONS.has(payload.collection) && payload.holder === address) {
-        origin = { txid: entry.txid, vout: 0 };
+        mints.push({ txid: entry.txid, vout: 0, collection: payload.collection });
       } else if (payload.kind === 'transfer') {
         transferredOrigins.add(payload.origin);
       }
     }
   }
 
-  if (!origin) return null;
-  return transferredOrigins.has(`${origin.txid}:${origin.vout}`) ? null : origin;
+  // The latest live mint of each collection; the cockpit's wins over the legacy one.
+  const live = mints.filter((mint) => !transferredOrigins.has(`${mint.txid}:${mint.vout}`));
+  const latestIn = (collection: string) => live.filter((mint) => mint.collection === collection).at(-1);
+  return latestIn(COCKPIT_COLLECTION) ?? latestIn(LEGACY_LICENCE_COLLECTION) ?? null;
 }
 
 export async function getCachedLicenceStatus(): Promise<LicenceStatus | undefined> {
@@ -139,9 +150,11 @@ async function clearMintPending(): Promise<void> {
  * mint-pending marker once the licence is found held, so a later failed check has
  * nothing stale to fall back to (mw-1589l.24). */
 export async function checkLicence(publicKeyHex: string, provider?: ChainProvider): Promise<LicenceStatus> {
-  const outpoint = await findLicence(publicKeyHex, provider);
+  const found = await findLicence(publicKeyHex, provider);
   const checkedAt = new Date().toISOString();
-  const status: LicenceStatus = outpoint ? { held: true, outpoint, checkedAt } : { held: false, checkedAt };
+  const status: LicenceStatus = found
+    ? { held: true, outpoint: { txid: found.txid, vout: found.vout }, collection: found.collection, checkedAt }
+    : { held: false, checkedAt };
   await settingsRepo.set(LICENCE_STATUS_SETTING_KEY, status);
   if (status.held) await clearMintPending();
   return status;

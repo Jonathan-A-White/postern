@@ -3,6 +3,7 @@ import { chainConfig, findTypedRecordsInTransaction } from 'spell-forge-bsv';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '../../src/data/db';
 import { addressForPublicKey, checkLicence, findLicence, getCachedLicenceStatus } from '../../src/services/licence';
+import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../../src/services/collections';
 import { FakeChainProvider } from '../support/fake-chain-provider';
 import { mintRecordTxHex, revokeRecordTxHex, transferRecordTxHex } from '../support/nftgate-fixtures';
 
@@ -34,21 +35,57 @@ describe('licence', () => {
     const provider = new FakeChainProvider();
     const txid = 'b'.repeat(64);
     provider.addTransaction(ADDRESS, txid, mintRecordTxHex(chainConfig.collectionId, ADDRESS));
-    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid, vout: 0 });
+    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid, vout: 0, collection: chainConfig.collectionId });
   });
 
   it("finds a mint in the cockpit collection 'postern'", async () => {
     const provider = new FakeChainProvider();
     const txid = 'f'.repeat(64);
     provider.addTransaction(ADDRESS, txid, mintRecordTxHex('postern', ADDRESS));
-    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid, vout: 0 });
+    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid, vout: 0, collection: 'postern' });
   });
 
   it("still finds a mint in the old collection 'spellforge-leaderboard-testnet' (mw-6ww.63 transition)", async () => {
     const provider = new FakeChainProvider();
     const txid = '1'.repeat(64);
     provider.addTransaction(ADDRESS, txid, mintRecordTxHex('spellforge-leaderboard-testnet', ADDRESS));
-    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid, vout: 0 });
+    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({
+      txid,
+      vout: 0,
+      collection: 'spellforge-leaderboard-testnet',
+    });
+  });
+
+  it("prefers a mint in 'postern' over one in the old collection, the old one first in the history", async () => {
+    const provider = new FakeChainProvider();
+    const legacyTxid = '3'.repeat(64);
+    const posternTxid = '4'.repeat(64);
+    provider.addTransaction(ADDRESS, legacyTxid, mintRecordTxHex(LEGACY_LICENCE_COLLECTION, ADDRESS));
+    provider.addTransaction(ADDRESS, posternTxid, mintRecordTxHex(COCKPIT_COLLECTION, ADDRESS));
+    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid: posternTxid, vout: 0, collection: 'postern' });
+  });
+
+  it("prefers a mint in 'postern' over one in the old collection, the old one last in the history", async () => {
+    const provider = new FakeChainProvider();
+    const legacyTxid = '5'.repeat(64);
+    const posternTxid = '6'.repeat(64);
+    provider.addTransaction(ADDRESS, posternTxid, mintRecordTxHex(COCKPIT_COLLECTION, ADDRESS));
+    provider.addTransaction(ADDRESS, legacyTxid, mintRecordTxHex(LEGACY_LICENCE_COLLECTION, ADDRESS));
+    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({ txid: posternTxid, vout: 0, collection: 'postern' });
+  });
+
+  it("falls back to the old collection's mint when the 'postern' mint was transferred away", async () => {
+    const provider = new FakeChainProvider();
+    const legacyTxid = '7'.repeat(64);
+    const posternTxid = '8'.repeat(64);
+    provider.addTransaction(ADDRESS, legacyTxid, mintRecordTxHex(LEGACY_LICENCE_COLLECTION, ADDRESS));
+    provider.addTransaction(ADDRESS, posternTxid, mintRecordTxHex(COCKPIT_COLLECTION, ADDRESS));
+    provider.addTransaction(ADDRESS, '9'.repeat(64), transferRecordTxHex(`${posternTxid}:0`, 'mzSomeoneElseAddress'));
+    expect(await findLicence(PUBLIC_KEY_HEX, provider)).toEqual({
+      txid: legacyTxid,
+      vout: 0,
+      collection: LEGACY_LICENCE_COLLECTION,
+    });
   });
 
   it("ignores a mint in another app's collection, 'cairn'", async () => {
@@ -80,7 +117,7 @@ describe('licence', () => {
 
     const before = Date.now();
     const status = await checkLicence(PUBLIC_KEY_HEX, provider);
-    expect(status).toMatchObject({ held: true, outpoint: { txid, vout: 0 } });
+    expect(status).toMatchObject({ held: true, outpoint: { txid, vout: 0 }, collection: chainConfig.collectionId });
     expect(Date.parse(status.checkedAt)).toBeGreaterThanOrEqual(before);
 
     const cached = await getCachedLicenceStatus();

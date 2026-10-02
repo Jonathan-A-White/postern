@@ -151,7 +151,7 @@ describe('runCli without --dry-run (AC2)', () => {
     expect(broadcastTxid).toBeDefined();
 
     const licence = await findLicence(PUBLIC_KEY_HEX, provider);
-    expect(licence).toEqual({ txid: broadcastTxid, vout: 0 });
+    expect(licence).toEqual({ txid: broadcastTxid, vout: 0, collection: chainConfig.collectionId });
   });
 });
 

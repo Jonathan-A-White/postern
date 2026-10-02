@@ -10,6 +10,7 @@ import { decryptMessage, decryptMessageAsSender, type MessagePayload } from './m
 import { threadKey, threadOf } from './threads';
 import { decodeEventBatch, type EventBatch } from '../model/events';
 import { applyCardRow } from './cards';
+import { noteArrivedAnswer } from './answerWaiting';
 
 const CURSOR_SETTING_KEY = 'messages-cursor';
 
@@ -125,6 +126,7 @@ export async function storeRecord(record: RecordToStore, publicKeyHex: string, u
   };
   await messagesRepo.put(row);
   await applyCardRow(row);
+  if (!existing) noteArrivedAnswer(row, Date.now() / 1000);
   return row;
 }
 

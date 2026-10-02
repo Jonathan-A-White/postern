@@ -517,3 +517,54 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the last turn sent is turn 2 of the open talk
     And the screen lists 2 earlier talks
     And the open talk shows 2 turns
+
+  # mw-am3yjh.3: a Mayor answer that arrives away from the Talk line waits behind a bar on every screen.
+  Scenario: AC-16: an answer that arrives while he is on Channels shows a bar, and a tap opens the Talk line and plays it once (mw-am3yjh.3)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And he leaves the Talk line
+    And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
+    Then the bar "Mayor answered, tap to hear" is shown
+    And the phone has not spoken
+    When he taps the bar "Mayor answered, tap to hear"
+    Then the Talk line is open
+    And the screen shows his turn "What landed today?" and the answer "Three things landed."
+    And the phone has spoken "Three things landed." once
+    And the bar "Mayor answered, tap to hear" is gone
+
+  Scenario: AC-17: opening the Talk line any other way takes the bar away (mw-am3yjh.3)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And he leaves the Talk line
+    And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
+    Then the bar "Mayor answered, tap to hear" is shown
+    When he comes back to the Talk line
+    Then the bar "Mayor answered, tap to hear" is gone
+
+  Scenario: AC-18: an answer that arrives while he is on the Talk line shows no bar (mw-am3yjh.3)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
+    Then the phone speaks "Three things landed."
+    And the bar "Mayor answered, tap to hear" is gone
+
+  Scenario: AC-19: an answer that arrives while the app is hidden shows no bar and is announced as before (mw-am3yjh.3)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And he switches to another app
+    And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
+    Then a notification says "The Mayor answered" and carries none of the answer's words
+    And the bar "Mayor answered, tap to hear" is gone
+
+  Scenario: AC-20: an answer that arrives while the app is hidden on Channels shows no bar (mw-am3yjh.3)
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "What landed today?" and lets go
+    And he leaves the Talk line
+    And he switches to another app
+    And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
+    Then the bar "Mayor answered, tap to hear" is gone

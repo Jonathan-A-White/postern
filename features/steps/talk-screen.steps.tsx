@@ -18,6 +18,7 @@ import { forgetSilentInputs } from '../../src/services/micInput';
 import { encodeTurn } from '../../src/services/talk';
 import { deliverCallRequest, encodeCall, type CallRecord } from '../../src/services/call';
 import { PrivateKey, Utils } from '@bsv/sdk';
+import { dismissAnswerWaiting } from '../../src/services/answerWaiting';
 import { syncMessagesAndEvents } from '../../src/services/events';
 import { encryptMessage } from '../../src/services/messages';
 import { MAYOR } from '../../tests/support/cockpit-fixture';
@@ -279,6 +280,7 @@ async function fresh(): Promise<void> {
   silentFor = 0;
   mayor.here = undefined;
   lock();
+  dismissAnswerWaiting();
   vi.unstubAllGlobals();
   sequence = 0;
   clock.at = 1_000_000;
@@ -1790,5 +1792,94 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the open talk shows {int} turns', async (_c, count: number) => {
       await waitFor(() => expect(screen.getAllByTestId('talk-turn')).toHaveLength(count));
     });
+  });
+
+  // mw-am3yjh.3: the bar that says an answer is waiting, on every screen but the Talk line.
+  const switchesAway = () => {
+    pageShowing = false;
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  };
+  const barIsShown = async (_c: unknown, name: string) => {
+    expect(await screen.findByRole('button', { name })).toBeInTheDocument();
+  };
+  const barIsGone = async (_c: unknown, name: string) => {
+    await waitFor(() => expect(screen.queryByRole('button', { name })).not.toBeInTheDocument());
+  };
+  const syncsTheAnswer = async (_c: unknown, text: string) => {
+    await syncAnswer(text);
+  };
+
+  Scenario('AC-16: an answer that arrives while he is on Channels shows a bar, and a tap opens the Talk line and plays it once (mw-am3yjh.3)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('he leaves the Talk line', leavesTheLine);
+    And("a sync pages the Mayor's answer {string} and the event for that talk turn", syncsTheAnswer);
+    Then('the bar {string} is shown', barIsShown);
+    And('the phone has not spoken', () => {
+      expect(speak).not.toHaveBeenCalled();
+    });
+    When('he taps the bar {string}', async (_c, name: string) => {
+      fireEvent.click(await screen.findByRole('button', { name }));
+    });
+    Then('the Talk line is open', async () => {
+      await talkButton('Hold to talk');
+      expect(window.location.search).toBe('?v=line');
+    });
+    And('the screen shows his turn {string} and the answer {string}', showsTurnAndAnswer);
+    And('the phone has spoken {string} once', async (_c, text: string) => {
+      await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
+      expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
+    });
+    And('the bar {string} is gone', barIsGone);
+  });
+
+  Scenario('AC-17: opening the Talk line any other way takes the bar away (mw-am3yjh.3)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('he leaves the Talk line', leavesTheLine);
+    And("a sync pages the Mayor's answer {string} and the event for that talk turn", syncsTheAnswer);
+    Then('the bar {string} is shown', barIsShown);
+    When('he comes back to the Talk line', comesBack);
+    Then('the bar {string} is gone', barIsGone);
+  });
+
+  Scenario('AC-18: an answer that arrives while he is on the Talk line shows no bar (mw-am3yjh.3)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And("a sync pages the Mayor's answer {string} and the event for that talk turn", syncsTheAnswer);
+    Then('the phone speaks {string}', async (_c, text: string) => {
+      await waitFor(() => expect(speak).toHaveBeenCalled());
+      expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
+    });
+    And('the bar {string} is gone', barIsGone);
+  });
+
+  Scenario('AC-19: an answer that arrives while the app is hidden shows no bar and is announced as before (mw-am3yjh.3)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('he switches to another app', switchesAway);
+    And("a sync pages the Mayor's answer {string} and the event for that talk turn", syncsTheAnswer);
+    Then('a notification says {string} and carries none of the answer\'s words', async (_c, title: string) => {
+      await waitFor(() => expect(showNotification).toHaveBeenCalledTimes(1));
+      expect(showNotification.mock.calls[0][0]).toBe(title);
+      expect(JSON.stringify(showNotification.mock.calls[0])).not.toContain('Three things landed');
+    });
+    And('the bar {string} is gone', barIsGone);
+  });
+
+  Scenario('AC-20: an answer that arrives while the app is hidden on Channels shows no bar (mw-am3yjh.3)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('he leaves the Talk line', leavesTheLine);
+    And('he switches to another app', switchesAway);
+    And("a sync pages the Mayor's answer {string} and the event for that talk turn", syncsTheAnswer);
+    Then('the bar {string} is gone', barIsGone);
   });
 });

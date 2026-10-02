@@ -470,3 +470,39 @@ test('talk line: earlier talks are above the open one, the screen opens on its n
   await expect(oldest.getByRole('button', { name: 'Stop reading' })).toHaveCount(0);
   expect(await page.evaluate(() => window.__cancels)).toBeGreaterThan(cancels);
 });
+
+// mw-am3yjh.3: the Mayor's answer comes while he is on Channels: a bar says so, and a tap opens the Talk line with it.
+test.describe('phone viewport: the answer bar', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('talk line: an answer that arrives on Channels shows a bar, and the tap lands on the Talk line with the answer', async ({ page }) => {
+    const { posted, answerAfterTurn } = await unlocked(page);
+
+    await page.goto('/?v=line');
+    const button = page.getByRole('button', { name: 'Hold to talk' });
+    await expect(button).toBeEnabled();
+    const box = (await button.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await expect(page.getByRole('button', { name: 'Release to send' })).toBeVisible();
+    await page.evaluate(() => window.__hear('What landed today?'));
+    await page.mouse.up();
+    await expect.poll(() => posted.length).toBe(1);
+
+    // he holds a turn and goes to Channels; only then does the Mayor's answer come
+    await page.getByRole('navigation', { name: 'Places' }).getByRole('link', { name: /Channels$/ }).click();
+    await expect(page.getByRole('heading', { name: 'Channels' })).toBeVisible();
+    answerAfterTurn('Three things landed.');
+
+    const bar = page.getByRole('button', { name: 'Mayor answered, tap to hear' });
+    await expect(bar).toBeVisible({ timeout: 30_000 });
+    expect(await page.evaluate(() => window.__spoken)).toEqual([]);
+    await shot(page, 'talk-answer-bar');
+
+    await bar.click();
+    await expect(page).toHaveURL(/\?v=line$/);
+    await expect(page.getByTestId('talk-answer')).toContainText('Three things landed.');
+    await expect.poll(() => page.evaluate(() => window.__spoken)).toEqual(['Three things landed.']);
+    await expect(bar).toHaveCount(0);
+  });
+});

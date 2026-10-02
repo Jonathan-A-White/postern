@@ -3,16 +3,18 @@
 // bead or a thread too: the composer sits above it, and only the lowest bar
 // keeps the bottom safe-area inset); on a wide screen, a sidebar with the same
 // places and room for two panes. isDeep only decides Back, not the tab bar.
-import { useRef, type ReactNode, type ComponentProps } from 'react';
+import { useEffect, useRef, type ReactNode, type ComponentProps } from 'react';
 import { Banner, Icon, IconButton, cx, type IconName } from '../ui';
 import { formatRoute, topViewOf, type Route, type TopView } from '../nav/route';
 import { goBack, navigate } from '../router';
 import { useScrollMemory } from '../nav/scrollMemory';
+import { dismissAnswerWaiting } from '../services/answerWaiting';
 import { useLive } from '../services/live';
 import { hostsToMoveTo, useStandby } from '../services/standby';
 import { MoveHomeButtons } from './MoveHome';
 import { EmergencyBanner } from './EmergencyBanner';
 import { RingBanner } from './RingBanner';
+import { AnswerBar } from './AnswerBar';
 import { OutboxNote } from './OutboxNote';
 import { UpdateBanner } from './UpdateBanner';
 import { liveLabel } from './liveLabel';
@@ -192,6 +194,11 @@ function HomeDown() {
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const wide = useWide();
   const top = topViewOf(route);
+  // The Talk line plays what he has not heard, however he got there, so the bar has done its work.
+  const onLine = route.view === 'line';
+  useEffect(() => {
+    if (onLine) dismissAnswerWaiting();
+  }, [onLine]);
   return (
     <div className="flex h-dvh overflow-hidden bg-canvas text-fg">
       {wide && <Sidebar current={top} />}
@@ -200,6 +207,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         <EmergencyBanner />
         <HomeDown />
         <RingBanner />
+        <AnswerBar />
         <OutboxNote />
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
         {!wide && <TabBar current={top} />}

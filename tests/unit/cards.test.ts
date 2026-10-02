@@ -29,6 +29,10 @@ function event(seq: number, bead: string, to: string, ts = new Date((T0 + seq) *
   return { seq, ts, kind, bead, actor: 'mw', from: '', to, detail: '', lane: 'normal' };
 }
 
+function move(bead: string, from: string, to: string, seq = 1, ts = new Date((T0 + seq) * 1000).toISOString()): EventRow {
+  return { seq, ts, kind: 'bead_changed', bead, actor: 'mw', from, to, detail: '', lane: 'normal' };
+}
+
 function row(overrides: Partial<CardRow> = {}): CardRow {
   return { id: 'cc', card: decodeCard(CARD, T0), updates: [], ticks: {}, ...overrides };
 }
@@ -90,14 +94,42 @@ describe('liveCard', () => {
 });
 
 describe('which event ticks an item', () => {
-  it('is the bead reaching the state, or a later one for landed and verified', () => {
+  it('is the bead moving to the state; landed is met by landed, verified or closed, closed by closed, verified only by verified', () => {
     const verified = { bead: 'b', state: 'verified' };
     expect(meetsExpectation(verified, event(1, 'b', 'verified'))).toBe(true);
-    expect(meetsExpectation(verified, event(1, 'b', 'closed'))).toBe(true);
+    expect(meetsExpectation(verified, event(1, 'b', 'closed'))).toBe(false);
     expect(meetsExpectation(verified, event(1, 'b', 'landed'))).toBe(false);
     expect(meetsExpectation(verified, event(1, 'other', 'verified'))).toBe(false);
+    const landed = { bead: 'b', state: 'landed' };
+    expect(meetsExpectation(landed, move('b', 'running', 'landed'))).toBe(true);
+    expect(meetsExpectation(landed, move('b', 'running', 'closed'))).toBe(true);
+    expect(meetsExpectation(landed, move('b', 'landed', 'verified'))).toBe(true);
+    expect(meetsExpectation(landed, move('b', 'running', 'claimed'))).toBe(false);
+    const closed = { bead: 'b', state: 'closed' };
+    expect(meetsExpectation(closed, move('b', 'landed', 'closed'))).toBe(true);
+    expect(meetsExpectation(closed, move('b', 'landed', 'verified'))).toBe(false);
+    expect(meetsExpectation(closed, move('b', 'running', 'landed'))).toBe(false);
     expect(meetsExpectation({ bead: 'b', state: 'open' }, event(1, 'b', 'closed'))).toBe(false);
     expect(meetsExpectation({ bead: 'b', state: 'open' }, event(1, 'b', 'open'))).toBe(true);
+  });
+
+  it('is never an event whose from equals its to: a comment is no state move', () => {
+    expect(meetsExpectation({ bead: 'b', state: 'verified' }, move('b', 'closed', 'closed'))).toBe(false);
+    expect(meetsExpectation({ bead: 'b', state: 'verified' }, move('b', 'verified', 'verified'))).toBe(false);
+    expect(meetsExpectation({ bead: 'b', state: 'landed' }, move('b', 'closed', 'closed'))).toBe(false);
+    expect(meetsExpectation({ bead: 'b', state: 'closed' }, move('b', 'closed', 'closed'))).toBe(false);
+    expect(meetsExpectation({ bead: 'b', state: 'open' }, move('b', 'open', 'open'))).toBe(false);
+  });
+
+  it('ticks a verified item on closed to verified, and not on a detail comment or on landed to closed', () => {
+    const card = liveCard(row());
+    if (!card) throw new Error('no card');
+    const at = (n: number) => new Date((T0 + n) * 1000).toISOString();
+    const comment = move('mw-a.1', 'closed', 'closed', 1, at(5));
+    const landing = move('mw-a.1', 'landed', 'closed', 2, at(6));
+    expect(ticksFrom(card, [comment, landing])).toEqual({});
+    const verifiedAt = move('mw-a.1', 'closed', 'verified', 3, at(10));
+    expect(ticksFrom(card, [comment, landing, verifiedAt])).toEqual({ 1: (T0 + 10) * 1000 });
   });
 
   it('is a card_answered on the bead for an expected answer, and no bead_changed', () => {
@@ -111,7 +143,7 @@ describe('which event ticks an item', () => {
     if (!card) throw new Error('no card');
     const before = event(1, 'mw-a.1', 'verified', new Date((T0 - 60) * 1000).toISOString());
     const first = event(2, 'mw-a.1', 'verified', new Date((T0 + 10) * 1000).toISOString());
-    const later = event(3, 'mw-a.1', 'closed', new Date((T0 + 20) * 1000).toISOString());
+    const later = event(3, 'mw-a.1', 'verified', new Date((T0 + 20) * 1000).toISOString());
     expect(ticksFrom(card, [later, before, first])).toEqual({ 1: (T0 + 10) * 1000 });
   });
 });

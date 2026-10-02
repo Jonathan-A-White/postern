@@ -1741,7 +1741,12 @@ under You while any item is open (`Cards · N`), and in the thread named by `thr
 page and its channel), as a numbered list with each link a link to that bead's page.
 
 The card listens to its `subscribe` through `useEvents` (§22). An item with an `expect` is done,
-with the event's time, when a held event is the bead reaching that state (a `bead_changed` whose
-`to` is the state, or, for `landed` and `verified`, a later one), or a `card_answered` on the bead for
-`answered`, no earlier than the item was sent. That tick is the app's own: nothing is sent, and no
-view or record is fetched. A card with every item done leaves You and shows under `Done · N`.
+with the event's time, when a held event is the bead moving to a state that settles it, or a
+`card_answered` on the bead for `answered`, no earlier than the item was sent. An event is a move
+only when its `from` differs from its `to`: a `bead_changed` with the two equal (a comment on the
+bead, say) ticks nothing. What settles each `expect.state`: `landed` is met by a move to `landed`,
+`verified` or `closed` (landing leads on to the others); `verified` by a move to `verified` and
+nothing else (a story closes at landing, before anyone has checked it, so `closed` does not
+satisfy it); `closed` by a move to `closed`; any other state by a move to that state. That tick is
+the app's own: nothing is sent, and no view or record is fetched. A card with every item done
+leaves You and shows under `Done · N`.

@@ -23,6 +23,11 @@ Feature: A live card is one numbered list that ticks itself off and grows in pla
     When the event that bead "mw-a.1" is claimed arrives
     Then no item shows a tick
 
+  Scenario: mw-r3xq72.2: a comment on a closed bead is no state move and ticks nothing
+    Given Needs you is open and the Mayor has sent a card titled "Top 5" with three items on beads "mw-a.1", "mw-b.1" and "mw-c.1"
+    When a comment arrives on the already closed bead "mw-a.1"
+    Then no item shows a tick
+
   Scenario: mw-nqur1n.11: a card-update adds a link to item 2 and the same card shows it
     Given Needs you is open and the Mayor has sent a card titled "Top 5" with three items on beads "mw-a.1", "mw-b.1" and "mw-c.1"
     When the Mayor sends a card-update for that card adding the link "mw-b.2" to item 2

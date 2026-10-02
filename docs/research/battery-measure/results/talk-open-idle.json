@@ -1,0 +1,143 @@
+{
+  "label": "talk-open-idle",
+  "route": "/?v=line",
+  "options": {
+    "label": "talk-open-idle",
+    "route": "/?v=line",
+    "openTalk": true
+  },
+  "wallSeconds": 60,
+  "hostLoadAvg1m": 7.42,
+  "eventStreamConnections": 1,
+  "requests": {
+    "total": 24,
+    "perMinute": {
+      "/api/challenge": 12,
+      "/api/presence": 12
+    },
+    "raw": {
+      "/api/challenge": 12,
+      "/api/presence": 12
+    }
+  },
+  "cpuSecondsByProcess": {
+    "browser": 0.29,
+    "renderer": 5.55,
+    "GPU": 0,
+    "network.mojom.NetworkService": 0.04,
+    "storage.mojom.StorageService": 0,
+    "audio.mojom.AudioService": 0.47
+  },
+  "cpuPercentOfOneCore": {
+    "browser": 0.5,
+    "renderer": 9.2,
+    "GPU": 0,
+    "network.mojom.NetworkService": 0.1,
+    "storage.mojom.StorageService": 0,
+    "audio.mojom.AudioService": 0.8
+  },
+  "page": {
+    "taskSeconds": 0.35,
+    "scriptSeconds": 0.016,
+    "layoutSeconds": 0,
+    "recalcStyleSeconds": 0,
+    "layoutCount": 0,
+    "recalcStyleCount": 0,
+    "jsHeapUsedMB": 11,
+    "jsHeapGrowthKB": -6353,
+    "domNodes": 295,
+    "domNodeGrowth": -187,
+    "eventListeners": 329,
+    "eventListenerGrowth": -1498,
+    "rafCallbacks": 0
+  },
+  "longTasks": {
+    "count": 0,
+    "list": []
+  },
+  "timers": [
+    {
+      "site": "setInterval 5000ms index-BLh6KNSZ.js:62489:19 < commitHookEffectListMount (index-BLh6KNSZ.js:7382:26)",
+      "fired": 12,
+      "scheduled": 0
+    },
+    {
+      "site": "setInterval 15000ms index-BLh6KNSZ.js:63838:19 < commitHookEffectListMount (index-BLh6KNSZ.js:7382:26)",
+      "fired": 4,
+      "scheduled": 0
+    },
+    {
+      "site": "setTimeout 30000ms index-BLh6KNSZ.js:40861:13 < new Promise (<anonymous>)",
+      "fired": 0,
+      "scheduled": 24
+    }
+  ],
+  "indexedDbTransactionsPerMinute": {
+    "readwrite settings": 4,
+    "readonly outbox": 8,
+    "readonly messages": 4,
+    "readonly events": 4,
+    "readwrite outbox": 4
+  },
+  "wakeLocks": {
+    "requested": 1,
+    "released": 0
+  },
+  "pageHidden": false,
+  "profile": {
+    "sampledMs": 60007,
+    "idleMs": 59787,
+    "busyMs": 220.6,
+    "top": [
+      {
+        "name": "(program) :0",
+        "ms": 107.6
+      },
+      {
+        "name": "(garbage collector) :0",
+        "ms": 44.4
+      },
+      {
+        "name": "jpAdd index-BLh6KNSZ.js:26685",
+        "ms": 13.5
+      },
+      {
+        "name": "fetch :0",
+        "ms": 9.4
+      },
+      {
+        "name": "jpDouble index-BLh6KNSZ.js:26673",
+        "ms": 7.5
+      },
+      {
+        "name": "red index-BLh6KNSZ.js:26615",
+        "ms": 4.5
+      },
+      {
+        "name": "site :83",
+        "ms": 4.5
+      },
+      {
+        "name": "ctSwap index-BLh6KNSZ.js:26594",
+        "ms": 3.3
+      },
+      {
+        "name": "mulCT index-BLh6KNSZ.js:27236",
+        "ms": 3.3
+      },
+      {
+        "name": "utf8StringToArray index-BLh6KNSZ.js:24079",
+        "ms": 2.8
+      },
+      {
+        "name": "toHex$1 index-BLh6KNSZ.js:25996",
+        "ms": 1.4
+      },
+      {
+        "name": "get :0",
+        "ms": 1.4
+      }
+    ]
+  },
+  "framesDrawnIn15s": 0
+}

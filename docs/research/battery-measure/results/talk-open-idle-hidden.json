@@ -1,0 +1,146 @@
+{
+  "label": "talk-open-idle-hidden",
+  "route": "/?v=line",
+  "options": {
+    "label": "talk-open-idle-hidden",
+    "route": "/?v=line",
+    "openTalk": true,
+    "hidden": true
+  },
+  "wallSeconds": 60,
+  "hostLoadAvg1m": 3.1,
+  "eventStreamConnections": 1,
+  "requests": {
+    "total": 24,
+    "perMinute": {
+      "/api/challenge": 12,
+      "/api/presence": 12
+    },
+    "raw": {
+      "/api/challenge": 12,
+      "/api/presence": 12
+    }
+  },
+  "cpuSecondsByProcess": {
+    "browser": 0.24,
+    "renderer": 4.48,
+    "GPU": 0,
+    "network.mojom.NetworkService": 0.02,
+    "storage.mojom.StorageService": 0,
+    "audio.mojom.AudioService": 0.42,
+    "tracing.mojom.TracingService": 0
+  },
+  "cpuPercentOfOneCore": {
+    "browser": 0.4,
+    "renderer": 7.5,
+    "GPU": 0,
+    "network.mojom.NetworkService": 0,
+    "storage.mojom.StorageService": 0,
+    "audio.mojom.AudioService": 0.7,
+    "tracing.mojom.TracingService": 0
+  },
+  "page": {
+    "taskSeconds": 0.293,
+    "scriptSeconds": 0.014,
+    "layoutSeconds": 0,
+    "recalcStyleSeconds": 0,
+    "layoutCount": 0,
+    "recalcStyleCount": 0,
+    "jsHeapUsedMB": 10.9,
+    "jsHeapGrowthKB": -5972,
+    "domNodes": 299,
+    "domNodeGrowth": -182,
+    "eventListeners": 330,
+    "eventListenerGrowth": -1427,
+    "rafCallbacks": 0
+  },
+  "longTasks": {
+    "count": 0,
+    "list": []
+  },
+  "timers": [
+    {
+      "site": "setInterval 5000ms index-BLh6KNSZ.js:62489:19 < commitHookEffectListMount (index-BLh6KNSZ.js:7382:26)",
+      "fired": 12,
+      "scheduled": 0
+    },
+    {
+      "site": "setInterval 15000ms index-BLh6KNSZ.js:63838:19 < commitHookEffectListMount (index-BLh6KNSZ.js:7382:26)",
+      "fired": 4,
+      "scheduled": 0
+    },
+    {
+      "site": "setTimeout 30000ms index-BLh6KNSZ.js:40861:13 < new Promise (<anonymous>)",
+      "fired": 0,
+      "scheduled": 24
+    }
+  ],
+  "indexedDbTransactionsPerMinute": {
+    "readwrite settings": 4,
+    "readonly outbox": 8,
+    "readonly messages": 4,
+    "readonly events": 4,
+    "readwrite outbox": 4
+  },
+  "wakeLocks": {
+    "requested": 1,
+    "released": 0
+  },
+  "pageHidden": true,
+  "profile": {
+    "sampledMs": 60005,
+    "idleMs": 59821,
+    "busyMs": 184.4,
+    "top": [
+      {
+        "name": "(program) :0",
+        "ms": 99.7
+      },
+      {
+        "name": "(garbage collector) :0",
+        "ms": 31.6
+      },
+      {
+        "name": "jpAdd index-BLh6KNSZ.js:26685",
+        "ms": 12
+      },
+      {
+        "name": "red index-BLh6KNSZ.js:26615",
+        "ms": 7.8
+      },
+      {
+        "name": "fetch :0",
+        "ms": 4.7
+      },
+      {
+        "name": "jpDouble index-BLh6KNSZ.js:26673",
+        "ms": 4.6
+      },
+      {
+        "name": "fetchWithin index-BLh6KNSZ.js:40868",
+        "ms": 3.5
+      },
+      {
+        "name": "transaction :0",
+        "ms": 2.4
+      },
+      {
+        "name": "site :83",
+        "ms": 1.2
+      },
+      {
+        "name": "bound :0",
+        "ms": 1.2
+      },
+      {
+        "name": "finishQueueingConcurrentUpdates index-BLh6KNSZ.js:2810",
+        "ms": 1.2
+      },
+      {
+        "name": "(anonymous) index-BLh6KNSZ.js:40860",
+        "ms": 1.2
+      }
+    ]
+  },
+  "framesDrawnIn15s": 0
+}

@@ -1,0 +1,115 @@
+{
+  "label": "talk-stale-open",
+  "route": "/?v=line",
+  "options": {
+    "label": "talk-stale-open",
+    "route": "/?v=line",
+    "staleTalk": true,
+    "seconds": 8
+  },
+  "wallSeconds": 8,
+  "hostLoadAvg1m": 61.97,
+  "eventStreamConnections": 2,
+  "requests": {
+    "total": 4,
+    "perMinute": {
+      "/api/challenge": 15,
+      "/api/presence": 15
+    },
+    "raw": {
+      "/api/challenge": 2,
+      "/api/presence": 2
+    }
+  },
+  "cpuSecondsByProcess": {
+    "browser": 0.02,
+    "renderer": 0.53,
+    "GPU": 0.01,
+    "network.mojom.NetworkService": 0,
+    "storage.mojom.StorageService": 0,
+    "audio.mojom.AudioService": 0.04,
+    "tracing.mojom.TracingService": 0
+  },
+  "cpuPercentOfOneCore": {
+    "browser": 0.2,
+    "renderer": 6.6,
+    "GPU": 0.1,
+    "network.mojom.NetworkService": 0,
+    "storage.mojom.StorageService": 0,
+    "audio.mojom.AudioService": 0.5,
+    "tracing.mojom.TracingService": 0
+  },
+  "page": {
+    "taskSeconds": 0.126,
+    "scriptSeconds": 0.001,
+    "layoutSeconds": 0,
+    "recalcStyleSeconds": 0,
+    "layoutCount": 0,
+    "recalcStyleCount": 0,
+    "jsHeapUsedMB": 17.5,
+    "jsHeapGrowthKB": -4727,
+    "domNodes": 853,
+    "domNodeGrowth": 0,
+    "eventListeners": 2499,
+    "eventListenerGrowth": 0,
+    "rafCallbacks": 0
+  },
+  "longTasks": {
+    "count": 0,
+    "list": []
+  },
+  "timers": [
+    {
+      "site": "setInterval 5000ms index-BLh6KNSZ.js:62489:19 < commitHookEffectListMount (index-BLh6KNSZ.js:7382:26)",
+      "fired": 2,
+      "scheduled": 0
+    },
+    {
+      "site": "setTimeout 30000ms index-BLh6KNSZ.js:40861:13 < new Promise (<anonymous>)",
+      "fired": 0,
+      "scheduled": 4
+    }
+  ],
+  "indexedDbTransactionsPerMinute": {},
+  "wakeLocks": {
+    "requested": 1,
+    "released": 0
+  },
+  "mediaPlayCalls": 1,
+  "pageHidden": false,
+  "profile": {
+    "sampledMs": 8005,
+    "idleMs": 7995,
+    "busyMs": 9.5,
+    "top": [
+      {
+        "name": "(program) :0",
+        "ms": 4.9
+      },
+      {
+        "name": "(garbage collector) :0",
+        "ms": 1.2
+      },
+      {
+        "name": "biModSub index-BLh6KNSZ.js:26625",
+        "ms": 1.1
+      },
+      {
+        "name": "jpAdd index-BLh6KNSZ.js:26685",
+        "ms": 1.1
+      },
+      {
+        "name": "updateFunctionComponent index-BLh6KNSZ.js:5912",
+        "ms": 1
+      },
+      {
+        "name": "performWorkUntilDeadline index-BLh6KNSZ.js:630",
+        "ms": 0.2
+      },
+      {
+        "name": "finishRenderingHooks index-BLh6KNSZ.js:4291",
+        "ms": 0
+      }
+    ]
+  }
+}

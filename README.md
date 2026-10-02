@@ -20,6 +20,14 @@ or a bad option shows an error and Send stays off). A good call goes as an ordin
 A **Talk** button on every card, hands step, thread and Prompts row opens the Talk line about
 that thing. Protocol: docs/protocol.md §20 and §23.
 
+## Needs you: live cards
+
+**Needs you** shows live cards: the Mayor's answer to a saved prompt such as `/top5` can be one
+card, a numbered list whose items link to the beads where he goes and does the thing, and which
+ticks itself off as the factory's events arrive. An open card sits under You (`Cards · N`) and
+in its bead's channel; once every item is done it moves under `Done · N`. The Mayor can update
+a card in place, so a link may appear later. Protocol: docs/protocol.md §24.
+
 ## Screenshots
 
 A Builder runs `npm run shots` on demand (never in the gate) to capture every `tests/e2e/` spec's

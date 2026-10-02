@@ -537,7 +537,7 @@ record (§21) or an `events` record (§22) gets the `message` event only: no pus
 exceptions are a `call` record whose clear `role` is `ring` (the Mayor's call-back), which is
 pushed as well, with the title `The Mayor is calling` and, for a direct record, its
 `summary` as the body, and an `events` record whose clear `lane` is `emergency`, which is
-pushed with the title `Emergency` and no body (still no hook).
+pushed with the title `Emergency` and no body (still no hook), and a `talk` record signed by the Mayor's key (`POSTERN_MAYOR_KEY`) to anyone else, the Mayor's answer, which is pushed as `{class: "talk", txid, ts}` with no words, no title and no body (still no hook; the Governor's own turns are never pushed).
 
 ## The push notifier
 

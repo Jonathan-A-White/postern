@@ -1163,15 +1163,25 @@ answers `to` the Governor's.
 
 ### What the backend does with a turn
 
-A `talk` record reaches §10's event stream and nothing else: no web push, no
-on-message hook, no on-grist hook. It carries no `summary` (§1), so no word of either
-side is ever pushed, handed to a hook or logged; the clear class tells the backend a
-turn's time and size, never its words.
+A `talk` record reaches §10's event stream, and no on-message or on-grist hook runs for
+it. It carries no `summary` (§1), so no word of either side is ever pushed, handed to a
+hook or logged; the clear class tells the backend a turn's time and size, never its words.
+
+The one talk record that is pushed is the Mayor's **answer**: a turn whose `from` is the
+Mayor's key (`POSTERN_MAYOR_KEY`) and whose `to` is anyone else. Its push is `{class: "talk",
+txid, ts}` with **no words in it**, no title and no body: the answer's text, its talk `id` and its
+`turn` are sealed in `ct`, and the push says only that the Mayor answered. The Governor's own
+turns (to the Mayor's key), and every talk record when no Mayor key is configured, are never
+pushed. A holding turn is an answer for this rule: the backend cannot tell them apart in the clear.
 
 ### An answer that comes while he has left the app
 
-Android suspends the voice of an app that is in the background, and the backend pushes
-no talk record, so the phone does what it can itself (mw-j0f2d.29). While a talk is open
+Android suspends the voice of an app that is in the background, and freezes a hidden page
+outright, so a page cannot be counted on to hear the answer at all. The backend therefore pushes the
+Mayor's answer, with no words in the push (above, mw-j0f2d.38), and the service worker shows
+a notification titled "The Mayor answered" unless a focused window already shows the app; a tap
+opens the Talk line, where the answer speaks. A page that is still alive does what it can itself
+too (mw-j0f2d.29). While a talk is open
 the page holds the screen awake and loops a silent audio element, to try to keep the
 voice alive with the screen off. An answer the page reads while it is hidden is not
 spoken: the page shows a notification titled "The Mayor answered", with the talk chime's

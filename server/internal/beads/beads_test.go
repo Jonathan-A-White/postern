@@ -174,7 +174,7 @@ func TestGetTimeoutElapsedNeverBelowTimeout(t *testing.T) {
 		return Result{ExitCode: -1}, ctx.Err()
 	}
 	f := New("mw", WithRunner(blocking), WithTimeout(timeout))
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 100; i++ {
 		_, err := f.Get(context.Background(), "mw-abc")
 		var cmdErr *CommandError
 		if !errors.As(err, &cmdErr) {

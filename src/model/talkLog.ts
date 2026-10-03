@@ -5,7 +5,7 @@
 import type { MessageRow } from '../data/db';
 import { decodeTurn } from '../services/talk';
 import { clockHHMM } from './call';
-import { NO_ANSWER_IN_TIME, TALK_AWAY_TIMEOUT_MS, type TalkLineState, type TalkTurn } from './talkLine';
+import { NO_ANSWER_IN_TIME, TALK_AWAY_TIMEOUT_MS, TALK_STALE_MS, type TalkLineState, type TalkTurn } from './talkLine';
 import type { TalkLogEntry } from './talkScreen';
 
 type TalkRow = Pick<MessageRow, 'id' | 'direction' | 'ts' | 'plaintext' | 'heard'>;
@@ -15,6 +15,8 @@ export interface RecordedTalk {
   id: string;
   log: TalkLogEntry[];
   ended: boolean;
+  /** When its newest row was made (ms). */
+  lastAt: number;
   /** The ids of its rows. */
   rows: string[];
   /** The row of the real answer to the last turn, when it has one. */
@@ -94,19 +96,20 @@ export function talksFromRows(rows: TalkRow[]): RecordedTalk[] {
       const numbers = [...talk.his.keys()].sort((a, b) => a - b);
       const log = numbers.map((number) => entryOf(talk, number)!);
       const lastAnswer = numbers.length ? talk.answers.get(numbers[numbers.length - 1]) : undefined;
-      return { id: talk.id, log, ended: talk.ended, rows: talk.rows, ...(lastAnswer?.turn.role === 'answer' ? { lastAnswerRow: lastAnswer.row } : {}) };
+      return { id: talk.id, log, ended: talk.ended, lastAt: talk.lastTs * 1000, rows: talk.rows, ...(lastAnswer?.turn.role === 'answer' ? { lastAnswerRow: lastAnswer.row } : {}) };
     });
 }
 
 /**
  * The open talk, the one place that says which it is: the newest talk, unless it has ended
- * (he tapped End, or the Mayor ended it). The quiet spell after an unanswered turn does not end a
+ * (he tapped End, or the Mayor ended it) or its newest row is older than TALK_STALE_MS: a talk left
+ * without End does not hold the screen on when he comes back hours later (mw-1ox07o.1). The quiet spell after an unanswered turn does not end a
  * talk today (the line only stops waiting), so it does not here either. `nowMs` is when the
  * screen is built: a last turn that has waited past the line's own give-up time shows that it did.
  */
 export function openTalk(rows: TalkRow[], nowMs: number): OpenTalk | undefined {
   const talk = talksFromRows(rows).at(-1);
-  if (!talk || talk.ended || talk.log.length === 0) return undefined;
+  if (!talk || talk.ended || talk.log.length === 0 || nowMs - talk.lastAt > TALK_STALE_MS) return undefined;
   const last = talk.log[talk.log.length - 1];
   const base: TalkLineState = { phase: 'idle', talk: { id: talk.id, turn: last.turn }, cutPending: false, model: last.asked, answeredBy: last.answeredBy };
   if (last.answered) {

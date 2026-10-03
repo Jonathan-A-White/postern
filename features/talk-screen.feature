@@ -592,3 +592,37 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And he switches to another app
     And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
     Then the bar "Mayor answered, tap to hear" is gone
+
+  # mw-1ox07o.1: an open talk ends by itself, so a phone put down does not stay lit for hours.
+  Scenario: AC-12: with nothing happening for 5 minutes the screen and the silent loop are let go, and a hold takes them back (mw-1ox07o.1)
+    Given the 5 minutes of quiet are shortened so the scenario need not wait
+    And the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Hello" and lets go
+    Then the screen is held awake and a silent loop plays
+    When the quiet limit passes with nothing happening
+    Then the screen is let go and the silent loop has stopped
+    When the Mayor answers "Hi there." on model "sonnet"
+    Then the screen is held awake again and the silent loop plays again
+
+  Scenario: AC-12: each hold, answer or tap starts the quiet limit again (mw-1ox07o.1)
+    Given the 5 minutes of quiet are shortened so the scenario need not wait
+    And the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Hello" and lets go
+    And most of the quiet limit passes
+    And the Mayor answers "Hi there." on model "sonnet"
+    And most of the quiet limit passes again
+    And he taps "Cut the answer"
+    And most of the quiet limit passes once more
+    Then the screen is still held awake and the silent loop still plays
+
+  Scenario: AC-13: a talk whose last row is 31 minutes old is over when he comes back, with no lock and no loop (mw-1ox07o.1)
+    Given a talk was last heard 31 minutes ago
+    When the Talk line is open with a believable speech recogniser
+    Then the screen shows no turns
+    And the screen is not held awake and no silent loop plays
+
+  Scenario: AC-13: a talk whose last row is 10 minutes old is still open when he comes back (mw-1ox07o.1)
+    Given a talk was last heard 10 minutes ago
+    When the Talk line is open with a believable speech recogniser
+    Then the screen shows the stored turn
+    And the screen is held awake and a silent loop plays

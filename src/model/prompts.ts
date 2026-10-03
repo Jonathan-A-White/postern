@@ -12,19 +12,23 @@ export function beginsCall(text: string): boolean {
 }
 
 /**
- * Splits a call on whitespace; a word in single or double quotes stays whole, quotes
- * removed. undefined when a quote is never closed.
+ * Splits a call on whitespace. A word in double quotes stays whole, quotes removed, and an
+ * unclosed double quote gives undefined. A single quote groups only the old way: opening a
+ * word and closed by a single quote that ends a word ('a b'); any other apostrophe (I'm,
+ * Luke's, dogs') is a letter.
  */
 export function tokenizeCall(text: string): string[] | undefined {
   const tokens: string[] = [];
   let current = '';
   let started = false;
   let quote: string | undefined;
-  for (const char of text) {
+  const chars = Array.from(text);
+  for (let at = 0; at < chars.length; at += 1) {
+    const char = chars[at];
     if (quote) {
-      if (char === quote) quote = undefined;
+      if (char === quote && (quote === '"' || at + 1 === chars.length || /\s/.test(chars[at + 1]))) quote = undefined;
       else current += char;
-    } else if (char === '"' || char === "'") {
+    } else if (char === '"' || (char === "'" && !started && closesLater(chars, at))) {
       quote = char;
       started = true;
     } else if (/\s/.test(char)) {
@@ -39,6 +43,14 @@ export function tokenizeCall(text: string): string[] | undefined {
   if (quote) return undefined;
   if (started) tokens.push(current);
   return tokens;
+}
+
+// is there a single quote after `at` that ends a word (followed by whitespace or the end)?
+function closesLater(chars: string[], at: number): boolean {
+  for (let next = at + 1; next < chars.length; next += 1) {
+    if (chars[next] === "'" && (next + 1 === chars.length || /\s/.test(chars[next + 1]))) return true;
+  }
+  return false;
 }
 
 /** The prompts to offer: while the text is '/' and the start of a name, no space yet. */

@@ -1582,6 +1582,12 @@ tapped away (a setting, so a cleared one stays cleared). A tap clears it, closes
 notification if it is still up, and opens what the event is about: its `bead`'s page, or the
 Talk line (§20) when it names no bead.
 
+`mw-gq6.247`. An event may carry `clears`, the `seq` of the emergency it ends (docs/events.md: the
+way back of an alarm, in the `normal` lane, so it is never a banner of its own). When such an
+event is first kept, the app clears that emergency as his tap does, in the same setting: that
+emergency and any older one go, a newer one stays, and a reload does not bring it back. An event
+without `clears` changes nothing.
+
 ### The chain road, while the backend is out of reach
 
 `mw-jrx0s.9`. The phone's own read of the chain (§21, "The phone reads the chain itself")

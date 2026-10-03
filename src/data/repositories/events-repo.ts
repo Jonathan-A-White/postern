@@ -12,14 +12,18 @@ const CLEARED_SETTING_KEY = 'emergency-cleared';
 /** mw-jrx0s.7: the factory's events (docs/protocol.md §22), kept once each by seq. */
 export const eventsRepo = {
   /** Keeps every event whose seq is not held yet; resolves with those, in seq order.
-   * An event already held is dropped, whichever record, lane or txid brought it. */
+   * An event already held is dropped, whichever record, lane or txid brought it. A new event
+   * that clears an emergency (`clears`, docs/events.md) clears it as his tap does, in the same
+   * setting, so the banner goes by itself and stays gone after a reload. */
   async addNew(events: EventRow[]): Promise<EventRow[]> {
-    return db.transaction('rw', db.events, async () => {
+    return db.transaction('rw', db.events, db.settings, async () => {
       const bySeq = new Map(events.map((event) => [event.seq, event]));
       const seqs = [...bySeq.keys()];
       const held = await db.events.bulkGet(seqs);
       const fresh = seqs.filter((_, i) => held[i] === undefined).map((seq) => bySeq.get(seq) as EventRow);
       await db.events.bulkAdd(fresh);
+      const clears = Math.max(0, ...fresh.map((event) => event.clears ?? 0));
+      if (clears > 0) await eventsRepo.clearEmergency(clears);
       return fresh.sort((a, b) => a.seq - b.seq);
     });
   },
@@ -74,7 +78,7 @@ export const eventsRepo = {
     return typeof row?.value === 'number' ? row.value : 0;
   },
 
-  /** His tap: every emergency up to `seq` is dealt with. */
+  /** His tap, or an event that says the alarm is over: every emergency up to `seq` is dealt with. */
   async clearEmergency(seq: number): Promise<void> {
     if (seq > (await eventsRepo.emergencyCleared())) await db.settings.put({ key: CLEARED_SETTING_KEY, value: seq });
   },

@@ -128,6 +128,13 @@ const bannerGone = async () => {
   await waitFor(() => expect(screen.queryByRole('alert', { name: 'Emergency' })).not.toBeInTheDocument());
 };
 
+/** A normal-lane event that ends emergency `clears` (docs/events.md), the next seq after the emergencies. */
+async function pageClearing(_c: unknown, detail: string, clears: number): Promise<void> {
+  const seq = (await db.events.orderBy('seq').last())?.seq ?? 0;
+  page = [batchRecord('normal', [{ ...factoryEvent(seq + 1, 'normal', { kind: 'job', bead: '', from: 'running', to: 'done', detail }), clears }])];
+  await sync();
+}
+
 const feature = await loadFeature('features/emergency.feature');
 
 describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
@@ -199,6 +206,38 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect((await db.events.orderBy('seq').toArray()).map((e) => e.seq)).toEqual([5, 6, 7]);
       expect(await eventsRepo.cursor()).toBe(7);
       expect(heard).toEqual([7, 6]);
+    });
+  });
+
+  Scenario('mw-gq6.247: an event that clears the shown emergency takes the banner away by itself, and it stays away after the app opens again', ({ Given, When, Then }) => {
+    Given('the Map is open on a phone, with a batch of events pending in the same sync', mapOpen);
+    When('the sync pages the Mayor\'s emergency {string} about {string} after the pending batch', emergencyOnTheBead);
+    Then('the banner at the top of the Map says {string}', async (_c, detail: string) => {
+      expect(await banner()).toHaveTextContent(detail);
+    });
+    When('the sync pages the factory\'s normal event {string} that clears emergency {int}', pageClearing);
+    Then('the banner is gone', bannerGone);
+    When('the app is opened again on the Map', async () => {
+      cleanup();
+      openMap();
+      await screen.findByRole('navigation', { name: 'Places' });
+    });
+    Then('no banner shows', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await bannerGone();
+    });
+  });
+
+  Scenario('mw-gq6.247: an event that clears an older emergency leaves a newer one on the banner', ({ Given, When, Then, And }) => {
+    Given('the Map is open on a phone, with a batch of events pending in the same sync', mapOpen);
+    When('the sync pages the Mayor\'s emergency {string} about {string} after the pending batch', emergencyOnTheBead);
+    And('the sync pages the Mayor\'s later emergency {string} about {string}', async (_c, detail: string, bead: string) => {
+      page = [batchRecord('emergency', [factoryEvent(8, 'emergency', { kind: 'alarm', bead, from: '', to: '', detail })])];
+      await sync();
+    });
+    And('the sync pages the factory\'s normal event {string} that clears emergency {int}', pageClearing);
+    Then('the banner at the top of the Map says {string}', async (_c, detail: string) => {
+      await waitFor(() => expect(screen.getByRole('alert', { name: 'Emergency' })).toHaveTextContent(detail));
     });
   });
 });

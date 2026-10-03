@@ -58,7 +58,8 @@ export function decodeEventBatch(text: string): EventBatch {
     const seq = seqOf(e.seq);
     const kind = str(e.kind);
     if (seq === undefined || kind === '') continue;
-    events.push({ seq, ts: timeOf(e.ts), kind, bead: str(e.bead), actor: str(e.actor), from: str(e.from), to: str(e.to), detail: str(e.detail), lane: str(e.lane) || lane });
+    const clears = seqOf(e.clears);
+    events.push({ seq, ts: timeOf(e.ts), kind, bead: str(e.bead), actor: str(e.actor), from: str(e.from), to: str(e.to), detail: str(e.detail), lane: str(e.lane) || lane, ...(clears === undefined ? {} : { clears }) });
   }
   events.sort((a, b) => a.seq - b.seq);
   return { from, to, lane, events };

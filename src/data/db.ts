@@ -141,6 +141,8 @@ export interface EventRow {
   to: string;
   detail: string;
   lane: string;
+  /** The seq of the emergency this event ends (docs/events.md); absent on an event that ends none. */
+  clears?: number;
 }
 
 /** One numbered item of a live card as the Mayor sent it (docs/protocol.md §24). `doneAt` is Unix seconds. */

@@ -66,7 +66,7 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   }, [beadTitles]);
   const supported = isListenSupported();
   // Whether the Mayor's wait is connected, as the last poll said; the wait's timing reads it each tick.
-  const here = useMayorHere();
+  const here = useMayorHere(line.phase === 'waiting');
   const hereNow = useRef(here);
   useEffect(() => {
     hereNow.current = here;

@@ -571,8 +571,18 @@ record with no `to`/`class` (a License mint/transfer record, for instance) or a
 `to` no device has subscribed for is silently skipped. A push endpoint that
 answers `410 Gone` has its subscription dropped from the store.
 
+A `message` record that names its channel in the clear (`docs/protocol.md` §1: an optional `bead`
+id, or an optional `channel` name; a bead outranks a name, each cut to 80 runes) is pushed with the
+title `Message on <bead id>` or `Message in <name>`, direct or chain alike; with neither, it has no
+title and the app's own `Message` stands. No other class takes a channel title, and an emergency
+keeps `Emergency`:
+
+```json
+{ "class": "message", "txid": "direct:9c1e...", "ts": 1758700000, "title": "Message in general", "body": "Closing six now..." }
+```
+
 A push may also carry two optional fields, `title` and `body`, which the service
-worker shows when present. A record's push never has a `title`, but for a ring, and
+worker shows when present. A record's push never has a `title`, but for a ring, an emergency, and a message that names its channel, and
 has a `body` only from a direct record's `summary`:
 
 ```json

@@ -69,6 +69,25 @@ function installFetchMock(options: { unauthorized?: boolean } = {}) {
 const feature = await loadFeature('features/push.feature');
 
 describeFeature(feature, ({ Scenario }) => {
+  Scenario('mw-gq6.251: a message\'s notification shows the title and first words the push carried', ({ Given, Then, And }) => {
+    let spec: NotificationSpec;
+
+    Given('a pushed message titled "Message in general" with the words "Closing six now..."', () => {
+      spec = notificationSpecForClass('message', 'direct:ab', undefined, { title: 'Message in general', body: 'Closing six now...' });
+    });
+
+    Then('the notification is titled "Message in general" and its body is "Closing six now..."', () => {
+      expect(spec.title).toBe('Message in general');
+      expect(spec.options.body).toBe('Closing six now...');
+    });
+
+    And('a pushed message with neither is titled "Message" with no body', () => {
+      const bare = notificationSpecForClass('message', 'direct:ab', undefined, {});
+      expect(bare.title).toBe('Message');
+      expect(bare.options.body).toBeUndefined();
+    });
+  });
+
   Scenario('AC-1: decision-needed vibrates and stays until dismissed', ({ Given, Then }) => {
     let spec: NotificationSpec;
 

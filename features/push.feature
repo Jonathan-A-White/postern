@@ -37,3 +37,8 @@ Feature: Classified push notifications
     And the backend answers every proved call with 401
     When this phone subscribes to push
     Then subscribing fails with "Licence required"
+
+  Scenario: mw-gq6.251: a message's notification shows the title and first words the push carried
+    Given a pushed message titled "Message in general" with the words "Closing six now..."
+    Then the notification is titled "Message in general" and its body is "Closing six now..."
+    And a pushed message with neither is titled "Message" with no body

@@ -57,6 +57,11 @@ JSON shape that only postern understands:
   beside `ct`, so it is public to anyone who reads the record. A sender puts it only
   on a direct record (§9), never a chain one; the backend turns it into the web
   push's body (§9 item 6). A record without one is unchanged.
+- `channel` / `bead` — optional, strings: the name of the channel a `message` belongs to, or
+  the id of the bead whose channel it is, in the clear so the push's title can name it
+  (`Message in general`, `Message on mw-xyz12.3`). A bead outranks a name; each is cut to 80
+  runes. Like `summary` they are public to anyone who reads the record; a sender that wants
+  a channel sealed leaves them off, and the push title stays `Message`.
 - `thread` — never a field of this clear envelope. Every message's plaintext (what
   `ct` encrypts) MAY itself name the thread it belongs to, `{"bead": "mw-xyz12.3"}`
   or `{"topic": "<name>"}`; absent, it's the general thread. See §6.

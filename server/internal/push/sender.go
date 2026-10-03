@@ -48,6 +48,10 @@ type addressedPayload struct {
 	Role string `json:"role"`
 	// Lane is an events record's clear lane (docs/protocol.md §22): only an "emergency" is pushed.
 	Lane string `json:"lane"`
+	// Channel and Bead are the optional clear names of the channel a message belongs to (a named
+	// channel, or a bead's own); a message's push title names it. Absent, the class title stands.
+	Channel string `json:"channel"`
+	Bead    string `json:"bead"`
 }
 
 // directPrefix is api.DirectPrefix: the start of every directly delivered
@@ -61,6 +65,8 @@ const (
 	ringClass = "call"
 	ringRole  = "ring"
 	ringTitle = "The Mayor is calling"
+
+	messageClass = "message"
 
 	eventsClass    = "events"
 	emergencyLane  = "emergency"
@@ -188,10 +194,27 @@ func parseAddressed(txid string, payload json.RawMessage) (addressedPayload, Pay
 		}
 		return addressed, push, true
 	}
+	if addressed.Class == messageClass {
+		// The title names the channel when the record names one in the clear, chain or direct.
+		push.Title = messageTitle(addressed)
+	}
 	if strings.HasPrefix(txid, directPrefix) && summaryPushed(addressed.Class) {
 		push.Body = clipSummary(addressed.Summary)
 	}
 	return addressed, push, true
+}
+
+// messageTitle is a message push's title when its record names its channel in the clear:
+// "Message on <bead id>" for a bead's channel (which outranks a name), "Message in <name>" for a
+// named one, and "" when neither is named, so the app's own "Message" stands.
+func messageTitle(addressed addressedPayload) string {
+	if bead := clipSummary(addressed.Bead); bead != "" {
+		return "Message on " + bead
+	}
+	if channel := clipSummary(addressed.Channel); channel != "" {
+		return "Message in " + channel
+	}
+	return ""
 }
 
 // summaryPushed reports whether a record of this class may show its summary in

@@ -52,6 +52,20 @@ describe('notificationSpecForClass', () => {
     expect(spec.options.body).toBe('since 09:12Z');
   });
 
+  it("takes a message's title and body from the payload, and says 'Message' only where the payload has no title", () => {
+    const named = notificationSpecForClass('message', 'direct:ab', undefined, { title: 'Message in general', body: 'Closing six now...' });
+    expect(named.title).toBe('Message in general');
+    expect(named.options.body).toBe('Closing six now...');
+
+    const bead = notificationSpecForClass('message', 'direct:ab', undefined, { title: 'Message on mw-gq6.251' });
+    expect(bead.title).toBe('Message on mw-gq6.251');
+    expect(bead.options.body).toBeUndefined();
+
+    const bare = notificationSpecForClass('message', 'direct:ab', undefined, {});
+    expect(bare.title).toBe('Message');
+    expect(bare.options.body).toBeUndefined();
+  });
+
   it('titles each class', () => {
     expect(notificationSpecForClass('decision-needed', 'tx1').title).toBe('Decision needed');
     expect(notificationSpecForClass('landing', 'tx1').title).toBe('Landing to verify');

@@ -31,6 +31,13 @@ configure({ asyncUtilTimeout: 5000 });
 const clock = vi.hoisted(() => ({ at: 1_000_000 }));
 vi.mock('../../src/services/clock', () => ({ now: () => clock.at }));
 
+// mw-1ox07o.1: the 5 minutes of quiet (src/services/idleHold.ts), run on a short clock when a scenario says so.
+const quiet = vi.hoisted(() => ({ ms: undefined as number | undefined }));
+vi.mock('../../src/services/idleHold', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/services/idleHold')>();
+  return { ...original, holdWhileActive: (acquire: () => () => void) => original.holdWhileActive(acquire, quiet.ms ?? original.TALK_IDLE_MS) };
+});
+
 const sendTurn = vi.fn();
 const sendCallRequest = vi.fn();
 vi.mock('../../src/cockpit/send', async (importOriginal) => ({
@@ -279,6 +286,7 @@ const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + silent
 async function fresh(): Promise<void> {
   cleanup();
   silentFor = 0;
+  quiet.ms = undefined;
   mayor.here = undefined;
   lock();
   dismissAnswerWaiting();
@@ -1941,5 +1949,91 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('he switches to another app', switchesAway);
     And("a sync pages the Mayor's answer {string} and the event for that talk turn", syncsTheAnswer);
     Then('the bar {string} is gone', barIsGone);
+  });
+
+  // mw-1ox07o.1: an open talk ends by itself.
+  const QUIET_MS = 2400;
+  const heldAwakeWithLoop = async () => {
+    await waitFor(() => expect(request.mock.calls.length).toBeGreaterThan(releasedAwake));
+    await waitFor(() => expect(loopPlaying()).toBe(true));
+  };
+  let releasedAwake = 0;
+  const wait = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  Scenario('AC-12: with nothing happening for 5 minutes the screen and the silent loop are let go, and a hold takes them back (mw-1ox07o.1)', ({ Given, And, When, Then }) => {
+    Given('the 5 minutes of quiet are shortened so the scenario need not wait', () => {
+      quiet.ms = QUIET_MS;
+      releasedAwake = 0;
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    Then('the screen is held awake and a silent loop plays', async () => {
+      await heldAwakeWithLoop();
+      releasedAwake = request.mock.calls.length;
+    });
+    When('the quiet limit passes with nothing happening', async () => {
+      await wait(QUIET_MS + 400);
+    });
+    Then('the screen is let go and the silent loop has stopped', async () => {
+      await waitFor(() => expect(release).toHaveBeenCalledTimes(1));
+      expect(loopPlaying()).toBe(false);
+    });
+    When('the Mayor answers {string} on model {string}', mayorAnswers);
+    Then('the screen is held awake again and the silent loop plays again', async () => {
+      await heldAwakeWithLoop();
+    });
+  });
+
+  Scenario('AC-12: each hold, answer or tap starts the quiet limit again (mw-1ox07o.1)', ({ Given, And, When, Then }) => {
+    Given('the 5 minutes of quiet are shortened so the scenario need not wait', () => {
+      quiet.ms = QUIET_MS;
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('most of the quiet limit passes', () => wait(QUIET_MS * 0.4));
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('most of the quiet limit passes again', () => wait(QUIET_MS * 0.4));
+    And('he taps {string}', tapButton);
+    And('most of the quiet limit passes once more', () => wait(QUIET_MS * 0.4));
+    Then('the screen is still held awake and the silent loop still plays', () => {
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(release).not.toHaveBeenCalled();
+      expect(loopPlaying()).toBe(true);
+    });
+  });
+
+  const talkLastHeard = async (_c: unknown, minutes: number) => {
+    const T = 1_760_000_000;
+    await storeTalk('left-open', T, [{ said: 'What landed?', answer: 'Three things.' }]);
+    clock.at = (T + 5) * 1000 + Number(minutes) * 60_000;
+  };
+  const notHeldAwake = () => {
+    expect(request).not.toHaveBeenCalled();
+    expect(loopPlaying()).toBe(false);
+  };
+
+  Scenario('AC-13: a talk whose last row is 31 minutes old is over when he comes back, with no lock and no loop (mw-1ox07o.1)', ({ Given, When, Then, And }) => {
+    Given('a talk was last heard {number} minutes ago', talkLastHeard);
+    When('the Talk line is open with a believable speech recogniser', lineOpen);
+    Then('the screen shows no turns', async () => {
+      await talkButton('Hold to talk');
+      expect(screen.queryAllByTestId('talk-turn')).toHaveLength(0);
+    });
+    And('the screen is not held awake and no silent loop plays', async () => {
+      await wait(200);
+      notHeldAwake();
+    });
+  });
+
+  Scenario('AC-13: a talk whose last row is 10 minutes old is still open when he comes back (mw-1ox07o.1)', ({ Given, When, Then, And }) => {
+    Given('a talk was last heard {number} minutes ago', talkLastHeard);
+    When('the Talk line is open with a believable speech recogniser', lineOpen);
+    Then('the screen shows the stored turn', async () => {
+      await showsTurnAndAnswer(undefined, 'What landed?', 'Three things.');
+    });
+    And('the screen is held awake and a silent loop plays', async () => {
+      await waitFor(() => expect(request).toHaveBeenCalledWith('screen'));
+      await waitFor(() => expect(loopPlaying()).toBe(true));
+    });
   });
 });

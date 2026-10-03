@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { MessageRow } from '../../src/data/db';
 import { earlierTalks, openTalk, talkDividerLabel, talksFromRows } from '../../src/model/talkLog';
 import { encodeTurn } from '../../src/services/talk';
-import { TALK_AWAY_TIMEOUT_MS, NO_ANSWER_IN_TIME, type TalkTurn } from '../../src/model/talkLine';
+import { TALK_AWAY_TIMEOUT_MS, TALK_STALE_MS, NO_ANSWER_IN_TIME, type TalkTurn } from '../../src/model/talkLine';
 
 let n = 0;
 function row(turn: TalkTurn, direction: 'sent' | 'received', ts: number, extra: Partial<MessageRow> = {}): MessageRow {
@@ -169,5 +169,24 @@ describe('talkDividerLabel', () => {
     expect(label).toContain('14:05');
     expect(label).toMatch(/Oct/);
     expect(label).toMatch(/\b1\b/);
+  });
+
+  // mw-1ox07o.1: a talk left without End is not the open talk for ever.
+  it('reopens a talk whose last row is 10 minutes old, as today', () => {
+    const rows = [his('a', 1, 'Hello', T0), answer('a', 1, 'Hi.', T0 + 2, { heard: true })];
+    const open = openTalk(rows, (T0 + 2) * 1000 + 10 * 60_000)!;
+    expect(open.line.talk).toEqual({ id: 'a', turn: 1 });
+  });
+
+  it('treats a talk whose last row is 31 minutes old as ended: nothing opens, so no lock and no loop', () => {
+    const rows = [his('a', 1, 'Hello', T0), answer('a', 1, 'Hi.', T0 + 2, { heard: true })];
+    expect(TALK_STALE_MS).toBe(30 * 60_000);
+    expect(openTalk(rows, (T0 + 2) * 1000 + 31 * 60_000)).toBeUndefined();
+  });
+
+  it('measures the age from the newest row of the talk, his or the Mayor\'s, not the first', () => {
+    const rows = [his('a', 1, 'Hello', T0), answer('a', 1, 'Hi.', T0 + 20 * 60), his('a', 2, 'More', T0 + 25 * 60)];
+    expect(openTalk(rows, (T0 + 25 * 60) * 1000 + 10 * 60_000)).toBeDefined();
+    expect(openTalk(rows, (T0 + 25 * 60) * 1000 + 31 * 60_000)).toBeUndefined();
   });
 });

@@ -83,6 +83,8 @@ export const TALK_THINKING_MS = 8_000;
 export const TALK_TIMEOUT_MS = 90_000;
 /** How long it waits while he is away (or not known to be here): nobody is reading, so it says so sooner; never under a minute, since an answer 12 s after a turn was lost to a 30 s window (mw-am3yjh.5). */
 export const TALK_AWAY_TIMEOUT_MS = 60_000;
+/** A talk whose newest row is older than this is over, even if he never tapped End: it is not reopened as the open talk (mw-1ox07o.1). */
+export const TALK_STALE_MS = 30 * 60_000;
 /** What the line says once its wait window is over: the Mayor's answer may still be on its way, and plays when it lands. */
 export const NO_ANSWER_IN_TIME = 'The Mayor has not answered yet. If it lands, it will play.';
 /** A turn is queued on the phone and sent when a backend answers; this is what he is told only if the phone itself cannot keep it. */

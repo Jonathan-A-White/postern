@@ -17,6 +17,7 @@ import { chime } from '../services/chime';
 import { now } from '../services/clock';
 import { holdAwake } from '../services/wakeLock';
 import { holdVoiceAlive } from '../services/silentLoop';
+import { holdWhileActive, type IdleHold } from '../services/idleHold';
 import { announceAnswer, clearAnnouncement } from '../services/talkAnswerNotice';
 import { sendTurn } from './send';
 import { useBeadTitles, useTalkTurns } from './hooks';
@@ -35,7 +36,12 @@ const NO_ROWS: never[] = [];
 /** `fresh`: the screen was opened to start a new talk (a Talk button says what it is about), so the open one is left as it is. */
 export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   const [{ line, log }, dispatch] = useReducer(talkScreenReducer, initialTalkLine, initialTalkScreen);
-  const feed = useCallback((event: TalkLineEvent) => dispatch({ event, at: now() }), []);
+  // What keeps the phone awake for the open talk; any event but the wait's own tick (a hold, an answer, a tap) re-arms it (mw-1ox07o.1).
+  const holds = useRef(new Set<IdleHold>());
+  const feed = useCallback((event: TalkLineEvent) => {
+    if (event.type !== 'tick') for (const held of holds.current) held.rearm();
+    dispatch({ event, at: now() });
+  }, []);
   const setAbout = useCallback((about?: TalkAbout) => feed({ type: 'setAbout', about }), [feed]);
   const stored = useTalkTurns();
   const turns = stored ?? NO_ROWS;
@@ -88,7 +94,7 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   if (line.talk && line.talk.id !== shownId) setShownId(line.talk.id);
   const earlier = useMemo(() => {
     if (!stored) return [];
-    return earlierTalks(stored, shownId ?? (fresh ? undefined : openTalk(stored, 0)?.id));
+    return earlierTalks(stored, shownId ?? (fresh ? undefined : openTalk(stored, now())?.id));
   }, [stored, shownId, fresh]);
 
   // His turn goes out once, whenever the line asks for it.
@@ -185,18 +191,31 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     wasHere.current = here;
   }, [here, missed]);
 
-  // The screen stays awake for as long as a talk is open, and a silent loop plays to try to keep
+  // The screen stays awake while a talk is open, and a silent loop plays to try to keep
   // the voice alive with the screen off; but never while he holds the button, where a page playing
   // audio can take the phone's microphone from the recogniser and end it over and over (mw-j0f2d.37).
+  // Both let go after 5 minutes with no hold, answer or tap, and come back with the next one (mw-1ox07o.1).
   const open = line.talk !== undefined;
   const holding = line.phase === 'listening';
   useEffect(() => {
     if (!open) return;
-    return holdAwake();
+    const all = holds.current;
+    const held = holdWhileActive(holdAwake);
+    all.add(held);
+    return () => {
+      all.delete(held);
+      held.release();
+    };
   }, [open]);
   useEffect(() => {
     if (!open || holding) return;
-    return holdVoiceAlive();
+    const all = holds.current;
+    const held = holdWhileActive(holdVoiceAlive);
+    all.add(held);
+    return () => {
+      all.delete(held);
+      held.release();
+    };
   }, [open, holding]);
 
   useEffect(

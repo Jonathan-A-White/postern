@@ -5,7 +5,7 @@
 // second. A backend without the stream is polled instead. Screens read its
 // state through useLive(); everything they show comes from Dexie, which this
 // keeps current. While the backend cannot be reached it also reads the anchor
-// address from the chain itself every 5 s, backing off to 60 s when WhatsOnChain fails or refuses (docs/protocol.md §21): a record
+// address from the chain itself every 5 s, backing off to 60 s when WhatsOnChain fails, refuses or has nothing new, and not at all while the page is hidden (docs/protocol.md §21): a record
 // found there is kept, a ring rings, and the backend is tried again at once.
 // The factory's events (§22) come in the message sync and are projected onto the
 // stored view (src/services/events.ts); once they flow, the stream's `view` event
@@ -107,16 +107,18 @@ async function pollChain(signal: AbortSignal): Promise<void> {
     await sleep(delay, signal);
     const session = current;
     if (signal.aborted || !session) return;
+    if (typeof document !== 'undefined' && document.hidden) continue; // a page nobody is looking at reads nothing; the wait stays as it was
     let read;
     try {
       read = await readChain({ publicKeyHex: publicKeyHexFromMasterKey(session.key), unlockedKey: session.key, mayorKey: state.mayorKey, seen: chainSeen, signal });
     } catch {
       if (!signal.aborted && state.chainLive) setState({ chainLive: false });
-      delay = nextChainDelay(delay, false);
+      delay = nextChainDelay(delay, false, false);
       continue; // WhatsOnChain is out of reach too (or refuses us): the next read waits longer
     }
     if (signal.aborted) return;
-    delay = nextChainDelay(delay, read.failed === 0); // a transaction that failed is a WhatsOnChain in trouble: back off, and ask for it again
+    // A transaction that failed is a WhatsOnChain in trouble: back off, and ask for it again. A read that found nothing new backs off too: an empty chain is asked for less and less often until a record arrives.
+    delay = nextChainDelay(delay, read.failed === 0, read.rows.length > 0 || read.events.length > 0);
     if (!state.chainLive) setState({ chainLive: true });
     if (read.events.length > 0) await applyChainEvents(read.events);
     if (read.rows.length === 0) continue; // events alone are no reason to hammer the backend: its own backoff finds it
@@ -250,11 +252,13 @@ async function listen(key: Uint8Array, signal: AbortSignal): Promise<void> {
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => {
+    const done = () => {
       clearTimeout(timer);
+      signal.removeEventListener('abort', done);
       resolve();
-    });
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done);
   });
 }
 

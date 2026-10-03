@@ -1420,9 +1420,11 @@ itself, with no backend:
 - **When.** Every 5 seconds, the first read 5 seconds after the status first reads
   `reconnecting` or `offline` (a drop that mends in a moment never asks WhatsOnChain). It
   stops the moment the event stream is back (status `live`), and starts again at the next
-  drop. A read that fails (WhatsOnChain out of reach too, or answering 429 or an error) or
-  that could not fetch a transaction doubles the wait before the next, 5 seconds to a cap of
-  60; a clean read brings it back to 5.
+  drop. A read that fails (WhatsOnChain out of reach too, or answering 429 or an error),
+  that could not fetch a transaction, or that found no new record (a message or an events
+  batch) doubles the wait before the next, 5 seconds to a cap of 60; a clean read that
+  found a record brings it back to 5. While the page is hidden (`document.hidden`) no read
+  is made, and the wait stays as it was.
 - **What it reads.** `GET <provider>/address/<anchor>/unconfirmed/history` and
   `GET <provider>/address/<anchor>/confirmed/history` (`{ "result": [{ "tx_hash", "height" }] }`;
   a bare list is read too; a 404 on the confirmed history is none), at the same `<provider>` as

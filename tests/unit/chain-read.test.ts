@@ -35,14 +35,16 @@ function answering(routes: Record<string, { status: number; body: unknown }>): t
 }
 
 describe('how long the chain reader waits before its next read', () => {
-  it('starts at 5 s, doubles after each failed read up to 60 s, and goes back to 5 s after a clean one', () => {
+  it('starts at 5 s, doubles after each read that failed or found nothing up to 60 s, and goes back to 5 s once a clean read finds a record', () => {
     expect(CHAIN_POLL_MS).toBe(5_000);
     expect(CHAIN_MAX_BACKOFF_MS).toBe(60_000);
-    const delays = [CHAIN_POLL_MS];
-    for (let i = 0; i < 6; i++) delays.push(nextChainDelay(delays[i], false));
-    expect(delays).toEqual([5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000]);
-    expect(nextChainDelay(60_000, true)).toBe(5_000);
-    expect(nextChainDelay(20_000, true)).toBe(5_000);
+    for (const [clean, found] of [[false, false], [true, false], [false, true]]) {
+      const delays = [CHAIN_POLL_MS];
+      for (let i = 0; i < 6; i++) delays.push(nextChainDelay(delays[i], clean, found));
+      expect(delays).toEqual([5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000]);
+    }
+    expect(nextChainDelay(60_000, true, true)).toBe(5_000);
+    expect(nextChainDelay(20_000, true, true)).toBe(5_000);
   });
 });
 

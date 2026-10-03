@@ -15,12 +15,12 @@ import { messagesRepo } from '../data/repositories';
 /** How often the phone reads the chain while the backend is out of reach: often enough that the queue (§22) keeps flowing, rarely enough for WhatsOnChain's free tier. */
 export const CHAIN_POLL_MS = 5_000;
 
-/** The longest the phone waits between reads: each read that fails (an error, a 429) doubles the wait up to this, a clean read brings it back to CHAIN_POLL_MS. */
+/** The longest the phone waits between reads: each read that fails (an error, a 429) or finds nothing doubles the wait up to this, a clean read that finds a record brings it back to CHAIN_POLL_MS. */
 export const CHAIN_MAX_BACKOFF_MS = 60_000;
 
-/** The wait before the next chain read: doubled (to the cap) after a read that failed, back to the base after a clean one. */
-export function nextChainDelay(current: number, clean: boolean): number {
-  return clean ? CHAIN_POLL_MS : Math.min(current * 2, CHAIN_MAX_BACKOFF_MS);
+/** The wait before the next chain read: doubled (to the cap) after a read that failed or found no new record, back to the base after a clean read that did. */
+export function nextChainDelay(current: number, clean: boolean, found: boolean): number {
+  return clean && found ? CHAIN_POLL_MS : Math.min(current * 2, CHAIN_MAX_BACKOFF_MS);
 }
 
 /** WhatsOnChain's free tier allows about 3 requests a second: the hex fetches of one read are spaced this far apart (about 2 a second). */

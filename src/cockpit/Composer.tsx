@@ -14,6 +14,8 @@ import type { ThreadRef } from '../services/threads';
 import { takePendingShare } from './shareInbox';
 import { quoteBlock } from './quote';
 import { usePrompts } from './usePrompts';
+import { useDraft } from './useDraft';
+import { draftsRepo } from '../data/repositories';
 import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext } from '../model/prompts';
 import { optionChip } from '../services/prompts';
 
@@ -60,6 +62,8 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const [elapsed, setElapsed] = useState(0);
   const recorder = useRef<VoiceRecorder | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  // What he has typed and not sent waits on the phone, per channel (and per post for a reply), through a lock-out or a reload.
+  const draft = useDraft(draftsRepo.keyFor(thread, re), text, (saved) => setText((current) => current || saved), prefill);
   const picker = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const { busy, run } = useSend();
@@ -204,6 +208,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     const sent = await run(() => sendToThread(thread, body, files, re));
     if (sent) {
       files.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
+      draft.discard();
       setText('');
       setFiles([]);
       onClearQuote?.();

@@ -3,9 +3,9 @@
 // rows, search, notifications, read-aloud. A string, so nothing in a row can nest an
 // anchor; a mermaid block is '[diagram]' since a line cannot draw it.
 
-const FENCE = /^\s*(`{3,}|~{3,})\s*([^\s`]*)/;
+export const FENCE = /^\s*(`{3,}|~{3,})\s*([^\s`]*)/;
 const LINE_PREFIX = /^\s*(?:>\s*)*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)?/;
-const RULE = /^\s*(?:[-*_]\s*){3,}$/;
+export const RULE = /^\s*(?:[-*_]\s*){3,}$/;
 const CODE_SPAN = /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g;
 const IMAGE = /!\[([^\]]*)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)/g;
 const LINK = /\[([^\]]+)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)/g;
@@ -14,7 +14,7 @@ const STRIKE = /~~(?=\S)([\s\S]*?\S)~~/g;
 const EMPHASIS = /(?<![\w*])(\*{1,3})(?=[^\s*])([^*]*?[^\s*])\1(?![\w*])/g;
 const UNDERSCORE = /(?<![\w_])(_{1,3})(?=[^\s_])([^_]*?[^\s_])\1(?![\w_])/g;
 
-function inline(line: string): string {
+export function inlineToPlain(line: string): string {
   const code: string[] = [];
   let out = line.replace(CODE_SPAN, (_m, _ticks: string, body: string) => {
     code.push(body.trim());
@@ -43,7 +43,7 @@ export function markdownToPlain(text: string): string {
       continue;
     }
     if (RULE.test(line)) continue;
-    pieces.push(inline(line.replace(LINE_PREFIX, '')));
+    pieces.push(inlineToPlain(line.replace(LINE_PREFIX, '')));
   }
   return pieces.join(' ').replace(/\s+/g, ' ').trim();
 }

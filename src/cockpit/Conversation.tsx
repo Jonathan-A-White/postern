@@ -17,7 +17,9 @@ import { useAnswers, useBeadTitles, useOutbox, useStoredComments, useThreadMessa
 import { pendingAnswer } from '../model/outbox';
 import { FailedNote, OutboxMark } from './OutboxMark';
 import { PendingMark } from './PendingMark';
+import { ShareButton } from './ShareButton';
 import { VoicePlayer } from './VoicePlayer';
+import { messageShareText } from '../model/shareText';
 import { sendAnswer } from './send';
 import { useOneTap } from './oneTap';
 import { threadKey, type Attachment } from '../services/threads';
@@ -247,11 +249,12 @@ function QuestionBlock({ item, given, until }: { item: ConversationItem; given?:
   );
 }
 
-function Bubble({ item, given, until, onQuote, onReply }: { item: ConversationItem; given?: GivenAnswer; until?: number; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
+function Bubble({ item, given, until, shareTitle, onQuote, onReply }: { item: ConversationItem; given?: GivenAnswer; until?: number; shareTitle: string; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
   const titles = useBeadTitles();
   const speakKey = `message:${item.id}`;
   const reading = useSpeaking(speakKey);
   const mine = item.speaker === 'you';
+  const shared = messageShareText(item);
   const builder = item.speaker === 'builder' || item.speaker === 'factory' || item.speaker === 'other';
   if (item.kind === 'action' || item.kind === 'answer') {
     return (
@@ -301,6 +304,7 @@ function Bubble({ item, given, until, onQuote, onReply }: { item: ConversationIt
             Reply
           </button>
         )}
+        {shared && <ShareButton title={shareTitle} text={shared} />}
         {onQuote && item.text && (
           <button type="button" aria-label="Quote this" className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:text-fg focus:opacity-100" onClick={() => onQuote(item)}>
             <Icon name="quote" size={13} />
@@ -330,6 +334,7 @@ export function Conversation({
   empty,
   className,
   scrollOnOpen = true,
+  shareTitle = 'Postern',
 }: {
   items: ConversationItem[];
   onQuote?: (item: ConversationItem) => void;
@@ -342,6 +347,8 @@ export function Conversation({
   /** Scroll to the newest message when first shown; always scroll on a new one.
    * Off where the conversation sits under other content (a bead on a phone). */
   scrollOnOpen?: boolean;
+  /** The title Share gives the phone's share sheet: shareTitle() of the channel this conversation is in. */
+  shareTitle?: string;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const seen = useRef<number | null>(null);
@@ -374,7 +381,7 @@ export function Conversation({
                 <span className="h-px flex-1 bg-line" />
               </div>
             )}
-            <Bubble item={item} given={given.get(item.id)} until={askedAgain.get(item.id)} onQuote={onQuote} onReply={onReply} />
+            <Bubble item={item} given={given.get(item.id)} until={askedAgain.get(item.id)} shareTitle={shareTitle} onQuote={onQuote} onReply={onReply} />
             {footer?.(item)}
           </div>
         );

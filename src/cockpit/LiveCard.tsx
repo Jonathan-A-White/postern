@@ -4,6 +4,8 @@
 // event's time, when the state that item expects arrives; a card-update changes this same card.
 import { useEffect, useMemo } from 'react';
 import { Markdown } from '../markdown';
+import { cardShareText, shareTitle as titleOfShare } from '../model/shareText';
+import { ShareButton } from './ShareButton';
 import { Chip, Icon, cx } from '../ui';
 import { clockTime } from '../services/age';
 import { beadHref } from '../nav/route';
@@ -16,9 +18,11 @@ export interface LiveCardProps {
   card: LiveCardData;
   /** A bead's title when the view knows it; the link reads the id without it. */
   titleOf?: (bead: string) => string | undefined;
+  /** The title Share gives the phone's share sheet (shareTitle() of its channel). */
+  shareTitle?: string;
 }
 
-export function LiveCard({ card, titleOf }: LiveCardProps) {
+export function LiveCard({ card, titleOf, shareTitle = titleOfShare() }: LiveCardProps) {
   const heard = useEvents({ kinds: card.subscribe.kinds, beads: card.subscribe.beads });
   // The items still waiting on an event, as a key, so the effect runs when the set changes and not on every render.
   const waiting = card.items.filter((item) => !item.done && item.expect).map((item) => `${item.n}:${item.since}`).join(',');
@@ -38,6 +42,7 @@ export function LiveCard({ card, titleOf }: LiveCardProps) {
         <span className="ml-auto shrink-0 text-[12px] text-faint">
           {done} of {card.items.length} done
         </span>
+        <ShareButton title={shareTitle} text={cardShareText(card)} className="shrink-0 text-[12px]" />
       </div>
       <h3 className="min-w-0 text-[15.5px] leading-snug font-semibold break-words">{card.title}</h3>
       <ol className="flex flex-col gap-3">
@@ -82,7 +87,7 @@ export function LiveCard({ card, titleOf }: LiveCardProps) {
 
 /** The cards sent to one thread, above its messages: `threadKey` as threadKey() writes it, undefined for Factory.
  * Done ones stay, ticked, as the record of what was asked. */
-export function ThreadCards({ threadKey }: { threadKey: string | undefined }) {
+export function ThreadCards({ threadKey, shareTitle }: { threadKey: string | undefined; shareTitle?: string }) {
   const cards = useCards();
   const view = useViewIndex();
   const here = useMemo(() => cards.filter((card) => card.thread === threadKey), [cards, threadKey]);
@@ -90,7 +95,7 @@ export function ThreadCards({ threadKey }: { threadKey: string | undefined }) {
   return (
     <div className="mb-3 flex flex-col gap-3" data-testid="thread-cards">
       {here.map((card) => (
-        <LiveCard key={card.id} card={card} titleOf={(bead) => view?.index.byId.get(bead)?.title} />
+        <LiveCard key={card.id} card={card} titleOf={(bead) => view?.index.byId.get(bead)?.title} shareTitle={shareTitle} />
       ))}
     </div>
   );

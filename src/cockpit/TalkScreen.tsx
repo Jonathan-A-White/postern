@@ -30,6 +30,7 @@ import { PromptNote } from './PromptNote';
 import { announceSeen, markThreadSeen } from '../services/seen';
 import type { TalkAbout } from '../model/talkLine';
 import { GENERAL, summariseThreads, titleFor, type ThreadSummary } from '../model/threads';
+import { shareTitle } from '../model/shareText';
 
 function ThreadRow({ thread, active, onToggleArchive }: { thread: ThreadSummary; active: boolean; onToggleArchive: (thread: ThreadSummary) => void }) {
   return (
@@ -154,6 +155,8 @@ function ChannelPane({ threadKey, prefill }: { threadKey: string; prefill?: stri
   const bead = ref && 'bead' in ref ? ref.bead : undefined;
   const { detail } = useBeadDetail(bead);
   const outbox = useOutbox();
+  const view = useViewIndex();
+  const sharedAs = shareTitle(titleFor(threadKey, view?.index).title);
   // His messages still on their way (mw-jrx0s.10) read as his own, marked pending.
   const threads = useMemo(
     () => groupPosts([...mergeConversation(rows, detail?.comments ?? []), ...pendingMessageItems(outbox, rows, (thread) => thread === storeKey)]),
@@ -173,9 +176,10 @@ function ChannelPane({ threadKey, prefill }: { threadKey: string; prefill?: stri
     <>
       <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-3xl">
-          <ThreadCards threadKey={storeKey} />
+          <ThreadCards threadKey={storeKey} shareTitle={sharedAs} />
           <Conversation
             items={posts}
+            shareTitle={sharedAs}
             onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}
             onReply={(item) => {
               if (item.txid) openReplies(threadKey, item.txid);
@@ -205,6 +209,7 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
   const outbox = useOutbox();
   const bead = ref && 'bead' in ref ? ref.bead : undefined;
   const { detail } = useBeadDetail(bead);
+  const view = useViewIndex();
   const thread = useMemo(() => {
     const wanted = rootTxid.toLowerCase();
     const waiting = pendingMessageItems(outbox, all, () => true);
@@ -231,6 +236,7 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
         <div className="mx-auto max-w-3xl">
           <Conversation
             items={items}
+            shareTitle={shareTitle(titleFor(threadKey, view?.index).title)}
             onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}
             empty={<EmptyState icon="talk" title="That post is not on this phone">It may still be arriving; Back returns to the channel.</EmptyState>}
           />

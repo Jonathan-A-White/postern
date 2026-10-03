@@ -13,6 +13,7 @@ import { Composer } from './Composer';
 import { RepliesRow } from './RepliesRow';
 import { NeedCard } from './NeedCard';
 import { ThreadCards } from './LiveCard';
+import { shareTitle } from '../model/shareText';
 import { StepUnderComment } from './HandsSteps';
 import { useAnswers, useBeadDetail, useBeadTitles, useOutbox, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { pendingMessageItems } from '../model/outbox';
@@ -365,6 +366,7 @@ export function BeadScreen({ id }: { id: string }) {
   const messages = (
     <Conversation
       items={posts}
+      shareTitle={shareTitle(title)}
       onQuote={onQuote}
       onReply={(item) => {
         if (item.txid) navigate({ view: 'talk', thread: threadKey, root: item.txid });
@@ -389,7 +391,7 @@ export function BeadScreen({ id }: { id: string }) {
   );
   const conversation = (
     <>
-      <ThreadCards threadKey={threadKey} />
+      <ThreadCards threadKey={threadKey} shareTitle={shareTitle(title)} />
       {messages}
     </>
   );

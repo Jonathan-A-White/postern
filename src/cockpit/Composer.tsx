@@ -25,6 +25,9 @@ interface Pending extends OutgoingFile {
 
 let nextId = 1;
 
+/** How long Send is held, while grey from a failed check, before it sends anyway. */
+const FORCE_SEND_MS = 600;
+
 async function toPending(file: File | Blob, name: string, durationMs?: number): Promise<Pending> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const type = file.type || 'application/octet-stream';
@@ -157,7 +160,8 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   // a half-typed option, or an option whose value is on offer in grey, is not an error yet (Send waits)
   const unfinished = suggestion !== undefined || (calling && prompts ? halfTypedOption(call, prompts) : false);
   const callError = verdict && !verdict.ok && offered.length === 0 && !unfinished ? verdict.error : undefined;
-  const callBlocked = checking || (verdict !== undefined && !verdict.ok);
+  const callFailed = verdict !== undefined && !verdict.ok;
+  const callBlocked = checking || callFailed;
 
   function choosePrompt(name: string) {
     setText(`/${name} `);
@@ -177,8 +181,24 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     requestAnimationFrame(() => area.setSelectionRange(area.value.length, area.value.length));
   }
 
-  async function send() {
-    if (callBlocked) return;
+  // a failed check only warns: holding the grey Send sends the text as typed anyway
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  function releaseSend() {
+    clearTimeout(holdTimer.current);
+    holdTimer.current = undefined;
+  }
+  function holdSend() {
+    releaseSend();
+    holdTimer.current = setTimeout(() => {
+      holdTimer.current = undefined;
+      void send(true);
+    }, FORCE_SEND_MS);
+  }
+  useEffect(() => releaseSend, []);
+
+  async function send(force = false) {
+    if (callBlocked && !(force && callFailed)) return;
+    if (force && busy) return;
     const body = `${quote ? quoteBlock(quote) : ''}${text.trim()}`;
     if (!body.trim() && files.length === 0) return;
     const sent = await run(() => sendToThread(thread, body, files, re));
@@ -333,6 +353,18 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
         )}
         {recording ? (
           <IconButton icon="stop" label="Stop recording" tone="danger" size="lg" onClick={() => void stopRecording()} />
+        ) : canSend && callFailed ? (
+          <span
+            data-testid="send-force"
+            className="inline-flex shrink-0 touch-none select-none"
+            onPointerDown={holdSend}
+            onPointerUp={releaseSend}
+            onPointerLeave={releaseSend}
+            onPointerCancel={releaseSend}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <IconButton icon="send" label="Send (hold to send anyway)" tone="accent" size="lg" disabled className="pointer-events-none [-webkit-touch-callout:none]" />
+          </span>
         ) : canSend ? (
           <IconButton icon="send" label="Send" tone="accent" size="lg" disabled={busy || !canSend || callBlocked} onClick={() => void send()} />
         ) : (

@@ -87,3 +87,33 @@ Feature: The composer offers the saved prompts as he types and checks a call bef
     When he types "/later " in the composer
     Then the error "/later needs some words" shows
     And Send is disabled
+
+  Scenario: mw-ek5q5j.1: apostrophes in the words of a /later call are letters, so it goes
+    Given the backend has the prompts "top5", "sweep" and "later"
+    When he types "/later I'm sure it's Luke's" in the composer
+    Then Send is enabled and no error shows
+    When he taps Send
+    Then the message "/later I'm sure it's Luke's" is sent
+
+  Scenario: mw-ek5q5j.1: a failed check shows its warning with Send grey, and a short tap sends nothing
+    Given the backend has the prompts "top5", "sweep" and "later"
+    When he types "/nosuchprompt hello" in the composer
+    Then the error "Unknown prompt /nosuchprompt" shows
+    And Send is disabled
+    And Send is labelled "Send (hold to send anyway)"
+    When he taps the grey Send
+    Then nothing is sent
+
+  Scenario: mw-ek5q5j.1: holding the grey Send for 600 ms sends the text exactly as typed
+    Given the backend has the prompts "top5", "sweep" and "later"
+    When he types "/nosuchprompt hello" in the composer
+    Then the error "Unknown prompt /nosuchprompt" shows
+    When he holds the grey Send for 650 ms
+    Then the message "/nosuchprompt hello" is sent
+    And the composer box is empty
+
+  Scenario: mw-ek5q5j.1: letting go of the grey Send before 600 ms sends nothing
+    Given the backend has the prompts "top5", "sweep" and "later"
+    When he types "/nosuchprompt hello" in the composer
+    And he holds the grey Send for 300 ms
+    Then nothing is sent

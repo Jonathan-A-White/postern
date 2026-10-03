@@ -2,7 +2,7 @@
 // the real Composer against a stubbed GET /api/prompts; sendToThread is a spy, so what the
 // scenario checks is the text the composer hands it.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, within, configure } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within, configure, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Utils } from '@bsv/sdk';
 import { afterAll, expect, vi } from 'vitest';
@@ -89,7 +89,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   const backendHasTwo = () => backendHas('top5', 'sweep');
   const backendHasThree = () => backendHas('top5', 'sweep', 'later');
   const box = () => screen.getByRole('textbox', { name: 'Message' });
-  const sendButton = () => screen.getByRole('button', { name: 'Send' });
+  const sendButton = () => screen.getByRole('button', { name: /^Send/ });
   const list = () => screen.queryByRole('listbox', { name: 'Saved prompts' });
 
   const types = async (_c: unknown, text: string) => {
@@ -257,5 +257,59 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('he types {string} in the composer', types);
     Then('the error {string} shows', errorShows);
     And('Send is disabled', sendIsDisabled);
+  });
+
+  Scenario('mw-ek5q5j.1: apostrophes in the words of a /later call are letters, so it goes', ({ Given, When, Then }) => {
+    Given('the backend has the prompts {string}, {string} and {string}', backendHasThree);
+    When('he types {string} in the composer', types);
+    Then('Send is enabled and no error shows', sendIsEnabled);
+    When('he taps Send', taps);
+    Then('the message {string} is sent', messageSent);
+  });
+
+  const holdsGrey = async (_c: unknown, ms: number) => {
+    const target = await screen.findByTestId('send-force');
+    fireEvent.pointerDown(target);
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    fireEvent.pointerUp(target);
+  };
+  const nothingSent = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(sent.texts).toEqual([]);
+  };
+
+  Scenario('mw-ek5q5j.1: a failed check shows its warning with Send grey, and a short tap sends nothing', ({ Given, When, Then, And }) => {
+    Given('the backend has the prompts {string}, {string} and {string}', backendHasThree);
+    When('he types {string} in the composer', types);
+    Then('the error {string} shows', errorShows);
+    And('Send is disabled', sendIsDisabled);
+    And('Send is labelled {string}', async (_c, label: string) => {
+      expect(sendButton()).toHaveAccessibleName(label);
+    });
+    When('he taps the grey Send', async () => {
+      const target = await screen.findByTestId('send-force');
+      fireEvent.pointerDown(target);
+      fireEvent.pointerUp(target);
+      fireEvent.click(target);
+    });
+    Then('nothing is sent', nothingSent);
+  });
+
+  Scenario('mw-ek5q5j.1: holding the grey Send for 600 ms sends the text exactly as typed', ({ Given, When, Then, And }) => {
+    Given('the backend has the prompts {string}, {string} and {string}', backendHasThree);
+    When('he types {string} in the composer', types);
+    Then('the error {string} shows', errorShows);
+    When('he holds the grey Send for {int} ms', holdsGrey);
+    Then('the message {string} is sent', messageSent);
+    And('the composer box is empty', async () => {
+      await waitFor(() => expect(box()).toHaveValue(''));
+    });
+  });
+
+  Scenario('mw-ek5q5j.1: letting go of the grey Send before 600 ms sends nothing', ({ Given, When, Then, And }) => {
+    Given('the backend has the prompts {string}, {string} and {string}', backendHasThree);
+    When('he types {string} in the composer', types);
+    And('he holds the grey Send for {int} ms', holdsGrey);
+    Then('nothing is sent', nothingSent);
   });
 });

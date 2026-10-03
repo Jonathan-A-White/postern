@@ -38,8 +38,20 @@ describe('tokenizeCall', () => {
     expect(tokenizeCall('/sweep --who "Ann Lee"\n--x  1')).toEqual(['/sweep', '--who', 'Ann Lee', '--x', '1']);
     expect(tokenizeCall("/sweep --who 'Ann Lee'")).toEqual(['/sweep', '--who', 'Ann Lee']);
   });
-  it('says nothing for an unclosed quote', () => {
+  it('says nothing for an unclosed double quote', () => {
     expect(tokenizeCall('/sweep --who "Ann')).toBeUndefined();
+  });
+  it('reads an apostrophe inside or at the end of a word as a letter, not a quote', () => {
+    expect(tokenizeCall("/later I'm sure it's Luke's")).toEqual(['/later', "I'm", 'sure', "it's", "Luke's"]);
+    expect(tokenizeCall("/later the dogs' bowls")).toEqual(['/later', 'the', "dogs'", 'bowls']);
+  });
+  it("reads a single quote opening a word as a quote only when it closes at the end of a word", () => {
+    expect(tokenizeCall("/later --text 'a b' --x 1")).toEqual(['/later', '--text', 'a b', '--x', '1']);
+    expect(tokenizeCall("/later 'tis the season")).toEqual(['/later', "'tis", 'the', 'season']);
+    expect(tokenizeCall("/later 'a b")).toEqual(['/later', "'a", 'b']);
+  });
+  it('lets a double-quoted word hold an apostrophe', () => {
+    expect(tokenizeCall('/later --text "it\'s Luke\'s"')).toEqual(['/later', '--text', "it's Luke's"]);
   });
 });
 
@@ -110,6 +122,12 @@ describe('checkPromptCall', () => {
     expect(checkPromptCall('/top5 --count 1 --count 2', PROMPTS)).toEqual({ ok: false, error: '--count is given twice' });
     expect(checkPromptCall('/sweep', PROMPTS)).toEqual({ ok: false, error: '/sweep needs --who' });
     expect(checkPromptCall('/sweep --who Ann', PROMPTS).ok).toBe(true);
+  });
+
+  it("takes apostrophes in a /later text as letters, and a quoted value either way", () => {
+    expect(checkPromptCall("/later I'm sure it's Luke's", PROMPTS)).toEqual({ ok: true, name: 'later', options: { '--text': "I'm sure it's Luke's" } });
+    expect(checkPromptCall("/later --text 'a b'", PROMPTS)).toEqual({ ok: true, name: 'later', options: { '--text': 'a b' } });
+    expect(checkPromptCall('/later --text "a b"', PROMPTS)).toEqual({ ok: true, name: 'later', options: { '--text': 'a b' } });
   });
 
   it('refuses an unclosed quote', () => {

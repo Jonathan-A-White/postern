@@ -137,8 +137,8 @@ export function Chip({ tone = 'neutral', icon, mono, wrap, className, children, 
   );
 }
 
-export function Dot({ tone, className, pulse }: { tone: Tone; className?: string; pulse?: boolean }) {
-  return <span aria-hidden="true" className={cx('inline-block h-2 w-2 shrink-0 rounded-full', TONE_DOT[tone], pulse && 'animate-live', className)} />;
+export function Dot({ tone, className }: { tone: Tone; className?: string }) {
+  return <span aria-hidden="true" className={cx('inline-block h-2 w-2 shrink-0 rounded-full', TONE_DOT[tone], className)} />;
 }
 
 export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {

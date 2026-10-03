@@ -86,7 +86,7 @@ export function LiveBadge({ compact }: { compact?: boolean }) {
       className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] text-muted hover:text-fg"
       data-testid="live-badge"
     >
-      <span className={cx('h-2 w-2 rounded-full', dot, live.status === 'live' && 'animate-live')} aria-hidden="true" />
+      <span className={cx('h-2 w-2 rounded-full', dot)} aria-hidden="true" />
       <span className={cx(compact && 'max-w-[5.5rem] truncate')}>{compact ? text.split(' · ')[0] : text}</span>
     </a>
   );

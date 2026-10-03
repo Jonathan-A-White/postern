@@ -96,7 +96,7 @@ export function BeadCard({ bead, index, dense }: { bead: ViewBead; index: ViewIn
       data-testid="bead-card"
     >
       <div className="flex items-start gap-2">
-        <Dot tone={BUCKET_TONE[bucket]} className="mt-1.5" pulse={bucket === 'working'} />
+        <Dot tone={BUCKET_TONE[bucket]} className="mt-1.5" />
         <p className={cx('min-w-0 flex-1 text-[14px] leading-snug font-medium', bucket === 'done' && 'text-muted')}>{bead.title}</p>
         {epic && <Icon name="layers" size={15} className="mt-0.5 shrink-0 text-faint" />}
       </div>
@@ -126,7 +126,7 @@ export function BeadRow({ bead, index }: { bead: ViewBead; index: ViewIndex }) {
       className="flex items-center gap-3 px-4 py-3 hover:bg-raised"
       data-testid="bead-row"
     >
-      <Dot tone={BUCKET_TONE[bucket]} pulse={bucket === 'working'} />
+      <Dot tone={BUCKET_TONE[bucket]} />
       <span className="min-w-0 flex-1">
         <span className={cx('block truncate text-[14.5px]', bucket === 'done' ? 'text-muted' : 'font-medium')}>{bead.title}</span>
         <span className="flex gap-2 text-[11.5px] text-faint">

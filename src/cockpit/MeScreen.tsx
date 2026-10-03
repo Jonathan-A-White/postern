@@ -252,7 +252,7 @@ export function MeScreen() {
           <Card className="divide-y divide-line">
             <Row label="Status">
               <span className="inline-flex items-center gap-1.5">
-                <Dot tone={label.tone === 'neutral' ? 'neutral' : label.tone} pulse={live.status === 'live'} />
+                <Dot tone={label.tone === 'neutral' ? 'neutral' : label.tone} />
                 {label.text}
               </span>
             </Row>

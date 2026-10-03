@@ -34,6 +34,7 @@ describe('KeyVault', () => {
 
   afterEach(() => {
     removeMockAuthenticator();
+    vi.unstubAllGlobals();
   });
 
   it('offers to generate or restore a key when none is stored yet', async () => {
@@ -241,6 +242,15 @@ describe('KeyVault', () => {
     const key = await deriveMasterKey(mnemonic);
     const address = addressForPublicKey(publicKeyHexFromMasterKey(key));
     fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+    // The check reads the confirmed history paged from WhatsOnChain (confirmedHistory.ts), not the provider's own.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = new URL(String(input)).pathname;
+        const result = path.endsWith('/confirmed/history') ? [{ tx_hash: 'e'.repeat(64), height: 1 }] : [];
+        return new Response(JSON.stringify({ result, nextPageToken: '', error: '' }), { status: 200 });
+      }),
+    );
     await db.settings.put({
       key: 'licence-status',
       value: { held: true, outpoint: { txid: 'e'.repeat(64), vout: 0 }, checkedAt: new Date().toISOString() },

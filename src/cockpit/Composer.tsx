@@ -5,6 +5,7 @@
 // top of what he sends. All the files go as one message, the words its caption.
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { Chip, Icon, IconButton, cx } from '../ui';
+import { focusQuietly } from '../ui/focus';
 import { useWide } from './hooks';
 import { canRecord, formatDuration, VoiceRecorder } from '../services/recorder';
 import { refuseFile, sendToThread, useSend, type OutgoingFile } from './send';
@@ -63,9 +64,15 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const wide = useWide();
 
   useEffect(() => {
+    if (autoFocus) focusQuietly(textarea.current);
+    // only when it opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     const area = textarea.current;
     if (!prefill || !area) return;
-    area.focus();
+    focusQuietly(area);
     area.setSelectionRange(area.value.length, area.value.length);
     // only when it opens: what he types after is his
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -156,7 +163,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     setText(`/${name} `);
     const area = textarea.current;
     if (!area) return;
-    area.focus();
+    focusQuietly(area);
     // the box has not re-rendered yet: put the caret after the words once it has
     requestAnimationFrame(() => area.setSelectionRange(area.value.length, area.value.length));
   }
@@ -166,7 +173,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     setText(text + suggestion.rest);
     const area = textarea.current;
     if (!area) return;
-    area.focus();
+    focusQuietly(area);
     requestAnimationFrame(() => area.setSelectionRange(area.value.length, area.value.length));
   }
 
@@ -303,7 +310,6 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
                 rows={1}
                 aria-label="Message"
                 placeholder={placeholder}
-                autoFocus={autoFocus}
                 className="max-h-[200px] min-h-11 w-full resize-none rounded-2xl py-2.5 leading-snug"
               />
               {suggestion && (

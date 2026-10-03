@@ -86,7 +86,7 @@ body {
   color: var(--pc-fg);
   font-family: var(--font-sans);
   height: 100dvh;
-  overflow: hidden;
+  overflow: clip;
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -98,6 +98,7 @@ html {
 
 #root {
   height: 100dvh;
+  overflow: clip;
 }
 
 ::selection {

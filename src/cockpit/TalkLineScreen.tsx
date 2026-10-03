@@ -6,6 +6,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react';
 import { Button, Chip, Icon, IconButton, cx } from '../ui';
+import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
@@ -245,7 +246,7 @@ function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
         aria-label="What to tell the Mayor"
         value={text}
         maxLength={500}
-        autoFocus
+        ref={focusOnMount}
         disabled={sending}
         onChange={(event) => setText(event.target.value)}
         className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-[15px]"

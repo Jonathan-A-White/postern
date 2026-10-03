@@ -43,13 +43,14 @@ describe('src/index.css', () => {
     expect(rule?.[1]).toContain('touch-action: manipulation');
   });
 
-  it('locks the document so it never scrolls or bounces (mw-tfne4.21)', () => {
+  it('locks the document so it never scrolls or bounces (mw-tfne4.21, mw-jkrnxu.2)', () => {
     const css = readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf-8');
     const rule = css.match(/html\s*,\s*\n?\s*body\s*\{([^}]*)\}/);
     expect(rule).not.toBeNull();
     const body = rule?.[1] ?? '';
     expect(body).toContain('height: 100dvh');
-    expect(body).toContain('overflow: hidden');
+    // mw-jkrnxu.2: clip, not hidden: hidden still lets a focus or the keyboard scroll the box
+    expect(body).toContain('overflow: clip');
     expect(body).toContain('overscroll-behavior: none');
   });
 

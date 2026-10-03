@@ -5,6 +5,7 @@
 // demo is acknowledged on the bead's thread, and anything can be discussed.
 import { useMemo, useState } from 'react';
 import { Button, Chip, Icon, IconButton, TimeAgo, cx } from '../ui';
+import { focusOnMount } from '../ui/focus';
 import { Markdown } from '../markdown';
 import { NEED_META, VERIFY_BUTTON } from './labels';
 import { beadHref, type Route } from '../nav/route';
@@ -286,7 +287,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
             rows={3}
             aria-label="Your reply"
             placeholder={need.kind === 'question' ? 'Answer in your own words…' : 'Tell the Mayor…'}
-            autoFocus
+            ref={focusOnMount}
           />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setReplying(false)}>

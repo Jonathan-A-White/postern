@@ -200,7 +200,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
     if (onLine) dismissAnswerWaiting();
   }, [onLine]);
   return (
-    <div className="flex h-dvh overflow-hidden bg-canvas text-fg">
+    <div data-shell className="flex h-dvh overflow-clip bg-canvas text-fg">
       {wide && <Sidebar current={top} />}
       <div className="flex min-w-0 flex-1 flex-col">
         <UpdateBanner />

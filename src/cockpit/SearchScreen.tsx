@@ -4,6 +4,7 @@
 // of the map.
 import { useEffect, useMemo, useState } from 'react';
 import { Button, EmptyState, Icon, IconButton, SectionTitle, TimeAgo } from '../ui';
+import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { deleteFilter, useSavedFilters } from './savedFilters';
@@ -105,7 +106,7 @@ export function SearchScreen({ q }: { q?: string }) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search everything…"
             className="h-12 w-full rounded-2xl pl-11 text-[16px]"
-            autoFocus
+            ref={focusOnMount}
           />
         </label>
 

@@ -3,6 +3,7 @@
 // save it under for next time.
 import { useState } from 'react';
 import { Button, Icon, cx } from '../ui';
+import { focusOnMount } from '../ui/focus';
 import { BUCKETS, type Bucket } from '../model/tree';
 import { isEmptyFilter, type BeadFilter } from '../model/filter';
 import { saveFilter, useSavedFilters } from './savedFilters';
@@ -100,7 +101,7 @@ export function FilterBar({
         <div className="flex items-center gap-2">
           {naming ? (
             <>
-              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Name this filter" aria-label="Filter name" className="h-8 flex-1 text-sm" autoFocus />
+              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Name this filter" aria-label="Filter name" className="h-8 flex-1 text-sm" ref={focusOnMount} />
               <Button size="sm" variant="primary" onClick={() => void save()} disabled={!name.trim()}>
                 Save
               </Button>

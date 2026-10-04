@@ -5,8 +5,13 @@ import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import { startAppUpdates } from './services/appUpdate';
 import { installScrollGuard } from './ui/scrollGuard';
+import { restoreLastRoute } from './nav/lastRoute';
+import { restoreScrolls } from './nav/scrollMemory';
 
 installScrollGuard();
+// A bare open goes back to where he left it (mw-f758y.31); an address that names a place is left alone.
+restoreLastRoute();
+restoreScrolls();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

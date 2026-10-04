@@ -28,6 +28,7 @@ import { unsettledNeeds, waitsFor, waitsOnLinks } from '../model/needs';
 import { hasDispatchPath, type BeadDetail, type BeadPath, type ViewBead } from '../model/view';
 import { beadHref, formatRoute } from '../nav/route';
 import { navigate } from '../router';
+import { takeRestoredBead } from '../nav/lastRoute';
 import { useScrollMemory } from '../nav/scrollMemory';
 import { sendAction, useSend } from './send';
 import { priorityLabel, priorityTone, statusWord, typeIcon } from './labels';
@@ -330,6 +331,14 @@ export function BeadScreen({ id }: { id: string }) {
   // Opened cold the view index may not hold the bead yet: the fetched detail knows its parent too.
   const parent = bead?.parent ?? detail?.parent;
   const back = parent ? { view: 'map' as const, focus: parent } : { view: 'map' as const };
+
+  // Opened again where he left it (src/nav/lastRoute.ts), a bead that no longer exists is not a dead end: the Map.
+  const gone = !bead && !detail && status === 'missing';
+  const found = !!(bead || detail);
+  useEffect(() => {
+    if (found) takeRestoredBead(id);
+    else if (gone && takeRestoredBead(id)) navigate({ view: 'map' }, { replace: true });
+  }, [found, gone, id]);
 
   if (!bead && !detail && (status === 'loading' || status === 'idle')) {
     return (

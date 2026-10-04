@@ -4,7 +4,7 @@
 // (src/services/live.ts) runs for as long as the key is unlocked.
 import { useEffect, useState } from 'react';
 import { KeyVault } from './key';
-import { navigate, useRoute } from './router';
+import { navigate, useRoute, useScreenSearch } from './router';
 import { vaultRepo } from './data/repositories';
 import type { VaultRow } from './data/db';
 import { resumeSession } from './services/keySession';
@@ -30,6 +30,7 @@ import { answerSeen } from './services/seen';
 import { sendCallLater } from './cockpit/send';
 import { settingsRepo } from './data/repositories';
 import type { Route } from './nav/route';
+import { saveLastRoute } from './nav/lastRoute';
 
 function Place({ route }: { route: Route }) {
   switch (route.view) {
@@ -74,9 +75,13 @@ function KeyPlace({ inShell }: { inShell: boolean }) {
 
 export function App() {
   const route = useRoute();
+  const search = useScreenSearch();
   const key = useUnlockedKey();
   const [vault, setVault] = useState<VaultRow | null | undefined>(undefined);
   const [resumed, setResumed] = useState(false);
+
+  // Where he is, kept on every move, is where a bare open puts him back (src/nav/lastRoute.ts).
+  useEffect(() => saveLastRoute(search), [search]);
 
   useEffect(() => {
     void resumeSession().finally(() => setResumed(true));

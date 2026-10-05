@@ -189,4 +189,29 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(box()).toHaveValue('');
     });
   });
+
+  Scenario('mw-f758y.41 AC-2: two channels keep two unsent texts across a close and reopen', ({ Given, When, And, Then }) => {
+    Given('the {string} composer is open and empty', emptyAndOpen);
+    When('he types {string} and pauses for 500 ms', typesAndPauses);
+    And('the composer is closed and the {string} composer is opened', async (_c, name: string) => {
+      await closed();
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      await mount(name);
+    });
+    And('he then types {string} and pauses for 500 ms', typesAndPauses);
+    And('the app is closed and opened again on the {string} channel', async (_c, name: string) => {
+      await closed();
+      await mount(name);
+    });
+    Then('the composer holds {string}', async (_c, text: string) => {
+      await waitFor(() => expect(box()).toHaveValue(text));
+    });
+    When('the composer is closed and the {string} channel is opened again', async (_c, name: string) => {
+      await closed();
+      await mount(name);
+    });
+    Then('the composer then holds {string}', async (_c, text: string) => {
+      await waitFor(() => expect(box()).toHaveValue(text));
+    });
+  });
 });

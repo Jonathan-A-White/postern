@@ -51,6 +51,8 @@ export interface QueuedMessage {
   thread?: ThreadRef;
   files: QueuedFile[];
   re?: string;
+  /** The one-tap action this message stands for (`verified`): once it has gone it is remembered as that action's answer. */
+  settles?: string;
   /** Files already uploaded by an earlier try, in order, so a retry does not upload them again. */
   uploaded?: Attachment[];
 }
@@ -107,12 +109,14 @@ async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<
   return deliverThreaded({ thread: message.thread, text: message.text, attachments: uploaded, re: message.re }, options);
 }
 
-/** What the phone remembers of a delivered answer or action: the card it settles leaves the queue at once. */
+/** What the phone remembers of a delivered answer, action or message that settles one: the card it settles leaves the queue at once. */
 function rememberDelivered(row: OutboxRow, delivered: Delivered): void {
   if (row.kind === 'answer') writeBehind(answersRepo.save({ bead: row.bead, answer: String(row.payload.answer ?? ''), txid: delivered.txid }), 'your answer');
   else if (row.kind === 'action') {
     const action = row.payload.action as GovernorAction;
     writeBehind(answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid }), 'your action');
+  } else if (row.kind === 'message' && typeof row.payload.settles === 'string') {
+    writeBehind(answersRepo.save({ bead: row.bead, answer: row.payload.settles, txid: delivered.txid }), 'your action');
   }
 }
 

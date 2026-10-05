@@ -30,9 +30,14 @@ export function pendingAnswer(rows: OutboxRow[], bead: string, sinceMs: number):
   return rows.find((row) => row.kind === 'answer' && row.bead === bead && isUnsent(row) && row.created >= sinceMs);
 }
 
-/** His one-tap `action` on `bead` that has not yet gone. */
+/** His one-tap `action` on `bead` that has not yet gone: an action row, or a message that settles it (Verified's channel message). */
 export function pendingAction(rows: OutboxRow[], bead: string, action: string): OutboxRow | undefined {
-  return rows.find((row) => row.kind === 'action' && row.bead === bead && isUnsent(row) && (row.payload.action as { action?: string } | undefined)?.action === action);
+  return rows.find(
+    (row) =>
+      row.bead === bead &&
+      isUnsent(row) &&
+      ((row.kind === 'action' && (row.payload.action as { action?: string } | undefined)?.action === action) || (row.kind === 'message' && row.payload.settles === action)),
+  );
 }
 
 /** His Talk turn `talkId`/`turn` that has not yet gone. */

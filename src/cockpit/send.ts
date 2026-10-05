@@ -13,6 +13,7 @@ import { getKey } from '../services/keySession';
 import { attachmentMime, MAX_ATTACHMENT_BYTES } from '../services/attachments';
 import { enqueue, packBytes, type QueuedMessage } from '../services/outbox';
 import type { GovernorAction } from '../model/conversation';
+import { verifiedWords, type VerifiedWhere } from '../model/verified';
 import type { HandsStep } from '../model/hands';
 import { buildApproval, stepUp } from '../services/hands';
 import type { HomeHost } from '../services/standby';
@@ -93,10 +94,16 @@ export function refuseFile(file: { name: string; type: string; size: number }): 
  * file as `attachment`, two or more as `attachments` in the order given, the
  * text as its caption. The files are kept whole in the outbox and uploaded first
  * when the message's turn comes, so nothing is sent until every file is up. */
-export async function sendToThread(thread: ThreadRef | undefined, text: string, files: OutgoingFile[] = [], re?: string): Promise<Queued[]> {
+export async function sendToThread(thread: ThreadRef | undefined, text: string, files: OutgoingFile[] = [], re?: string, settles?: string): Promise<Queued[]> {
   for (const file of files) if (!attachmentMime(file.type)) throw new Error(`${file.name}: not a type Postern carries.`);
-  const payload: QueuedMessage = { text, files: files.map(({ name, type, bytes }) => ({ name, type, data: packBytes(bytes) })), ...(thread !== undefined ? { thread } : {}), ...(re !== undefined ? { re } : {}) };
+  const payload: QueuedMessage = { text, files: files.map(({ name, type, bytes }) => ({ name, type, data: packBytes(bytes) })), ...(thread !== undefined ? { thread } : {}), ...(re !== undefined ? { re } : {}), ...(settles !== undefined ? { settles } : {}) };
   return [{ id: await enqueue({ kind: 'message', bead: thread && 'bead' in thread ? thread.bead : '', payload: payload as unknown as Record<string, unknown>, thread: threadKey(thread) }) }];
+}
+
+/** His Verified tap (docs/protocol.md §13): a channel message to the bead that begins VERIFIED and says where he tapped.
+ * It settles `verified` as an action did: once it has gone the card is remembered as answered. */
+export function sendVerified(bead: string, where: VerifiedWhere): Promise<Queued[]> {
+  return sendToThread({ bead }, verifiedWords(bead, where), [], undefined, 'verified');
 }
 
 export const MAY_HAVE_GONE = 'May have gone: check the channel before sending again';

@@ -2,26 +2,32 @@
 // (mw-f758y.35). Each scrolling box keeps its offset in memory, keyed by the screen's address
 // and a name for the box, and puts it back when the box is shown again at that address. The
 // memory lasts for the page's life: opening an address cold (a push, a link into a closed app)
-// has none, so it lands where the screen puts it, as before. The one exception is the address he
-// was last at: its offsets are also kept on the phone (src/nav/lastRoute.ts, mw-f758y.31), so closing
-// the app and opening it again puts him back at the same place on the same screen.
+// has none, so it lands where the screen puts it, as before. The exception is the last 20 addresses
+// he was at: their offsets are also kept on the phone (src/nav/lastRoute.ts, mw-f758y.31, .41), so
+// closing the app and opening it again puts him back at the same place on the same screen, and Back
+// into any of them (src/nav/lastRoute.ts rebuilds the history) at the place he left it.
 import { useEffect, useState } from 'react';
 import { useScreenSearch } from '../router';
-import { readScrolls, saveScrolls } from './lastRoute';
+import { readAllScrolls, saveScrolls } from './lastRoute';
 
 const offsets = new Map<string, number>();
 
 /** How long after the last scroll event the offsets are written to the phone. */
 const KEEP_AFTER_MS = 250;
 let keepTimer: ReturnType<typeof setTimeout> | undefined;
+/** The addresses whose offsets moved since they were last written. */
+const moved = new Set<string>();
 
 function keepNow(): void {
   clearTimeout(keepTimer);
   keepTimer = undefined;
-  saveScrolls(offsets, window.location.search);
+  moved.add(window.location.search);
+  for (const search of moved) saveScrolls(offsets, search);
+  moved.clear();
 }
 
-function keepSoon(): void {
+function keepSoon(search: string): void {
+  moved.add(search);
   if (keepTimer === undefined) keepTimer = setTimeout(keepNow, KEEP_AFTER_MS);
 }
 
@@ -32,9 +38,9 @@ if (typeof document !== 'undefined') {
   });
 }
 
-/** Called once before the first render: the offsets kept for the address the app opens at. */
+/** Called once before the first render: the offsets kept for the addresses he was at, the one the app opens at last. */
 export function restoreScrolls(): void {
-  for (const [key, top] of readScrolls(window.location.search)) offsets.set(key, top);
+  for (const [key, top] of readAllScrolls(window.location.search)) offsets.set(key, top);
 }
 
 /** How long a restore keeps waiting for the content behind it to arrive. */
@@ -80,7 +86,7 @@ export function useScrollMemory(slot: string, perRoute = true): (el: HTMLElement
     const onScroll = () => {
       if (restoring) return;
       offsets.set(key, box.scrollTop);
-      keepSoon();
+      keepSoon(window.location.search);
     };
     // His own hand on the box ends the restore: where he puts it is where it stays.
     const interrupt = () => settle();

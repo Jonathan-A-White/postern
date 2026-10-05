@@ -22,6 +22,7 @@ import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
 import { VerifiedButton } from './VerifiedButton';
 import { StampSection } from './StampSection';
+import { howToCheckItemId } from '../model/verified';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, epicStats, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { groupPosts } from '../model/postThreads';
@@ -322,6 +323,15 @@ export function BeadScreen({ id }: { id: string }) {
     const notReady = waitsFor(need) !== 'you' || need.not_ready === true;
     return <StepUnderComment bead={threadId} step={step} waitsOn={notReady ? waitsOnLinks(need, index, beadHref) : undefined} />;
   };
+  // The Verified button sits under the newest post carrying HOW TO CHECK IT while the story waits to be verified.
+  const howToId = useMemo(() => howToCheckItemId(posts), [posts]);
+  const verifyOpen = unsettledNeeds(index?.needsByBead.get(threadId) ?? [], answers).some((n) => n.kind === 'verify');
+  const verifiedUnder = (item: ConversationItem) =>
+    verifyOpen && item.id === howToId ? (
+      <div data-testid="verified-under-how-to">
+        <VerifiedButton bead={threadId} where="channel" size="sm" />
+      </div>
+    ) : null;
   const onQuote = (item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text });
   const title = detail?.title ?? bead?.title ?? id;
   // Opened cold the view index may not hold the bead yet: the fetched detail knows its parent too.
@@ -383,6 +393,7 @@ export function BeadScreen({ id }: { id: string }) {
         return (
           <>
             {run}
+            {verifiedUnder(item)}
             {thread && thread.replyCount > 0 ? <RepliesRow channel={threadKey} thread={thread} /> : null}
           </>
         );

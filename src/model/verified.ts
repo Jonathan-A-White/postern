@@ -15,3 +15,16 @@ export type VerifiedWhere = keyof typeof VERIFIED_SOURCES;
 export function verifiedWords(bead: string, where: VerifiedWhere): string {
   return `VERIFIED (tapped Verified ${VERIFIED_SOURCES[where].replaceAll('<bead>', bead)})`;
 }
+
+/** The marker millwright puts above the steps it writes for him (application/posternview.go). */
+export const HOW_TO_CHECK_IT = 'HOW TO CHECK IT';
+
+/** The id of the newest item whose text carries HOW TO CHECK IT, whoever wrote it: the Mayor's post, or a Builder's closing comment when the Mayor did not post. */
+export function howToCheckItemId(items: { id: string; at: number; text: string }[]): string | undefined {
+  let newest: { id: string; at: number } | undefined;
+  for (const item of items) {
+    if (!item.text.includes(HOW_TO_CHECK_IT)) continue;
+    if (!newest || item.at >= newest.at) newest = item;
+  }
+  return newest?.id;
+}

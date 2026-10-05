@@ -1,9 +1,10 @@
 // tests/support/chain-record.ts — a raw transaction carrying one postern record for the anchor
 // address, and a faked WhatsOnChain that lists such transactions as the anchor address's history
 // (docs/protocol.md §3, §21): what the phone reads when it reads the chain itself.
+import { createHash } from 'node:crypto';
 import { P2PKH, PrivateKey, Script, Transaction, Utils } from '@bsv/sdk';
 import { chainConfig, encodeRecordScript } from 'spell-forge-bsv';
-import { ANCHOR_ADDRESS, encryptMessage, type MessageClass, type MessagePayload } from '../../src/services/messages';
+import { ANCHOR_ADDRESS, encryptMessage, type MessageClass } from '../../src/services/messages';
 
 export interface ChainRecord {
   hex: string;
@@ -17,12 +18,40 @@ export function recordTransaction(params: { senderHex: string; recipientPublicKe
 }
 
 /** The same transaction for a payload already made: the chain copy of a record that was also delivered direct. */
-export function transactionOfPayload(payload: MessagePayload): ChainRecord {
+export function transactionOfPayload(payload: object): ChainRecord {
   const tx = new Transaction();
   tx.addInput({ sourceTXID: 'aa'.repeat(32), sourceOutputIndex: 0, unlockingScript: new Script(), sequence: 0xffffffff });
   tx.addOutput({ satoshis: 0, lockingScript: encodeRecordScript(Utils.toArray(JSON.stringify(payload), 'utf8')) });
   tx.addOutput({ satoshis: 1, lockingScript: new P2PKH().lock(ANCHOR_ADDRESS) });
   return { hex: tx.toHex(), txid: tx.id('hex') };
+}
+
+export interface StampBody {
+  rig: string;
+  branch?: string;
+  commit: string;
+  story?: string;
+  title?: string;
+  host?: string;
+  at?: string;
+}
+
+/** The stamp record millwright's chain-stamp job broadcasts (millwright docs/chain-stamps.md): its commitment in the
+ * clear, its body (a JSON of rig, commit…) sealed to the Governor. The commitment is made from `rig` and `commit`;
+ * `body` overrides what is sealed, so a test can make the two differ. */
+export function stampTransaction(params: { senderHex: string; recipientPublicKeyHex: string; rig: string; commit: string; body?: Partial<StampBody>; ts?: number }): ChainRecord {
+  const body: StampBody = { branch: 'main', story: 'mw-test.1', title: 'A story', host: 'laptop', at: '2026-10-05T10:00:00Z', rig: params.rig, commit: params.commit, ...params.body };
+  const sealed = encryptMessage({ text: JSON.stringify(body), class: 'message', senderPrivateKeyHex: params.senderHex, recipientPublicKeyHex: params.recipientPublicKeyHex });
+  const payload = {
+    v: 1,
+    kind: 'stamp',
+    to: sealed.to,
+    from: sealed.from,
+    ts: params.ts ?? 1_790_000_000,
+    commitment: createHash('sha256').update(`${params.rig}\n${params.commit}`).digest('hex'),
+    ct: sealed.ct,
+  };
+  return transactionOfPayload(payload);
 }
 
 export function publicKeyOf(privateHex: string): string {

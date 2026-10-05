@@ -26,6 +26,8 @@ export interface DeliverOptions {
   offline?: boolean;
   /** The outbox row's client id, sent with a direct post so the backend stores a retry once (docs/protocol.md §9). */
   clientId?: string;
+  /** Told when a call to the backend got no answer, so the live status stops reading Live. */
+  onUnreachable?: () => void;
   apiBase?: string;
   fetchImpl?: typeof fetch;
 }
@@ -115,6 +117,7 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
       const script = encodeRecordScript(Utils.toArray(JSON.stringify(payload), 'utf8'));
       delivered = { txid: await postDirect(script.toHex(), options), channel: 'direct' };
     } catch (err) {
+      if (isNetworkFailure(err)) options.onUnreachable?.();
       if (onChainWhenDown && isNetworkFailure(err)) via = 'whatsonchain';
       else if (!(err instanceof DirectUnsupported)) throw err;
     }

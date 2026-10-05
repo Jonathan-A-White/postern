@@ -9,7 +9,9 @@
 // found there is kept, a ring rings, and the backend is tried again at once.
 // The factory's events (§22) come in the message sync and are projected onto the
 // stored view (src/services/events.ts); once they flow, the stream's `view` event
-// is only the recovery path, for when no events batch follows it. The events found
+// is only the recovery path, for when no events batch follows it. The line never says live over a dead
+// link: a stream with no ping for STREAM_STALE_MS is read as dropped, and a send the backend does not
+// answer (deliver's onUnreachable) drops it to reconnecting at once. The events found
 // on the chain while the backend is out of reach go through the same projector (a
 // batch seen on both roads applies once, by seq); a gap on that road is tolerated
 // until the backend returns and the view is fetched.
@@ -46,8 +48,10 @@ export interface LiveState {
 
 const POLL_MS = 20_000;
 const MAX_BACKOFF_MS = 30_000;
-/** The stream pings every 25 s (docs/api.md); this long with no word is a socket the OS suspended. */
+/** The stream pings every 25 s (docs/api.md); this long with no word is a socket the OS suspended, or a link that died without an error. */
 const STREAM_STALE_MS = 60_000;
+/** How often an open stream is checked for having gone quiet. */
+const STALE_CHECK_MS = 5_000;
 /** Two returns to the foreground closer than this are one. */
 const FOREGROUND_DEBOUNCE_MS = 3_000;
 /** Once events flow, how long a `view` event waits for an events batch to make fetching the view needless. */
@@ -153,7 +157,15 @@ export function hasFeature(feature: Me['features'][number]): boolean {
 /** What deliver() needs, once the Mayor is known; null before then. */
 export function deliverOptions(key: Uint8Array | null): DeliverOptions | null {
   if (!key || !state.mayorKey) return null;
-  return { key, mayorKey: state.mayorKey, direct: hasFeature('direct'), offline: state.status === 'offline' };
+  return { key, mayorKey: state.mayorKey, direct: hasFeature('direct'), offline: state.status === 'offline', onUnreachable: noteBackendUnreachable };
+}
+
+/** A call to the backend got no answer (it timed out, or the connection failed): whatever the stream last said, the
+ * line is not live. It reads reconnecting at once and a new stream is tried. */
+export function noteBackendUnreachable(): void {
+  if (!current || state.status !== 'live') return;
+  setState({ status: 'reconnecting', error: 'The backend did not answer.' });
+  current.interrupt?.abort();
 }
 
 let syncing: Promise<void> = Promise.resolve();
@@ -231,10 +243,39 @@ async function listen(key: Uint8Array, signal: AbortSignal): Promise<void> {
   setState({ status: 'live', lastHeard: Date.now(), error: undefined });
   if (recovered) noteReconnect();
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  // A link that dies without a word never ends the stream: when it has pinged nothing for STREAM_STALE_MS
+  // (and the page is on screen, where timers run true) the stream is given up on and read as dropped.
+  let heard = Date.now();
+  let quiet = false;
+  let watch: ReturnType<typeof setTimeout> | undefined;
+  const check = () => {
+    if (typeof document !== 'undefined' && document.hidden) heard = Date.now(); // a page nobody is looking at is judged when it comes back (onForeground)
+    if (Date.now() - heard > STREAM_STALE_MS) {
+      quiet = true;
+      void reader.cancel().catch(() => {});
+      return;
+    }
+    watch = setTimeout(check, STALE_CHECK_MS);
+  };
+  watch = setTimeout(check, STALE_CHECK_MS);
+  try {
+    await readStream(reader, key, () => {
+      heard = Date.now();
+    });
+  } catch (err) {
+    if (!quiet) throw err;
+  } finally {
+    clearTimeout(watch);
+  }
+  if (quiet) throw new Error('The event stream went quiet.');
+}
+
+async function readStream(reader: ReadableStreamDefaultReader<string>, key: Uint8Array, heardNow: () => void): Promise<void> {
   let buffer = '';
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
+    heardNow();
     buffer += value.replace(/\r\n/g, '\n');
     let split = buffer.indexOf('\n\n');
     while (split >= 0) {

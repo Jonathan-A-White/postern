@@ -84,8 +84,13 @@ export function useCallLine(): MessageRow[] {
   return useLiveQuery(() => messagesRepo.callLine(), [], [] as MessageRow[]);
 }
 
-export function useThreadMessages(threadKey: string | undefined): MessageRow[] {
-  return useLiveQuery(() => messagesRepo.inThread(threadKey), [threadKey], [] as MessageRow[]);
+/** One thread's messages, oldest first. `held` are the messages the screen already has in memory: until
+ * the first read of this thread arrives they are what shows, so an opened channel is never painted empty
+ * while the phone holds its posts. */
+export function useThreadMessages(threadKey: string | undefined, held?: readonly MessageRow[]): MessageRow[] {
+  const read = useLiveQuery(() => messagesRepo.inThread(threadKey).then((rows) => ({ threadKey, rows })), [threadKey], undefined as { threadKey: string | undefined; rows: MessageRow[] } | undefined);
+  const seed = useMemo(() => (held ? messagesRepo.heldInThread(held, threadKey) : []), [held, threadKey]);
+  return read && read.threadKey === threadKey ? read.rows : seed;
 }
 
 /** Every live card (§24) as it now reads, newest first. */

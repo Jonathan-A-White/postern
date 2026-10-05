@@ -15,6 +15,7 @@ import { ThreadCards } from './LiveCard';
 import { Composer } from './Composer';
 import { TopicForm } from './TopicForm';
 import { topicKey } from './topicKey';
+import type { MessageRow } from '../data/db';
 import { useBeadComments, useBeadDetail, useMessages, useOutbox, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { pendingMessageItems } from '../model/outbox';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
@@ -148,10 +149,10 @@ function openReplies(channel: string, rootTxid: string) {
 
 /** One channel: each post once, with one row for its replies. A bead's channel
  * merges the bead's own comments, which are always posts. */
-function ChannelPane({ threadKey, prefill }: { threadKey: string; prefill?: string }) {
+function ChannelPane({ threadKey, prefill, held }: { threadKey: string; prefill?: string; held: readonly MessageRow[] }) {
   const ref: ThreadRef | undefined = parseThreadKey(threadKey);
   const storeKey = threadKey === GENERAL ? undefined : threadKey;
-  const rows = useThreadMessages(storeKey);
+  const rows = useThreadMessages(storeKey, held);
   const bead = ref && 'bead' in ref ? ref.bead : undefined;
   const { detail } = useBeadDetail(bead);
   const outbox = useOutbox();
@@ -247,11 +248,11 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
   );
 }
 
-function PaneFor({ threadKey, root, prefill }: { threadKey: string; root?: string; prefill?: string }) {
+function PaneFor({ threadKey, root, prefill, held }: { threadKey: string; root?: string; prefill?: string; held: readonly MessageRow[] }) {
   return root ? (
     <RepliesPane key={`${threadKey}:${root}`} threadKey={threadKey} rootTxid={root} />
   ) : (
-    <ChannelPane key={`${threadKey}|${prefill ?? ''}`} threadKey={threadKey} prefill={prefill} />
+    <ChannelPane key={`${threadKey}|${prefill ?? ''}`} threadKey={threadKey} prefill={prefill} held={held} />
   );
 }
 
@@ -274,7 +275,7 @@ export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: 
   const channel = current ? titleFor(current, view?.index) : undefined;
   const { title, subtitle } = inReplies && channel ? { title: 'Thread', subtitle: `A post in ${channel.title} and its replies` } : (channel ?? { title: 'Channels', subtitle: '' });
   const bead = current?.startsWith('bead:') ? current.slice(5) : undefined;
-  const rows = useThreadMessages(current === GENERAL ? undefined : current);
+  const rows = useThreadMessages(current === GENERAL ? undefined : current, messages);
   const speakItems = useMemo(() => mergeConversation(rows), [rows]);
   const choices = useThreadArchive();
   const comments = useBeadComments();
@@ -323,7 +324,7 @@ export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: 
         <div className="flex min-h-0 flex-1">
           <div className="flex w-[360px] shrink-0 flex-col border-r border-line">{list}</div>
           <div className="flex min-w-0 flex-1 flex-col">
-            {current ? <PaneFor threadKey={current} root={root} prefill={prefill} /> : <EmptyState icon="talk" title="Pick a channel">Or start with Factory.</EmptyState>}
+            {current ? <PaneFor threadKey={current} root={root} prefill={prefill} held={messages} /> : <EmptyState icon="talk" title="Pick a channel">Or start with Factory.</EmptyState>}
           </div>
         </div>
       </Screen>
@@ -333,7 +334,7 @@ export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: 
   if (current) {
     return (
       <Screen title={title} subtitle={subtitle} back={inReplies ? { view: 'talk', thread: current } : { view: 'talk' }} actions={threadActions} bare>
-        <PaneFor threadKey={current} root={root} prefill={prefill} />
+        <PaneFor threadKey={current} root={root} prefill={prefill} held={messages} />
       </Screen>
     );
   }

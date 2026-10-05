@@ -15,6 +15,10 @@ const isCard = (row: MessageRow) => row.class === 'card' || row.class === 'card-
 /** What a list may show: a message, which is neither an events batch nor a card record. */
 const listed = (row: MessageRow) => isMessage(row) && !isCard(row);
 
+/** Whether a message belongs to a thread. A missing or null thread is the general thread (Factory), as the
+ * channel list groups it (`row.thread ?? GENERAL`), so the list and the channel agree on Factory's posts. */
+const inThreadKey = (row: MessageRow, key: string | undefined) => (key === undefined ? row.thread == null : row.thread === key);
+
 export const messagesRepo = {
   async getAll(): Promise<MessageRow[]> {
     return db.messages.orderBy('ts').reverse().filter(listed).toArray();
@@ -44,8 +48,13 @@ export const messagesRepo = {
   async inThread(key: string | undefined): Promise<MessageRow[]> {
     return db.messages
       .orderBy('ts')
-      .filter((row) => listed(row) && notTalk(row) && (key === undefined ? row.thread === undefined : row.thread === key))
+      .filter((row) => listed(row) && notTalk(row) && inThreadKey(row, key))
       .toArray();
+  },
+
+  /** The same messages as `inThread`, picked from rows already in memory (oldest first, as `getAllOldestFirst` hands them). */
+  heldInThread(rows: readonly MessageRow[], key: string | undefined): MessageRow[] {
+    return rows.filter((row) => listed(row) && notTalk(row) && inThreadKey(row, key));
   },
 
   async get(id: string): Promise<MessageRow | undefined> {

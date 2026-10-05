@@ -144,3 +144,50 @@ describe('an answer to an earlier turn once he has gone on', () => {
     expect(state.log[1].answer).toBeUndefined();
   });
 });
+
+describe('an answer to the line\'s own turn after its wait is over (mw-am3yjh.6)', () => {
+  const gaveUp = () => waitedFor(waiting(false), TALK_AWAY_TIMEOUT_MS);
+
+  it('is the answer the line wants while it waits or has just given up', () => {
+    expect(isLateAnswer(waiting(false), answerTo(1).turn)).toBe(false);
+    expect(isLateAnswer(gaveUp(), answerTo(1).turn)).toBe(false);
+  });
+
+  it('is late once he held the button after the give-up and let go with no words', () => {
+    const state = [{ type: 'hold', talkId: 't1' }, { type: 'cancel' }].reduce<TalkLineState>((acc, event) => talkLine(acc, event as TalkLineEvent), gaveUp());
+    expect(state.phase).toBe('idle');
+    expect(state.error).toBeUndefined();
+    expect(isLateAnswer(state, answerTo(1).turn)).toBe(true);
+    const spoken = talkLine(state, answerTo(1));
+    expect(spoken.phase).toBe('speaking');
+    expect(spoken.speaking).toMatchObject({ text: 'Late.', holding: false, turn: 1 });
+  });
+
+  it('is late, and left to the log, while he holds the button', () => {
+    const state = talkLine(gaveUp(), { type: 'hold', talkId: 't1' });
+    expect(state.phase).toBe('listening');
+    expect(isLateAnswer(state, answerTo(1).turn)).toBe(true);
+    expect(talkLine(state, answerTo(1))).toBe(state);
+  });
+
+  it('is shown in the log, not heard yet, when it lands while he holds the button', () => {
+    const at = SENT_AT + TALK_AWAY_TIMEOUT_MS + 20_000;
+    const events = [
+      { event: { type: 'hold', talkId: 't1' }, at: 0 },
+      { event: { type: 'release', text: 'Hello' }, at: SENT_AT },
+      { event: { type: 'sent', at: SENT_AT }, at: SENT_AT },
+      { event: { type: 'tick', now: SENT_AT + TALK_AWAY_TIMEOUT_MS }, at: SENT_AT + TALK_AWAY_TIMEOUT_MS },
+      { event: { type: 'hold', talkId: 't1' }, at: SENT_AT + 61_000 },
+      { event: answerTo(1), at },
+    ] as const;
+    const state = events.reduce((acc, action) => talkScreen(acc, action as never), initialTalkScreen(initialTalkLine));
+    expect(state.line.phase).toBe('listening');
+    expect(state.log[0]).toMatchObject({ answer: 'Late.', answered: true, heard: false, tookMs: at - SENT_AT });
+  });
+
+  it('is not late while its own turn is being sent: it waits for the send to be acknowledged', () => {
+    const sending = [{ type: 'hold', talkId: 't1' }, { type: 'release', text: 'Hello' }].reduce<TalkLineState>((acc, event) => talkLine(acc, event as TalkLineEvent), initialTalkLine);
+    expect(sending.phase).toBe('sending');
+    expect(isLateAnswer(sending, answerTo(1).turn)).toBe(false);
+  });
+});

@@ -148,9 +148,22 @@ function idle(state: TalkLineState, patch: Partial<TalkLineState> = {}): TalkLin
 
 const linksOf = (turn: TalkTurn): { links?: string[] } => (turn.links?.length ? { links: turn.links } : {});
 
-/** The Mayor's real answer to a turn of this talk before the one the line is on: it came after he went on (mw-am3yjh.5). */
+/**
+ * The Mayor's real answer to a turn of this talk that the line is not waiting on: one to a turn before the one the
+ * line is on (it came after he went on, mw-am3yjh.5), or to the line's own turn when that wait is over: he held the
+ * button again after the give-up, or let go with no words, or cut the wait (mw-am3yjh.6). The line plays it when it
+ * is free and the screen's log shows it otherwise; neither drops it. An answer to the turn being sent is not late: it
+ * comes before the line knows his turn went out, and waits for that.
+ */
 export function isLateAnswer(state: TalkLineState, turn: TalkTurn): boolean {
-  return turn.role === 'answer' && state.talk !== undefined && turn.talk.id === state.talk.id && turn.talk.turn < state.talk.turn;
+  if (turn.role !== 'answer' || state.talk === undefined || turn.talk.id !== state.talk.id) return false;
+  if (turn.talk.turn < state.talk.turn) return true;
+  return turn.talk.turn === state.talk.turn && !isAnswering(state) && state.phase !== 'sending';
+}
+
+/** Whether the line is in a state that an answer to its own turn is the answer it wants: waiting, having just given up, or on a holding answer. */
+function isAnswering(state: TalkLineState): boolean {
+  return state.phase === 'waiting' || (state.phase === 'idle' && state.error === NO_ANSWER_IN_TIME) || (state.phase === 'speaking' && state.speaking?.holding === true);
 }
 
 function incoming(state: TalkLineState, turn: TalkTurn, hidden: boolean): TalkLineState {

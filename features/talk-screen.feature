@@ -157,6 +157,27 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the first turn's answer says it took 61 seconds
     And the phone has not spoken
 
+  Scenario: AC-1: an answer to his last turn that lands after he held the button and said nothing is shown, and spoken (mw-am3yjh.6)
+    Given the Mayor is away
+    And the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Hello" and lets go with the Mayor shown away
+    And 61 seconds pass with no answer
+    And he holds the talk button and says nothing and lets go
+    And the Mayor answers "The late answer." on model "sonnet"
+    Then the screen shows "The late answer." as the answer
+    And the phone speaks "The late answer."
+
+  Scenario: AC-1: an answer to his last turn that lands while he holds the button is shown on its turn, marked not heard yet, and not spoken over him (mw-am3yjh.6)
+    Given the Mayor is away
+    And the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Hello" and lets go with the Mayor shown away
+    And 61 seconds pass with no answer
+    And he holds the talk button down
+    And the Mayor answers his turn 1 with "The late answer."
+    Then the first turn shows the answer "The late answer."
+    And the first turn is marked "Not heard yet"
+    And the phone has not spoken
+
   Scenario: AC-1: an answer is shown and spoken aloud
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "What landed today?" and lets go

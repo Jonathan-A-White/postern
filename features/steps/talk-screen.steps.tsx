@@ -847,6 +847,46 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario('AC-1: an answer to his last turn that lands after he held the button and said nothing is shown, and spoken (mw-am3yjh.6)', ({ Given, And, When, Then }) => {
+    Given('the Mayor is away', awayLineOpen);
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go with the Mayor shown away', heldAway);
+    And('{number} seconds pass with no answer', secondsPass);
+    And('he holds the talk button and says nothing and lets go', async () => {
+      const button = await talkButton('Hold to talk');
+      fireEvent.pointerDown(button);
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      fireEvent.pointerUp(button);
+      expect(await screen.findByText('No speech was heard.')).toBeInTheDocument();
+    });
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    Then('the screen shows {string} as the answer', async (_c, text: string) => {
+      await waitFor(() => expect(screen.getByTestId('talk-answer')).toHaveTextContent(text));
+    });
+    And('the phone speaks {string}', async (_c, text: string) => {
+      await waitFor(() => expect(speak).toHaveBeenCalled());
+      expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
+    });
+  });
+
+  Scenario('AC-1: an answer to his last turn that lands while he holds the button is shown on its turn, marked not heard yet, and not spoken over him (mw-am3yjh.6)', ({ Given, And, When, Then }) => {
+    Given('the Mayor is away', awayLineOpen);
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go with the Mayor shown away', heldAway);
+    And('{number} seconds pass with no answer', secondsPass);
+    And('he holds the talk button down', holdsButton);
+    And('the Mayor answers his turn {number} with {string}', async (_c, n: number, text: string) => mayorSays(text, 'answer', 'sonnet', undefined, Number(n)));
+    Then('the first turn shows the answer {string}', async (_c, text: string) => {
+      await waitFor(() => expect(turnShows(0).getByTestId('talk-answer')).toHaveTextContent(text));
+    });
+    And('the first turn is marked {string}', (_c, mark: string) => {
+      expect(turnShows(0).getByText(mark)).toBeInTheDocument();
+    });
+    And('the phone has not spoken', () => {
+      expect(speak).not.toHaveBeenCalled();
+    });
+  });
+
   Scenario('AC-6: an answer that arrives by the sync with its talk turn event shows on the open line (mw-jrx0s.8)', ({ Given, When, And, Then }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     When('he holds the talk button and says {string} and lets go', holdsAndSays);

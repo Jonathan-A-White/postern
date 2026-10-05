@@ -651,7 +651,7 @@ parent chain up to the root, so the app can draw any level of the tree:
 | --- | --- | --- |
 | `question` | a decision-needed question asked over the postern is still open on `bead` | the question's own |
 | `approve` | a live epic has stories held (`deferred`) for his word: `bead` is the epic, `text` says how many | `["Release"]` |
-| `verify` | a story closed in the last 24 hours with no `VERIFIED` comment | `["Verified"]` |
+| `verify` | a story closed in the last 24 hours with no `VERIFIED` comment | `["Verified"]`. The app's Verified button asks first, then sends the Verify word as a channel message to the bead (`VERIFIED (tapped Verified <where>)`), naming where it was tapped; it is offered on a `mayor` card too |
 | `stale` | a bead that has gone stale: `since` is when it went stale; `text` is the facts (what it is, its age, what it waits on, the first 200 characters of its newest comment); it **replaces** the `approve` or `hands` need for the same bead, never both | `["Keep", "Close"]` |
 | `demo` | an open bead labelled `demo` | `[]` |
 | `hands` | an open bead labelled `hitl`: a step only his hands can do; its `steps` (§17) can be approved and run from the app | `[]` |
@@ -736,7 +736,7 @@ and the Mayor is told afterwards. An action is an ordinary message (§1, class
 | `release` | — | releases a held story, or every held story of an epic |
 | `hold` | — | holds an open, unclaimed story |
 | `priority` | `"priority": 0..4` | sets the bead's priority |
-| `verified` | — | comments `VERIFIED by the Governor via postern (<txid>)` on the story |
+| `verified` | — | comments `VERIFIED by the Governor via postern (<txid>)` on the story. The app no longer sends this action: its Verified button sends the Verify word as a channel message to the bead, `VERIFIED (tapped Verified <where>)`, naming where it was tapped |
 | `run` | `step`, `sha256`, `approved_at`, `sig` | runs a hands step he approved (§17) |
 | `keep` | `"days": n` (default 30) | keeps a stale bead (§11) for `days` more days, so it is not raised as `stale` again until they pass |
 | `close` | — | closes the bead; on an epic or a map it closes the held (`deferred`) children first, then the epic |

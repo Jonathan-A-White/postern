@@ -1,22 +1,27 @@
-// features/steps/verify-card.steps.tsx — runs features/verify-card.feature (mw-tbx1n.15):
-// a verify card shows its steps under "How to check it" and a button that says what a tap does;
-// the approve chip is "Release", the same word as its button.
+// features/steps/verify-card.steps.tsx — runs features/verify-card.feature (mw-tbx1n.15, mw-581qad.1):
+// a verify card shows its steps under "How to check it" and a Verified button that asks first and then
+// sends one channel message beginning VERIFIED; the approve chip is "Release", the same word as its button.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor, configure, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { NeedCard } from '../../src/cockpit/NeedCard';
 import { forgetTaps } from '../../src/cockpit/oneTap';
-import { sendAction } from '../../src/cockpit/send';
 import { db } from '../../src/data/db';
+import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { deliverThreaded } from '../../src/services/deliver';
 import type { Need, NeedKind } from '../../src/model/view';
 
 configure({ asyncUtilTimeout: 5000 });
 
-vi.mock('../../src/cockpit/send', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/cockpit/send')>()),
-  sendAction: vi.fn(async () => ({ txid: 'direct:aa', channel: 'direct' })),
+vi.mock('../../src/services/deliver', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/deliver')>()),
+  deliverThreaded: vi.fn(async () => ({ txid: 'direct:aa', channel: 'direct' })),
+}));
+vi.mock('../../src/services/live', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/live')>()),
+  deliverOptions: () => ({ key: new Uint8Array(32), mayorKey: '02' + '11'.repeat(32), direct: true }),
 }));
 
 const BEAD = 'mw-v';
@@ -33,19 +38,25 @@ afterAll(() => {
 
 const feature = await loadFeature('features/verify-card.feature');
 
-describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
+describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) => {
   BeforeEachScenario(async () => {
     cleanup();
     forgetTaps();
-    vi.mocked(sendAction).mockClear();
-    await Promise.all([db.settings.clear(), db.answers.clear(), db.messages.clear()]);
+    forgetOutboxState();
+    vi.mocked(deliverThreaded).mockClear();
+    await Promise.all([db.settings.clear(), db.answers.clear(), db.messages.clear(), db.outbox.clear()]);
+  });
+  AfterEachScenario(() => {
+    vi.useRealTimers();
+    cleanup();
+    forgetOutboxState();
   });
 
   const verifyCard = async () => {
     render(<NeedCard need={need('verify', STEPS, ['Verified'])} />);
   };
 
-  Scenario('mw-tbx1n.15: a verify card shows How to check it and the button I checked it: it works', ({ Given, Then, And }) => {
+  Scenario('mw-tbx1n.15: a verify card shows How to check it and a button Verified', ({ Given, Then, And }) => {
     Given('a verify card whose steps are {string} and an image', verifyCard);
     Then('the card has the heading {string} above the steps', async (_c, heading: string) => {
       const card = screen.getByTestId('need-card');
@@ -65,19 +76,86 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('mw-tbx1n.15: tapping I checked it: it works sends the verified action once', ({ Given, When, Then, And }) => {
+  const tapsVerified = async (_c: unknown, label: string) => {
+    await userEvent.click(screen.getByRole('button', { name: label }));
+  };
+  const offersVerified = async (_c: unknown, label: string) => {
+    expect(within(screen.getByTestId('need-card')).getByRole('button', { name: label })).toBeEnabled();
+    expect(within(screen.getByTestId('need-card')).queryByRole('button', { name: 'Yes, verified' })).toBeNull();
+    expect(deliverThreaded).not.toHaveBeenCalled();
+    expect(await db.outbox.count()).toBe(0);
+  };
+
+  Scenario('mw-581qad.1: tapping Verified asks first and sends nothing until he says yes', ({ Given, When, Then, And }) => {
     Given('a verify card whose steps are {string} and an image', verifyCard);
-    When('he taps {string}', async (_c, label: string) => {
-      await userEvent.click(screen.getByRole('button', { name: label }));
+    When('he taps {string}', tapsVerified);
+    Then('the card asks {string} with {string} and {string}', async (_c, question: string, yes: string, no: string) => {
+      const card = screen.getByTestId('need-card');
+      expect(within(card).getByText(question)).toBeInTheDocument();
+      expect(within(card).getByRole('button', { name: yes })).toBeEnabled();
+      expect(within(card).getByRole('button', { name: no })).toBeEnabled();
     });
-    Then('one verified action for that bead is sent', async () => {
-      await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
-      expect(sendAction).toHaveBeenCalledWith({ action: 'verified', bead: BEAD });
+    And('nothing is sent', async () => {
+      await act(async () => settledOutbox());
+      expect(await db.outbox.count()).toBe(0);
+      expect(deliverThreaded).not.toHaveBeenCalled();
+    });
+  });
+
+  Scenario('mw-581qad.1: Not yet folds the question back', ({ Given, When, And, Then }) => {
+    Given('a verify card whose steps are {string} and an image', verifyCard);
+    When('he taps {string}', tapsVerified);
+    And('he taps {string}', tapsVerified);
+    Then('the card offers {string} again and nothing is sent', offersVerified);
+  });
+
+  Scenario('mw-581qad.1: the question folds back by itself after 8 seconds untouched', ({ Given, When, And, Then }) => {
+    Given('a verify card whose steps are {string} and an image', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      await verifyCard();
+    });
+    When('he taps {string}', async (_c, label: string) => {
+      fireEvent.click(screen.getByRole('button', { name: label }));
+    });
+    And('{int} seconds pass', async (_c, seconds: number) => {
+      act(() => void vi.advanceTimersByTime(seconds * 1000));
+    });
+    Then('the card offers {string} again and nothing is sent', offersVerified);
+  });
+
+  Scenario("mw-581qad.1: Yes, verified sends one VERIFIED message to the bead's channel", ({ Given, When, And, Then }) => {
+    Given('a verify card whose steps are {string} and an image', verifyCard);
+    When('he taps {string}', tapsVerified);
+    And('he taps {string} twice', async (_c, label: string) => {
+      const yes = screen.getByRole('button', { name: label });
+      fireEvent.click(yes);
+      fireEvent.click(yes);
+    });
+    Then('one message to the channel of that bead says {string}', async (_c, words: string) => {
+      await waitFor(() => expect(deliverThreaded).toHaveBeenCalledTimes(1));
+      await act(async () => settledOutbox());
+      expect(deliverThreaded).toHaveBeenCalledTimes(1);
+      expect(deliverThreaded).toHaveBeenCalledWith(expect.objectContaining({ thread: { bead: BEAD }, text: words }), expect.anything());
+      const rows = await db.outbox.toArray();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ kind: 'message', bead: BEAD, thread: `bead:${BEAD}`, payload: { settles: 'verified' } });
     });
     And('the card says it is waiting for the factory, with no button to tap', async () => {
       const card = screen.getByTestId('need-card');
       await waitFor(() => expect(within(card).getByRole('status')).toHaveTextContent(/waiting for the factory/i));
-      expect(within(card).queryByRole('group', { name: 'Answers' })).toBeNull();
+      expect(within(card).queryByRole('button', { name: 'Verified' })).toBeNull();
+      expect(within(card).queryByRole('button', { name: 'Yes, verified' })).toBeNull();
+    });
+  });
+
+  Scenario('mw-581qad.1: a verify card waiting on the Mayor offers Verified too', ({ Given, Then }) => {
+    Given('a verify card waiting on the Mayor to check the landing', async () => {
+      render(<NeedCard need={{ ...need('verify', '', ['Verified']), waits_for: 'mayor', not_ready: true, waiting_on: ['the Mayor to check the landing'] }} />);
+    });
+    Then('the card says {string} and offers {string}', async (_c, chip: string, button: string) => {
+      const card = screen.getByTestId('need-card');
+      expect(within(card).getByText(chip)).toBeInTheDocument();
+      expect(within(card).getByRole('button', { name: button })).toBeEnabled();
     });
   });
 

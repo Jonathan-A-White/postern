@@ -113,9 +113,9 @@ Feature: The Governor's cockpit (plans/0021)
     Given the factory is live and his key is unlocked
     And the backend is slow to take a message
     When the bead "mw-gq6.130" is opened
-    And "Verified" is tapped twice on the bead's page
-    Then one verified action for "mw-gq6.130" is sent
-    And the bead's page says it was sent and is waiting for the factory, with no Verified button to tap
+    And "Verified" is tapped on the bead's page and confirmed twice
+    Then one VERIFIED message to the channel of "mw-gq6.130" is sent
+    And the bead's page says it is on its way, with no Verified button to tap
 
   Scenario: mw-2y46l.5: a stale need shows Still wanted? with its facts in full and a Keep and a Close
     Given the factory is live with a stale bead and his key is unlocked

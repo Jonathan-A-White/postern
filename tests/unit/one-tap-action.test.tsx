@@ -1,5 +1,5 @@
 // tests/unit/one-tap-action.test.tsx — mw-t64a3.3: a one-tap action (Release,
-// Hold, Verified) sends once however fast it is tapped, says at once that it is
+// Hold, and Verified, which since mw-581qad.1 sends a VERIFIED channel message) sends once however fast it is tapped, says at once that it is
 // waiting for the factory on every surface that offers it, and comes back only
 // when the send failed or a newer view still asks for it.
 import '@testing-library/react/dont-cleanup-after-each';
@@ -12,12 +12,13 @@ import { viewRepo } from '../../src/data/repositories';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { fixtureView } from '../support/cockpit-fixture';
-import { deliverAction } from '../../src/services/deliver';
+import { deliverAction, deliverThreaded } from '../../src/services/deliver';
 import type { Need } from '../../src/model/view';
 
 vi.mock('../../src/services/deliver', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/deliver')>()),
   deliverAction: vi.fn(),
+  deliverThreaded: vi.fn(),
 }));
 vi.mock('../../src/services/live', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/live')>()),
@@ -55,6 +56,8 @@ function slowSend() {
 describe('a one-tap action sends once and shows it is waiting', () => {
   beforeEach(async () => {
     vi.mocked(deliverAction).mockReset();
+    vi.mocked(deliverThreaded).mockReset();
+    vi.mocked(deliverThreaded).mockResolvedValue(delivered);
     forgetTaps();
     forgetOutboxState();
     await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.outbox.clear()]);
@@ -96,32 +99,34 @@ describe('a one-tap action sends once and shows it is waiting', () => {
 
   it('tapping Verified on the bead page settles the card and the action button together', async () => {
     await storeView(Date.now() - 60_000);
-    const send = slowSend();
     render(<BeadScreen id={VERIFY} />);
-    const action = await screen.findByRole('button', { name: 'Verified' });
-    const card = await screen.findByRole('button', { name: 'I checked it: it works' });
-    fireEvent.click(card);
-    fireEvent.click(action);
-    await waitFor(() => expect(deliverAction).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('button', { name: 'Verified' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'I checked it: it works' })).toBeNull();
-    expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0);
-    await act(async () => send.finish());
+    // The card's Verified and the Actions row's: two copies of one button.
+    const [first, second] = await screen.findAllByRole('button', { name: 'Verified' });
+    fireEvent.click(first);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, verified' }));
+    // The other copy is dead at once and says so, whichever one he tapped.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Verified' })).toBeNull());
+    expect(second).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Tapped|waiting for the factory/i).length).toBeGreaterThan(0);
+    // One message, VERIFIED first; no action is sent.
+    await waitFor(() => expect(deliverThreaded).toHaveBeenCalledTimes(1));
+    await act(async () => settledOutbox());
+    expect(deliverThreaded).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringMatching(/^VERIFIED \(tapped Verified /), thread: { bead: VERIFY } }), expect.anything());
+    expect(deliverAction).not.toHaveBeenCalled();
     // Delivered, the view has not republished: still waiting, still no second tap.
     await waitFor(async () => expect(await db.answers.get(VERIFY)).toBeDefined());
     await act(async () => {});
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Verified' })).toBeNull());
     expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0);
-    expect(deliverAction).toHaveBeenCalledTimes(1);
+    expect(deliverThreaded).toHaveBeenCalledTimes(1);
   });
 
   it('clears once the next view drops the need, and offers it again if the view still asks', async () => {
     await storeView(Date.now() - 60_000);
-    const send = slowSend();
     render(<BeadScreen id={VERIFY} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'I checked it: it works' }));
-    await waitFor(() => expect(deliverAction).toHaveBeenCalledTimes(1));
-    await act(async () => send.finish());
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Verified' }))[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, verified' }));
+    await waitFor(() => expect(deliverThreaded).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0));
 
     await act(async () => {
@@ -130,7 +135,6 @@ describe('a one-tap action sends once and shows it is waiting', () => {
     // The bead's page filters its needs as Needs you does (mw-tbx1n.10): the card he already acted on stays gone,
     // so the action button is the one offered again.
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Verified' })).toHaveLength(1));
-    expect(screen.queryByRole('button', { name: 'I checked it: it works' })).toBeNull();
     expect(screen.queryByText(/waiting for the factory/i)).toBeNull();
 
     await act(async () => {

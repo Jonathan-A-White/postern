@@ -13,9 +13,6 @@ export const NEED_META: Record<NeedKind, { label: string; icon: IconName; tone: 
   alarm: { label: 'Alarm', icon: 'alarm', tone: 'danger', verb: 'Something is wrong' },
 };
 
-/** What a verify card's button says: the tap's meaning, not the protocol's word ('Verified'). */
-export const VERIFY_BUTTON = 'I checked it: it works';
-
 export function typeIcon(type: string, isMap = false): IconName {
   if (isMap) return 'map';
   switch (type) {

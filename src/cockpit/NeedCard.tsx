@@ -7,7 +7,7 @@ import { useMemo, useState } from 'react';
 import { Button, Chip, Icon, IconButton, TimeAgo, cx } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Markdown } from '../markdown';
-import { NEED_META, VERIFY_BUTTON } from './labels';
+import { NEED_META } from './labels';
 import { beadHref, type Route } from '../nav/route';
 import { GENERAL, titleFor } from '../model/threads';
 import type { TalkAbout } from '../model/talkLine';
@@ -27,6 +27,7 @@ import { OutboxMark } from './OutboxMark';
 import { clockTime } from '../services/age';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
+import { VerifiedButton } from './VerifiedButton';
 
 export interface NeedCardProps {
   need: Need;
@@ -65,8 +66,8 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const reading = useSpeaking(speakKey);
   const meta = NEED_META[need.kind];
   const { busy, run } = useSend();
-  // An approval or a verification is one signed transaction: one tap, then it waits for the view.
-  const tapAction = waitsFor(need) !== 'you' || need.not_ready ? '' : need.kind === 'approve' ? 'release' : need.kind === 'verify' ? 'verified' : '';
+  // An approval is one signed transaction: one tap, then it waits for the view. (Verified is its own button, VerifiedButton.)
+  const tapAction = waitsFor(need) !== 'you' || need.not_ready ? '' : need.kind === 'approve' ? 'release' : '';
   const oneTap = useOneTap(tapAction ? need.bead : '', tapAction);
   // Release is for a story still held, as on the bead's page; a known status that is not held says so instead of offering it.
   const releaseNow = tapAction === 'release' ? releaseState(need, index, status) : 'held';
@@ -114,7 +115,9 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const hasSteps = need.kind === 'hands' && need.steps.length > 0;
   const stale = need.kind === 'stale';
   // A stale need has its own Keep and Close (StaleChoice); the bead's page offers them among its actions.
-  const options = notReady || hasSteps || stale || released ? [] : orderedOptions(need);
+  // A verify card offers VerifiedButton, ready or waiting on the Mayor, in place of the options.
+  const verify = need.kind === 'verify' && need.bead !== '';
+  const options = notReady || hasSteps || stale || released || verify ? [] : orderedOptions(need);
   const thread = need.bead ? { bead: need.bead } : undefined;
   // Where a message from this card lands, so the toast can name it and open it.
   const threadName = need.bead || titleFor(GENERAL).title;
@@ -127,7 +130,6 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
     }
     else if (need.kind === 'question') await run(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread });
     else if (need.kind === 'approve') await oneTap.tap(() => sendAction({ action: 'release', bead: need.bead }), `Released ${need.bead}`);
-    else if (need.kind === 'verify') await oneTap.tap(() => sendAction({ action: 'verified', bead: need.bead }), `Marked ${need.bead} verified`);
     else await run(() => sendToThread(thread, option), { text: `Told the Mayor in ${threadName}: ${option}`, open: openThread });
   }
 
@@ -257,11 +259,12 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
         </p>
       )}
 
+      {verify && <VerifiedButton bead={need.bead} where="needs" />}
+
       {options.length > 0 && !(tapAction && oneTap.waiting) && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Answers">
           {options.map((option) => {
             const recommended = option === need.recommended && options.length > 1;
-            const words = need.kind === 'verify' ? VERIFY_BUTTON : option;
             return (
               <Button
                 key={option}
@@ -269,9 +272,9 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
                 onClick={() => void choose(option)}
                 disabled={busy || answered}
                 className="max-w-full"
-                aria-label={recommended ? `${words} (recommended)` : words}
+                aria-label={recommended ? `${option} (recommended)` : option}
               >
-                <span className="truncate">{words}</span>
+                <span className="truncate">{option}</span>
                 {recommended && <span className="text-[11px] font-medium opacity-75">recommended</span>}
               </Button>
             );

@@ -20,6 +20,7 @@ import { pendingMessageItems } from '../model/outbox';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
+import { VerifiedButton } from './VerifiedButton';
 import { StampSection } from './StampSection';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, epicStats, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
@@ -93,7 +94,6 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
   const epic = bead && index ? isEpic(bead, index) : detail?.type === 'epic';
   const release = useOneTap(id, 'release');
   const hold = useOneTap(id, 'hold');
-  const verified = useOneTap(id, 'verified');
   // An epic's Release is the Map's Release N held, offered only while a story under it is held, whatever the epic's own status.
   const held = bead && index && epic ? epicStats(id, index).counts.held : 0;
   // Release un-holds a bead for dispatch, which needs a rig and a target branch: no path, no Release.
@@ -139,14 +139,7 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
             Hold
           </Button>
         ))}
-      {verify &&
-        (verified.waiting ? (
-          <WaitingNote />
-        ) : (
-          <Button size="sm" variant="primary" icon="check" busy={busy} onClick={() => void verified.tap(() => sendAction({ action: 'verified', bead: id }), `Marked ${id} verified`)}>
-            Verified
-          </Button>
-        ))}
+      {verify && id && <VerifiedButton bead={id} where="page" size="sm" />}
       {stale && id && <StaleChoice bead={id} size="sm" />}
       {status !== 'closed' && id && (
         <label className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised pr-1 pl-2.5 text-sm">

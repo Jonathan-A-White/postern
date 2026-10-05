@@ -528,19 +528,22 @@ describeFeature(feature, ({ Scenario }) => {
       await openAt('?v=bead&id=mw-gq6.130');
       await screen.findByLabelText('Actions');
     });
-    And('"Verified" is tapped twice on the bead\'s page', async () => {
+    And('"Verified" is tapped on the bead\'s page and confirmed twice', async () => {
       const verified = (await screen.findAllByRole('button', { name: 'Verified' }))[0];
       fireEvent.click(verified);
-      fireEvent.click(verified);
+      const yes = await screen.findByRole('button', { name: 'Yes, verified' });
+      fireEvent.click(yes);
+      fireEvent.click(yes);
     });
-    Then('one verified action for "mw-gq6.130" is sent', async () => {
+    Then('one VERIFIED message to the channel of "mw-gq6.130" is sent', async () => {
       await waitFor(() => expect(delivered).toHaveLength(1));
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(delivered).toHaveLength(1);
-      expect(JSON.parse(delivered[0])).toEqual({ action: 'verified', bead: 'mw-gq6.130' });
+      expect(JSON.parse(delivered[0])).toEqual({ thread: { bead: 'mw-gq6.130' }, text: expect.stringMatching(/^VERIFIED \(tapped Verified /) });
     });
-    And("the bead's page says it was sent and is waiting for the factory, with no Verified button to tap", async () => {
-      expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0);
+    And("the bead's page says it is on its way, with no Verified button to tap", async () => {
+      // The backend is holding the message: the tap is marked Tapped until it has gone.
+      expect(screen.getAllByText(/Tapped|waiting for the factory/i).length).toBeGreaterThan(0);
       expect(screen.queryByRole('button', { name: 'Verified' })).toBeNull();
       await letTheSendFinish('mw-gq6.130');
     });

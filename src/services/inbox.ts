@@ -8,6 +8,7 @@ import type { MessageRow } from '../data/db';
 import { apiFetch } from './apiAuth';
 import { decryptMessage, decryptMessageAsSender, type MessagePayload } from './messages';
 import { threadKey, threadOf } from './threads';
+import { isDirect } from '../model/twins';
 import { decodeEventBatch, type EventBatch } from '../model/events';
 import { applyCardRow } from './cards';
 import { noteArrivedAnswer } from './answerWaiting';
@@ -99,7 +100,16 @@ export async function storeRecord(record: RecordToStore, publicKeyHex: string, u
   if (!isToMe && !isFromMe) return undefined;
 
   const id = `${record.txid}:${record.vout}`;
-  const existing = await messagesRepo.get(id);
+  let existing = await messagesRepo.get(id);
+  // The same message already kept under another id (the Mayor's reply comes direct and on chain,
+  // mw-f758y.40): one row, the direct one, which carries the channel and the bead.
+  const twin = existing ? undefined : await messagesRepo.findTwin({ id, ciphertext: payload.ct, from: payload.from, to: payload.to, ts: payload.ts });
+  if (twin) {
+    if (isDirect(twin) || !isDirect(record)) return undefined;
+    // The direct copy arrives after its chain copy: it replaces the row, keeping what the phone already knows of it.
+    await messagesRepo.remove(twin.id);
+    existing = { ...twin, id };
+  }
   const direction: MessageRow['direction'] = isFromMe ? 'sent' : 'received';
 
   const decrypted = unlockedKeyHex ? tryDecrypt(payload, unlockedKeyHex, direction) : {};

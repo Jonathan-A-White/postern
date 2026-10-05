@@ -3,7 +3,7 @@
 // (docs/protocol.md §3, §21): what the phone reads when it reads the chain itself.
 import { P2PKH, PrivateKey, Script, Transaction, Utils } from '@bsv/sdk';
 import { chainConfig, encodeRecordScript } from 'spell-forge-bsv';
-import { ANCHOR_ADDRESS, encryptMessage, type MessageClass } from '../../src/services/messages';
+import { ANCHOR_ADDRESS, encryptMessage, type MessageClass, type MessagePayload } from '../../src/services/messages';
 
 export interface ChainRecord {
   hex: string;
@@ -13,6 +13,11 @@ export interface ChainRecord {
 /** The funded-looking transaction a sender would broadcast: output 0 the record, output 1 the 1-sat anchor payment. */
 export function recordTransaction(params: { senderHex: string; recipientPublicKeyHex: string; class: MessageClass; plaintext: string; ts: number }): ChainRecord {
   const payload = encryptMessage({ text: params.plaintext, class: params.class, senderPrivateKeyHex: params.senderHex, recipientPublicKeyHex: params.recipientPublicKeyHex, ts: params.ts });
+  return transactionOfPayload(payload);
+}
+
+/** The same transaction for a payload already made: the chain copy of a record that was also delivered direct. */
+export function transactionOfPayload(payload: MessagePayload): ChainRecord {
   const tx = new Transaction();
   tx.addInput({ sourceTXID: 'aa'.repeat(32), sourceOutputIndex: 0, unlockingScript: new Script(), sequence: 0xffffffff });
   tx.addOutput({ satoshis: 0, lockingScript: encodeRecordScript(Utils.toArray(JSON.stringify(payload), 'utf8')) });

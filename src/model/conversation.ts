@@ -9,6 +9,7 @@ import { markdownToPlain } from '../markdown/plain';
 import { decodeQuestion, decodeReply, type QuestionBody } from '../services/questions';
 import { attachmentsOf, decodeThreadedMessage, type Attachment } from '../services/threads';
 import type { BeadComment } from './view';
+import { twinsToDrop } from './twins';
 
 /** 'factory' is mw itself on a host (a comment by mw@<host>: a hands step's RAN line, a claim), never a Builder. */
 export type Speaker = 'you' | 'mayor' | 'builder' | 'factory' | 'other';
@@ -229,7 +230,10 @@ export function speakerOfComment(author: string): { speaker: Speaker; label: str
  * message's txid), or that says a run the thread's message says (the message is
  * "re" a txid the comment names: the approval), is left out, so nothing is said
  * twice; a transcript is folded into the voice note it transcribes. */
-export function mergeConversation(rows: MessageRow[], comments: BeadComment[] = []): ConversationItem[] {
+export function mergeConversation(allRows: MessageRow[], comments: BeadComment[] = []): ConversationItem[] {
+  // A reply that arrived both direct and on chain is one message: the direct copy is kept (mw-f758y.40).
+  const twins = new Set(twinsToDrop(allRows));
+  const rows = twins.size > 0 ? allRows.filter((row) => !twins.has(row)) : allRows;
   const decoded = rows.map(itemFromMessage);
   const transcripts = new Map<string, string>();
   const items: ConversationItem[] = [];
@@ -245,7 +249,7 @@ export function mergeConversation(rows: MessageRow[], comments: BeadComment[] = 
     if (transcript !== undefined) item.transcript = transcript;
   }
 
-  const known = new Set(rows.map((row) => row.txid.toLowerCase()));
+  const known = new Set(allRows.map((row) => row.txid.toLowerCase()));
   const sentAt = new Set(rows.map((row) => row.ts));
   const answered = new Set(items.flatMap((item) => (item.re ? [item.re.toLowerCase()] : [])));
   comments.forEach((comment, index) => {

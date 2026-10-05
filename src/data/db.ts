@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import { twinsToDrop } from '../model/twins';
 
 export interface SettingRow {
   key: string;
@@ -382,6 +383,12 @@ class PosternDB extends Dexie {
 
     // mw-jrx0s.22: an events record (§22) is never a message. An older build kept some as rows; every open removes them (sticky: a plain `ready` listener runs on the first open only).
     this.on('ready', () => this.messages.filter((row) => row.class === 'events').delete(), true);
+
+    // mw-f758y.40: a reply that came direct and on chain was kept twice by older builds; every open keeps the direct copy alone.
+    this.on('ready', async () => {
+      const dropped = twinsToDrop(await this.messages.toArray());
+      if (dropped.length > 0) await this.messages.bulkDelete(dropped.map((row) => row.id));
+    }, true);
   }
 }
 

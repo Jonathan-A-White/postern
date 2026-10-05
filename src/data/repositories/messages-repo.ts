@@ -1,4 +1,5 @@
 import { db, type MessageRow } from '../db';
+import { sameMessage } from '../../model/twins';
 
 /** The Talk line's turns (docs/protocol.md §20) and call records (§21) are records of their own:
  * every list of messages, every thread and every unread count below leaves them out. */
@@ -54,6 +55,16 @@ export const messagesRepo = {
   /** The message a record's txid names (its outpoints are `${txid}:${vout}`). */
   async getByTxid(txid: string): Promise<MessageRow | undefined> {
     return db.messages.where('id').startsWith(`${txid}:`).first();
+  },
+
+  /** The stored row, under another id, that is the same message as `row` (same ciphertext, from, to and ts), if any. */
+  async findTwin(row: Pick<MessageRow, 'id' | 'ciphertext' | 'from' | 'to' | 'ts'>): Promise<MessageRow | undefined> {
+    if (!row.ciphertext) return undefined;
+    return db.messages.where('ts').equals(row.ts).filter((other) => other.id !== row.id && sameMessage(other, row)).first();
+  },
+
+  async remove(id: string): Promise<void> {
+    await db.messages.delete(id);
   },
 
   async put(row: MessageRow): Promise<void> {

@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { liveQuery } from 'dexie';
 import type { AnswerRow, ArchiveChoices, BeadDetailRow, CardRow, EventRow, MessageRow, OutboxRow, ViewRow } from '../data/db';
-import { answersRepo, beadDetailsRepo, cardsRepo, eventsRepo, messagesRepo, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
+import { answersRepo, bannerMsLeft, beadDetailsRepo, cardsRepo, eventsRepo, messagesRepo, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
 import { liveCard, type LiveCard } from '../model/cards';
 import { decodeBeadDetail, decodeView, type BeadComment, type BeadDetail } from '../model/view';
 import { indexView, type ViewIndex } from '../model/tree';
@@ -59,9 +59,23 @@ export function useBeadTitles(): ReadonlyMap<string, string> {
   return useMemo(() => new Map([...(view?.index.byId ?? [])].map(([id, bead]) => [id, bead.title])), [view]);
 }
 
-/** The newest emergency event (§22) he has not tapped away; undefined when there is none. */
+/** The newest emergency event (§22) he has not tapped away and that is not over; undefined when there is none.
+ * An information emergency leaves by itself ten minutes after its time (mw-gq6.277), so the query runs again then. */
 export function useEmergency(): EventRow | undefined {
-  return useLiveQuery(() => eventsRepo.latestEmergency(), [], undefined);
+  const [again, setAgain] = useState(0);
+  const emergency = useLiveQuery(() => eventsRepo.latestEmergency(), [again], undefined);
+  useEffect(() => {
+    const left = emergency ? bannerMsLeft(emergency) : undefined;
+    if (left === undefined) return;
+    const timer = setTimeout(() => setAgain((n) => n + 1), Math.max(left, 0) + 100);
+    return () => clearTimeout(timer);
+  }, [emergency]);
+  return emergency;
+}
+
+/** The emergency events held, newest first, for the Emergency screen. */
+export function useRecentEmergencies(limit = 20): EventRow[] | undefined {
+  return useLiveQuery(() => eventsRepo.recentEmergencies(limit), [limit], undefined as EventRow[] | undefined);
 }
 
 /** Every stored message, oldest first. */

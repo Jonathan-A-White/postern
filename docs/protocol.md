@@ -1593,6 +1593,13 @@ event is first kept, the app clears that emergency as his tap does, in the same 
 emergency and any older one go, a newer one stays, and a reload does not bring it back. An event
 without `clears` changes nothing.
 
+`mw-gq6.277`. The push names no word of the record, so a tap on the emergency notification opens
+the Emergency screen (`?v=emergency`): the emergency events the phone holds, newest first, each
+with its `detail`, its `actor` and its time (tapped away or not). An emergency whose job is done
+(`to` is `done`: an information emergency, say the Mayor copying an answer) is shown in the banner
+for ten minutes from its `ts`, or until he taps Dismiss (which clears it as his tap does, without
+leaving the screen); a failed one, or any other, shows until it is cleared, as before.
+
 ### The chain road, while the backend is out of reach
 
 `mw-jrx0s.9`. The phone's own read of the chain (§21, "The phone reads the chain itself")

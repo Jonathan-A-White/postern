@@ -90,7 +90,7 @@ export const CLASS_URLS: Record<MessageClass, string> = {
   'move-home': '/?v=me',
   talk: '/?v=talk',
   call: '/?v=line',
-  events: '/?v=needs',
+  events: '/?v=emergency',
   card: '/?v=needs',
   'card-update': '/?v=needs',
 };
@@ -186,7 +186,7 @@ const EMERGENCY_VIBRATE = [500, 150, 500, 150, 500];
 /** The notification for an emergency events record (docs/protocol.md §22): the push carries the lane and
  * nothing of the record (its words are sealed), so it names no detail; the banner in the app, which
  * has read the record, shows it. It follows no per-class switch: it is never silent, and it stays
- * until he deals with it. A tap opens the app, where the banner waits. */
+ * until he deals with it. A tap opens the Emergency screen, which shows the words of the emergencies held. */
 export function notificationSpecForEmergency(txid: string, text: { title?: string } = {}): NotificationSpec {
   return {
     title: text.title || EMERGENCY_TITLE,

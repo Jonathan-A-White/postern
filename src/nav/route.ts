@@ -29,7 +29,9 @@ export type Route =
    * for the message with this txid, then moves to that thread (src/cockpit/NoticeScreen.tsx). */
   | { view: 'notice'; tx: string; cls?: MessageClass }
   /** A push with no record behind it (the watchdog's alarm), carrying what it said. */
-  | { view: 'alarm'; title?: string; body?: string; ts?: number };
+  | { view: 'alarm'; title?: string; body?: string; ts?: number }
+  /** Where a tap on an emergency notification lands: the emergency events held, newest first, with their words (src/cockpit/EmergencyScreen.tsx). */
+  | { view: 'emergency' };
 
 export type TopView = 'needs' | 'map' | 'talk' | 'search' | 'me';
 
@@ -124,6 +126,8 @@ export function parseRoute(search: string): Route {
       const ts = Number(params.get('ts'));
       return { view: 'alarm', title: params.get('title') ?? undefined, body: params.get('body') ?? undefined, ts: Number.isFinite(ts) && ts > 0 ? ts : undefined };
     }
+    case 'emergency':
+      return { view: 'emergency' };
     case 'needs': {
       const who = params.get('who');
       return who === 'mayor' || who === 'factory' ? { view: 'needs', who } : { view: 'needs' };
@@ -209,6 +213,7 @@ export function isDeep(route: Route): boolean {
     route.view === 'share' ||
     route.view === 'notice' ||
     route.view === 'alarm' ||
+    route.view === 'emergency' ||
     route.view === 'key' ||
     route.view === 'prompts' ||
     route.view === 'line' ||

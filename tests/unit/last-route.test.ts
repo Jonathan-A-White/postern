@@ -17,7 +17,7 @@ describe('the last route', () => {
 
   it('does not keep a push landing, a parked share, the key page or a bare address', () => {
     saveLastRoute('?v=bead&id=mw-x');
-    for (const search of ['', '?v=notice&tx=ab', '?v=alarm&title=x', '?v=share&s=1', '?v=key']) {
+    for (const search of ['', '?v=notice&tx=ab', '?v=alarm&title=x', '?v=emergency', '?v=share&s=1', '?v=key']) {
       saveLastRoute(search);
       expect(isKeptSearch(search)).toBe(false);
     }

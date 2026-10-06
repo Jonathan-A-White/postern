@@ -22,7 +22,7 @@ const TRAIL_IN_MEMORY = 100;
 
 /** Places that are an answer to one event, not somewhere to come back to: a push's landing, a
  * parked share, the key page. */
-const NOT_KEPT: Route['view'][] = ['notice', 'alarm', 'share', 'key'];
+const NOT_KEPT: Route['view'][] = ['notice', 'alarm', 'emergency', 'share', 'key'];
 
 /** The offsets of each address that has any, least recently written first. */
 type StoredScrolls = Record<string, Record<string, number>>;

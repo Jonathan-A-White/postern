@@ -21,7 +21,7 @@ describe('the emergency notification', () => {
     expect(spec.title).toBe(EMERGENCY_TITLE);
     expect(spec.options).toMatchObject({ tag: EMERGENCY_TAG, renotify: true, requireInteraction: true, silent: false });
     expect(spec.options.vibrate?.length).toBeGreaterThan(0);
-    expect(spec.options.data).toEqual({ txid: TXID, class: 'events', url: '/?v=needs' });
+    expect(spec.options.data).toEqual({ txid: TXID, class: 'events', url: '/?v=emergency' });
   });
 });
 
@@ -40,7 +40,7 @@ describe('an emergency push', () => {
     const app = fakeWindowClient();
     worker.openWindows.push(app);
     await worker.click(worker.open[worker.open.length - 1]);
-    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=needs' });
+    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=emergency' });
     expect(app.focus).toHaveBeenCalled();
   });
 });

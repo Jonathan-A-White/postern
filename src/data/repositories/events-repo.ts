@@ -9,6 +9,22 @@ const EARLY_SETTING_KEY = 'events-early';
 /** The newest emergency seq he has tapped away: the banner shows only a later one. */
 const CLEARED_SETTING_KEY = 'emergency-cleared';
 
+/** How long an information emergency (its job done) stays in the banner: ten minutes from its time. */
+export const INFORMATION_EMERGENCY_MS = 10 * 60 * 1000;
+
+/** An emergency whose job is done tells him something and needs nothing of him, unlike a failed one. */
+export function isInformation(event: EventRow): boolean {
+  return event.to === 'done';
+}
+
+/** How long an information emergency still has in the banner (zero or less: it is over); undefined when
+ * it has no time limit, which is a failed one or any other emergency and one whose time is unreadable. */
+export function bannerMsLeft(event: EventRow, now: number = Date.now()): number | undefined {
+  const at = Date.parse(event.ts);
+  if (!isInformation(event) || Number.isNaN(at)) return undefined;
+  return at + INFORMATION_EMERGENCY_MS - now;
+}
+
 /** mw-jrx0s.7: the factory's events (docs/protocol.md §22), kept once each by seq. */
 export const eventsRepo = {
   /** Keeps every event whose seq is not held yet; resolves with those, in seq order.
@@ -62,15 +78,25 @@ export const eventsRepo = {
     await db.settings.put({ key: EARLY_SETTING_KEY, value: [...seqs] });
   },
 
-  /** The newest held event of an emergency record (§22) that he has not tapped away. */
-  async latestEmergency(): Promise<EventRow | undefined> {
+  /** The newest held event of an emergency record (§22) that he has not tapped away and that is not over:
+   * an information emergency (its job done) is over ten minutes after its time (mw-gq6.277). */
+  async latestEmergency(now: number = Date.now()): Promise<EventRow | undefined> {
     const cleared = await eventsRepo.emergencyCleared();
-    const newest = await db.events
+    return db.events
+      .orderBy('seq')
+      .reverse()
+      .filter((event) => event.lane === 'emergency' && event.seq > cleared && (bannerMsLeft(event, now) ?? 1) > 0)
+      .first();
+  },
+
+  /** The held events of emergency records, newest first, tapped away or not: what the Emergency screen lists. */
+  async recentEmergencies(limit: number): Promise<EventRow[]> {
+    return db.events
       .orderBy('seq')
       .reverse()
       .filter((event) => event.lane === 'emergency')
-      .first();
-    return newest && newest.seq > cleared ? newest : undefined;
+      .limit(limit)
+      .toArray();
   },
 
   async emergencyCleared(): Promise<number> {

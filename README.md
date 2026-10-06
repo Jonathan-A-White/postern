@@ -1,5 +1,8 @@
 # postern
 
+Building an app like this one? Start with [docs/best-practices.md](docs/best-practices.md): the
+front end, the back end, and how to run without the chain.
+
 Postern is the Governor's cockpit for his software factory: one place to see what needs
 him, the whole wayfinder map at any zoom, and every channel with the Mayor — by
 text, voice, screenshots and files, pinned to the factory, a map, an epic, a story or a

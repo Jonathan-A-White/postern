@@ -19,7 +19,7 @@
 // until the backend returns and the view is fetched.
 import { useSyncExternalStore } from 'react';
 import { apiFetch } from './apiAuth';
-import { readChain, nextChainDelay, CHAIN_POLL_MS } from './chainRead';
+import { chain } from '../chain';
 import { projectBatches, syncMessagesAndEvents } from './events';
 import type { EventBatch } from '../model/events';
 import { freshRings, ringInApp } from './ringIn';
@@ -108,7 +108,7 @@ async function applyChainEvents(batches: EventBatch[]): Promise<void> {
 }
 
 async function pollChain(signal: AbortSignal): Promise<void> {
-  let delay = CHAIN_POLL_MS;
+  let delay = chain.pollMs;
   for (;;) {
     await sleep(delay, signal);
     const session = current;
@@ -116,15 +116,15 @@ async function pollChain(signal: AbortSignal): Promise<void> {
     if (typeof document !== 'undefined' && document.hidden) continue; // a page nobody is looking at reads nothing; the wait stays as it was
     let read;
     try {
-      read = await readChain({ publicKeyHex: publicKeyHexFromMasterKey(session.key), unlockedKey: session.key, mayorKey: state.mayorKey, seen: chainSeen, signal });
+      read = await chain.read({ publicKeyHex: publicKeyHexFromMasterKey(session.key), unlockedKey: session.key, mayorKey: state.mayorKey, seen: chainSeen, signal });
     } catch {
       if (!signal.aborted && state.chainLive) setState({ chainLive: false });
-      delay = nextChainDelay(delay, false, false);
+      delay = chain.nextDelay(delay, false, false);
       continue; // WhatsOnChain is out of reach too (or refuses us): the next read waits longer
     }
     if (signal.aborted) return;
     // A transaction that failed is a WhatsOnChain in trouble: back off, and ask for it again. A read that found nothing new backs off too: an empty chain is asked for less and less often until a record arrives.
-    delay = nextChainDelay(delay, read.failed === 0, read.rows.length > 0 || read.events.length > 0);
+    delay = chain.nextDelay(delay, read.failed === 0, read.rows.length > 0 || read.events.length > 0);
     if (!state.chainLive) setState({ chainLive: true });
     if (read.events.length > 0) await applyChainEvents(read.events);
     if (read.rows.length === 0) continue; // events alone are no reason to hammer the backend: its own backoff finds it

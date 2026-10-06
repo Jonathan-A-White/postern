@@ -9,8 +9,8 @@ import { PrivateKey, Utils } from '@bsv/sdk';
 import { encodeRecordScript } from 'spell-forge-bsv';
 import { apiFetch, ApiTimeoutError, BackendUnreachableError, RefusedError, withTimeout } from './apiAuth';
 import { encryptMessage, type MessageClass } from './messages';
-import { readErrorMessage, sendTextMessage } from './send';
-import type { ChainVia } from './spendable';
+import { chain, type ChainVia } from '../chain';
+import { readErrorMessage } from './errorMessage';
 import { encodeReply } from './questions';
 import { encodeThreadedMessage, threadKey, threadOf, type Attachment, type ThreadRef } from './threads';
 import { messagesRepo } from '../data/repositories';
@@ -125,7 +125,7 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
     via = 'whatsonchain';
   }
   if (!delivered) {
-    const txid = await sendTextMessage({
+    const txid = await chain.sendText({
       text: plaintext,
       class: messageClass,
       senderKey: options.key,

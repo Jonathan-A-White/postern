@@ -2,6 +2,7 @@
 
 Building an app like this one? Start with [docs/best-practices.md](docs/best-practices.md): the
 front end, the back end, and how to run without the chain.
+To use another chain, or none, see [docs/swapping-the-chain.md](docs/swapping-the-chain.md).
 
 Postern is the Governor's cockpit for his software factory: one place to see what needs
 him, the whole wayfinder map at any zoom, and every channel with the Mayor — by

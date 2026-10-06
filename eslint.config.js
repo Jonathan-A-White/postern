@@ -5,12 +5,20 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 import { defineConfig, globalIgnores } from 'eslint/config';
 
-// The chain modules: the code that talks to the chain (WhatsOnChain, the backend's coin and
-// broadcast routes, spell-forge-bsv's chain provider). Every other service reaches the chain
-// through src/chain.ts (mw-e6e8f2.2), so none of them may import one of these directly.
-// src/chain.ts and the modules themselves are exempt. src/key, src/licence and src/cockpit
-// are not covered yet: their screens move to src/chain.ts in the next story.
+// The chain files: the code that talks to the chain (WhatsOnChain, the backend's coin and
+// broadcast routes, spell-forge-bsv's chain provider). Everything else under src reaches the
+// chain through src/chain.ts (mw-e6e8f2.2, mw-e6e8f2.3), so none of it may import one of the
+// chain modules directly. The chain files are exempt, and they are:
+//   src/chain.ts
+//   src/services/{send,spendable,chainRead,whatsonchain,confirmedHistory,stamp,licence,mint,issue}.ts
+//   the chain-only components src/key/IssueLicences.tsx, src/licence/LicenceExplainer.tsx and
+//   src/cockpit/StampSection.tsx (src/chain.ts offers them as `chain.screens`).
 const CHAIN_MODULES = ['send', 'spendable', 'chainRead', 'whatsonchain', 'confirmedHistory', 'stamp', 'licence', 'mint', 'issue'];
+const CHAIN_COMPONENTS = ['src/key/IssueLicences.tsx', 'src/licence/LicenceExplainer.tsx', 'src/cockpit/StampSection.tsx'];
+
+const refuseChainModules = (group) => ({
+  'no-restricted-imports': ['error', { patterns: [{ group, message: 'Reach the chain through src/chain.ts, not a chain module directly.' }] }],
+});
 
 export default defineConfig([
   globalIgnores(['dist']),
@@ -28,20 +36,14 @@ export default defineConfig([
     },
   },
   {
+    // inside src/services a chain module is './name'; elsewhere './send' may be some other module's own
     files: ['src/services/**/*.{ts,tsx}'],
     ignores: CHAIN_MODULES.map((name) => `src/services/${name}.ts`),
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: CHAIN_MODULES.flatMap((name) => [`./${name}`, `../services/${name}`]),
-              message: 'Reach the chain through src/chain.ts, not a chain module directly.',
-            },
-          ],
-        },
-      ],
-    },
+    rules: refuseChainModules(CHAIN_MODULES.flatMap((name) => [`./${name}`, `../services/${name}`])),
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/chain.ts', 'src/services/**', ...CHAIN_COMPONENTS],
+    rules: refuseChainModules(CHAIN_MODULES.map((name) => `**/services/${name}`)),
   },
 ]);

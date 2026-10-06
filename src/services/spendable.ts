@@ -5,20 +5,12 @@
 // mint or a revoke funds and broadcasts exactly as a message does (mw-yjxcw.3).
 import { outpointKey, filterUtxosExcludingPending, reconcilePendingSpends, type Utxo } from 'spell-forge-bsv';
 import { apiFetch, type ApiFetchOptions } from './apiAuth';
+import { readErrorMessage } from './errorMessage';
 import { fetchUtxosFromWhatsOnChain } from './whatsonchain';
 import { pendingSpendsRepo } from '../data/repositories';
 
 /** Where coins are listed and a transaction broadcast: the backend's /api routes, or WhatsOnChain itself when the backend cannot be reached (docs/protocol.md §21). */
 export type ChainVia = 'backend' | 'whatsonchain';
-
-export async function readErrorMessage(response: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: unknown };
-    return typeof body.error === 'string' ? body.error : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 async function listUtxosThroughBackend(address: string, apiOptions: ApiFetchOptions): Promise<Utxo[]> {
   const utxosResponse = await apiFetch(`/utxos/${address}`, undefined, apiOptions);

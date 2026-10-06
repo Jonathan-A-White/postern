@@ -7,7 +7,7 @@
 import { Utils } from '@bsv/sdk';
 import { ApiTimeoutError, RefusedError, apiFetch, withTimeout } from './apiAuth';
 import { encryptAttachment } from './messages';
-import { readErrorMessage } from './send';
+import { readErrorMessage } from './errorMessage';
 import type { Attachment } from './threads';
 
 /** 8 MB (docs/protocol.md §8's cap; the epic's "8 MB", not "MiB" — the cap this

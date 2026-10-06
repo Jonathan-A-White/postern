@@ -11,7 +11,9 @@
 // stored view (src/services/events.ts); once they flow, the stream's `view` event
 // is only the recovery path, for when no events batch follows it. The line never says live over a dead
 // link: a stream with no ping for STREAM_STALE_MS is read as dropped, and a send the backend does not
-// answer (deliver's onUnreachable) drops it to reconnecting at once. The events found
+// answer (deliver's onUnreachable) drops it to reconnecting at once. A backend that did not answer /api/me
+// when the app opened is asked again on every turn of the loop until it does, so the stream and the
+// direct road come back by themselves (mw-gq6.276). The events found
 // on the chain while the backend is out of reach go through the same projector (a
 // batch seen on both roads applies once, by seq); a gap on that road is tolerated
 // until the backend returns and the view is fetched.
@@ -306,19 +308,30 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
   const session = current;
   setState({ status: 'connecting', error: undefined });
-  let me: Me;
-  try {
-    me = await fetchMe({ key });
-  } catch (err) {
-    if (err instanceof NoLicenceError) {
-      setState({ status: 'unlicensed', me: null, error: err.message });
-      return;
+  let me: Me = LEGACY;
+  // Whether the backend has said who is who (§15) this session. Until it has, the phone knows no
+  // stream and no direct road, so every turn of the loop asks again: a backend that did not answer
+  // when the app opened is found the moment it does, not at the next restart (mw-gq6.276).
+  let known = false;
+  /** Asks /api/me; false when the key holds no licence or live was stopped, and the loop must stop. */
+  const learnMe = async (): Promise<boolean> => {
+    try {
+      me = await fetchMe({ key });
+      known = true;
+    } catch (err) {
+      if (signal.aborted) return false;
+      if (err instanceof NoLicenceError) {
+        setState({ status: 'unlicensed', me: null, error: err.message });
+        return false;
+      }
+      setState({ status: 'offline', error: err instanceof Error ? err.message : String(err) });
     }
-    me = LEGACY;
-    setState({ status: 'offline', error: err instanceof Error ? err.message : String(err) });
-  }
-  const keys = await reconcileMayorKey(me.mayor);
-  setState({ me, mayorKey: keys.pinned, offeredMayorKey: keys.offered });
+    if (signal.aborted) return false;
+    const keys = await reconcileMayorKey(me.mayor);
+    setState({ me, mayorKey: keys.pinned, offeredMayorKey: keys.offered });
+    return true;
+  };
+  if (!(await learnMe())) return;
   await syncAll(key, { messages: true, view: true });
 
   let backoff = 1000;
@@ -330,6 +343,7 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
     const interrupt = new AbortController();
     if (session) session.interrupt = interrupt;
     const wake = AbortSignal.any([signal, interrupt.signal]);
+    if (!known && !(await learnMe())) return;
     if (me.features.includes('events')) {
       try {
         await listen(key, wake);
@@ -353,7 +367,9 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
       if (!signal.aborted) recoverySyncFailed = !(await syncAll(key, { messages: true, view: true }));
     } else {
       setState({ status: state.error ? 'offline' : 'polling' });
-      await sleep(POLL_MS, wake);
+      // Not yet told who is who: ask again soon, backing off as a dropped stream does.
+      await sleep(known ? POLL_MS : backoff, wake);
+      if (!known) backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
       if (!signal.aborted && (typeof document === 'undefined' || !document.hidden)) {
         await syncAll(key, { messages: true, view: true });
         if (!state.error && state.status === 'offline') setState({ status: 'polling' });

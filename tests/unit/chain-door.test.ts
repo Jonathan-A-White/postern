@@ -86,3 +86,26 @@ describe('the lint rule on the chain modules', () => {
     expect(await messagesFor('src/chain.ts', snippet.replace('./whatsonchain', './services/whatsonchain'))).toHaveLength(0);
   });
 });
+
+describe('the lint rule on the screens', () => {
+  const eslint = new ESLint();
+  const messagesFor = async (filePath: string, code: string) => {
+    const [result] = await eslint.lintText(code, { filePath });
+    return result.messages.filter((message) => message.ruleId === 'no-restricted-imports');
+  };
+
+  it('refuses a chain module from src/key/KeyVault.tsx, and from any other file under src outside the chain files', async () => {
+    const snippet = "import { mintMyLicence } from '../services/mint';\nexport const f = mintMyLicence;\n";
+    expect(await messagesFor('src/key/KeyVault.tsx', snippet)).toHaveLength(1);
+    expect(await messagesFor('src/cockpit/BeadScreen.tsx', "import { verifyStamp } from '../services/stamp';\nexport const f = verifyStamp;\n")).toHaveLength(1);
+    expect(await messagesFor('src/model/talkLine.ts', snippet)).toHaveLength(1);
+  });
+
+  it('does not mistake the cockpit send module for the chain one, and lets the chain-only components through', async () => {
+    expect(await messagesFor('src/cockpit/MapScreen.tsx', "import { sendAction } from './send';\nexport const f = sendAction;\n")).toHaveLength(0);
+    const snippet = "import { mintCostSatoshis } from '../services/mint';\nexport const f = mintCostSatoshis;\n";
+    for (const file of ['src/key/IssueLicences.tsx', 'src/licence/LicenceExplainer.tsx', 'src/cockpit/StampSection.tsx']) {
+      expect(await messagesFor(file, snippet)).toHaveLength(0);
+    }
+  });
+});

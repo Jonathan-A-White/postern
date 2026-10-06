@@ -571,6 +571,13 @@ record with no `to`/`class` (a License mint/transfer record, for instance) or a
 `to` no device has subscribed for is silently skipped. A push endpoint that
 answers `410 Gone` has its subscription dropped from the store.
 
+One notification per message: the Mayor's post reaches the backend twice, direct and, a little later,
+on chain under its own transaction id, and the phone keeps only the direct row. The sender remembers
+the twin key of each record it pushed (`to`, `from`, `ts` and a hash of `ct`, what the app's
+`sameMessage` compares) for 24 hours, at most 4096 keys in memory, and skips a later record with the
+same key, whichever copy came first. A push that reached no device is not remembered. A record with
+no `ct` is never a twin.
+
 A `message` record that names its channel in the clear (`docs/protocol.md` §1: an optional `bead`
 id, or an optional `channel` name; a bead outranks a name, each cut to 80 runes) is pushed with the
 title `Message on <bead id>` or `Message in <name>`, direct or chain alike; with neither, it has no

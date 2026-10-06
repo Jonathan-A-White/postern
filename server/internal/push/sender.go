@@ -20,13 +20,14 @@ type Sender struct {
 	subscriber string
 	store      *Store
 	httpClient webpush.HTTPClient
+	twins      *twinMemory
 }
 
 // NewSender builds a Sender that signs pushes with keys, identifies this
 // backend to push services as subscriber (an https URL or email address, per
 // VAPID), and looks up (and prunes) subscriptions in store.
 func NewSender(keys VAPIDKeys, subscriber string, store *Store) *Sender {
-	return &Sender{keys: keys, subscriber: subscriber, store: store}
+	return &Sender{keys: keys, subscriber: subscriber, store: store, twins: newTwinMemory(twinMemoryTTL, twinMemoryCap)}
 }
 
 // WithHTTPClient overrides the HTTP client used to reach a push endpoint.
@@ -43,6 +44,8 @@ type addressedPayload struct {
 	To      string `json:"to"`
 	Class   string `json:"class"`
 	Ts      int64  `json:"ts"`
+	From    string `json:"from"`
+	Ct      string `json:"ct"`
 	Summary string `json:"summary"`
 	// Role is a call record's clear role (docs/protocol.md §21): only a "ring" is pushed.
 	Role string `json:"role"`
@@ -137,13 +140,26 @@ func (s *Sender) NotifyRecord(txid string, payload json.RawMessage) error {
 		return fmt.Errorf("marshaling push payload: %w", err)
 	}
 
+	sent := 0
+	// One notification per message: its other copy (direct or chain) may already have been pushed.
+	if key := twinKey(addressed); key != "" {
+		if !s.twins.claim(key) {
+			log.Printf("push for record %s: skipped, its twin was already pushed", txid)
+			return nil
+		}
+		defer func() {
+			if sent == 0 {
+				s.twins.release(key)
+			}
+		}()
+	}
+
 	ttl := defaultTTL
 	if addressed.Class == eventsClass {
 		ttl = emergencyTTL // parseAddressed lets an events record through only in the emergency lane
 	}
 
 	var errs []error
-	sent := 0
 	for _, sub := range subs {
 		ok, err := s.deliver(sub, body, ttl)
 		if err != nil {

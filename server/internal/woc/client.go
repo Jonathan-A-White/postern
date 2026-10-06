@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Jonathan-A-White/postern/server/internal/chain"
 )
 
 // DefaultTestnetBase is WhatsOnChain's testnet API base URL.
@@ -29,39 +31,23 @@ const (
 
 // APIError is a non-2xx response from WhatsOnChain, surfaced to callers
 // instead of being retried further (except 429, which Client retries
-// itself before giving up).
-type APIError struct {
-	Status int
-	Body   string
-}
+// itself before giving up). It is chain.ProviderError, which the handlers
+// map to 502.
+type APIError = chain.ProviderError
 
-func (e *APIError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("WhatsOnChain said %d", e.Status)
-	}
-	return fmt.Sprintf("WhatsOnChain said %d: %s", e.Status, e.Body)
-}
+// HistoryEntry, Utxo and Balance are the chain package's types, which Client
+// returns.
+type (
+	HistoryEntry = chain.HistoryEntry
+	Utxo         = chain.Utxo
+	Balance      = chain.Balance
+)
 
-// HistoryEntry is one entry of an address's transaction history. Height is
-// 0 for an unconfirmed (mempool) transaction.
-type HistoryEntry struct {
-	TxHash string
-	Height int
-}
+// Client implements chain.Chain.
+var _ chain.Chain = (*Client)(nil)
 
-// Utxo is one unspent output of an address.
-type Utxo struct {
-	TxHash string
-	TxPos  int
-	Value  int64
-	Height int
-}
-
-// Balance is an address's confirmed and unconfirmed balance, in satoshis.
-type Balance struct {
-	Confirmed   int64 `json:"confirmed"`
-	Unconfirmed int64 `json:"unconfirmed"`
-}
+// providerName is how a *chain.ProviderError from Client names its source.
+const providerName = "WhatsOnChain"
 
 // Client talks to WhatsOnChain, pacing requests under its rate limit and
 // retrying a 429 with exponential backoff. Its HTTP client, sleep function,
@@ -173,7 +159,7 @@ func (c *Client) GetHistory(address string) ([]HistoryEntry, error) {
 		}
 		page, err := c.getHistoryPage(path)
 		if err != nil {
-			var apiErr *APIError
+			var apiErr *chain.ProviderError
 			if len(pages) > 0 || !errors.As(err, &apiErr) || apiErr.Status != http.StatusNotFound {
 				return nil, err
 			}
@@ -236,7 +222,7 @@ func (c *Client) GetTransactionHex(txid string) (string, error) {
 }
 
 // Broadcast forwards a raw transaction (as hex) to WhatsOnChain and returns
-// its txid, or an *APIError if the provider rejected it.
+// its txid, or a *chain.ProviderError if the provider rejected it.
 func (c *Client) Broadcast(rawTxHex string) (string, error) {
 	reqBody, err := json.Marshal(struct {
 		TxHex string `json:"txhex"`
@@ -335,7 +321,7 @@ func (c *Client) do(method, path string, body []byte) ([]byte, error) {
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
-			lastErr = &APIError{Status: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
+			lastErr = &chain.ProviderError{Provider: providerName, Status: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
 			if attempt == c.maxAttempts {
 				return nil, lastErr
 			}
@@ -345,7 +331,7 @@ func (c *Client) do(method, path string, body []byte) ([]byte, error) {
 		}
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, &APIError{Status: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
+			return nil, &chain.ProviderError{Provider: providerName, Status: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
 		}
 
 		return respBody, nil

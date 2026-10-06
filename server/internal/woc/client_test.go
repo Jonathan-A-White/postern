@@ -123,7 +123,7 @@ func TestGetHistoryListsATransactionOnceWhenItShowsInTwoReplies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetHistory: %v", err)
 	}
-	want := []HistoryEntry{{"a", 1}, {"b", 2}, {"c", 3}, {"d", 0}}
+	want := []HistoryEntry{{TxHash: "a", Height: 1}, {TxHash: "b", Height: 2}, {TxHash: "c", Height: 3}, {TxHash: "d", Height: 0}}
 	if fmt.Sprint(history) != fmt.Sprint(want) {
 		t.Fatalf("history = %+v, want %+v", history, want)
 	}
@@ -211,7 +211,7 @@ func TestGetHistoryStillReturnsTheUnconfirmedOnesWhenConfirmedAnswers404(t *test
 	if err != nil {
 		t.Fatalf("GetHistory: %v", err)
 	}
-	want := []HistoryEntry{{"tx1", 0}, {"tx2", 0}}
+	want := []HistoryEntry{{TxHash: "tx1", Height: 0}, {TxHash: "tx2", Height: 0}}
 	if fmt.Sprint(history) != fmt.Sprint(want) {
 		t.Fatalf("history = %+v, want %+v", history, want)
 	}

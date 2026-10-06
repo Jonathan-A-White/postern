@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/chain"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
-	"github.com/Jonathan-A-White/postern/server/internal/woc"
 )
 
 // DefaultInterval is how often Run polls the anchor address.
@@ -19,7 +19,7 @@ const DefaultInterval = 5 * time.Second
 // Poller polls one anchor address via client and stores what it finds in
 // store.
 type Poller struct {
-	client   *woc.Client
+	client   chain.Reader
 	store    *index.Store
 	anchor   string
 	interval time.Duration
@@ -37,7 +37,7 @@ func WithNotifier(n notify.Notifier) Option {
 }
 
 // New builds a Poller for anchor, using DefaultInterval between passes.
-func New(client *woc.Client, store *index.Store, anchor string, opts ...Option) *Poller {
+func New(client chain.Reader, store *index.Store, anchor string, opts ...Option) *Poller {
 	p := &Poller{client: client, store: store, anchor: anchor, interval: DefaultInterval}
 	for _, opt := range opts {
 		opt(p)

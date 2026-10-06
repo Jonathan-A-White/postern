@@ -13,6 +13,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/beads"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
+	"github.com/Jonathan-A-White/postern/server/internal/chain"
 	"github.com/Jonathan-A-White/postern/server/internal/config"
 	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/hook"
@@ -79,6 +80,13 @@ type app struct {
 	close   func()
 }
 
+// newChain builds the chain the backend reads and broadcasts through. This is
+// where another chain goes: return its chain.Chain here, and nothing else in
+// the backend changes. Today it is WhatsOnChain (internal/woc).
+func newChain(cfg config.Config) chain.Chain {
+	return woc.NewClient(cfg.WocBase)
+}
+
 // newApp opens the stores and wires every part of the backend together:
 // one notify.Fanout (web push, the event hub, the on-message hook, the
 // on-grist hook) that both the poller and direct delivery tell about each
@@ -90,7 +98,7 @@ func newApp(cfg config.Config) (*app, error) {
 		return nil, fmt.Errorf("opening index: %w", err)
 	}
 
-	client := woc.NewClient(cfg.WocBase)
+	client := newChain(cfg)
 
 	vapidKeys, err := push.LoadOrGenerateVAPIDKeys(cfg.DataDir, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey)
 	if err != nil {

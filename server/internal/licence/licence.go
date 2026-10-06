@@ -27,8 +27,8 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/Jonathan-A-White/postern/server/internal/chain"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
-	"github.com/Jonathan-A-White/postern/server/internal/woc"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"golang.org/x/crypto/ripemd160" //nolint:staticcheck // Bitcoin/BSV addresses are defined in terms of RIPEMD-160.
 )
@@ -44,12 +44,9 @@ var DefaultCollections = []string{"postern", "spellforge-leaderboard-testnet"}
 const testnetAddressVersion = 0x6f
 
 // Reader is the chain access Held needs: an address's transaction history
-// (oldest first, height 0 for unconfirmed) and a transaction's raw hex.
-// *woc.Client satisfies this; tests supply a fake.
-type Reader interface {
-	GetHistory(address string) ([]woc.HistoryEntry, error)
-	GetTransactionHex(txid string) (string, error)
-}
+// (oldest first, height 0 for unconfirmed) and a transaction's raw hex. Any
+// chain.Chain satisfies it; tests supply a fake.
+type Reader = chain.Reader
 
 // Rule is what makes a mint count.
 type Rule struct {

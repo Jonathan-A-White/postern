@@ -19,6 +19,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/beads"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/buildinfo"
+	"github.com/Jonathan-A-White/postern/server/internal/chain"
 	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
@@ -27,7 +28,6 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
 	"github.com/Jonathan-A-White/postern/server/internal/view"
-	"github.com/Jonathan-A-White/postern/server/internal/woc"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
@@ -155,7 +155,7 @@ func WithView(v *view.File) Option {
 // signed, licensed proof (requireLicence), checked against nonces and
 // checker, and admits only the kinds of key it names (docs/protocol.md
 // §19). opts configure the v2 endpoints (docs/protocol.md §9–15, §19).
-func NewHandler(store *index.Store, client *woc.Client, vapidPublicKey string, pushStore *push.Store, blobStore *blobs.Store, nonces *auth.NonceStore, checker auth.LicenceChecker, opts ...Option) http.Handler {
+func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, pushStore *push.Store, blobStore *blobs.Store, nonces *auth.NonceStore, checker auth.LicenceChecker, opts ...Option) http.Handler {
 	o := options{network: "testnet", ping: DefaultPingInterval}
 	for _, opt := range opts {
 		opt(&o)
@@ -426,7 +426,7 @@ func ownRecords(records []index.Record, key string) []index.Record {
 	return own
 }
 
-func handleBroadcast(client *woc.Client) http.HandlerFunc {
+func handleBroadcast(client chain.Chain) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			RawTx string `json:"rawtx"`
@@ -452,7 +452,7 @@ func handleBroadcast(client *woc.Client) http.HandlerFunc {
 	}
 }
 
-func handleUtxos(client *woc.Client) http.HandlerFunc {
+func handleUtxos(client chain.Chain) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		address := r.PathValue("address")
 		utxos, err := client.GetUtxos(address)
@@ -478,7 +478,7 @@ func handleUtxos(client *woc.Client) http.HandlerFunc {
 	}
 }
 
-func handleBalance(client *woc.Client) http.HandlerFunc {
+func handleBalance(client chain.Chain) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		address := r.PathValue("address")
 		balance, err := client.GetBalance(address)
@@ -639,13 +639,13 @@ func sentGristTo(records *index.Store, sender, millKey string) bool {
 	})
 }
 
-// writeProviderError maps a woc.Client error to an HTTP response: a
-// *woc.APIError becomes a 502 naming the provider's own status and body, and
+// writeProviderError maps a chain.Chain error to an HTTP response: a
+// *chain.ProviderError becomes a 502 naming the provider's own status and body, and
 // anything else (a network failure, an unreachable provider) becomes a
 // generic 502 too — from this backend's caller's perspective both are just
 // "the provider proxy failed."
 func writeProviderError(w http.ResponseWriter, err error) {
-	var apiErr *woc.APIError
+	var apiErr *chain.ProviderError
 	if errors.As(err, &apiErr) {
 		writeError(w, http.StatusBadGateway, apiErr.Error())
 		return

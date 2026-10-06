@@ -5,7 +5,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon, SectionTitle, Spinner, cx } from '../ui';
 import type { BeadComment } from '../model/view';
-import { explorerUrl, parseStampComments, verifyStamp, wocStampChain, type StampResult } from '../services/stamp';
+import { chain } from '../chain';
+import { parseStampComments, type StampResult } from '../services/stamp';
 import { useUnlockedKey } from './hooks';
 
 function blockTimeText(result: StampResult | undefined): string {
@@ -20,7 +21,7 @@ function StampRow({ txid, commit, rig }: { txid: string; commit: string; rig: st
   useEffect(() => {
     if (!rig) return;
     let cancelled = false;
-    verifyStamp({ txid, rig, commit }, wocStampChain(), key).then((checked) => {
+    chain.verifyStamp({ txid, rig, commit }, key).then((checked) => {
       if (!cancelled) setResult(checked);
     });
     return () => {
@@ -35,7 +36,7 @@ function StampRow({ txid, commit, rig }: { txid: string; commit: string; rig: st
         <span className="font-mono text-[13px]" title={txid}>
           {txid.slice(0, 8)}…{txid.slice(-6)}
         </span>
-        <a className="text-[13px] underline" href={explorerUrl(txid)} target="_blank" rel="noreferrer">
+        <a className="text-[13px] underline" href={chain.explorerUrl(txid)} target="_blank" rel="noreferrer">
           View on chain
         </a>
       </div>

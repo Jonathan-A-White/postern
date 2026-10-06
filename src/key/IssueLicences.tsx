@@ -4,16 +4,7 @@
 // app key's /api/me names no collections, and then this renders nothing.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchMe, type MeCollection } from '../services/me';
-import {
-  fetchIssuerBalance,
-  issueCost,
-  issueLicence,
-  issuedLicences,
-  revokeLicence,
-  type IssuedLicence,
-  type IssuedLicenceEntry,
-} from '../services/issue';
-import { addressForPublicKey } from '../services/licence';
+import { chain, type IssuedLicence, type IssuedLicenceEntry } from '../chain';
 import { publicKeyHexFromMasterKey } from '../services/vault';
 import { issuedTimes, rememberIssuedAt } from './issuedDates';
 import { hasBarcodeDetector } from './barcode';
@@ -55,10 +46,10 @@ const loadCollections = (key: Uint8Array): Promise<Collections> =>
     (): Collections => ({ name: 'error' }),
   );
 
-const loadBalance = (key: Uint8Array): Promise<number | null> => fetchIssuerBalance({ issuerKey: key }).catch(() => null);
+const loadBalance = (key: Uint8Array): Promise<number | null> => chain.issuerBalance({ issuerKey: key }).catch(() => null);
 
 const loadListing = (issuerPublicKeyHex: string): Promise<Listing> =>
-  issuedLicences({ issuerPublicKeyHex }).then(
+  chain.issuedLicences({ issuerPublicKeyHex }).then(
     (entries): Listing => ({ name: 'loaded', entries }),
     (error): Listing => ({ name: 'error', message: errorText(error) }),
   );
@@ -185,11 +176,11 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   }
   if (!enabled) return null;
 
-  const cost = issueCost();
+  const cost = chain.issueCost();
   const collection = collections.some((c) => c.name === chosen) ? chosen : collections[0].name;
 
   const short = typeof balance === 'number' && balance < cost.totalSatoshis;
-  const fundingAddress = addressForPublicKey(issuerPublicKeyHex);
+  const fundingAddress = chain.addressFor(issuerPublicKeyHex);
 
   async function handleCopyAddress() {
     try {
@@ -207,7 +198,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
     issueInFlight.current = true;
     setOutcome({ name: 'issuing' });
     try {
-      const issued = await issueLicence({ issuerKey, holderPublicKeyHex: holder, collection });
+      const issued = await chain.issueLicence({ issuerKey, holderPublicKeyHex: holder, collection });
       await rememberIssuedAt(issued.txid);
       setJustIssued((previous) => [...previous, issued]);
       setOutcome({ name: 'issued', txid: issued.txid });
@@ -225,7 +216,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
     setRevoking(origin);
     setRevokeError(null);
     try {
-      await revokeLicence({ issuerKey, origin });
+      await chain.revokeLicence({ issuerKey, origin });
       setRevokedHere((previous) => [...previous, origin]);
       setConfirming(null);
       setRefreshToken((token) => token + 1);

@@ -14,12 +14,9 @@ import {
   wrapKey,
   unwrapKey,
 } from '../services/vault';
-import { fetchBalanceSatoshis, mintCostSatoshis, mintMyLicence } from '../services/mint';
-import { addressForPublicKey, checkLicence, getCachedLicenceStatus, type LicenceStatus } from '../services/licence';
+import { chain, type LicenceStatus } from '../chain';
 import { LEGACY_LICENCE_COLLECTION } from '../services/collections';
-import { LicenceExplainer } from '../licence';
 import { MyPublicKey } from './KeyQr';
-import { IssueLicences } from './IssueLicences';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
 
@@ -49,9 +46,9 @@ type LicenceState =
 // `void determineLicenceState(hex).then(setLicenceState)` so the setter is applied at the
 // call site (see the balance effect for the same pattern).
 async function determineLicenceState(publicKeyHex: string): Promise<LicenceState> {
-  let status: LicenceStatus | undefined = await getCachedLicenceStatus();
+  let status: LicenceStatus | undefined = await chain.cachedLicenceStatus();
   if (status?.held && status.collection === undefined) {
-    status = await checkLicence(publicKeyHex).catch(() => status);
+    status = await chain.checkLicence(publicKeyHex).catch(() => status);
   }
   if (!status?.held) return { name: 'not-licensed' };
   const txid = status.outpoint.txid;
@@ -178,7 +175,8 @@ export function KeyVault() {
   useEffect(() => {
     if (screen.name !== 'unlocked') return;
     const publicKeyHex = publicKeyHexFromMasterKey(screen.key);
-    fetchBalanceSatoshis(publicKeyHex)
+    chain
+      .balance(publicKeyHex)
       .then((satoshis) => setBalanceState({ name: 'loaded', satoshis }))
       .catch((err) => setBalanceState({ name: 'error', message: (err as Error).message }));
   }, [screen, balanceRefreshToken]);
@@ -196,7 +194,7 @@ export function KeyVault() {
   async function handleMint(key: Uint8Array) {
     setMintOutcome({ name: 'minting' });
     try {
-      const result = await mintMyLicence(key);
+      const result = await chain.mint(key);
       setMintOutcome({ name: 'success', txid: result.txid });
     } catch (err) {
       setMintOutcome({ name: 'error', message: (err as Error).message });
@@ -211,7 +209,7 @@ export function KeyVault() {
         className="inline-flex h-11 items-center justify-center rounded-xl bg-accent px-4 font-semibold text-accent-fg disabled:opacity-45"
         disabled={
           balanceState.name !== 'loaded' ||
-          balanceState.satoshis < mintCostSatoshis() ||
+          balanceState.satoshis < chain.mintCost() ||
           mintOutcome.name === 'minting'
         }
         onClick={() => void handleMint(key)}
@@ -444,12 +442,12 @@ export function KeyVault() {
           <p className="text-sm text-muted">
             Testnet address:{' '}
             <span data-testid="testnet-address" className="break-all font-mono">
-              {addressForPublicKey(publicKeyHexFromMasterKey(screen.key))}
+              {chain.addressFor(publicKeyHexFromMasterKey(screen.key))}
             </span>
           </p>
           <button
             className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong"
-            onClick={() => void handleCopyAddress(addressForPublicKey(publicKeyHexFromMasterKey(screen.key)))}
+            onClick={() => void handleCopyAddress(chain.addressFor(publicKeyHexFromMasterKey(screen.key)))}
           >
             {addressCopyStatus === 'copied' ? 'Copied' : 'Copy address'}
           </button>
@@ -461,12 +459,12 @@ export function KeyVault() {
           {balanceState.name === 'loaded' && (
             <>
               <p>Balance: {balanceState.satoshis} sats</p>
-              {licenceState.name !== 'licensed' && balanceState.satoshis < mintCostSatoshis() && (
+              {licenceState.name !== 'licensed' && balanceState.satoshis < chain.mintCost() && (
                 <p>
-                  Needs {mintCostSatoshis().toLocaleString('en-US')} testnet sats; this key holds{' '}
+                  Needs {chain.mintCost().toLocaleString('en-US')} testnet sats; this key holds{' '}
                   {balanceState.satoshis}. Send testnet sats to{' '}
                   <span className="break-all font-mono">
-                    {addressForPublicKey(publicKeyHexFromMasterKey(screen.key))}
+                    {chain.addressFor(publicKeyHexFromMasterKey(screen.key))}
                   </span>
                   .
                 </p>
@@ -505,7 +503,7 @@ export function KeyVault() {
           ) : (
             <>
               {renderMintButton('Mint my licence (testnet)', screen.key)}
-              <LicenceExplainer />
+              {chain.screens.LicenceExplainer && <chain.screens.LicenceExplainer />}
             </>
           )}
 
@@ -520,7 +518,7 @@ export function KeyVault() {
 
           {mintOutcome.name === 'error' && <p>{mintOutcome.message}</p>}
 
-          <IssueLicences issuerKey={screen.key} />
+          {chain.screens.IssueLicences && <chain.screens.IssueLicences issuerKey={screen.key} />}
         </div>
       )}
     </main>

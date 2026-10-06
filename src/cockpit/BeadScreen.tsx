@@ -21,7 +21,7 @@ import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
 import { VerifiedButton } from './VerifiedButton';
-import { StampSection } from './StampSection';
+import { chain as chainDoor } from '../chain';
 import { howToCheckItemId } from '../model/verified';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, epicStats, isEpic, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
@@ -236,7 +236,9 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
 
       <PathGrid path={detail?.path ?? bead?.path} attempts={detail?.attempts ?? bead?.attempts ?? 0} />
 
-      <StampSection rig={(detail?.path ?? bead?.path)?.rig ?? ''} comments={detail?.comments ?? []} />
+      {chainDoor.screens.StampSection && (
+        <chainDoor.screens.StampSection rig={(detail?.path ?? bead?.path)?.rig ?? ''} comments={detail?.comments ?? []} />
+      )}
 
       <section className="flex flex-col gap-2" aria-label="Description">
         <SectionTitle

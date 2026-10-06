@@ -2,10 +2,10 @@
 // rendered on both the gate's no-licence state (src/gate/Gate.tsx) and the key screen's
 // mint block (src/key/KeyVault.tsx), so a person who installs the PWA cold is not asked
 // to mint a licence without knowing what that means (mw-1589l.26).
-import { mintCostSatoshis } from '../services/mint';
+import { chain } from '../chain';
 
 export function LicenceExplainer() {
-  const cost = mintCostSatoshis().toLocaleString('en-US');
+  const cost = chain.mintCost().toLocaleString('en-US');
 
   return (
     <details className="max-w-sm text-left text-sm text-muted">

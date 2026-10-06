@@ -33,7 +33,35 @@ function dayLabel(at: number): string {
   return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
+/** How far outside the scroll box (or the screen) a file may be and still load: about a screen ahead. */
+const LOAD_AHEAD = '600px 0px';
+
+/** Whether `ref`'s element has come near the viewport (its scroll box, or the screen), and stays so once it has.
+ * Where the browser has no IntersectionObserver every file counts as near and loads at once. */
+function useNearViewport(): [React.RefObject<HTMLDivElement | null>, boolean] {
+  const ref = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    const el = ref.current;
+    if (near || !el) return;
+    const observer = new IntersectionObserver((entries) => entries.some((entry) => entry.isIntersecting) && setNear(true), { root: scrollBoxOf(el), rootMargin: LOAD_AHEAD });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [near]);
+  return [ref, near];
+}
+
+/** One file: loaded only once it nears the viewport (mw-gq6.284), a placeholder until then. */
 function AttachmentView({ attachment, direction }: { attachment: Attachment; direction: 'sent' | 'received' }) {
+  const [ref, near] = useNearViewport();
+  return (
+    <div ref={ref}>
+      <AttachmentBody attachment={attachment} direction={direction} near={near} />
+    </div>
+  );
+}
+
+function AttachmentBody({ attachment, direction, near }: { attachment: Attachment; direction: 'sent' | 'received'; near: boolean }) {
   const key = useUnlockedKey();
   const [url, setUrl] = useState<string>();
   const [error, setError] = useState<string>();
@@ -47,7 +75,7 @@ function AttachmentView({ attachment, direction }: { attachment: Attachment; dir
   const seenReconnects = useRef(reconnects);
 
   useEffect(() => {
-    if (!key || !inline) return;
+    if (!key || !inline || !near) return;
     let cancelled = false;
     openAttachment(attachment, { key, direction })
       .then((opened) => {
@@ -63,7 +91,7 @@ function AttachmentView({ attachment, direction }: { attachment: Attachment; dir
     return () => {
       cancelled = true;
     };
-  }, [attachment, direction, key, inline, attempt]);
+  }, [attachment, direction, key, inline, near, attempt]);
 
   function retry(automatic: boolean) {
     if (automatic) {

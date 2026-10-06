@@ -13,12 +13,10 @@ import {
   outpointKey,
   selectFeeUtxos,
 } from 'spell-forge-bsv';
-import { broadcastThroughBackend, loadSpendableUtxos, readErrorMessage, type ChainVia } from './spendable';
+import { broadcastThroughBackend, loadSpendableUtxos, type ChainVia } from './spendable';
 import { broadcastThroughWhatsOnChain } from './whatsonchain';
 import { ANCHOR_ADDRESS, encryptMessage, type MessageClass } from './messages';
 import { pendingSpendsRepo } from '../data/repositories';
-
-export { readErrorMessage };
 
 const ANCHOR_OUTPUT_SATOSHIS = 1;
 

@@ -95,7 +95,8 @@ Callers, which use the interfaces and need no change: the coin routes in
 - [src/chain.ts](../src/chain.ts): the door.
 - [src/services/send.ts](../src/services/send.ts), [spendable.ts](../src/services/spendable.ts),
   [chainRead.ts](../src/services/chainRead.ts), [whatsonchain.ts](../src/services/whatsonchain.ts),
-  [confirmedHistory.ts](../src/services/confirmedHistory.ts), [stamp.ts](../src/services/stamp.ts),
+  [confirmedHistory.ts](../src/services/confirmedHistory.ts), [chainPacer.ts](../src/services/chainPacer.ts),
+  [sharedChainReads.ts](../src/services/sharedChainReads.ts) (what the Key screen asks: [key-screen-reads.md](key-screen-reads.md)), [stamp.ts](../src/services/stamp.ts),
   [licence.ts](../src/services/licence.ts), [mint.ts](../src/services/mint.ts),
   [issue.ts](../src/services/issue.ts): the BSV implementation.
 - [src/data/repositories/pending-spends-repo.ts](../src/data/repositories/pending-spends-repo.ts): the coins already spent but not yet seen by the provider.

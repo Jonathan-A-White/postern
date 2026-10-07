@@ -58,6 +58,7 @@ implementation in and returns the one it replaced (tests use it).
 | `addressFor` | The address a licence locked to a public key shows, and is funded at. |
 | `checkLicence` | Looks for a key's licence; throws when the chain cannot be reached. |
 | `cachedLicenceStatus` | The status the last check left, or `undefined`. |
+| `mintPending` | The mint this phone broadcast that the chain has not shown yet (`{ txid, broadcastAt }`), or `undefined`. |
 | `balance` | A key's balance in satoshis; throws when the chain cannot be reached. |
 | `mintCost` | What a balance must reach before a licence can be minted. |
 | `mint` | Mints the key's own licence; throws a readable error and sends nothing when it cannot. |
@@ -168,7 +169,7 @@ is a cockpit key.
 | `read` | Throws; the live state then never shows "live from the chain". |
 | `pollMs`, `nextDelay` | Any numbers; with `read` throwing, the wait only grows. |
 | `checkLicence`, `balance`, `mint`, `issue*`, `revokeLicence`, `issuerBalance` | Throw, or answer "not held" and zero. |
-| `cachedLicenceStatus` | `undefined`. |
+| `cachedLicenceStatus`, `mintPending` | `undefined`. |
 | `verifyStamp` | A result that says the stamp could not be checked. |
 | `screens` | `{}`. |
 

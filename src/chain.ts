@@ -21,7 +21,14 @@ import {
   type IssuedLicenceEntry,
   type RevokeLicenceParams,
 } from './services/issue';
-import { addressForPublicKey, checkLicence, getCachedLicenceStatus, type LicenceStatus } from './services/licence';
+import {
+  addressForPublicKey,
+  checkLicence,
+  getCachedLicenceStatus,
+  getMintPending,
+  type LicenceStatus,
+  type MintPending,
+} from './services/licence';
 import { fetchBalanceSatoshis, mintCostSatoshis, mintMyLicence, type MintResult } from './services/mint';
 import { sendTextMessage, type SendMessageParams } from './services/send';
 import type { ChainVia } from './services/spendable';
@@ -39,6 +46,7 @@ export type {
   IssuedLicence,
   IssuedLicenceEntry,
   LicenceStatus,
+  MintPending,
   MintResult,
   ReadChainParams,
   RevokeLicenceParams,
@@ -80,6 +88,8 @@ export interface Chain {
   checkLicence(publicKeyHex: string): Promise<LicenceStatus>;
   /** The licence status the last check left, or undefined when none has been made. */
   cachedLicenceStatus(): Promise<LicenceStatus | undefined>;
+  /** The mint this phone broadcast whose licence the chain has not shown yet, or undefined. */
+  mintPending(): Promise<MintPending | undefined>;
   /** This key's balance in satoshis; throws when the chain cannot be reached. */
   balance(publicKeyHex: string): Promise<number>;
   /** What a balance must reach before a licence can be minted, in satoshis. */
@@ -116,6 +126,7 @@ const bsv: Chain = {
   addressFor: (publicKeyHex) => addressForPublicKey(publicKeyHex),
   checkLicence: (publicKeyHex) => checkLicence(publicKeyHex),
   cachedLicenceStatus: () => getCachedLicenceStatus(),
+  mintPending: () => getMintPending(),
   balance: (publicKeyHex) => fetchBalanceSatoshis(publicKeyHex),
   mintCost: () => mintCostSatoshis(),
   mint: (key) => mintMyLicence(key),

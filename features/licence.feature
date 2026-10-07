@@ -23,7 +23,7 @@ Feature: Minting a licence
     And the provider will fail to broadcast
     When "Mint my licence (testnet)" is chosen
     Then the provider's error is shown in words
-    And nothing is cached
+    And no licence and no pending mint are cached
 
   Scenario: AC-5: an unfunded key names the sats it needs to mint
     Given the key screen is opened
@@ -83,3 +83,21 @@ Feature: Minting a licence
     Given a key already holds a licence in postern
     When the key screen is opened and unlocked
     Then the screen says "Licensed" with no mint button of either kind
+
+  Scenario: mw-7ijx65 AC1: a mint still waiting for the chain shows its txid and no mint button
+    Given a key has sent a mint the chain has not shown yet
+    When the key screen is opened and unlocked
+    Then the screen says "Minted:" with that txid and ", waiting for the chain"
+    And no mint button of either kind is offered
+
+  Scenario: mw-7ijx65 AC2: a licence check that cannot reach WhatsOnChain says so and offers no mint
+    Given a key whose licence check cannot reach WhatsOnChain
+    When the key screen is opened and unlocked
+    Then the screen says the licence could not be checked
+    And no mint button of either kind is offered
+    And "Check the licence again" is offered
+
+  Scenario: mw-7ijx65 AC3: a stale cache that says no licence does not hide a licence in the old collection
+    Given a key whose cached status says no licence but whose chain holds one in the old collection
+    When the key screen is opened and unlocked
+    Then the screen says "Licensed" and that the licence is in the old collection

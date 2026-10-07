@@ -15,7 +15,7 @@ import {
   unwrapKey,
 } from '../services/vault';
 import { chain, type LicenceStatus } from '../chain';
-import { LEGACY_LICENCE_COLLECTION } from '../services/collections';
+import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../services/collections';
 import { MyPublicKey } from './KeyQr';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
@@ -37,24 +37,42 @@ type LicenceState =
   | { name: 'checking' }
   | { name: 'not-licensed' }
   | { name: 'licensed'; txid: string }
-  | { name: 'licensed-legacy'; txid: string };
+  | { name: 'licensed-legacy'; txid: string }
+  | { name: 'mint-pending'; txid: string }
+  | { name: 'unreachable' };
 
-// Reads the cached licence-status settings row the gate's own checks keep up to date
-// (src/services/licence.ts), so opening the key screen only touches the chain for a held
-// row cached before the collection was recorded (mw-kiubh7.1): that one is checked afresh,
-// and if the chain cannot be reached it shows as plain licensed. Called as
+// What the licence block shows. A licence the cache holds in postern's own collection is taken
+// as it is; any other cache (not held, an old row with no collection, the old collection, or
+// nothing yet) is checked afresh before a mint is offered, because the cache is only as new as
+// the gate's last check (mw-7ijx65). A mint this phone broadcast that the chain has not shown
+// yet shows as waiting, never as a key without a licence. When the chain cannot be reached the
+// cached held row stands, and with none the screen says so and offers no mint. Called as
 // `void determineLicenceState(hex).then(setLicenceState)` so the setter is applied at the
 // call site (see the balance effect for the same pattern).
 async function determineLicenceState(publicKeyHex: string): Promise<LicenceState> {
-  let status: LicenceStatus | undefined = await chain.cachedLicenceStatus();
-  if (status?.held && status.collection === undefined) {
-    status = await chain.checkLicence(publicKeyHex).catch(() => status);
+  const cached: LicenceStatus | undefined = await chain.cachedLicenceStatus();
+  if (cached?.held && cached.collection === COCKPIT_COLLECTION) {
+    return { name: 'licensed', txid: cached.outpoint.txid };
   }
-  if (!status?.held) return { name: 'not-licensed' };
-  const txid = status.outpoint.txid;
-  return status.collection === LEGACY_LICENCE_COLLECTION
-    ? { name: 'licensed-legacy', txid }
-    : { name: 'licensed', txid };
+  let status: LicenceStatus | undefined = cached;
+  let reached = true;
+  try {
+    status = await chain.checkLicence(publicKeyHex);
+  } catch {
+    reached = false;
+  }
+  if (status?.held && status.collection === COCKPIT_COLLECTION) {
+    return { name: 'licensed', txid: status.outpoint.txid };
+  }
+  const pending = await chain.mintPending();
+  if (pending) return { name: 'mint-pending', txid: pending.txid };
+  if (status?.held) {
+    const txid = status.outpoint.txid;
+    return status.collection === LEGACY_LICENCE_COLLECTION
+      ? { name: 'licensed-legacy', txid }
+      : { name: 'licensed', txid };
+  }
+  return reached ? { name: 'not-licensed' } : { name: 'unreachable' };
 }
 
 type Screen =
@@ -160,6 +178,7 @@ export function KeyVault() {
   const [balanceRefreshToken, setBalanceRefreshToken] = useState(0);
   const [mintOutcome, setMintOutcome] = useState<MintOutcome>({ name: 'idle' });
   const [licenceState, setLicenceState] = useState<LicenceState>({ name: 'checking' });
+  const [licenceRefreshToken, setLicenceRefreshToken] = useState(0);
 
   useEffect(() => {
     void vaultRepo.get().then((vault) => {
@@ -184,11 +203,17 @@ export function KeyVault() {
   useEffect(() => {
     if (screen.name !== 'unlocked') return;
     void determineLicenceState(publicKeyHexFromMasterKey(screen.key)).then(setLicenceState);
-  }, [screen]);
+  }, [screen, licenceRefreshToken]);
+
+  function handleCheckLicenceAgain() {
+    setLicenceState({ name: 'checking' });
+    setLicenceRefreshToken((token) => token + 1);
+  }
 
   function handleRefreshBalance() {
     setBalanceState({ name: 'loading' });
     setBalanceRefreshToken((token) => token + 1);
+    if (licenceState.name === 'unreachable') handleCheckLicenceAgain();
   }
 
   async function handleMint(key: Uint8Array) {
@@ -196,6 +221,7 @@ export function KeyVault() {
     try {
       const result = await chain.mint(key);
       setMintOutcome({ name: 'success', txid: result.txid });
+      setLicenceState({ name: 'mint-pending', txid: result.txid });
     } catch (err) {
       setMintOutcome({ name: 'error', message: (err as Error).message });
     }
@@ -459,7 +485,8 @@ export function KeyVault() {
           {balanceState.name === 'loaded' && (
             <>
               <p>Balance: {balanceState.satoshis} sats</p>
-              {licenceState.name !== 'licensed' && balanceState.satoshis < chain.mintCost() && (
+              {(licenceState.name === 'not-licensed' || licenceState.name === 'licensed-legacy') &&
+                balanceState.satoshis < chain.mintCost() && (
                 <p>
                   Needs {chain.mintCost().toLocaleString('en-US')} testnet sats; this key holds{' '}
                   {balanceState.satoshis}. Send testnet sats to{' '}
@@ -500,20 +527,33 @@ export function KeyVault() {
                 </>
               )}
             </>
+          ) : licenceState.name === 'mint-pending' ? (
+            <p>
+              Minted:{' '}
+              <a className="break-all font-mono underline" href={`${WHATSONCHAIN_TESTNET_TX_URL}${licenceState.txid}`}>
+                {licenceState.txid}
+              </a>
+              , waiting for the chain
+            </p>
+          ) : licenceState.name === 'unreachable' ? (
+            <>
+              <p role="alert">
+                Could not reach WhatsOnChain to check the licence, so no mint is offered until it can be checked.
+              </p>
+              <button
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong"
+                onClick={handleCheckLicenceAgain}
+              >
+                Check the licence again
+              </button>
+            </>
+          ) : licenceState.name === 'checking' ? (
+            <p>Checking the licence…</p>
           ) : (
             <>
               {renderMintButton('Mint my licence (testnet)', screen.key)}
               {chain.screens.LicenceExplainer && <chain.screens.LicenceExplainer />}
             </>
-          )}
-
-          {mintOutcome.name === 'success' && (
-            <p>
-              Minted:{' '}
-              <a className="break-all font-mono underline" href={`${WHATSONCHAIN_TESTNET_TX_URL}${mintOutcome.txid}`}>
-                {mintOutcome.txid}
-              </a>
-            </p>
           )}
 
           {mintOutcome.name === 'error' && <p>{mintOutcome.message}</p>}

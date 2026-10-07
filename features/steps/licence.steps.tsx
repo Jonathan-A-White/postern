@@ -17,7 +17,7 @@ import { chainConfig } from 'spell-forge-bsv';
 import { KeyVault } from '../../src/key';
 import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../../src/services/collections';
 import { db } from '../../src/data/db';
-import { addressForPublicKey, checkLicence, getCachedLicenceStatus } from '../../src/services/licence';
+import { addressForPublicKey, checkLicence, getCachedLicenceStatus, getMintPending } from '../../src/services/licence';
 import { mintCostSatoshis } from '../../src/services/mint';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { lock } from '../../src/services/keySession';
@@ -49,7 +49,26 @@ vi.mock('../../src/services/me', async (importOriginal) => ({
 const FUNDED_MNEMONIC = createMnemonic();
 const MINT_TXID = 'e'.repeat(64);
 
+// The licence check on the Key screen reads the confirmed history from WhatsOnChain
+// (confirmedHistory.ts), not the provider's own: this answers it from the fake provider's
+// state (an empty history, or a 503 while the fake is offline), as the history of `historyTxids`.
+let historyTxids: string[] = [];
+
+function stubWhatsOnChainHistory(): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (fakeProvider.offline) return new Response('{}', { status: 503 });
+      const isHistory = new URL(String(input)).pathname.endsWith('/confirmed/history');
+      const result = isHistory ? historyTxids.map((tx_hash) => ({ tx_hash, height: 1 })) : [];
+      return new Response(JSON.stringify({ result, nextPageToken: '', error: '' }), { status: 200 });
+    }),
+  );
+}
+
 async function freshScreen(): Promise<void> {
+  stubWhatsOnChainHistory();
+  historyTxids = [];
   cleanup();
   await db.vault.clear();
   await db.settings.clear();
@@ -101,7 +120,7 @@ describeFeature(feature, ({ Scenario }) => {
 
     Then('the "Mint my licence (testnet)" button is disabled', async () => {
       await screen.findByText(/Balance: \d+ sats/);
-      expect(screen.getByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
+      expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
     });
   });
 
@@ -176,8 +195,9 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await screen.findByText('WhatsOnChain said 500: node rejected the transaction')).toBeInTheDocument();
     });
 
-    And('nothing is cached', async () => {
-      expect(await getCachedLicenceStatus()).toBeUndefined();
+    And('no licence and no pending mint are cached', async () => {
+      expect((await getCachedLicenceStatus())?.held).not.toBe(true);
+      expect(await getMintPending()).toBeUndefined();
     });
   });
 
@@ -298,7 +318,7 @@ describeFeature(feature, ({ Scenario }) => {
 
       Then('the "Mint my licence (testnet)" button is disabled', async () => {
         await screen.findByText(/Balance: \d+ sats/);
-        expect(screen.getByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
+        expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
       });
     },
   );
@@ -424,6 +444,7 @@ describeFeature(feature, ({ Scenario }) => {
         const publicKeyHex = publicKeyHexFromMasterKey(key);
         const address = addressForPublicKey(publicKeyHex);
         fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+        historyTxids = [MINT_TXID];
         await checkLicence(publicKeyHex, fakeProvider);
       });
 
@@ -473,8 +494,92 @@ describeFeature(feature, ({ Scenario }) => {
       expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();
     });
   });
+
+  const openKeyScreen = async () => {
+    render(<KeyVault />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Restore from a phrase' }));
+    await userEvent.type(screen.getByLabelText('Recovery phrase'), FUNDED_MNEMONIC);
+    await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    await screen.findByText('Key unlocked');
+  };
+
+  Scenario(
+    'mw-7ijx65 AC1: a mint still waiting for the chain shows its txid and no mint button',
+    ({ Given, When, Then, And }) => {
+      Given('a key has sent a mint the chain has not shown yet', async () => {
+        await freshScreen();
+        const key = await deriveMasterKey(FUNDED_MNEMONIC);
+        await checkLicence(publicKeyHexFromMasterKey(key), fakeProvider);
+        await db.settings.put({
+          key: 'licence-mint-pending',
+          value: { txid: MINT_TXID, broadcastAt: new Date().toISOString() },
+        });
+      });
+
+      When('the key screen is opened and unlocked', openKeyScreen);
+
+      Then('the screen says "Minted:" with that txid and ", waiting for the chain"', async () => {
+        const line = await screen.findByText(
+          (_, el) => el?.tagName === 'P' && el.textContent === `Minted: ${MINT_TXID}, waiting for the chain`,
+        );
+        expect(line).toBeInTheDocument();
+      });
+
+      And('no mint button of either kind is offered', () => {
+        expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario(
+    'mw-7ijx65 AC2: a licence check that cannot reach WhatsOnChain says so and offers no mint',
+    ({ Given, When, Then, And }) => {
+      Given('a key whose licence check cannot reach WhatsOnChain', async () => {
+        await freshScreen();
+        fakeProvider.offline = true;
+      });
+
+      When('the key screen is opened and unlocked', openKeyScreen);
+
+      Then('the screen says the licence could not be checked', async () => {
+        expect(await screen.findByText(/Could not reach WhatsOnChain to check the licence/)).toBeInTheDocument();
+      });
+
+      And('no mint button of either kind is offered', () => {
+        expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();
+      });
+
+      And('"Check the licence again" is offered', () => {
+        expect(screen.getByRole('button', { name: 'Check the licence again' })).toBeInTheDocument();
+      });
+    },
+  );
+
+  Scenario(
+    'mw-7ijx65 AC3: a stale cache that says no licence does not hide a licence in the old collection',
+    ({ Given, When, Then }) => {
+      Given('a key whose cached status says no licence but whose chain holds one in the old collection', async () => {
+        await freshScreen();
+        const key = await deriveMasterKey(FUNDED_MNEMONIC);
+        const address = addressForPublicKey(publicKeyHexFromMasterKey(key));
+        fakeProvider.addTransaction(address, MINT_TXID, mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+        historyTxids = [MINT_TXID];
+        await db.settings.put({ key: 'licence-status', value: { held: false, checkedAt: new Date().toISOString() } });
+      });
+
+      When('the key screen is opened and unlocked', openKeyScreen);
+
+      Then('the screen says "Licensed" and that the licence is in the old collection', async () => {
+        expect(await screen.findByText('Licensed')).toBeInTheDocument();
+        expect(
+          screen.getByText("This licence is in the old collection (spell-forge's). Mint one in postern."),
+        ).toBeInTheDocument();
+      });
+    },
+  );
 });
 
 afterAll(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });

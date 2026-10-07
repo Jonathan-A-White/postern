@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { db } from '../../src/data/db';
 import { KeyVault } from '../../src/key';
+import { chain, setChain, type Chain } from '../../src/chain';
 import { addressForPublicKey, checkLicence } from '../../src/services/licence';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { installMockAuthenticator, removeMockAuthenticator } from '../support/webauthn-mock';
@@ -229,6 +230,7 @@ describe('KeyVault', () => {
     const mnemonic = createMnemonic();
     const key = await deriveMasterKey(mnemonic);
     await checkLicence(publicKeyHexFromMasterKey(key), fakeProvider);
+    stubHistory([]);
 
     await openUnlocked(mnemonic);
 
@@ -259,6 +261,134 @@ describe('KeyVault', () => {
     await openUnlocked(mnemonic);
 
     expect(await screen.findByRole('button', { name: 'Mint my licence in postern' })).toBeInTheDocument();
+  });
+
+  // The licence check reads the confirmed history from WhatsOnChain (confirmedHistory.ts), not the provider's own.
+  function stubHistory(txids: string[] | 'unreachable') {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (txids === 'unreachable') return new Response('{}', { status: 503 });
+        const path = new URL(String(input)).pathname;
+        const result = path.endsWith('/confirmed/history') ? txids.map((tx_hash) => ({ tx_hash, height: 1 })) : [];
+        return new Response(JSON.stringify({ result, nextPageToken: '', error: '' }), { status: 200 });
+      }),
+    );
+  }
+
+  async function markPending(txid: string) {
+    await db.settings.put({ key: 'licence-mint-pending', value: { txid, broadcastAt: new Date().toISOString() } });
+  }
+
+  it("shows 'Minted: <txid>, waiting for the chain' and no mint button while a mint is pending (mw-7ijx65 AC1)", async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    await checkLicence(publicKeyHexFromMasterKey(key), fakeProvider);
+    stubHistory([]);
+    await markPending('9'.repeat(64));
+
+    await openUnlocked(mnemonic);
+
+    const line = await screen.findByText((_, el) => el?.tagName === 'P' && el.textContent === `Minted: ${'9'.repeat(64)}, waiting for the chain`);
+    expect(line).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '9'.repeat(64) })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();
+  });
+
+  it('shows no mint button while a mint is pending, even when the old collection still holds a licence (mw-7ijx65 AC1)', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    const publicKeyHex = publicKeyHexFromMasterKey(key);
+    const address = addressForPublicKey(publicKeyHex);
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+    await checkLicence(publicKeyHex, fakeProvider);
+    stubHistory(['e'.repeat(64)]);
+    await markPending('9'.repeat(64));
+
+    await openUnlocked(mnemonic);
+
+    await screen.findByText(/waiting for the chain/);
+    expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();
+  });
+
+  it('says the licence check could not reach WhatsOnChain, with no mint button (mw-7ijx65 AC2)', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    await checkLicence(publicKeyHexFromMasterKey(key), fakeProvider);
+    stubHistory('unreachable');
+
+    await openUnlocked(mnemonic);
+
+    expect(await screen.findByText(/Could not reach WhatsOnChain to check the licence/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Licensed')).not.toBeInTheDocument();
+  });
+
+  it('checks the licence again when the chain comes back, and then offers the mint (mw-7ijx65 AC2)', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    await checkLicence(publicKeyHexFromMasterKey(key), fakeProvider);
+    stubHistory('unreachable');
+    await openUnlocked(mnemonic);
+    await screen.findByText(/Could not reach WhatsOnChain to check the licence/);
+
+    stubHistory([]);
+    await userEvent.click(screen.getByRole('button', { name: 'Check the licence again' }));
+
+    expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeInTheDocument();
+    expect(screen.queryByText(/Could not reach WhatsOnChain/)).not.toBeInTheDocument();
+  });
+
+  it('shows the legacy line when the cached status is not-held but the chain holds a licence in the old collection (mw-7ijx65 AC3)', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    const address = addressForPublicKey(publicKeyHexFromMasterKey(key));
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+    await db.settings.put({ key: 'licence-status', value: { held: false, checkedAt: new Date().toISOString() } });
+    stubHistory(['e'.repeat(64)]);
+
+    await openUnlocked(mnemonic);
+
+    expect(
+      await screen.findByText("This licence is in the old collection (spell-forge's). Mint one in postern."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mint my licence (testnet)' })).not.toBeInTheDocument();
+  });
+
+  it('keeps showing the legacy line from the cached status when the chain cannot be reached (mw-7ijx65 AC3)', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    const address = addressForPublicKey(publicKeyHexFromMasterKey(key));
+    fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
+    await checkLicence(publicKeyHexFromMasterKey(key), fakeProvider);
+    stubHistory('unreachable');
+
+    await openUnlocked(mnemonic);
+
+    expect(
+      await screen.findByText("This licence is in the old collection (spell-forge's). Mint one in postern."),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the mint button the moment a mint succeeds, showing the pending line (mw-7ijx65 AC1)', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    await checkLicence(publicKeyHexFromMasterKey(key), fakeProvider);
+    stubHistory([]);
+    const restore = setChain({
+      ...chain,
+      balance: vi.fn(async () => 1_000_000),
+      mint: vi.fn(async () => ({ txid: '8'.repeat(64) })),
+    } as Chain);
+    try {
+      await openUnlocked(mnemonic);
+      await userEvent.click(await screen.findByRole('button', { name: 'Mint my licence (testnet)' }));
+
+      await screen.findByText(/waiting for the chain/);
+      expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();
+    } finally {
+      setChain(restore);
+    }
   });
 
   it('wraps the testnet address and the minted licence link so long hex does not overflow the screen', async () => {

@@ -8,6 +8,7 @@ import { addressForPublicKey, checkLicence } from '../../src/services/licence';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { installMockAuthenticator, removeMockAuthenticator } from '../support/webauthn-mock';
 import { lock } from '../../src/services/keySession';
+import { resetSharedChainReads } from '../../src/services/sharedChainReads';
 import { FakeChainProvider } from '../support/fake-chain-provider';
 import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../../src/services/collections';
 import { mintRecordTxHex } from '../support/nftgate-fixtures';
@@ -28,6 +29,7 @@ function toHex(bytes: Uint8Array): string {
 describe('KeyVault', () => {
   beforeEach(async () => {
     fakeProvider = new FakeChainProvider();
+    resetSharedChainReads(); // the same txid carries different bytes in another test
     await db.vault.clear();
     await db.settings.clear();
     lock();

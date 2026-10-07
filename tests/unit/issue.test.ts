@@ -402,7 +402,7 @@ describe('the whole paged history of a key that has passed 100 transactions (mw-
   it('lists a mint that sits on the oldest of three confirmed pages, following nextPageToken', async () => {
     const { pages, mintTxid, hexByTxid } = await oldestPageMint();
     const { requested } = stubWhatsOnChain(pages, hexByTxid);
-    const licences = await issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, historyPageDelayMs: 0 });
+    const licences = await issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY });
     expect(licences.map((l) => l.txid)).toEqual([mintTxid]);
     expect(requested.filter((path) => path.startsWith(CONFIRMED))).toEqual([
       CONFIRMED,
@@ -414,7 +414,7 @@ describe('the whole paged history of a key that has passed 100 transactions (mw-
   it('errors, and never returns a short list, when the history runs past 50 pages', async () => {
     const endless = Array.from({ length: 51 }, () => [{ tx_hash: 'e'.repeat(64), height: 5 }]);
     const { requested } = stubWhatsOnChain(endless);
-    const attempt = issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, historyPageDelayMs: 0 });
+    const attempt = issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY });
     await expect(attempt).rejects.toMatchObject({ code: 'network', message: expect.stringMatching(/50 pages/) });
     expect(requested.filter((path) => path.startsWith(CONFIRMED))).toHaveLength(50);
   });
@@ -424,7 +424,7 @@ describe('the whole paged history of a key that has passed 100 transactions (mw-
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ result: [], nextPageToken: '', error: 'address is not valid' }), { status: 200 })),
     );
-    const attempt = issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY, historyPageDelayMs: 0 });
+    const attempt = issuedLicences({ issuerPublicKeyHex: ISSUER_PUBLIC_KEY });
     await expect(attempt).rejects.toMatchObject({ code: 'network', message: expect.stringMatching(/address is not valid/) });
   });
 
@@ -436,7 +436,6 @@ describe('the whole paged history of a key that has passed 100 transactions (mw-
       origin: `${mintTxid}:0`,
       issuerKey: ISSUER_MASTER,
       fetchImpl: backendFetch as unknown as typeof fetch,
-      historyPageDelayMs: 0,
     });
     expect(result.txid).toBe(broadcastTransactions(backendFetch)[0].id('hex'));
   });

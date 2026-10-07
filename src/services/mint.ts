@@ -13,6 +13,7 @@ import {
 } from 'spell-forge-bsv';
 import { COCKPIT_COLLECTION } from './collections';
 import { addressForPublicKey, setMintPending } from './licence';
+import { sharedChainReads } from './sharedChainReads';
 
 const TESTNET_WIF_PREFIX = [0xef];
 const LICENSE_TOKEN_SATOSHIS = 1;
@@ -50,7 +51,7 @@ export function mintCostSatoshis(config: ChainConfig = chainConfig): number {
 /** The key's own testnet balance: the sum of its UTXOs, from the same provider a mint would spend from. */
 export async function fetchBalanceSatoshis(
   publicKeyHex: string,
-  provider: ChainProvider = createChainProvider(),
+  provider: ChainProvider = sharedChainReads(),
 ): Promise<number> {
   const utxos = await provider.getUtxos(addressForPublicKey(publicKeyHex));
   return utxos.reduce((sum, utxo) => sum + utxo.satoshis, 0);

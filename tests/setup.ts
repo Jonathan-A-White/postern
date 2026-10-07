@@ -13,3 +13,13 @@ if (typeof HTMLMediaElement !== 'undefined') {
   HTMLMediaElement.prototype.play = () => Promise.resolve();
   HTMLMediaElement.prototype.pause = () => undefined;
 }
+
+// The Key screen's WhatsOnChain reads space themselves 350 ms apart (src/services/chainPacer.ts); a
+// test file is a fresh page with no waiting. Only chainPacer is imported here: a setup file that
+// imported sharedChainReads would load spell-forge-bsv before a test file's vi.mock of it.
+import { beforeAll } from 'vitest';
+import { setChainReadGapMs } from '../src/services/chainPacer';
+
+beforeAll(() => {
+  setChainReadGapMs(0);
+});

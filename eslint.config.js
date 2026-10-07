@@ -10,10 +10,10 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 // chain through src/chain.ts (mw-e6e8f2.2, mw-e6e8f2.3), so none of it may import one of the
 // chain modules directly. The chain files are exempt, and they are:
 //   src/chain.ts
-//   src/services/{send,spendable,chainRead,whatsonchain,confirmedHistory,stamp,licence,mint,issue}.ts
+//   src/services/{send,spendable,chainRead,whatsonchain,confirmedHistory,chainPacer,sharedChainReads,stamp,licence,mint,issue}.ts
 //   the chain-only components src/key/IssueLicences.tsx, src/licence/LicenceExplainer.tsx and
 //   src/cockpit/StampSection.tsx (src/chain.ts offers them as `chain.screens`).
-const CHAIN_MODULES = ['send', 'spendable', 'chainRead', 'whatsonchain', 'confirmedHistory', 'stamp', 'licence', 'mint', 'issue'];
+const CHAIN_MODULES = ['send', 'spendable', 'chainRead', 'whatsonchain', 'confirmedHistory', 'chainPacer', 'sharedChainReads', 'stamp', 'licence', 'mint', 'issue'];
 const CHAIN_COMPONENTS = ['src/key/IssueLicences.tsx', 'src/licence/LicenceExplainer.tsx', 'src/cockpit/StampSection.tsx'];
 
 const refuseChainModules = (group) => ({

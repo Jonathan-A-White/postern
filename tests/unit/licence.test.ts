@@ -185,7 +185,7 @@ describe('a key whose history runs past 100 transactions after its mint', () => 
       [MINT_TXID]: mintRecordTxHex(chainConfig.collectionId, ADDRESS),
       [OTHER_TXID]: otherHex,
     });
-    expect(await findLicence(PUBLIC_KEY_HEX, undefined, { historyPageDelayMs: 0 })).toEqual({
+    expect(await findLicence(PUBLIC_KEY_HEX)).toEqual({
       txid: MINT_TXID,
       vout: 0,
       collection: chainConfig.collectionId,
@@ -198,13 +198,13 @@ describe('a key whose history runs past 100 transactions after its mint', () => 
       [MINT_TXID]: mintRecordTxHex(chainConfig.collectionId, ADDRESS),
       [TRANSFER_TXID]: transferRecordTxHex(`${MINT_TXID}:0`, 'mzSomeoneElseAddress'),
     });
-    expect(await findLicence(PUBLIC_KEY_HEX, undefined, { historyPageDelayMs: 0 })).toBeNull();
+    expect(await findLicence(PUBLIC_KEY_HEX)).toBeNull();
   });
 
   it('stops paging at 50 pages and does not read the key as unlicensed', async () => {
     const endless = Array.from({ length: 51 }, () => [{ tx_hash: OTHER_TXID, height: 5 }]);
     const requested = stubWhatsOnChain(endless, { [OTHER_TXID]: otherHex });
-    await expect(findLicence(PUBLIC_KEY_HEX, undefined, { historyPageDelayMs: 0 })).rejects.toThrow(/50 pages/);
+    await expect(findLicence(PUBLIC_KEY_HEX)).rejects.toThrow(/50 pages/);
     expect(requested.filter((path) => path.startsWith(CONFIRMED))).toHaveLength(50);
   });
 

@@ -1,0 +1,35 @@
+// src/services/chainPacer.ts — the one queue every WhatsOnChain read on the Key screen waits in.
+// Its free tier answers about 3 requests a second per IP, and a 429 carries no CORS header, so
+// the phone cannot tell it from being offline. Each read used to build its own provider, which
+// paced only its own calls, and the history pages bypassed any pacing: the licence check and the
+// Issued licences list ran side by side at twice the limit. Now a request leaves only once the
+// gap since the last request, from any caller, has passed (docs/key-screen-reads.md).
+
+/** The least time between the starts of two requests to WhatsOnChain (about 2.9 a second). */
+export const CHAIN_READ_GAP_MS = 350;
+
+let gapMs = CHAIN_READ_GAP_MS;
+let lastStart = 0;
+let queue: Promise<void> = Promise.resolve();
+
+/** Tests set the gap to 0 (and one test to a few ms to measure it). */
+export function setChainReadGapMs(ms: number): void {
+  gapMs = ms;
+}
+
+/** Forgets the last request, for a test that starts clean. */
+export function resetChainPacer(): void {
+  lastStart = 0;
+  queue = Promise.resolve();
+}
+
+/** Runs `call` once the gap since the previous request has passed; calls leave in the order they ask. */
+export function paced<T>(call: () => Promise<T>): Promise<T> {
+  const turn = queue.then(async () => {
+    const wait = lastStart + gapMs - Date.now();
+    if (wait > 0) await new Promise<void>((resolve) => setTimeout(resolve, wait));
+    lastStart = Date.now();
+  });
+  queue = turn;
+  return turn.then(call);
+}

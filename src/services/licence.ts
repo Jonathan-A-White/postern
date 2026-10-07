@@ -11,13 +11,12 @@
 import { PublicKey, Utils } from '@bsv/sdk';
 import {
   chainConfig,
-  createChainProvider,
   findTypedRecordsInTransaction,
   type ChainProvider,
   type TypedRecordInTransaction,
 } from 'spell-forge-bsv';
 import { settingsRepo } from '../data/repositories';
-import { HISTORY_PAGE_DELAY_MS, withWholeHistory, type HistoryReadOptions } from './confirmedHistory';
+import { sharedChainReads } from './sharedChainReads';
 import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from './collections';
 
 const COUNTED_COLLECTIONS = new Set([COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION]);
@@ -83,15 +82,12 @@ export function addressForPublicKey(publicKeyHex: string): string {
  * The License token itself is always output 0 of its mint transaction (the shape
  * every builder in the package writes), so the origin is the mint's txid at vout 0.
  * The confirmed history is read whole, paged (confirmedHistory.ts), unless a provider is
- * handed in: the key broadcasts its own records, so a mint can lie past the newest 100.
+ * handed in: the key broadcasts its own records, so a mint can lie past the newest 100. The
+ * reads go through sharedChainReads.ts, so a transaction the Issued licences list has read is
+ * not read again.
  */
-export async function findLicence(
-  publicKeyHex: string,
-  handedProvider?: ChainProvider,
-  options: HistoryReadOptions = {},
-): Promise<FoundLicence | null> {
-  const provider =
-    handedProvider ?? withWholeHistory(createChainProvider(), options.historyPageDelayMs ?? HISTORY_PAGE_DELAY_MS);
+export async function findLicence(publicKeyHex: string, handedProvider?: ChainProvider): Promise<FoundLicence | null> {
+  const provider = handedProvider ?? sharedChainReads();
   const address = addressForPublicKey(publicKeyHex);
   const [confirmed, unconfirmed] = await Promise.all([
     provider.getAddressHistory(address),

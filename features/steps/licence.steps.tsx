@@ -21,6 +21,7 @@ import { addressForPublicKey, checkLicence, getCachedLicenceStatus, getMintPendi
 import { mintCostSatoshis } from '../../src/services/mint';
 import { createMnemonic, deriveMasterKey, publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { lock } from '../../src/services/keySession';
+import { resetSharedChainReads } from '../../src/services/sharedChainReads';
 import { FakeChainProvider } from '../../tests/support/fake-chain-provider';
 import { mintRecordTxHex } from '../../tests/support/nftgate-fixtures';
 
@@ -74,6 +75,7 @@ async function freshScreen(): Promise<void> {
   await db.settings.clear();
   lock();
   fakeProvider = new FakeChainProvider();
+  resetSharedChainReads(); // the same txid carries different bytes in another scenario
   buildContractMintTransactionMock.mockReset();
   buildContractMintTransactionMock.mockResolvedValue({ hex: 'deadbeef' });
 }

@@ -21,7 +21,7 @@ import {
 } from 'spell-forge-bsv';
 import { pendingSpendsRepo } from '../data/repositories';
 import type { ApiFetchOptions } from './apiAuth';
-import { HISTORY_PAGE_DELAY_MS, withWholeHistory, type HistoryReadOptions } from './confirmedHistory';
+import { sharedChainReads } from './sharedChainReads';
 import { addressForPublicKey } from './licence';
 import { ANCHOR_ADDRESS } from './messages';
 import { mintCostSatoshis } from './mint';
@@ -69,7 +69,7 @@ export interface IssuedLicence {
   holder: string;
 }
 
-export interface RevokeLicenceParams extends IssueContext, HistoryReadOptions {
+export interface RevokeLicenceParams extends IssueContext {
   /** The mint output to end, `txid:vout`. */
   origin: string;
   /** Reads this key's mints to check the origin is one of them; never asked to broadcast. */
@@ -238,7 +238,6 @@ export async function revokeLicence(params: RevokeLicenceParams): Promise<{ txid
   const mine = await issuedLicences({
     issuerPublicKeyHex: privateKey.toPublicKey().toString(),
     provider: params.provider,
-    historyPageDelayMs: params.historyPageDelayMs,
   });
   if (!mine.some((mint) => mint.origin === origin)) {
     throw new IssueError('not-issued', 'That licence is not one you issued.');
@@ -319,11 +318,9 @@ export async function issuedLicences(
   params: {
     issuerPublicKeyHex: string;
     provider?: ChainProvider;
-  } & HistoryReadOptions,
+  },
 ): Promise<IssuedLicenceEntry[]> {
-  const provider = withNetworkErrors(
-    params.provider ?? withWholeHistory(createChainProvider(), params.historyPageDelayMs ?? HISTORY_PAGE_DELAY_MS),
-  );
+  const provider = withNetworkErrors(params.provider ?? sharedChainReads());
   const address = addressForPublicKey(params.issuerPublicKeyHex);
   const [confirmed, unconfirmed] = await Promise.all([
     provider.getAddressHistory(address),

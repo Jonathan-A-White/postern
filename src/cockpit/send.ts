@@ -10,7 +10,7 @@ import { deliverAction, deliverMoveHome, type Delivered } from '../services/deli
 import { ApiTimeoutError } from '../services/apiAuth';
 import { deliverOptions } from '../services/live';
 import { getKey } from '../services/keySession';
-import { attachmentMime, MAX_ATTACHMENT_BYTES } from '../services/attachments';
+import { MAX_ATTACHMENT_BYTES } from '../services/attachments';
 import { enqueue, packBytes, type QueuedMessage } from '../services/outbox';
 import type { GovernorAction } from '../model/conversation';
 import { verifiedWords, type VerifiedWhere } from '../model/verified';
@@ -85,7 +85,6 @@ export interface OutgoingFile {
 }
 
 export function refuseFile(file: { name: string; type: string; size: number }): string | undefined {
-  if (!attachmentMime(file.type)) return `${file.name}: Postern carries images, voice, PDF and plain text only.`;
   if (file.size > MAX_ATTACHMENT_BYTES) return `${file.name} is over 8 MB.`;
   return undefined;
 }
@@ -95,7 +94,6 @@ export function refuseFile(file: { name: string; type: string; size: number }): 
  * text as its caption. The files are kept whole in the outbox and uploaded first
  * when the message's turn comes, so nothing is sent until every file is up. */
 export async function sendToThread(thread: ThreadRef | undefined, text: string, files: OutgoingFile[] = [], re?: string, settles?: string): Promise<Queued[]> {
-  for (const file of files) if (!attachmentMime(file.type)) throw new Error(`${file.name}: not a type Postern carries.`);
   const payload: QueuedMessage = { text, files: files.map(({ name, type, bytes }) => ({ name, type, data: packBytes(bytes) })), ...(thread !== undefined ? { thread } : {}), ...(re !== undefined ? { re } : {}), ...(settles !== undefined ? { settles } : {}) };
   return [{ id: await enqueue({ kind: 'message', bead: thread && 'bead' in thread ? thread.bead : '', payload: payload as unknown as Record<string, unknown>, thread: threadKey(thread) }) }];
 }

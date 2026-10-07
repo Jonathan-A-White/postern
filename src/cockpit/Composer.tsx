@@ -1,6 +1,6 @@
 // src/cockpit/Composer.tsx — how he talks to the Mayor anywhere in the tree
 // (plans/0021 decisions 10–12): words, a voice note recorded right here, photos
-// from the camera, images, PDFs and text files from the picker, a paste, a
+// from the camera, any file from the picker, a paste, a
 // drop, or files shared in from another app. Whatever he quotes rides at the
 // top of what he sends. All the files go as one message, the words its caption.
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
@@ -391,7 +391,6 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
         type="file"
         multiple
         hidden
-        accept="image/png,image/jpeg,image/webp,audio/*,application/pdf,text/plain"
         onChange={(event) => {
           if (event.target.files) void addFiles(event.target.files);
           event.target.value = '';

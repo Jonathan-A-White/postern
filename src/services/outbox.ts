@@ -101,9 +101,7 @@ async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<
   const message = row.payload as unknown as QueuedMessage;
   const uploaded = [...(message.uploaded ?? [])];
   for (const file of message.files.slice(uploaded.length)) {
-    const mime = attachmentMime(file.type);
-    if (!mime) throw new Error(`${file.name}: not a type Postern carries.`);
-    uploaded.push(await uploadAttachment({ bytes: unpackBytes(file.data), mime, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }));
+    uploaded.push(await uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }));
     await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
   }
   return deliverThreaded({ thread: message.thread, text: message.text, attachments: uploaded, re: message.re }, options);

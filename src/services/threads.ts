@@ -10,13 +10,14 @@ import type { MessageClass } from '../data/db';
 
 export type ThreadRef = { bead: string } | { topic: string };
 
-/** docs/protocol.md §8: an image attached to a message, uploaded encrypted to
+/** docs/protocol.md §8: a file attached to a message, uploaded encrypted to
  * POST /api/blobs. `size` is the ciphertext's byte length, not the original
- * image's. */
+ * file's. `name` is the file's base name (e.g. notes.md), absent from older posts. */
 export interface Attachment {
   hash: string;
   size: number;
   mime: string;
+  name?: string;
 }
 
 export interface ThreadedBody {
@@ -44,7 +45,12 @@ function isThreadRef(value: unknown): value is ThreadRef {
 function isAttachment(value: unknown): value is Attachment {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
-  return typeof candidate.hash === 'string' && typeof candidate.size === 'number' && typeof candidate.mime === 'string';
+  return (
+    typeof candidate.hash === 'string' &&
+    typeof candidate.size === 'number' &&
+    typeof candidate.mime === 'string' &&
+    (candidate.name === undefined || typeof candidate.name === 'string')
+  );
 }
 
 function isAttachmentList(value: unknown): value is Attachment[] {

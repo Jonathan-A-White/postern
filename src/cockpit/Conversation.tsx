@@ -61,12 +61,27 @@ function AttachmentView({ attachment, direction }: { attachment: Attachment; dir
   );
 }
 
+/** Saves an object URL as a file of this name: the tap on a file the app does not show. */
+function download(url: string, name: string | undefined): void {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name ?? 'file';
+  link.rel = 'noopener';
+  link.click();
+}
+
+function fileSize(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 function AttachmentBody({ attachment, direction, near }: { attachment: Attachment; direction: 'sent' | 'received'; near: boolean }) {
   const key = useUnlockedKey();
   const [url, setUrl] = useState<string>();
   const [error, setError] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const inline = attachment.mime.startsWith('image/') || attachment.mime.startsWith('audio/');
+  // A type the browser shows (a PDF, plain text) opens in a tab; any other file downloads.
+  const shown = inline || attachment.mime === 'application/pdf' || attachment.mime === 'text/plain';
   const { reconnects } = useLive();
   // A failed load is tried again by itself once, when the stream reconnects or
   // the app returns to the foreground; after that it waits for a tap on Retry.
@@ -123,7 +138,8 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
     if (!key) return;
     try {
       const opened = url ?? (await openAttachment(attachment, { key, direction }));
-      window.open(opened, '_blank', 'noopener');
+      if (shown) window.open(opened, '_blank', 'noopener');
+      else download(opened, attachment.name);
     } catch (err) {
       failed.current = true;
       setError(err instanceof Error ? err.message : String(err));
@@ -157,7 +173,7 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
   return (
     <button type="button" onClick={() => void open()} className="inline-flex items-center gap-2 rounded-xl border border-line bg-sunken px-3 py-2 text-sm hover:border-line-strong">
       <Icon name="file" size={18} />
-      {attachmentLabel(attachment)} · {Math.max(1, Math.round(attachment.size / 1024))} KB
+      <span className="min-w-0 truncate">{attachment.name ?? attachmentLabel(attachment)}</span> · {fileSize(attachment.size)}
     </button>
   );
 }

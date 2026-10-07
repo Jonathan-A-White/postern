@@ -421,26 +421,31 @@ optional field beside `text` and `thread`:
   "attachment": {
     "hash": "<sha256 hex, matching POST /api/blobs's response>",
     "size": <ciphertext bytes>,
-    "mime": "image/png|image/jpeg|image/webp"
+    "mime": "<the file's content type, any type>",
+    "name": "<optional: the file's base name, e.g. notes.md>"
   }
 }
 ```
 
-- `attachment` — absent for a message with no image. A message with an
+- `attachment` — absent for a message with no file. A message with an
   `attachment` and an empty (or absent) `text` is valid — a caption is
   optional, not required.
 - `hash` / `size` — the same `hash` and `size` `POST /api/blobs` answered
   for this attachment's ciphertext, so a reader can fetch it with
   `GET /api/blobs/{hash}` and verify what it downloads before decrypting it.
-- `mime` — the original image's content type, informational (the ciphertext
-  itself carries no type information); one of `image/png`, `image/jpeg`, or
-  `image/webp`.
+- `mime` — the original file's content type, informational (the ciphertext
+  itself carries no type information); any type (§14). `application/octet-stream`
+  when the sender's device reports none.
+- `name` — optional: the file's base name (no folders), e.g. `notes.md`, so the
+  reader can keep the extension. Absent from posts made before it existed, and a
+  reader must cope without it; a `name` that is present but not a string makes
+  the entry malformed, as any other malformed entry is.
 
 ### Several files in one message
 
 `mw-909ci.3`: files sent together are ONE message. One file is the single
 `attachment` above, exactly as before. Two or more go in `attachments`, an
-array of those same `{ hash, size, mime }` objects in the order the sender
+array of those same `{ hash, size, mime, name? }` objects in the order the sender
 added them, with the caption as the message's `text` and the same `thread`
 and `re`:
 
@@ -449,8 +454,8 @@ and `re`:
   "thread": { "bead": "mw-abc.3" },
   "text": "<optional caption, for the whole post>",
   "attachments": [
-    { "hash": "<sha256 hex>", "size": <ciphertext bytes>, "mime": "image/png" },
-    { "hash": "<sha256 hex>", "size": <ciphertext bytes>, "mime": "image/jpeg" }
+    { "hash": "<sha256 hex>", "size": <ciphertext bytes>, "mime": "text/markdown", "name": "notes.md" },
+    { "hash": "<sha256 hex>", "size": <ciphertext bytes>, "mime": "application/zip", "name": "data.zip" }
   ]
 }
 ```
@@ -760,9 +765,12 @@ to read as text.
 
 ## 14. Voice notes, files and transcripts
 
-§8's attachment `mime` widens to `image/png`, `image/jpeg`, `image/webp`,
-`audio/webm`, `audio/ogg`, `audio/mp4`, `audio/mpeg`, `application/pdf` and
-`text/plain`; the 8 MiB cap is unchanged (about half an hour of Opus voice).
+§8's attachment `mime` is any type (mw-gq6.289): the file's type as the sender's
+device reports it (parameters such as `;codecs=opus` dropped), or
+`application/octet-stream` when it reports none; each attachment may carry the
+file's base name as `name` (§8). A reader shows images and audio as such, and
+any other type as a file: its name, its size, and a tap that downloads it. The
+8 MiB cap is unchanged (about half an hour of Opus voice).
 Attachments now travel both ways: the Mayor may attach a file to a message to the
 Governor exactly as the app does (`mw postern send --attach <file>`). From the
 app, several files are one message's `attachments` (§8); `mw postern send

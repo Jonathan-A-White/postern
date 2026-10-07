@@ -9,7 +9,7 @@ import { FactoryPulse } from './FactoryPulse';
 import { OpenLists } from './OpenLists';
 import { NeedCard } from './NeedCard';
 import { LiveCard } from './LiveCard';
-import { useAnswers, useCards, useMessages, useUnlockedKey, useViewIndex } from './hooks';
+import { useAnswers, useCards, useEmergencyCount, useMessages, useUnlockedKey, useViewIndex } from './hooks';
 import type { MessageRow } from '../data/db';
 import { refreshNow, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
@@ -62,6 +62,23 @@ function UnreadThreads({ index }: { index?: ViewIndex }) {
         })}
       </ul>
     </section>
+  );
+}
+
+/** The way in to the Emergency screen from the app (mw-gq6.285): shown while the phone holds any emergency. */
+function EmergenciesRow() {
+  const count = useEmergencyCount();
+  if (count === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => navigate({ view: 'emergency' })}
+      className="flex h-11 w-full items-center gap-2.5 rounded-2xl border border-blocked/40 bg-surface px-4 text-left text-[14.5px] font-semibold text-blocked hover:bg-raised"
+    >
+      <Icon name="alarm" size={18} />
+      Emergencies · {count}
+      <Icon name="forward" size={14} className="ml-auto" />
+    </button>
   );
 }
 
@@ -183,6 +200,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
           </Banner>
         )}
         <NotifyPrompt />
+        <EmergenciesRow />
 
         {index && <FactoryPulse index={index} />}
         {index && <OpenLists index={index} />}

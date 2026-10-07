@@ -99,6 +99,11 @@ export const eventsRepo = {
       .toArray();
   },
 
+  /** How many emergency events the phone holds, tapped away or not: the count on Needs you's Emergencies row. */
+  async emergencyCount(): Promise<number> {
+    return db.events.filter((event) => event.lane === 'emergency').count();
+  },
+
   async emergencyCleared(): Promise<number> {
     const row = await db.settings.get(CLEARED_SETTING_KEY);
     return typeof row?.value === 'number' ? row.value : 0;

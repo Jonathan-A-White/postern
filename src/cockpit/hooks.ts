@@ -78,6 +78,11 @@ export function useRecentEmergencies(limit = 20): EventRow[] | undefined {
   return useLiveQuery(() => eventsRepo.recentEmergencies(limit), [limit], undefined as EventRow[] | undefined);
 }
 
+/** How many emergency events the phone holds; 0 until they have been read. */
+export function useEmergencyCount(): number {
+  return useLiveQuery(() => eventsRepo.emergencyCount(), [], 0);
+}
+
 /** Every stored message, oldest first. */
 export function useMessages(): MessageRow[] {
   return useLiveQuery(() => messagesRepo.getAllOldestFirst(), [], [] as MessageRow[]);

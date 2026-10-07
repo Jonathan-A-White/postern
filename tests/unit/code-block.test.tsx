@@ -84,3 +84,48 @@ describe('Copy on every code block', () => {
     expect(writeText).toHaveBeenCalledWith(SOURCE);
   });
 });
+
+// mw-6ww.92: a pasted PowerShell script arrived with a '\' on every line; the copy is the block's lines, nothing added.
+describe('Copy on a multi-line fenced block adds nothing', () => {
+  const SCRIPT = [
+    '# Way back:',
+    '#   Remove-Item -Recurse C:\\ProgramData\\millwright',
+    "$ErrorActionPreference = 'Stop'",
+    '',
+    "$dir = 'C:\\ProgramData\\millwright'",
+    'if (-not (Test-Path $dir)) {',
+    '  New-Item -ItemType Directory -Force $dir | Out-Null',
+    '}',
+    'Write-Host "done" `',
+    '  -ForegroundColor Green',
+  ].join('\n');
+
+  it('copies exactly the block lines joined by newlines: no backslash added, no fence lines', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard({ writeText });
+    render(<Markdown wrap text={'Paste this:\n\n```powershell\n' + SCRIPT + '\n```\n'} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toBe(SCRIPT);
+    expect(copied.split('\n')).toEqual(SCRIPT.split('\n'));
+    expect(copied).not.toContain('```');
+    expect(copied.split('\n').filter((line) => line.endsWith('\\'))).toEqual([]);
+  });
+
+  it('a one-line block copies unchanged', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard({ writeText });
+    render(<Markdown wrap text={'```\nGet-LocalUser grace | Out-Null\n```\n'} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith('Get-LocalUser grace | Out-Null');
+  });
+
+  it('the block on screen still shows its line breaks', () => {
+    const { container } = render(<Markdown wrap text={'```powershell\n' + SCRIPT + '\n```\n'} />);
+    const pre = container.querySelector('pre');
+    expect(pre?.textContent).toBe(SCRIPT + '\n');
+    expect(container.querySelectorAll('br')).toHaveLength(0);
+  });
+});

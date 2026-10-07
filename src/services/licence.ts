@@ -153,8 +153,8 @@ async function clearMintPending(): Promise<void> {
 }
 
 /** Checks the chain and caches the answer (with the time it was checked). Clears any
- * mint-pending marker once the licence is found held, so a later failed check has
- * nothing stale to fall back to (mw-1589l.24). */
+ * mint-pending marker once the licence is found held in the cockpit's collection, so a later
+ * failed check has nothing stale to fall back to (mw-1589l.24, mw-7ijx65). */
 export async function checkLicence(publicKeyHex: string, provider?: ChainProvider): Promise<LicenceStatus> {
   const found = await findLicence(publicKeyHex, provider);
   const checkedAt = new Date().toISOString();
@@ -162,6 +162,7 @@ export async function checkLicence(publicKeyHex: string, provider?: ChainProvide
     ? { held: true, outpoint: { txid: found.txid, vout: found.vout }, collection: found.collection, checkedAt }
     : { held: false, checkedAt };
   await settingsRepo.set(LICENCE_STATUS_SETTING_KEY, status);
-  if (status.held) await clearMintPending();
+  // Only a licence in this collection ends the wait: a held licence in the old one is not the mint just sent.
+  if (status.held && status.collection === COCKPIT_COLLECTION) await clearMintPending();
   return status;
 }

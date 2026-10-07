@@ -2,7 +2,14 @@ import { PrivateKey, Utils } from '@bsv/sdk';
 import { chainConfig, findTypedRecordsInTransaction } from 'spell-forge-bsv';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { db } from '../../src/data/db';
-import { addressForPublicKey, checkLicence, findLicence, getCachedLicenceStatus } from '../../src/services/licence';
+import {
+  addressForPublicKey,
+  checkLicence,
+  findLicence,
+  getCachedLicenceStatus,
+  getMintPending,
+  setMintPending,
+} from '../../src/services/licence';
 import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../../src/services/collections';
 import { FakeChainProvider } from '../support/fake-chain-provider';
 import { mintRecordTxHex, revokeRecordTxHex, transferRecordTxHex } from '../support/nftgate-fixtures';
@@ -199,5 +206,25 @@ describe('a key whose history runs past 100 transactions after its mint', () => 
     const requested = stubWhatsOnChain(endless, { [OTHER_TXID]: otherHex });
     await expect(findLicence(PUBLIC_KEY_HEX, undefined, { historyPageDelayMs: 0 })).rejects.toThrow(/50 pages/);
     expect(requested.filter((path) => path.startsWith(CONFIRMED))).toHaveLength(50);
+  });
+
+  it('clears the mint-pending marker when the licence is found in postern (mw-7ijx65)', async () => {
+    const provider = new FakeChainProvider();
+    provider.addTransaction(ADDRESS, 'e'.repeat(64), mintRecordTxHex(COCKPIT_COLLECTION, ADDRESS));
+    await setMintPending('9'.repeat(64));
+
+    await checkLicence(PUBLIC_KEY_HEX, provider);
+
+    expect(await getMintPending()).toBeUndefined();
+  });
+
+  it('keeps the mint-pending marker when only a licence in the old collection is found (mw-7ijx65)', async () => {
+    const provider = new FakeChainProvider();
+    provider.addTransaction(ADDRESS, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, ADDRESS));
+    await setMintPending('9'.repeat(64));
+
+    await checkLicence(PUBLIC_KEY_HEX, provider);
+
+    expect(await getMintPending()).toMatchObject({ txid: '9'.repeat(64) });
   });
 });

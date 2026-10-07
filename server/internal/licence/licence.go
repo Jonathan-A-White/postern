@@ -23,8 +23,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 	"strings"
 
 	"github.com/Jonathan-A-White/postern/server/internal/chain"
@@ -136,6 +138,9 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 			}
 			txHex, err := reader.GetTransactionHex(entry.TxHash)
 			if err != nil {
+				if notServedYet(entry, err) {
+					continue // not recorded: the next walk reads it once the provider serves it
+				}
 				return nil, fmt.Errorf("getting transaction %s: %w", entry.TxHash, err)
 			}
 			tx, err := record.ParseTransaction(txHex)
@@ -194,6 +199,16 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 		held = append(held, collection)
 	}
 	return held, nil
+}
+
+// notServedYet reports whether err is the provider's 404 for an unconfirmed
+// history entry: it lists a mempool transaction before it can serve it, and
+// a new one arrives faster than a walk finishes, so failing the whole check
+// on it would fail every check. A confirmed entry the provider cannot serve,
+// or any other failure, is a real fault.
+func notServedYet(entry chain.HistoryEntry, err error) bool {
+	var providerErr *chain.ProviderError
+	return entry.Height == 0 && errors.As(err, &providerErr) && providerErr.Status == http.StatusNotFound
 }
 
 // mintFor reports whether tx carries an M record naming holder in one of

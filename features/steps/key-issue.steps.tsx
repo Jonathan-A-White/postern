@@ -519,4 +519,35 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await screen.findByRole('button', { name: 'Confirm issue' })).toBeEnabled();
     });
   });
+  Scenario('AC18: a failed revoke shows its reason inside the row it belongs to, and the row keeps Confirm revoke', ({ Given, And, When, Then }) => {
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+    });
+    And('I issued a held licence and a revoked one', () => {
+      services.issuedLicences.mockResolvedValue([HELD, REVOKED]);
+    });
+    And('the broadcast of a revoke fails', () => {
+      services.revokeLicence.mockRejectedValue(new Error('broadcast failed: txn-mempool-conflict'));
+    });
+    When('the key screen is opened', openKeyScreen);
+    And('I press Revoke on the held licence', async () => {
+      await screen.findAllByTestId('issued-row');
+      await userEvent.click(within(heldRow()).getByRole('button', { name: /^Revoke/ }));
+    });
+    And('I confirm the revoke', async () => {
+      await userEvent.click(within(heldRow()).getByRole('button', { name: 'Confirm revoke' }));
+    });
+    Then('the held row shows the reason as an alert and keeps Confirm revoke under it', async () => {
+      const alert = await within(heldRow()).findByRole('alert');
+      expect(alert).toHaveTextContent('broadcast failed: txn-mempool-conflict');
+      const confirm = within(heldRow()).getByRole('button', { name: 'Confirm revoke' });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      expect(confirm.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+    And('the Issued licences section shows no alert outside the row', () => {
+      const section = screen.getByRole('region', { name: 'Issued licences' });
+      expect(within(section).getAllByRole('alert')).toHaveLength(1);
+      expect(within(heldRow()).getAllByRole('alert')).toHaveLength(1);
+    });
+  });
 });

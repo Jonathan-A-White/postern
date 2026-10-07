@@ -135,3 +135,13 @@ Feature: The Key screen shows my public key and issues and revokes licences (mw-
     And I type a holder's key and choose cairn
     Then there is no not-enough-sats message
     And I can press Issue and reach Confirm issue
+
+  Scenario: AC18: a failed revoke shows its reason inside the row it belongs to, and the row keeps Confirm revoke
+    Given my key is unlocked and the backend names two collections
+    And I issued a held licence and a revoked one
+    And the broadcast of a revoke fails
+    When the key screen is opened
+    And I press Revoke on the held licence
+    And I confirm the revoke
+    Then the held row shows the reason as an alert and keeps Confirm revoke under it
+    And the Issued licences section shows no alert outside the row

@@ -65,6 +65,7 @@ function IssuedRow({
   times,
   confirming,
   revoking,
+  error,
   onAskRevoke,
   onCancel,
   onConfirm,
@@ -73,6 +74,7 @@ function IssuedRow({
   times: Record<string, number>;
   confirming: boolean;
   revoking: boolean;
+  error: string | null;
   onAskRevoke: () => void;
   onCancel: () => void;
   onConfirm: () => void;
@@ -107,6 +109,11 @@ function IssuedRow({
               Cancel
             </button>
           </div>
+          {error && (
+            <p role="alert" className="text-danger">
+              {error}
+            </p>
+          )}
         </div>
       )}
     </li>
@@ -131,7 +138,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const [revokedHere, setRevokedHere] = useState<string[]>([]);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
-  const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [revokeError, setRevokeError] = useState<{ origin: string; message: string } | null>(null);
   const [addressCopied, setAddressCopied] = useState<'idle' | 'copied' | 'unavailable'>('idle');
   // A second tap in the tick before the first one's re-render must not build a second mint.
   const issueInFlight = useRef(false);
@@ -221,7 +228,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       setConfirming(null);
       setRefreshToken((token) => token + 1);
     } catch (error) {
-      setRevokeError(errorText(error));
+      setRevokeError({ origin, message: errorText(error) });
     } finally {
       setRevoking(null);
     }
@@ -348,11 +355,6 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
           </div>
         )}
         {listing.name === 'loaded' && rows.length === 0 && <p className="text-sm text-muted">No licence issued from this key yet.</p>}
-        {revokeError && (
-          <p role="alert" className="text-danger">
-            {revokeError}
-          </p>
-        )}
         {groups.map((group) => (
           <div key={group.name} data-testid="issued-group" className="flex flex-col gap-2">
             <h3 className="font-semibold">{group.name}</h3>
@@ -364,7 +366,11 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
                   times={times}
                   confirming={confirming === row.origin}
                   revoking={revoking === row.origin}
-                  onAskRevoke={() => setConfirming(row.origin)}
+                  error={revokeError?.origin === row.origin ? revokeError.message : null}
+                  onAskRevoke={() => {
+                    setRevokeError(null);
+                    setConfirming(row.origin);
+                  }}
                   onCancel={() => setConfirming(null)}
                   onConfirm={() => void handleRevoke(row.origin)}
                 />

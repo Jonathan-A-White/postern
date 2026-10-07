@@ -396,3 +396,51 @@ func TestGivesUpAfterRepeatedRateLimit(t *testing.T) {
 		t.Fatalf("calls = %d, want at least 2 (it should retry before giving up)", *calls)
 	}
 }
+
+func TestDefaultClientHasARequestTimeout(t *testing.T) {
+	client := NewClient("http://example.invalid")
+	if client.httpClient.Timeout <= 0 {
+		t.Fatal("default http client has no timeout: a silent WhatsOnChain would hang a request for ever")
+	}
+	if client.httpClient == http.DefaultClient {
+		t.Fatal("default http client is http.DefaultClient, which has no timeout")
+	}
+}
+
+func TestRequestToAServerThatNeverAnswersFailsWithinTheTimeout(t *testing.T) {
+	var calls int32
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+
+	client := NewClient(server.URL,
+		WithMinSpacing(0),
+		WithRetryDelay(time.Millisecond),
+		WithSleep(func(time.Duration) {}),
+		WithTimeout(100*time.Millisecond),
+	)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.GetHistory("mAddress")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("GetHistory returned no error from a server that never answered")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("GetHistory hung on a server that never answers")
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("a timed-out request was sent %d times, want 1: retrying a hung server multiplies the wait", got)
+	}
+}

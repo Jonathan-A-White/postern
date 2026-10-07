@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -23,6 +24,11 @@ const DefaultTestnetBase = "https://api.whatsonchain.com/v1/bsv/test"
 
 // WhatsOnChain rate-limits at 3 requests/s per IP without a key.
 const defaultMinSpacing = 350 * time.Millisecond
+
+// defaultRequestTimeout bounds one HTTP request to WhatsOnChain, so a provider
+// that accepts the connection and never answers fails the request instead of
+// hanging whoever waits on it (a licence walk holds a phone's request open).
+const defaultRequestTimeout = 10 * time.Second
 
 const (
 	defaultMaxAttempts       = 5
@@ -50,9 +56,9 @@ var _ chain.Chain = (*Client)(nil)
 const providerName = "WhatsOnChain"
 
 // Client talks to WhatsOnChain, pacing requests under its rate limit and
-// retrying a 429 with exponential backoff. Its HTTP client, sleep function,
-// and timing are all overridable so tests never touch the network or a real
-// clock.
+// retrying a 429 with exponential backoff and bounding each request with a
+// timeout. Its HTTP client, sleep function, and timing are all overridable so
+// tests never touch the network or a real clock.
 type Client struct {
 	baseURL     string
 	httpClient  *http.Client
@@ -72,6 +78,13 @@ type Option func(*Client)
 // WithHTTPClient overrides the underlying *http.Client.
 func WithHTTPClient(hc *http.Client) Option {
 	return func(c *Client) { c.httpClient = hc }
+}
+
+// WithTimeout overrides the per-request timeout of the default HTTP client
+// (defaultRequestTimeout). It replaces any client set by WithHTTPClient
+// before it.
+func WithTimeout(d time.Duration) Option {
+	return func(c *Client) { c.httpClient = &http.Client{Timeout: d} }
 }
 
 // WithMinSpacing overrides the minimum spacing enforced between requests.
@@ -100,7 +113,7 @@ func WithSleep(fn func(time.Duration)) Option {
 func NewClient(baseURL string, opts ...Option) *Client {
 	c := &Client{
 		baseURL:     strings.TrimRight(baseURL, "/"),
-		httpClient:  http.DefaultClient,
+		httpClient:  &http.Client{Timeout: defaultRequestTimeout},
 		minSpacing:  defaultMinSpacing,
 		maxAttempts: defaultMaxAttempts,
 		retryDelay:  defaultInitialRetryDelay,
@@ -306,7 +319,11 @@ func (c *Client) do(method, path string, body []byte) ([]byte, error) {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			lastErr = fmt.Errorf("requesting %s: %w", url, err)
-			if attempt == c.maxAttempts {
+			// A timed-out request is not retried: the provider is not
+			// answering, and another try would only add its timeout to the
+			// wait of whoever is blocked on this call.
+			var netErr net.Error
+			if attempt == c.maxAttempts || (errors.As(err, &netErr) && netErr.Timeout()) {
 				return nil, lastErr
 			}
 			c.sleep(delay)

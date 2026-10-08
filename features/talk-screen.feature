@@ -412,6 +412,12 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he taps "Talk to the Mayor"
     Then the Talk line is open at ?v=line
 
+  Scenario: AC-3: The Talk to the Mayor bar is at the foot of Channels
+    Given the cockpit shell on a phone with the Channels place open
+    Then the "Talk to the Mayor" button comes after the search box and the channel list
+    When he taps "Talk to the Mayor"
+    Then the Talk line is open at ?v=line
+
   Scenario: AC-3: a long press on the Channels tab vibrates and opens the Talk line
     Given the cockpit shell on a phone with the Channels place open
     When he long presses the "Channels" tab

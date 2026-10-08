@@ -297,6 +297,31 @@ export function longThreadRecords(governorKey: PrivateKey, now: number, firstSeq
   return records;
 }
 
+/** Twenty-five channels with one post each, 'channel 01' newest to 'channel 25' oldest: more rows than a phone shows (mw-q6n8m0.7). */
+export function manyChannelRecords(governorKey: PrivateKey, now: number, firstSeq: number): FixtureRecord[] {
+  const governorPub = governorKey.toPublicKey().toString();
+  const records: FixtureRecord[] = [];
+  for (let n = 1; n <= 25; n++) {
+    const seq = firstSeq + n;
+    const label = String(n).padStart(2, '0');
+    records.push({
+      seq,
+      txid: `direct:${hex64(seq)}`,
+      vout: 0,
+      payload: {
+        ...encryptMessage({
+          text: encodeThreadedMessage({ thread: { topic: `channel ${label}` }, text: `A word in channel ${label}.` }),
+          class: 'message',
+          senderPrivateKeyHex: MAYOR.toHex(),
+          recipientPublicKeyHex: governorPub,
+        }),
+        ts: Math.floor((now - n * 120_000) / 1000),
+      },
+    });
+  }
+  return records;
+}
+
 /** A live card (§24, mw-nqur1n.11) sent a few minutes ago with three items on the fixture's beads, an update
  * that adds a link to item 2 and ticks item 1, and an events record saying the bead item 3 waits on is verified,
  * so the app ticks that one itself. */

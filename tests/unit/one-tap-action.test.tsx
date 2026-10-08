@@ -8,7 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
 import { NeedCard } from '../../src/cockpit/NeedCard';
 import { db } from '../../src/data/db';
-import { viewRepo } from '../../src/data/repositories';
+import { eventsRepo, viewRepo } from '../../src/data/repositories';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { fixtureView } from '../support/cockpit-fixture';
@@ -144,5 +144,88 @@ describe('a one-tap action sends once and shows it is waiting', () => {
     });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Verified' })).toBeNull());
     expect(screen.queryByText(/waiting for the factory/i)).toBeNull();
+  });
+});
+
+// mw-xhtcup.14: with a view that carries a seq, a tap waits until the view has passed the event that
+// echoed the tap's txid; the phone's clock is not compared with the host's written_at at all.
+describe('a one-tap action waits by seqs, not by the phone clock', () => {
+  const DEFERRED = 'mw-f758y.31.2';
+  const HOST = Date.parse('2026-10-01T12:00:00Z');
+
+  /** Stores the view the host wrote at `seq` (its written_at is the host's clock); `held` keeps the story deferred. */
+  async function storeSeqView(seq: number, writtenAt: number, held = true): Promise<void> {
+    await storeView(writtenAt, (view) => {
+      view.seq = seq;
+      const story = view.beads.find((b) => b.id === DEFERRED);
+      if (story && !held) story.status = 'open';
+    });
+  }
+
+  async function echo(seq: number): Promise<void> {
+    await eventsRepo.addNew([{ seq, ts: new Date(HOST).toISOString(), kind: 'bead_changed', bead: DEFERRED, actor: 'governor', from: 'held', to: 'open', detail: delivered.txid, lane: 'ordinary' }]);
+  }
+
+  beforeEach(async () => {
+    vi.mocked(deliverAction).mockReset();
+    vi.mocked(deliverAction).mockResolvedValue(delivered);
+    forgetTaps();
+    forgetOutboxState();
+    await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.outbox.clear(), db.events.clear()]);
+    vi.useFakeTimers({ toFake: ['Date'] });
+  });
+  afterEach(() => {
+    cleanup();
+    forgetOutboxState();
+    vi.useRealTimers();
+  });
+  afterAll(() => cleanup());
+
+  async function tapRelease(): Promise<void> {
+    render(<BeadScreen id={DEFERRED} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Release' }));
+    await waitFor(() => expect(deliverAction).toHaveBeenCalledTimes(1));
+    await act(async () => settledOutbox());
+    await waitFor(async () => expect(await db.answers.get(DEFERRED)).toBeDefined());
+  }
+
+  it('with a slow phone clock stays waiting on a view that lacks the echo, and is not offered again after it', async () => {
+    vi.setSystemTime(HOST - 10 * 60_000); // the phone is ten minutes behind the host
+    await storeSeqView(10, HOST);
+    await tapRelease();
+    expect(await db.answers.get(DEFERRED)).toMatchObject({ answer: 'release', viewSeq: 10 });
+    await waitFor(() => expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0));
+
+    // A newer view (seq 11, written after the tap by the host's clock, before it by the phone's) without the echo.
+    await act(async () => {
+      await storeSeqView(11, HOST + 30_000);
+    });
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Release' })).toBeNull();
+    expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0);
+
+    // The echo (seq 12) is stored and the view of seq 12 arrives with the story released.
+    await act(async () => {
+      await echo(12);
+      await storeSeqView(12, HOST + 60_000, false);
+    });
+    await waitFor(() => expect(screen.queryByText(/waiting for the factory/i)).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Release' })).toBeNull();
+    expect(deliverAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('with a fast phone clock a view of the echo seq clears the wait although written_at is older than the tap', async () => {
+    vi.setSystemTime(HOST + 10 * 60_000); // the phone is ten minutes ahead of the host
+    await storeSeqView(10, HOST);
+    await tapRelease();
+    await waitFor(() => expect(screen.getAllByText(/waiting for the factory/i).length).toBeGreaterThan(0));
+
+    await act(async () => {
+      await echo(12);
+      await storeSeqView(12, HOST + 60_000);
+    });
+    // The view still says deferred and its written_at (host clock) is older than the tap (phone clock): the seq says it has seen the tap.
+    await waitFor(() => expect(screen.queryByText(/waiting for the factory/i)).toBeNull());
+    expect(screen.getByRole('button', { name: 'Release' })).toBeInTheDocument();
   });
 });

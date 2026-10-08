@@ -59,6 +59,11 @@ export const eventsRepo = {
     return (await db.events.where('detail').equals(txid).first()) !== undefined;
   },
 
+  /** The seq of the event naming `txid`, the echo of a tap applied by the host (docs/protocol.md §13); undefined while none is held. */
+  async seqOfDetail(txid: string): Promise<number | undefined> {
+    return (await db.events.where('detail').equals(txid).first())?.seq;
+  },
+
   async cursor(): Promise<number> {
     const row = await db.settings.get(CURSOR_SETTING_KEY);
     return typeof row?.value === 'number' ? row.value : 0;

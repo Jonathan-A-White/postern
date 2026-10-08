@@ -101,6 +101,8 @@ export interface AnswerRow {
   txid: string;
   /** Unix seconds. */
   ts: number;
+  /** The seq of the view he was shown when he tapped (docs/protocol.md §11); absent when that view had none. */
+  viewSeq?: number;
 }
 
 // One row per broadcast this phone made, kept until its spent outpoints drop off

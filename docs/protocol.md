@@ -590,6 +590,7 @@ it stands. The BRC-78 header's sender key must equal the Mayor's pinned key (§1
 {
   "v": 2,
   "written_at": "2026-09-28T12:00:00Z",
+  "seq": 4182,
   "host": "desktop",
   "hosts": [{ "name": "desktop", "last_sync": "2026-09-28T11:59:10Z" }],
   "needs": [
@@ -630,6 +631,11 @@ it stands. The BRC-78 header's sender key must equal the Mayor's pinned key (§1
   ]
 }
 ```
+
+`seq` — the highest event `seq` (§22) the view was built after: it holds everything those
+events say. A number; optional, and absent from an older mw's view. The app compares seqs
+with seqs (a one-tap action waits on it, §13), never `written_at` with its own clock, which
+is the host's time and may differ from the phone's by minutes.
 
 `beads` — every live epic (open or in progress), every bead under one at any depth
 (child epics included, each with its own children), and every live bead's
@@ -763,6 +769,17 @@ most once per txid, only when the verified sender is the Governor. Each applied
 action is commented on its bead (`RELEASED by the Governor via postern, txid …`)
 and mailed to the Mayor. An action the host does not know is left for the Mayor
 to read as text.
+
+**The echo, and how the app decides "still waiting".** An applied action is echoed as an
+event (§22) whose `detail` is the txid of the action's own record (a `release` is a
+`bead_changed`, a question's answer a `card_answered`). The app remembers each tap with the
+`seq` of the view it was shown against (§11). While the tap is being sent, or no event
+naming its txid has arrived yet, or the view on screen has a `seq` below that event's, the
+button is dead and says it is waiting; once the view's `seq` has reached the echo's, the view
+is the truth again (the story may have been held a second time). No clock is compared, so a
+phone whose time is minutes slow does not offer a tapped action again, and a fast one does
+not hide a newer view. A view with no `seq`, or a tap made against such a view, falls back to
+the earlier rule: the phone's time of the tap against the view's `written_at`.
 
 ## 14. Voice notes, files and transcripts
 
@@ -1562,7 +1579,10 @@ record claims to cover, and the event `seq`s are what is kept.
 `mw-jrx0s.7`. The app reads an `events` record only from the pinned Mayor (§15) to its own
 key, and never keeps it as a message. It keeps each event once by `seq` (Dexie `events`),
 and applies those past its cursor (the last applied `seq`, in settings) to its own copy of
-the view (§11), in `seq` order, keeping that copy's `written_at`: a bead's status, times and
+the view (§11), in `seq` order, keeping that copy's `written_at` and carrying its `seq` forward as the largest
+`seq` it has applied (`max(view.seq, event.seq)`, never the last one applied, since an
+emergency batch is applied ahead of the ordinary order; a view with no `seq` stays without):
+a bead's status, times and
 comment count, a card asked, answered (`answered: {option, at}` on the need, this phone's
 own field) or applied, a closed bead's cards settled and the cards that waited on it freed.
 A changed field or a `hands_ran` fetches that bead's detail (§12) for the value the event

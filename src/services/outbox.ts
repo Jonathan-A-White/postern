@@ -8,10 +8,11 @@
 // A 4xx the backend gives (other than 408 and 429) is final: the row is marked failed with the
 // backend's words and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
 // Talk turns are a lane of their own, so no upload or failing message holds one back.
-import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo } from '../data/repositories';
+import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo, viewRepo } from '../data/repositories';
 import type { OutboxKind, OutboxRow } from '../data/db';
 import type { GovernorAction } from '../model/conversation';
 import { retryDelay } from '../model/outbox';
+import { decodeView } from '../model/view';
 import { isPermanentRefusal } from './apiAuth';
 import type { TalkTurn } from '../model/talkLine';
 import { attachmentMime, uploadAttachment } from './attachments';
@@ -74,9 +75,26 @@ interface Lane {
 const lanes: Lane[] = (['turn', 'main'] as const).map((name) => ({ name, draining: undefined, again: undefined, timer: undefined }));
 let generation = 0;
 
+/** The seq of the view the phone holds now (the one on screen), when it has one. */
+async function shownViewSeq(): Promise<number | undefined> {
+  try {
+    const stored = await viewRepo.get();
+    return stored ? decodeView(stored.plaintext).seq : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The seq a row's payload carries (see enqueue). */
+function viewSeqOf(row: OutboxRow): number | undefined {
+  return typeof row.payload.viewSeq === 'number' ? row.payload.viewSeq : undefined;
+}
+
 /** Writes one thing he did to the outbox and wakes the sender; resolves once it is written, not once it is sent. */
 export async function enqueue(row: { kind: OutboxKind; bead?: string; payload: Record<string, unknown>; thread?: string; label?: string }): Promise<number> {
-  const id = await outboxRepo.add({ kind: row.kind, bead: row.bead ?? '', payload: row.payload, ...(row.thread !== undefined ? { thread: row.thread } : {}), ...(row.label !== undefined ? { label: row.label } : {}) });
+  // What he taps is judged against the view he was shown: its seq travels with the row (docs/protocol.md §13).
+  const viewSeq = row.kind === 'action' || row.kind === 'answer' || (row.kind === 'message' && typeof row.payload.settles === 'string') ? await shownViewSeq() : undefined;
+  const id = await outboxRepo.add({ kind: row.kind, bead: row.bead ?? '', payload: viewSeq !== undefined ? { ...row.payload, viewSeq } : row.payload, ...(row.thread !== undefined ? { thread: row.thread } : {}), ...(row.label !== undefined ? { label: row.label } : {}) });
   kickOutbox();
   return id;
 }
@@ -109,12 +127,14 @@ async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<
 
 /** What the phone remembers of a delivered answer, action or message that settles one: the card it settles leaves the queue at once. */
 function rememberDelivered(row: OutboxRow, delivered: Delivered): void {
-  if (row.kind === 'answer') writeBehind(answersRepo.save({ bead: row.bead, answer: String(row.payload.answer ?? ''), txid: delivered.txid }), 'your answer');
+  const viewSeq = viewSeqOf(row);
+  const seq = viewSeq !== undefined ? { viewSeq } : {};
+  if (row.kind === 'answer') writeBehind(answersRepo.save({ bead: row.bead, answer: String(row.payload.answer ?? ''), txid: delivered.txid, ...seq }), 'your answer');
   else if (row.kind === 'action') {
     const action = row.payload.action as GovernorAction;
-    writeBehind(answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid }), 'your action');
+    writeBehind(answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid, ...seq }), 'your action');
   } else if (row.kind === 'message' && typeof row.payload.settles === 'string') {
-    writeBehind(answersRepo.save({ bead: row.bead, answer: row.payload.settles, txid: delivered.txid }), 'your action');
+    writeBehind(answersRepo.save({ bead: row.bead, answer: row.payload.settles, txid: delivered.txid, ...seq }), 'your action');
   }
 }
 

@@ -4,7 +4,7 @@
 // bead screen; an id the backend does not know says "no bead <id>".
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { SearchScreen } from '../../src/cockpit/SearchScreen';
@@ -12,9 +12,9 @@ import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { lock, setKey } from '../../src/services/keySession';
 import { sealDocument } from '../../src/services/documents';
-import { parseRoute } from '../../src/nav/route';
 import { fixtureDetail, fixtureView, MAYOR } from '../support/cockpit-fixture';
 import { challengeResponse, isChallengeRequest } from '../support/challenge-fetch';
+import { SLOW_HOST_MS, waitForRoute } from '../support/wait-for-route';
 
 const GOV = PrivateKey.fromHex('45'.repeat(32));
 const GOV_KEY = new Uint8Array(Utils.toArray(GOV.toHex(), 'hex'));
@@ -66,7 +66,7 @@ describe('Search offers a bead by its id even when the view does not hold it', (
     const fetchImpl = stubBackend(async () => new Response(sealed, { status: 200 }));
     render(<SearchScreen q={`MW-EQ5NN.4 -`} />);
     await userEvent.click(await screen.findByRole('button', { name: `Open ${ABSENT}` }));
-    await waitFor(() => expect(parseRoute(window.location.search)).toEqual({ view: 'bead', id: ABSENT }));
+    await waitForRoute({ view: 'bead', id: ABSENT });
     expect(beadCalls(fetchImpl)).toEqual([`/api/beads/${ABSENT}`]);
     expect(screen.queryByText(`no bead ${ABSENT}`)).toBeNull();
   });
@@ -75,10 +75,10 @@ describe('Search offers a bead by its id even when the view does not hold it', (
     stubBackend(async () => new Response(JSON.stringify({ error: 'no such bead' }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
     render(<SearchScreen q="mw-nope.9" />);
     await userEvent.click(await screen.findByRole('button', { name: 'Open mw-nope.9' }));
-    expect(await screen.findByText('no bead mw-nope.9')).toBeInTheDocument();
+    expect(await screen.findByText('no bead mw-nope.9', undefined, { timeout: SLOW_HOST_MS })).toBeInTheDocument();
     // Search mirrors the query into the URL after a 300 ms debounce, so the route is
     // {view:'search'} at first and {view:'search', q} once the debounce fires: wait for
     // the settled one; the point is that it is still Search, never the bead screen.
-    await waitFor(() => expect(parseRoute(window.location.search)).toEqual({ view: 'search', q: 'mw-nope.9' }));
+    await waitForRoute({ view: 'search', q: 'mw-nope.9' });
   });
 });

@@ -4,11 +4,12 @@
 // (Opus, Sonnet or Fable) and each answered turn says how soon its first words came.
 // What the screen does is in useTalkLine; this only draws it.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
+import { HoldToTalkBar } from './HoldToTalkBar';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
 import { sendCallRequest } from './send';
 import { useRoute } from '../router';
@@ -404,23 +405,6 @@ export function TalkLineScreen() {
     if (calledFrom) void settingsRepo.setAnsweredRing(calledFrom);
   }, [calledFrom]);
 
-  const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
-    try {
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-    } catch {
-      // a pointer that is already gone: the press still counts
-    }
-    talk.press();
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== ' ' && event.key !== 'Enter') return;
-    event.preventDefault();
-    if (!event.repeat) talk.press();
-  };
-  const onKeyUp = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === ' ' || event.key === 'Enter') void talk.release();
-  };
-
   return (
     <Screen
       title="Talk"
@@ -549,24 +533,7 @@ export function TalkLineScreen() {
 
         <CallMe open={calling} onClose={() => setCalling(false)} />
 
-        <button
-          type="button"
-          disabled={dead}
-          onPointerDown={onPointerDown}
-          onPointerUp={() => void talk.release()}
-          onPointerCancel={talk.abort}
-          onContextMenu={(event) => event.preventDefault()}
-          onKeyDown={onKeyDown}
-          onKeyUp={onKeyUp}
-          className={cx(
-            'flex h-24 w-full max-w-xl touch-none flex-col items-center justify-center gap-1 rounded-3xl text-[16px] font-semibold transition-colors select-none [-webkit-touch-callout:none]',
-            listening ? 'bg-needs text-canvas' : 'bg-accent text-accent-fg',
-            'disabled:cursor-not-allowed disabled:opacity-45',
-          )}
-        >
-          <Icon name="mic" size={26} />
-          {label}
-        </button>
+        <HoldToTalkBar label={label} listening={listening} disabled={dead} onPress={talk.press} onRelease={() => void talk.release()} onAbort={talk.abort} />
 
         <div className="flex h-10 items-center gap-2">
           {line.phase === 'speaking' && (

@@ -9,8 +9,6 @@ import { initialTalkScreen, talkScreenReducer } from '../model/talkScreen';
 import { earlierTalks, openTalk } from '../model/talkLog';
 import { messagesRepo } from '../data/repositories';
 import { writeBehind } from '../services/deliver';
-import { isListenSupported, startListening, type ListenMode, type ListenSession } from '../services/listen';
-import { canChooseInput, openBluetoothInput } from '../services/micInput';
 import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import { decodeTurn, newTalkId } from '../services/talk';
 import { chime } from '../services/chime';
@@ -22,10 +20,7 @@ import { announceAnswer, clearAnnouncement } from '../services/talkAnswerNotice'
 import { sendTurn } from './send';
 import { useBeadTitles, useTalkTurns } from './hooks';
 import { useMayorHere } from './useMayorHere';
-
-function buzz(ms: number): void {
-  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(ms);
-}
+import { useHold } from './useHold';
 
 function pageHidden(): boolean {
   return typeof document !== 'undefined' && document.visibilityState === 'hidden';
@@ -45,17 +40,8 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   const setAbout = useCallback((about?: TalkAbout) => feed({ type: 'setAbout', about }), [feed]);
   const stored = useTalkTurns();
   const turns = stored ?? NO_ROWS;
-  const [transcript, setTranscript] = useState('');
-  const [notice, setNotice] = useState<string | undefined>();
-  const [mode, setMode] = useState<ListenMode | undefined>();
-  // 'starting' until the recogniser says the mic is open; 'fellBack' once on-device failed and the hold went on in cloud mode.
-  const [mic, setMic] = useState<'starting' | 'ready'>('starting');
-  const [fellBack, setFellBack] = useState(false);
-  // The label of the Bluetooth input the hold listens on; nothing means the phone's default microphone.
-  const [input, setInput] = useState<string | undefined>();
-  const listening = useRef<ListenSession | null>(null);
-  // Names the hold the recogniser's callbacks belong to; cleared when the hold ends, so a late event is ignored.
-  const hold = useRef<object | null>(null);
+  // Listening while the button is held is the hold's (useHold, shared with the composer); a recogniser that fails mid-hold ends the turn.
+  const hold = useHold({ onFailed: () => feed({ type: 'cancel' }) });
   const handled = useRef(new Set<string>());
   const sending = useRef<TalkTurn | undefined>(undefined);
   // Bead titles for the voice (mw-gq6.224): read through a ref so a view refresh never restarts speech.
@@ -64,7 +50,6 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   useEffect(() => {
     titles.current = beadTitles;
   }, [beadTitles]);
-  const supported = isListenSupported();
   // Whether the Mayor's wait is connected, as the last poll said; the wait's timing reads it each tick.
   const here = useMayorHere(line.phase === 'waiting');
   const hereNow = useRef(here);
@@ -218,81 +203,28 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     };
   }, [open, holding]);
 
-  useEffect(
-    () => () => {
-      hold.current = null;
-      listening.current?.abort();
-    },
-    [],
-  );
-
   function press(): void {
-    if (!supported || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
-    setNotice(undefined);
-    buzz(30);
-    const thisHold = {};
-    hold.current = thisHold;
-    const started = startListening({
-      lang: typeof document === 'undefined' ? undefined : document.documentElement.lang,
-      onInterim: setTranscript,
-      onStart: () => hold.current === thisHold && setMic('ready'),
-      openInput: canChooseInput() ? openBluetoothInput : undefined,
-      onInput: (label) => hold.current === thisHold && setInput(label),
-      onFallback: () => {
-        if (hold.current !== thisHold) return;
-        setMode('cloud');
-        setFellBack(true);
-        setMic('starting');
-      },
-      // The recogniser failed while he is still holding: the hold is over, and he is told why.
-      onError: (error) => {
-        if (hold.current !== thisHold) return;
-        hold.current = null;
-        listening.current?.abort();
-        listening.current = null;
-        setNotice(error.message);
-        feed({ type: 'cancel' });
-      },
-    });
-    if (!started.ok) {
-      hold.current = null;
-      setNotice(started.error.message);
-      return;
-    }
-    listening.current = started.session;
-    setMode(started.session.mode);
-    setMic('starting');
-    setFellBack(false);
-    setInput(undefined);
-    setTranscript('');
+    if (!hold.supported || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
+    if (!hold.begin()) return;
     feed({ type: 'hold', talkId: line.talk?.id ?? newTalkId() });
   }
 
   async function release(): Promise<void> {
-    const session = listening.current;
-    if (!session) return;
-    listening.current = null;
-    hold.current = null;
-    buzz(15);
-    const result = await session.stop();
-    if (!result.text.trim()) {
-      setNotice(result.ok ? 'No speech was heard.' : result.error.message);
+    const released = await hold.finish();
+    if (released.status === 'idle') return;
+    if (released.status === 'empty') {
       feed({ type: 'cancel' });
       return;
     }
-    feed({ type: 'release', text: result.text });
+    feed({ type: 'release', text: released.text });
   }
 
   function abort(): void {
-    hold.current = null;
-    if (!listening.current) return;
-    listening.current.abort();
-    listening.current = null;
-    feed({ type: 'cancel' });
+    if (hold.drop()) feed({ type: 'cancel' });
   }
 
   function retry(): void {
-    setNotice(undefined);
+    hold.setNotice(undefined);
     feed({ type: 'retry' });
   }
 
@@ -301,28 +233,26 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   }
 
   function end(): void {
-    setNotice(undefined);
+    hold.setNotice(undefined);
     const turn = endTurn(line);
-    hold.current = null;
-    listening.current?.abort();
-    listening.current = null;
+    hold.drop();
     feed({ type: 'end' });
-    if (turn && turn.talk.turn > 0) sendTurn(turn).catch(() => setNotice('Could not tell the Mayor the talk is over.'));
+    if (turn && turn.talk.turn > 0) sendTurn(turn).catch(() => hold.setNotice('Could not tell the Mayor the talk is over.'));
   }
 
   return {
     line,
     log,
     earlier,
-    transcript,
-    notice: notice ?? line.error,
-    canEnd: line.phase !== 'sending' && (line.talk !== undefined || notice !== undefined || line.error !== undefined),
-    mode,
-    mic,
-    fellBack,
-    input,
+    transcript: hold.transcript,
+    notice: hold.notice ?? line.error,
+    canEnd: line.phase !== 'sending' && (line.talk !== undefined || hold.notice !== undefined || line.error !== undefined),
+    mode: hold.mode,
+    mic: hold.mic,
+    fellBack: hold.fellBack,
+    input: hold.input,
     here,
-    supported,
+    supported: hold.supported,
     press,
     release,
     abort,

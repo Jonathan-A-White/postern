@@ -245,6 +245,9 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   }
 
   const canSend = (text.trim().length > 0 || files.length > 0 || !!quote);
+  // Pictures or files alone in the draft leave the mic beside Send; a voice note recorded in the draft (one per message), or words, take it away.
+  const micBesideSend = text.trim().length === 0 && !quote && files.length > 0 && !files.some((file) => file.durationMs !== undefined);
+  const mic = <IconButton icon="mic" label="Record a voice note" size="lg" disabled={!canRecord()} onClick={() => void startRecording()} className={cx(!canRecord() && 'opacity-40')} />;
 
   return (
     <div className={cx(wide && 'pb-safe', 'shrink-0 border-t border-line bg-surface')} onDragOver={(event) => event.preventDefault()} onDrop={onDrop} data-testid="composer">
@@ -371,9 +374,12 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
             <IconButton icon="send" label="Send (hold to send anyway)" tone="accent" size="lg" disabled className="pointer-events-none [-webkit-touch-callout:none]" />
           </span>
         ) : canSend ? (
-          <IconButton icon="send" label="Send" tone="accent" size="lg" disabled={busy || !canSend || callBlocked} onClick={() => void send()} />
+          <>
+            {micBesideSend && mic}
+            <IconButton icon="send" label="Send" tone="accent" size="lg" disabled={busy || !canSend || callBlocked} onClick={() => void send()} />
+          </>
         ) : (
-          <IconButton icon="mic" label="Record a voice note" size="lg" disabled={!canRecord()} onClick={() => void startRecording()} className={cx(!canRecord() && 'opacity-40')} />
+          mic
         )}
       </div>
       {callError && (

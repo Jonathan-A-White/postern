@@ -65,14 +65,14 @@ plus 256 bytes); a v2 request with a longer body is refused `413` whatever its
 route, and each route still applies its own, smaller cap to the body it is
 handed.
 
-**v1, until its removal.** The older header,
-`Authorization: Postern <pubkeyHex>:<nonceHex>:<sigHex>`, signs the nonce alone
-(`sigHex` over `sha256(nonceHex)`) and is still accepted beside v2, under every
-rule here but the message signed. It will be dropped on a date fixed once the app
-and mw sign v2 and the log shows no v1 requests; that date will be written here.
-Every accepted request writes one log line, `accepted <METHOD> <path> (scheme=v1
-key <first 12 hex>)` or `scheme=v2`, so the last v1 request can be dated.
-`GET /api/challenge` stays unsigned under both.
+**v2 is the only scheme.** The older header,
+`Authorization: Postern <pubkeyHex>:<nonceHex>:<sigHex>` (v1, which signed the
+nonce alone), is no longer accepted: any request under it, however well signed, is
+refused `401` with `reason: "signature-v1"`, and the refusal is logged with the
+route and the key's first 12 hex characters. A client that gets `signature-v1` is
+an old build and has to update; it is not worth a retry. Every accepted request
+writes one log line, `accepted <METHOD> <path> (scheme=v2 key <first 12 hex>)`.
+`GET /api/challenge` stays unsigned.
 
 A nonce is consumed the moment it's presented and verified — it can never be
 reused on that backend, whether the proof it backed succeeded or failed. It also
@@ -96,7 +96,7 @@ or MAC, an expired nonce or a replay); the wire does not.
 - `401` — the header is missing or malformed, the nonce is unknown, another host's, from before a restart, expired or
   already used, the signature doesn't verify, or the key holds no licence. The body is
   `{"error": "<words>", "reason": "<code>"}`; the app matches on `reason`, never on
-  `error`: `malformed_authorization`, `nonce`, `signature` or `no_licence`. Only
+  `error`: `malformed_authorization`, `nonce`, `signature`, `signature-v1` or `no_licence`. Only
   `no_licence` is about a licence; the app retries a `nonce` refusal once with a
   fresh challenge (nothing has been acted on when it is refused).
 - `403` — a proved, licensed key whose licence does not open the route; `reason`

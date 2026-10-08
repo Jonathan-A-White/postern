@@ -81,9 +81,9 @@ signed (`docs/api.md`, Authentication): `Authorization: Postern2
 nonceHex`; `target` is the request target exactly as sent, percent-encodings and query
 included, and an absent body hashes the empty string. A header so signed is good for
 that one method, path, query and body, once. The v1 header, `Postern
-<pubkeyHex>:<nonceHex>:<sigHex>` with the signature over the nonce alone, is accepted
-beside it until a dated removal, and the backend logs which scheme each accepted request
-used.
+<pubkeyHex>:<nonceHex>:<sigHex>` with the signature over the nonce alone, is no longer
+accepted: the backend refuses it `401` with `reason: "signature-v1"` and logs the
+refusal. v2 is the only scheme.
 
 ## 2. Encryption (BRC-78)
 

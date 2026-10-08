@@ -4,6 +4,7 @@
 // foreground. undefined until the backend has said (mw-1ox07o.4).
 import { useEffect, useState } from 'react';
 import { fetchMayorHere } from '../services/presence';
+import { setVisibleInterval } from '../ui/visibleInterval';
 import { useUnlockedKey } from './hooks';
 
 export const PRESENCE_POLL_MS = 5_000;
@@ -24,15 +25,10 @@ export function useMayorHere(waiting = false): boolean | undefined {
       });
     };
     ask();
-    const timer = setInterval(ask, waiting ? PRESENCE_POLL_MS : PRESENCE_IDLE_POLL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') ask();
-    };
-    document.addEventListener('visibilitychange', onVisible);
+    const stop = setVisibleInterval(ask, waiting ? PRESENCE_POLL_MS : PRESENCE_IDLE_POLL_MS);
     return () => {
       current = false;
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisible);
+      stop();
     };
   }, [key, waiting]);
   return here;

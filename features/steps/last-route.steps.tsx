@@ -10,6 +10,7 @@ import { db } from '../../src/data/db';
 import { forgetRestoredBead, restoreLastRoute, saveLastRoute } from '../../src/nav/lastRoute';
 import { forgetScrolls, restoreScrolls, useScrollMemory } from '../../src/nav/scrollMemory';
 import { formatRoute, parseRoute } from '../../src/nav/route';
+import { waitForRoute } from '../../tests/support/wait-for-route';
 import { setKey, lock } from '../../src/services/keySession';
 import { fetchBeadDetail } from '../../src/services/beads';
 
@@ -140,7 +141,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       await waitFor(() => expect(fetchBeadDetail).toHaveBeenCalled());
     });
     Then('the app moves to the Map', async () => {
-      await waitFor(() => expect(parseRoute(window.location.search)).toEqual({ view: 'map' }));
+      await waitForRoute({ view: 'map' });
     });
   });
 

@@ -4,12 +4,13 @@
 // where its tap opened is then rendered through the app's own router, so the
 // scenarios end at the screen the Governor would see.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import { afterAll, beforeAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { db, type MessageClass, type MessageRow } from '../../src/data/db';
 import { messagesRepo } from '../../src/data/repositories';
 import { parseRoute } from '../../src/nav/route';
+import { waitForRoute } from '../../tests/support/wait-for-route';
 import { NoticeScreen } from '../../src/cockpit/NoticeScreen';
 import { AlarmScreen } from '../../src/cockpit/AlarmScreen';
 import { fakeWindowClient, loadWorker, type FakeWindowClient, type WorkerHarness } from '../../tests/support/sw-harness';
@@ -139,7 +140,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await messagesRepo.put(messageOn(bead));
     });
     Then('the app moves to the thread of bead {string}', async (_ctx, bead: string) => {
-      await waitFor(() => expect(parseRoute(window.location.search)).toEqual({ view: 'talk', thread: `bead:${bead}` }));
+      await waitForRoute({ view: 'talk', thread: `bead:${bead}` });
     });
   });
 
@@ -155,7 +156,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the message does not arrive in time', () => new Promise((resolve) => setTimeout(resolve, 120)));
     Then('the app moves to the Needs-you queue', async () => {
-      await waitFor(() => expect(parseRoute(window.location.search)).toEqual({ view: 'needs' }));
+      await waitForRoute({ view: 'needs' });
     });
   });
 
@@ -188,7 +189,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await messagesRepo.put(replyRow());
     });
     Then('the app moves to the reply thread of the General post', async () => {
-      await waitFor(() => expect(parseRoute(window.location.search)).toEqual(replyThread));
+      await waitForRoute(replyThread);
     });
   });
 
@@ -244,7 +245,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await messagesRepo.put(replyRow());
     });
     Then('the app moves to the reply thread of the post in the channel of bead {string}', async (_ctx, bead: string) => {
-      await waitFor(() => expect(parseRoute(window.location.search)).toEqual(threadOfPost(`bead:${bead}`)));
+      await waitForRoute(threadOfPost(`bead:${bead}`));
     });
   });
 
@@ -270,7 +271,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(parseRoute(window.location.search)).toMatchObject({ view: 'notice', tx: TXID });
     });
     And('the app moves to the reply thread of the General post', async () => {
-      await waitFor(() => expect(parseRoute(window.location.search)).toEqual(replyThread));
+      await waitForRoute(replyThread);
     });
   });
 });

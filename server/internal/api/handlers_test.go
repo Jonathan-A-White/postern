@@ -986,3 +986,69 @@ func TestMessagesLimitIsClampedToTheCap(t *testing.T) {
 		t.Fatalf("got %d records, more %v; want the cap %d and more true", len(page.Records), page.More, messagesLimitCap)
 	}
 }
+
+// nonceRefusal presents header to server and returns the status, the wire
+// reason and the refusal log line (mw-xhtcup.6).
+func nonceRefusal(t *testing.T, server *httptest.Server, header http.Header) (status int, reason, logLine string) {
+	t.Helper()
+	buf := captureLog(t)
+	req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/messages", nil)
+	req.Header = header
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/messages: %v", err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	json.NewDecoder(resp.Body).Decode(&body)
+	return resp.StatusCode, body.Reason, buf.String()
+}
+
+func TestANonceFromAnotherHostIsRefusedWithReasonNonceAndLoggedAsHost(t *testing.T) {
+	key := bytes.Repeat([]byte{9}, 32)
+	home, _, _, _ := newTestServerFull(t, http.NotFound, &stubChecker{held: true},
+		auth.NewNonceStore(time.Minute, auth.WithKey(key), auth.WithHostname("laptop")))
+	standby, _, _, _ := newTestServerFull(t, http.NotFound, &stubChecker{held: true},
+		auth.NewNonceStore(time.Minute, auth.WithKey(key), auth.WithHostname("desktop")))
+
+	header := authorizedRequest(t, home)
+	status, reason, line := nonceRefusal(t, standby, header)
+	if status != http.StatusUnauthorized || reason != "nonce" {
+		t.Fatalf("standby on the home's nonce: %d %q, want 401 \"nonce\"", status, reason)
+	}
+	if !strings.Contains(line, "nonce-host") {
+		t.Fatalf("log line %q does not name nonce-host", line)
+	}
+	// The refusal elsewhere did not spend it: its own host still takes it.
+	if got := statusOf(t, home, header); got != http.StatusOK {
+		t.Fatalf("the issuing host refused its own nonce: %d", got)
+	}
+}
+
+func TestANonceIssuedBeforeTheProcessStartedIsRefusedWithReasonNonceAndLoggedAsStale(t *testing.T) {
+	key := bytes.Repeat([]byte{9}, 32)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	clock := auth.WithClock(func() time.Time { return now })
+	before, _, _, _ := newTestServerFull(t, http.NotFound, &stubChecker{held: true},
+		auth.NewNonceStore(time.Minute, auth.WithKey(key), auth.WithHostname("laptop"), clock))
+	header := authorizedRequest(t, before)
+
+	now = now.Add(10 * time.Second)
+	after, _, _, _ := newTestServerFull(t, http.NotFound, &stubChecker{held: true},
+		auth.NewNonceStore(time.Minute, auth.WithKey(key), auth.WithHostname("laptop"), clock))
+
+	status, reason, line := nonceRefusal(t, after, header)
+	if status != http.StatusUnauthorized || reason != "nonce" {
+		t.Fatalf("restarted backend on a pre-restart nonce: %d %q, want 401 \"nonce\"", status, reason)
+	}
+	if !strings.Contains(line, "nonce-stale") {
+		t.Fatalf("log line %q does not name nonce-stale", line)
+	}
+
+	now = now.Add(time.Second)
+	if got := statusOf(t, after, authorizedRequest(t, after)); got != http.StatusOK {
+		t.Fatalf("a nonce issued after the start: status %d, want 200", got)
+	}
+}

@@ -10,6 +10,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/Jonathan-A-White/postern/server/internal/auth"
 )
 
 // logLines collects what a monitor or relay logs.
@@ -312,5 +315,53 @@ func TestAStandbyThatIsToldTheRequestWasRelayedServesItItself(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if served != 1 || len(*got) != 1 {
 		t.Fatalf("served %d, peer saw %d, want 1 and still 1", served, len(*got))
+	}
+}
+
+// A challenge the standby relays to the home is bound to the home: the nonce
+// the phone spends there is no good on the standby's own backend, so a header
+// captured in flight cannot be spent a second time where the home is out of
+// reach (mw-xhtcup.6).
+func TestANonceSpentThroughTheRelayOnTheHomeCannotBeSpentOnTheStandby(t *testing.T) {
+	key := make([]byte, 32)
+	homeNonces := auth.NewNonceStore(time.Minute, auth.WithKey(key), auth.WithHostname("laptop"))
+	standbyNonces := auth.NewNonceStore(time.Minute, auth.WithKey(key), auth.WithHostname("desktop"))
+
+	// A backend that issues on /api/challenge and spends whatever POST /api/messages names.
+	backend := func(name string, n *auth.NonceStore) http.Handler {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/api/challenge", func(w http.ResponseWriter, r *http.Request) {
+			nonce, _ := n.Issue()
+			fmt.Fprint(w, nonce)
+		})
+		mux.HandleFunc("/api/messages", func(w http.ResponseWriter, r *http.Request) {
+			if n.Consume(r.URL.Query().Get("nonce")) {
+				fmt.Fprint(w, name+" accepted")
+				return
+			}
+			http.Error(w, name+" refused", http.StatusUnauthorized)
+		})
+		return mux
+	}
+	home := httptest.NewServer(backend("home", homeNonces))
+	t.Cleanup(home.Close)
+	h := Middleware(standbyMonitor("laptop"), backend("standby", standbyNonces),
+		WithPeers(map[string]string{"laptop": home.URL}))
+
+	nonce := do(h, "GET", "/api/challenge").Body.String() // relayed: issued by the home
+	if len(nonce) != 128 {
+		t.Fatalf("relayed challenge = %q, want a 128-hex nonce from the home", nonce)
+	}
+	if rec := do(h, "POST", "/api/messages?nonce="+nonce); rec.Body.String() != "home accepted" {
+		t.Fatalf("the home on its own nonce: %q", rec.Body.String())
+	}
+	// Spent on the home; the standby, serving locally, must refuse the same header.
+	if standbyNonces.Consume(nonce) {
+		t.Fatal("the standby accepted a nonce the home issued and spent")
+	}
+	// And one the home issued but never spent is no good on the standby either.
+	unspent, _ := homeNonces.Issue()
+	if standbyNonces.Consume(unspent) {
+		t.Fatal("the standby accepted a nonce the home issued")
 	}
 }

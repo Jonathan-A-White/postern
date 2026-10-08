@@ -261,8 +261,10 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 			refuse(w, r, http.StatusUnauthorized, reasonMalformed, "missing or malformed Authorization header", "")
 			return
 		}
-		if !nonces.Consume(nonce) {
-			refuse(w, r, http.StatusUnauthorized, reasonNonce, "nonce is missing, expired, or already used", pubKeyHex)
+		if err := nonces.Spend(nonce); err != nil {
+			// The wire reason is always "nonce" (every client retries once on
+			// it); the log says whether it was another host's or an earlier life's.
+			refuseLogged(w, r, http.StatusUnauthorized, reasonNonce, err.Error(), "nonce is missing, expired, or already used", pubKeyHex)
 			return
 		}
 		valid, err := auth.VerifySignature(pubKeyHex, nonce, sigHex)
@@ -305,7 +307,13 @@ const (
 // request named ("-" when it named none). Never the body, a signature or a
 // nonce.
 func refuse(w http.ResponseWriter, r *http.Request, status int, reason, message, pubKeyHex string) {
-	log.Printf("refused %d %s: %s (%s key %s)", status, r.Method+" "+r.URL.EscapedPath(), message, reason, keyPrefix(pubKeyHex))
+	refuseLogged(w, r, status, reason, reason, message, pubKeyHex)
+}
+
+// refuseLogged is refuse with a finer cause for the log line than the reason
+// the body carries.
+func refuseLogged(w http.ResponseWriter, r *http.Request, status int, reason, cause, message, pubKeyHex string) {
+	log.Printf("refused %d %s: %s (%s key %s)", status, r.Method+" "+r.URL.EscapedPath(), message, cause, keyPrefix(pubKeyHex))
 	writeJSON(w, status, struct {
 		Error  string `json:"error"`
 		Reason string `json:"reason"`

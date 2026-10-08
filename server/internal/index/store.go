@@ -5,10 +5,13 @@ package index
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -48,6 +51,9 @@ type Store struct {
 	firstOf map[string]int // txid -> index in records of its first record
 	nextSeq uint64
 	chain   [sha256.Size]byte // the last direct record's chain; zero before the first
+	size    int64             // bytes of whole lines in the file: where the next append begins
+
+	afterWrite func() error // test seam: runs between writing a line and syncing it
 }
 
 // Open loads dir/postern-index.jsonl into memory (creating dir and the file
@@ -69,37 +75,87 @@ func Open(dir string) (*Store, error) {
 		firstOf: make(map[string]int),
 	}
 
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var rec Record
-		if err := json.Unmarshal(line, &rec); err != nil {
-			file.Close()
-			return nil, fmt.Errorf("replaying %s: %w", path, err)
-		}
-		if rec.Chain != "" {
-			chain, err := hex.DecodeString(rec.Chain)
-			if err != nil || len(chain) != sha256.Size {
-				file.Close()
-				return nil, fmt.Errorf("replaying %s: record %d has a malformed chain %q", path, rec.Seq, rec.Chain)
-			}
-			copy(store.chain[:], chain)
-		}
-		store.remember(rec)
-		if rec.Seq > store.nextSeq {
-			store.nextSeq = rec.Seq
-		}
-	}
-	if err := scanner.Err(); err != nil {
+	if err := store.replay(file, path); err != nil {
 		file.Close()
-		return nil, fmt.Errorf("replaying %s: %w", path, err)
+		return nil, err
 	}
 
 	return store, nil
+}
+
+// replay reads every line of file into memory. A last line with no newline
+// that does not parse is a torn append (a crash mid-write): it is logged with
+// its byte offset and the file is truncated back to the last whole line. A
+// last line with no newline that does parse is a whole record that lost only
+// its newline, so the newline is written back. A bad line anywhere else
+// refuses, since that is damage rather than a crash.
+func (s *Store) replay(file *os.File, path string) error {
+	reader := bufio.NewReader(file)
+	var offset int64
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if readErr != nil && readErr != io.EOF {
+			return fmt.Errorf("replaying %s: %w", path, readErr)
+		}
+		if len(line) == 0 {
+			break
+		}
+		unterminated := line[len(line)-1] != '\n'
+		body := bytes.TrimSuffix(line, []byte("\n"))
+		if len(bytes.TrimSpace(body)) > 0 {
+			rec, err := parseLine(body, path)
+			if err != nil {
+				if !unterminated {
+					return err
+				}
+				log.Printf("index %s: torn last line at byte offset %d (%d bytes), truncating it", path, offset, len(line))
+				if err := file.Truncate(offset); err != nil {
+					return fmt.Errorf("truncating torn line in %s: %w", path, err)
+				}
+				break
+			}
+			s.noteChain(rec)
+			s.remember(rec)
+			if rec.Seq > s.nextSeq {
+				s.nextSeq = rec.Seq
+			}
+		}
+		if unterminated {
+			if _, err := file.Write([]byte{'\n'}); err != nil {
+				return fmt.Errorf("ending the last line of %s: %w", path, err)
+			}
+			line = append(line, '\n')
+		}
+		offset += int64(len(line))
+		if readErr == io.EOF {
+			break
+		}
+	}
+	s.size = offset
+	return nil
+}
+
+// parseLine decodes one JSONL line, checking its chain is well formed.
+func parseLine(line []byte, path string) (Record, error) {
+	var rec Record
+	if err := json.Unmarshal(line, &rec); err != nil {
+		return Record{}, fmt.Errorf("replaying %s: %w", path, err)
+	}
+	if rec.Chain != "" {
+		chain, err := hex.DecodeString(rec.Chain)
+		if err != nil || len(chain) != sha256.Size {
+			return Record{}, fmt.Errorf("replaying %s: record %d has a malformed chain %q", path, rec.Seq, rec.Chain)
+		}
+	}
+	return rec, nil
+}
+
+// noteChain makes rec's chain (already checked by parseLine) the last one.
+func (s *Store) noteChain(rec Record) {
+	if rec.Chain != "" {
+		chain, _ := hex.DecodeString(rec.Chain)
+		copy(s.chain[:], chain)
+	}
 }
 
 // Close closes the underlying file. The in-memory index remains readable
@@ -156,15 +212,33 @@ func (s *Store) appendLocked(rec Record) (Record, error) {
 	}
 	line = append(line, '\n')
 	if _, err := s.file.Write(line); err != nil {
+		s.cutBack()
 		return Record{}, fmt.Errorf("writing record: %w", err)
 	}
+	if s.afterWrite != nil {
+		if err := s.afterWrite(); err != nil {
+			s.cutBack()
+			return Record{}, fmt.Errorf("syncing index file: %w", err)
+		}
+	}
 	if err := s.file.Sync(); err != nil {
+		s.cutBack()
 		return Record{}, fmt.Errorf("syncing index file: %w", err)
 	}
 
+	s.size += int64(len(line))
 	s.nextSeq = rec.Seq
 	s.remember(rec)
 	return rec, nil
+}
+
+// cutBack drops whatever a failed append left after the last whole line, so
+// the next append does not land behind a partial one. If even that fails, the
+// next Open finds the torn tail and truncates it.
+func (s *Store) cutBack() {
+	if err := s.file.Truncate(s.size); err != nil {
+		log.Printf("index: cutting back a failed append to byte offset %d: %v", s.size, err)
+	}
 }
 
 // remember adds rec to the in-memory index. Callers must hold s.mu (or be

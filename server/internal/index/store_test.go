@@ -1,10 +1,15 @@
 package index
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"log"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -348,5 +353,236 @@ func TestSignerAppsSurviveRestart(t *testing.T) {
 	records, _ := reopened.Since(0)
 	if len(records) != 1 || len(records[0].SignerApps) != 1 || records[0].SignerApps[0] != "cairn" {
 		t.Fatalf("records = %+v, want one record whose signer_apps is [cairn]", records)
+	}
+}
+
+// writeIndex seeds dir with two whole records and returns the file's path
+// and the bytes of those two lines.
+func writeIndex(t *testing.T, dir string) (string, []byte) {
+	t.Helper()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	store.Append(newRecord("tx1", 0))
+	store.Append(newRecord("tx2", 0))
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	path := filepath.Join(dir, fileName)
+	whole, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading index: %v", err)
+	}
+	return path, whole
+}
+
+func appendBytes(t *testing.T, path string, b []byte) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("opening index: %v", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(b); err != nil {
+		t.Fatalf("writing index: %v", err)
+	}
+}
+
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	return &buf
+}
+
+func TestOpenTruncatesATornLastLine(t *testing.T) {
+	dir := t.TempDir()
+	path, whole := writeIndex(t, dir)
+	appendBytes(t, path, []byte(`{"seq":3,"txid":"tx3","vout":0,"scri`))
+	logged := captureLog(t)
+
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open with a torn last line: %v", err)
+	}
+	defer store.Close()
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading index: %v", err)
+	}
+	if !bytes.Equal(got, whole) {
+		t.Fatalf("file after Open = %q, want it cut back to the last whole line %q", got, whole)
+	}
+	lines := strings.Split(strings.TrimSpace(logged.String()), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("logged %d lines (%q), want exactly one", len(lines), logged.String())
+	}
+	if want := strconv.Itoa(len(whole)); !strings.Contains(lines[0], want) {
+		t.Fatalf("log line %q does not name the byte offset %s", lines[0], want)
+	}
+
+	records, head := store.Since(0)
+	if len(records) != 2 || head != 2 {
+		t.Fatalf("got %d records, head %d; want the 2 whole records, head 2", len(records), head)
+	}
+	third, err := store.Append(newRecord("tx3", 0))
+	if err != nil {
+		t.Fatalf("Append after truncation: %v", err)
+	}
+	if third.Seq != 3 {
+		t.Fatalf("third.Seq = %d, want 3", third.Seq)
+	}
+}
+
+func TestOpenAfterTruncationReplaysEverythingAppendedSince(t *testing.T) {
+	dir := t.TempDir()
+	path, _ := writeIndex(t, dir)
+	appendBytes(t, path, []byte(`{"seq":3,"tx`))
+	captureLog(t)
+
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	store.Append(newRecord("tx3", 0))
+	store.Close()
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open (reload): %v", err)
+	}
+	defer reopened.Close()
+	if records, _ := reopened.Since(0); len(records) != 3 {
+		t.Fatalf("len(records) = %d, want 3", len(records))
+	}
+}
+
+func TestOpenKeepsAWholeLastRecordThatLacksItsNewline(t *testing.T) {
+	dir := t.TempDir()
+	path, whole := writeIndex(t, dir)
+	line, err := json.Marshal(Record{Seq: 3, TxID: "tx3", ScriptHex: "00"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendBytes(t, path, line) // crash after the record, before its newline
+	logged := captureLog(t)
+
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if logged.Len() != 0 {
+		t.Fatalf("logged %q for a whole record, want nothing", logged.String())
+	}
+	if _, err := store.Append(newRecord("tx4", 0)); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	store.Close()
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open (reload): %v", err)
+	}
+	defer reopened.Close()
+	records, _ := reopened.Since(0)
+	if len(records) != 4 {
+		t.Fatalf("len(records) = %d, want 4 (the whole record kept, the new one on its own line)", len(records))
+	}
+	got, _ := os.ReadFile(path)
+	if !bytes.HasPrefix(got, whole) {
+		t.Fatalf("the first two lines changed: %q", got)
+	}
+}
+
+func TestOpenRefusesAMalformedLineInTheMiddle(t *testing.T) {
+	dir := t.TempDir()
+	path, whole := writeIndex(t, dir)
+	lines := bytes.SplitAfter(whole, []byte("\n"))
+	broken := append([]byte{}, lines[0]...)
+	broken = append(broken, []byte("{not json}\n")...)
+	broken = append(broken, lines[1]...)
+	if err := os.WriteFile(path, broken, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if store, err := Open(dir); err == nil {
+		store.Close()
+		t.Fatal("Open succeeded over a malformed middle line, want an error")
+	}
+	got, _ := os.ReadFile(path)
+	if !bytes.Equal(got, broken) {
+		t.Fatal("a refused Open must leave the file as it was")
+	}
+}
+
+func TestOpenRefusesAMalformedLastLineThatEndsInANewline(t *testing.T) {
+	dir := t.TempDir()
+	path, _ := writeIndex(t, dir)
+	appendBytes(t, path, []byte("{not json}\n"))
+
+	if store, err := Open(dir); err == nil {
+		store.Close()
+		t.Fatal("Open succeeded over a complete but malformed last line, want an error")
+	}
+}
+
+func TestAFailedAppendLeavesTheFileReadableOnTheNextOpen(t *testing.T) {
+	dir := t.TempDir()
+	path, whole := writeIndex(t, dir)
+
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	store.Close()
+	if _, err := store.Append(newRecord("tx3", 0)); err == nil {
+		t.Fatal("Append on a closed store succeeded, want an error")
+	}
+	got, _ := os.ReadFile(path)
+	if !bytes.Equal(got, whole) {
+		t.Fatalf("a failed Append changed the file: %q", got)
+	}
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open after a failed Append: %v", err)
+	}
+	defer reopened.Close()
+	if records, _ := reopened.Since(0); len(records) != 2 {
+		t.Fatalf("len(records) = %d, want 2", len(records))
+	}
+}
+
+func TestAnAppendThatWritesPartAndFailsIsCutBack(t *testing.T) {
+	dir := t.TempDir()
+	path, whole := writeIndex(t, dir)
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	store.afterWrite = func() error { return errors.New("disk full") }
+	if _, err := store.Append(newRecord("tx3", 0)); err == nil {
+		t.Fatal("Append succeeded though the sync failed")
+	}
+	got, _ := os.ReadFile(path)
+	if !bytes.Equal(got, whole) {
+		t.Fatalf("file after a failed Append = %q, want the partial line cut back to %q", got, whole)
+	}
+	if store.Head() != 2 {
+		t.Fatalf("Head = %d after a failed Append, want 2", store.Head())
+	}
+
+	store.afterWrite = nil
+	next, err := store.Append(newRecord("tx3", 0))
+	if err != nil {
+		t.Fatalf("Append after the failure: %v", err)
+	}
+	if next.Seq != 3 {
+		t.Fatalf("next.Seq = %d, want 3", next.Seq)
 	}
 }

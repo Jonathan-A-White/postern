@@ -7,7 +7,7 @@
 // instead of as a code block. react-markdown always wraps a fenced code
 // block's `code` element in a `pre`; overriding `pre` (rather than `code`)
 // lets a mermaid block skip that wrapper entirely.
-import { isValidElement, type ReactNode } from 'react';
+import { isValidElement, memo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { inAppHref } from '../router';
@@ -64,7 +64,8 @@ export interface MarkdownProps {
   inline?: boolean;
 }
 
-export function Markdown({ text, wrap = false, inline = false }: MarkdownProps) {
+/** Memoized on its three props: a message is parsed once, however often its bubble or the channel around it redraws (mw-q6n8m0.6). */
+export const Markdown = memo(function Markdown({ text, wrap = false, inline = false }: MarkdownProps) {
   const className = ['markdown', wrap && 'markdown-wrap', inline && 'markdown-item'].filter(Boolean).join(' ');
   return (
     <div className={className}>
@@ -73,4 +74,4 @@ export function Markdown({ text, wrap = false, inline = false }: MarkdownProps) 
       </ReactMarkdown>
     </div>
   );
-}
+});

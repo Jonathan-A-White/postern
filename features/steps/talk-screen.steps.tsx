@@ -126,6 +126,13 @@ class FakeAudio {
   }
 }
 const loopPlaying = () => audios.some((audio) => audio.playing);
+// mw-q6n8m0.2: the Web Audio context the chime would sound its note on; any construction is a sound the app made.
+let audioContexts = 0;
+class FakeAudioContext {
+  constructor() {
+    audioContexts += 1;
+  }
+}
 
 function installBrowser(listens: boolean): void {
   recognizers = [];
@@ -147,6 +154,8 @@ function installBrowser(listens: boolean): void {
   Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true, writable: true });
   audios = [];
   vi.stubGlobal('Audio', FakeAudio);
+  audioContexts = 0;
+  vi.stubGlobal('AudioContext', FakeAudioContext);
 }
 
 /** The phone's audio inputs: none listed (a browser that cannot choose), or these, whose tracks are returned when opened. */
@@ -1515,6 +1524,54 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the Talk line shows {string} in colour', (c, words: string) => markShows(c, words, 'colour'));
     And('the phone buzzes once for it', async () => {
       await waitFor(() => expect(vibrate.mock.calls.length).toBe(buzzesBefore + 1));
+    });
+  });
+
+  Scenario('AC-1: the Talk line makes no chime or other sound of its own while he holds, pauses inside a turn, or the Mayor comes back meanwhile (mw-q6n8m0.2)', ({ Given, And, When, Then }) => {
+    Given('the Mayor is away', mayorIs(false));
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      vibrate.mockClear();
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    And('the recogniser hears {string} so far', async (_c, words: string) => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      await hear(words);
+    });
+    And('he stays silent for {int} seconds, {int} times over, the recogniser ending itself each time', async (_c, seconds: number, times: number) => {
+      for (let i = 0; i < times; i++) {
+        const before = recognizers.length;
+        silentFor += seconds * 1000;
+        act(() => {
+          recognizers.at(-1)?.onerror?.({ error: 'no-speech' });
+          recognizers.at(-1)?.onend?.();
+        });
+        await waitFor(() => expect(recognizers.length).toBe(before + 1));
+      }
+    });
+    And('the Mayor comes back and the phone returns to the foreground', async () => {
+      mayor.here = true;
+      comesBackToTheForeground();
+      await screen.findByText('Mayor here');
+    });
+    And('the recogniser then hears {string} so far', async (_c, words: string) => {
+      await hear(words);
+    });
+    Then('the app has made no chime or other sound', () => {
+      expect(audioContexts).toBe(0);
+    });
+    And('no silent loop is playing', () => {
+      expect(loopPlaying()).toBe(false);
+    });
+    And('the phone has only buzzed for the press', () => {
+      expect(vibrate.mock.calls).toEqual([[30]]);
+    });
+    When('he lets go of the talk button', async () => {
+      fireEvent.pointerUp(await talkButton('Release to send'));
+      await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
+    });
+    Then('one turn is sent saying {string} as turn 1', (_c, words: string) => {
+      expect(lastSent()).toMatchObject({ text: words, role: 'turn', talk: { turn: 1 } });
     });
   });
 

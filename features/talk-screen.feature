@@ -106,6 +106,20 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then one turn is sent saying "I'd love to see Kieran where you can take pictures" as turn 1
     And a silent loop plays once he has let go
 
+  Scenario: AC-1: the Talk line makes no chime or other sound of its own while he holds, pauses inside a turn, or the Mayor comes back meanwhile (mw-q6n8m0.2)
+    Given the Mayor is away
+    And the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    And the recogniser hears "first part" so far
+    And he stays silent for 5 seconds, 3 times over, the recogniser ending itself each time
+    And the Mayor comes back and the phone returns to the foreground
+    And the recogniser then hears "second part" so far
+    Then the app has made no chime or other sound
+    And no silent loop is playing
+    And the phone has only buzzed for the press
+    When he lets go of the talk button
+    Then one turn is sent saying "first part second part" as turn 1
+
   Scenario: AC-1: releasing vibrates and sends his words as a turn
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "What landed today?" and lets go

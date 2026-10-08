@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { canChooseInput, chooseInput, forgetSilentInputs, openBluetoothInput, type InputDevice } from '../../src/services/micInput';
+import { canChooseInput, chooseInput, forgetSilentInputs, openBluetoothInput, openHoldInput, type InputDevice } from '../../src/services/micInput';
 
 const input = (deviceId: string, label: string, kind = 'audioinput'): InputDevice => ({ deviceId, label, kind });
 
@@ -123,5 +123,44 @@ describe('an input that heard nothing (mw-j0f2d.34)', () => {
     getUserMedia.mockClear();
     expect(await openBluetoothInput()).toBeUndefined();
     expect(getUserMedia).not.toHaveBeenCalled();
+  });
+});
+
+describe('what a hold opens, and whether the phone has a Bluetooth input at all (mw-f7gmps.1)', () => {
+  afterEach(() => {
+    forgetSilentInputs();
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true, writable: true });
+  });
+
+  function media(devices: InputDevice[]) {
+    const track = { label: 'Bluetooth headset (track)', stop: vi.fn() };
+    const getUserMedia = vi.fn(() => Promise.resolve({ getAudioTracks: () => [track], getTracks: () => [track] }));
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { enumerateDevices: vi.fn(() => Promise.resolve(devices)), getUserMedia },
+      configurable: true,
+      writable: true,
+    });
+    return getUserMedia;
+  }
+
+  it('opens the Bluetooth input and says the phone has one', async () => {
+    media([input('phone', 'Phone microphone'), input('buds', 'Bluetooth headset')]);
+    const held = await openHoldInput();
+    expect(held.bluetooth).toBe(true);
+    expect(held.input?.deviceId).toBe('buds');
+  });
+
+  it("says the phone has a Bluetooth input still when the only one was silent, and opens nothing", async () => {
+    const getUserMedia = media([input('phone', 'Phone microphone'), input('buds', 'Bluetooth headset')]);
+    (await openBluetoothInput())?.silent?.();
+    getUserMedia.mockClear();
+    const held = await openHoldInput();
+    expect(held).toEqual({ input: undefined, bluetooth: true });
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("says there is none with only the phone's own inputs, Android's earpiece and speakerphone among them", async () => {
+    media([input('e', 'Headset earpiece'), input('s', 'Speakerphone'), input('phone', 'Phone microphone')]);
+    expect(await openHoldInput()).toEqual({ input: undefined, bluetooth: false });
   });
 });

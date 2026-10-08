@@ -9,6 +9,7 @@ import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
+import { micName } from './useHold';
 import { HoldToTalkBar } from './HoldToTalkBar';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
 import { sendCallRequest } from './send';
@@ -181,11 +182,6 @@ function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean): st
     default:
       return 'Hold to talk';
   }
-}
-
-/** Which microphone the hold is on: the Bluetooth input chosen (his car's, say), or the phone's default. */
-function micName(input: string | undefined): string {
-  return input ? `Listening on the Bluetooth microphone: ${input}.` : "Listening on the phone's own microphone.";
 }
 
 /** A turn of his that has not gone wears the pending mark, or what the backend said and Retry / Discard (mw-jrx0s.21). */

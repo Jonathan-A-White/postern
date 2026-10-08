@@ -2,14 +2,23 @@
 // (services/listen), the words so far stream into `transcript`, and letting go hands back what was said.
 // The Talk line (useTalkLine) and the composer (Composer) both hold through this, so a hold is one
 // thing in the app. With `record` the same hold also records the voice (services/recorder), so a
-// release hands back the audio beside the words.
+// release hands back the audio beside the words. The recorder takes the recogniser's microphone and
+// never opens another (mw-f7gmps.1): on Android a second capture moves the phone onto the Bluetooth
+// route the recogniser hears nothing on. On a chosen input it records a copy of the input's track;
+// when the hold leaves that input for the default microphone the recording goes with it; on the
+// default microphone it records only when the phone has no Bluetooth input at all.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isListenSupported, startListening, type ListenMode, type ListenSession } from '../services/listen';
-import { canChooseInput, openBluetoothInput } from '../services/micInput';
+import { canChooseInput, openHoldInput } from '../services/micInput';
 import { canRecord, VoiceRecorder, type Recording } from '../services/recorder';
 
 function buzz(ms: number): void {
   if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') navigator.vibrate(ms);
+}
+
+/** Which microphone the hold is on, for the screen: the Bluetooth input chosen (his car's, say), or the phone's default. */
+export function micName(input: string | undefined): string {
+  return input ? `Listening on the Bluetooth microphone: ${input}.` : "Listening on the phone's own microphone.";
 }
 
 /** What a release came to: nothing was held, a hold heard no words, or the words (and the voice, when it could be recorded). */
@@ -67,12 +76,38 @@ export function useHold({ record = false, onFailed }: HoldOptions = {}) {
     buzz(30);
     const thisHold = {};
     hold.current = thisHold;
+    const recordHold = record && canRecord();
+    const startRecording = (track?: MediaStreamTrack) => {
+      const recorder = new VoiceRecorder();
+      recording.current = {
+        recorder,
+        started: recorder.start(track).then(
+          () => true,
+          () => false,
+        ),
+      };
+    };
+    const choosing = canChooseInput();
     const started = startListening({
       lang: typeof document === 'undefined' ? undefined : document.documentElement.lang,
       onInterim: setTranscript,
       onStart: () => hold.current === thisHold && setMic('ready'),
-      openInput: canChooseInput() ? openBluetoothInput : undefined,
-      onInput: (label) => hold.current === thisHold && setInput(label),
+      openInput: choosing
+        ? async () => {
+            const opened = await openHoldInput();
+            if (recordHold && hold.current === thisHold) {
+              if (opened.input) startRecording(opened.input.track);
+              else if (!opened.bluetooth) startRecording();
+            }
+            return opened.input;
+          }
+        : undefined,
+      onInput: (label) => {
+        if (hold.current !== thisHold) return;
+        setInput(label);
+        // the hold left the chosen input: its recording goes with it, and no other microphone is opened
+        if (label === undefined) dropRecording();
+      },
       onFallback: () => {
         if (hold.current !== thisHold) return;
         setMode('cloud');
@@ -100,16 +135,7 @@ export function useHold({ record = false, onFailed }: HoldOptions = {}) {
     setFellBack(false);
     setInput(undefined);
     setTranscript('');
-    if (record && canRecord()) {
-      const recorder = new VoiceRecorder();
-      recording.current = {
-        recorder,
-        started: recorder.start().then(
-          () => true,
-          () => false,
-        ),
-      };
-    }
+    if (recordHold && !choosing) startRecording();
     return true;
   }, [record, dropRecording]);
 

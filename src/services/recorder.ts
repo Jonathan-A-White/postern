@@ -1,7 +1,8 @@
 // src/services/recorder.ts — records a voice note in the app (plans/0021 decision
 // 11): the phone's microphone through MediaRecorder, Opus where the browser has
 // it. What comes out is sent as an attachment (docs/protocol.md §14) and
-// transcribed on the desktop, never by a third party.
+// transcribed on the desktop, never by a third party. Handed a track (the microphone a hold's
+// recogniser listens on), it records a copy of that track and opens no microphone of its own (mw-f7gmps.1).
 
 export interface Recording {
   blob: Blob;
@@ -29,8 +30,9 @@ export class VoiceRecorder {
     return this.recorder?.state === 'recording';
   }
 
-  async start(): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  /** Records `track` (a copy of it, so the owner's closing it is the owner's) or, given none, opens the default microphone. */
+  async start(track?: MediaStreamTrack): Promise<void> {
+    this.stream = track ? new MediaStream([track.clone()]) : await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     const mime = pickMime();
     this.recorder = new MediaRecorder(this.stream, mime ? { mimeType: mime, audioBitsPerSecond: 32_000 } : undefined);
     this.chunks = [];

@@ -3,7 +3,7 @@
 // marked as theirs; each with who and when, Markdown rendered, a question with
 // its answers tappable in place, a voice note playable with what was heard in
 // it, an image shown, a file openable, and the Mayor's words readable aloud.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { Markdown } from '../markdown';
 import { answersGiven, askedAgainAt, attachmentLabel, type ConversationItem, type GivenAnswer } from '../model/conversation';
@@ -319,8 +319,44 @@ function Transcript({ text }: { text: string }) {
   );
 }
 
-function Bubble({ item, given, until, shareTitle, onQuote, onReply }: { item: ConversationItem; given?: GivenAnswer; until?: number; shareTitle: string; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
-  const titles = useBeadTitles();
+interface BubbleProps {
+  item: ConversationItem;
+  given?: GivenAnswer;
+  until?: number;
+  shareTitle: string;
+  /** The bead titles the speaker says in place of ids, read when it speaks (so a new view redraws no bubble). */
+  titles: () => ReadonlyMap<string, string>;
+  onQuote?: (item: ConversationItem) => void;
+  onReply?: (item: ConversationItem) => void;
+}
+
+/** Whether two items read the same. Every change to the database rebuilds every item as a new object, so the
+ * bubble is kept on what the item says, not on which object it is (mw-q6n8m0.6). */
+function sameItem(a: ConversationItem, b: ConversationItem): boolean {
+  if (a === b) return true;
+  const keys = Object.keys(a) as (keyof ConversationItem)[];
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => {
+    const x = a[key];
+    const y = b[key];
+    return x === y || (typeof x === 'object' && x !== null && typeof y === 'object' && y !== null && JSON.stringify(x) === JSON.stringify(y));
+  });
+}
+
+function sameBubble(a: BubbleProps, b: BubbleProps): boolean {
+  return (
+    a.shareTitle === b.shareTitle &&
+    a.until === b.until &&
+    a.titles === b.titles &&
+    a.onQuote === b.onQuote &&
+    a.onReply === b.onReply &&
+    a.given?.answer === b.given?.answer &&
+    a.given?.at === b.given?.at &&
+    sameItem(a.item, b.item)
+  );
+}
+
+const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, onQuote, onReply }: BubbleProps) {
   const speakKey = `message:${item.id}`;
   const reading = useSpeaking(speakKey);
   const mine = item.speaker === 'you';
@@ -360,7 +396,7 @@ function Bubble({ item, given, until, shareTitle, onQuote, onReply }: { item: Co
             type="button"
             aria-label={reading ? 'Stop reading' : 'Read aloud'}
             className="rounded p-0.5 hover:text-fg"
-            onClick={() => (reading ? stopSpeaking() : speak(item.text, { titles, key: speakKey }))}
+            onClick={() => (reading ? stopSpeaking() : speak(item.text, { titles: titles(), key: speakKey }))}
           >
             <Icon name={reading ? 'stop' : 'speaker'} size={13} />
           </button>
@@ -379,7 +415,7 @@ function Bubble({ item, given, until, shareTitle, onQuote, onReply }: { item: Co
       </div>
     </div>
   );
-}
+}, sameBubble);
 
 /** The nearest ancestor that scrolls on its own, or null when only the page does. The page is never
  * one: html and body are overflow:hidden but can still be moved by a script, and on a phone with its
@@ -392,8 +428,13 @@ function scrollBoxOf(el: HTMLElement): HTMLElement | null {
   return null;
 }
 
+/** How many of a channel's newest messages are drawn, and how many more each 'Show earlier' adds: a channel of
+ * hundreds is never all in the page at once (mw-q6n8m0.6). */
+export const CHANNEL_WINDOW = 60;
+
 export function Conversation({
   items,
+  windowed = true,
   onQuote,
   onReply,
   footer,
@@ -403,6 +444,8 @@ export function Conversation({
   shareTitle = 'Postern',
 }: {
   items: ConversationItem[];
+  /** Draw only the newest CHANNEL_WINDOW items, with 'Show earlier' above them. Off for one post and its replies. */
+  windowed?: boolean;
   onQuote?: (item: ConversationItem) => void;
   /** Shows a Reply button on a message that can be answered in a thread of its own (General). */
   onReply?: (item: ConversationItem) => void;
@@ -419,6 +462,7 @@ export function Conversation({
   const end = useRef<HTMLDivElement>(null);
   const seen = useRef<number | null>(null);
   const count = items.length;
+  const titles = useBeadTitles();
   useLayoutEffect(() => {
     const first = seen.current === null;
     if ((first && scrollOnOpen) || (!first && count > (seen.current ?? 0))) {
@@ -431,11 +475,45 @@ export function Conversation({
 
   const given = useMemo(() => answersGiven(items), [items]);
   const askedAgain = useMemo(() => askedAgainAt(items), [items]);
+
+  // The handlers and titles a parent hands in are new on every render of the parent; the bubbles get ones that
+  // stay the same and call the latest, so typing or a database change redraws no bubble that did not change.
+  const latest = useRef({ onQuote, onReply, titles });
+  useLayoutEffect(() => {
+    latest.current = { onQuote, onReply, titles };
+  });
+  const quote = useCallback((item: ConversationItem) => latest.current.onQuote?.(item), []);
+  const reply = useCallback((item: ConversationItem) => latest.current.onReply?.(item), []);
+  const titlesNow = useCallback(() => latest.current.titles, []);
+
+  // The window: the newest `shown` items. 'Show earlier' adds a page above and keeps the screen where it was.
+  const [shown, setShown] = useState(CHANNEL_WINDOW);
+  const anchor = useRef<{ box: HTMLElement; height: number; top: number } | null>(null);
+  const hidden = windowed ? Math.max(0, count - shown) : 0;
+  useLayoutEffect(() => {
+    const kept = anchor.current;
+    if (!kept) return;
+    anchor.current = null;
+    kept.box.scrollTop = kept.top + (kept.box.scrollHeight - kept.height);
+  }, [shown]);
+  function showEarlier() {
+    const box = end.current && scrollBoxOf(end.current);
+    anchor.current = box ? { box, height: box.scrollHeight, top: box.scrollTop } : null;
+    setShown((was) => was + CHANNEL_WINDOW);
+  }
+
   if (count === 0) return <div className={className}>{empty}</div>;
-  const days = items.map((item) => dayLabel(item.at));
+  const visible = hidden > 0 ? items.slice(hidden) : items;
+  const days = visible.map((item) => dayLabel(item.at));
   return (
-    <div className={cx('message-list flex flex-col gap-3', className)} data-testid="conversation">
-      {items.map((item, i) => {
+    // overflow-anchor off: the browser must not also move the screen when 'Show earlier' adds messages above
+    <div className={cx('message-list flex flex-col gap-3 [overflow-anchor:none]', className)} data-testid="conversation">
+      {hidden > 0 && (
+        <Button size="sm" variant="secondary" className="self-center" onClick={showEarlier}>
+          Show earlier ({hidden} more)
+        </Button>
+      )}
+      {visible.map((item, i) => {
         const day = days[i];
         const showDay = i === 0 || day !== days[i - 1];
         return (
@@ -447,7 +525,7 @@ export function Conversation({
                 <span className="h-px flex-1 bg-line" />
               </div>
             )}
-            <Bubble item={item} given={given.get(item.id)} until={askedAgain.get(item.id)} shareTitle={shareTitle} onQuote={onQuote} onReply={onReply} />
+            <Bubble item={item} given={given.get(item.id)} until={askedAgain.get(item.id)} shareTitle={shareTitle} titles={titlesNow} onQuote={onQuote && quote} onReply={onReply && reply} />
             {footer?.(item)}
           </div>
         );

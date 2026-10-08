@@ -4,7 +4,7 @@
 // layout, so the box's scrollHeight/clientHeight/scrollTop are faked: scrollTop clamps to the
 // content that is there, as a browser's does.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, act, configure } from '@testing-library/react';
+import { render, screen, cleanup, act, configure, fireEvent } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Conversation } from '../../src/cockpit/Conversation';
@@ -25,7 +25,8 @@ let intoView = vi.fn();
 
 const tops = new WeakMap<Element, number>();
 const isBox = (el: Element) => el.getAttribute('data-testid') === 'box';
-const content = () => count * ROW;
+// the content is what is drawn: a long conversation draws only its newest window (mw-q6n8m0.6)
+const content = (el: Element) => el.querySelectorAll('[data-testid="message"]').length * ROW;
 
 /** The box clamps scrollTop to the content behind it, as a browser's does. It is faked on the
  * prototype because the conversation's layout effect runs before a parent's ref is attached. */
@@ -34,13 +35,13 @@ const original = LAYOUT.map((name) => [name, Object.getOwnPropertyDescriptor(Ele
 
 function fakeLayout(): void {
   Object.defineProperties(Element.prototype, {
-    scrollHeight: { configurable: true, get: function (this: Element) { return isBox(this) ? content() : 0; } },
+    scrollHeight: { configurable: true, get: function (this: Element) { return isBox(this) ? content(this) : 0; } },
     clientHeight: { configurable: true, get: function (this: Element) { return isBox(this) ? VIEW : 0; } },
     scrollTop: {
       configurable: true,
       get: function (this: Element) { return tops.get(this) ?? 0; },
       set: function (this: Element, value: number) {
-        tops.set(this, isBox(this) ? Math.min(Math.max(0, value), Math.max(0, content() - VIEW)) : value);
+        tops.set(this, isBox(this) ? Math.min(Math.max(0, value), Math.max(0, content(this) - VIEW)) : value);
       },
     },
   });
@@ -123,6 +124,21 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(document.documentElement.scrollTop).toBe(0);
       expect(document.body.scrollTop).toBe(0);
       expect(intoView).not.toHaveBeenCalled();
+    });
+  });
+
+  Scenario('mw-q6n8m0.6: Show earlier keeps the messages he was reading where they were', ({ Given, When, Then }) => {
+    Given('a conversation of 100 messages open in its own scroll box', () => {
+      count = 100;
+      open();
+    });
+    When('he scrolls to the top and taps Show earlier', () => {
+      box().scrollTop = 0;
+      fireEvent.click(screen.getByText(/Show earlier/));
+    });
+    Then('the 40 earlier messages are above and the box is scrolled past them', () => {
+      expect(screen.getAllByTestId('message')).toHaveLength(100);
+      expect(box().scrollTop).toBe(40 * ROW);
     });
   });
 

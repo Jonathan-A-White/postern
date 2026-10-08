@@ -16,3 +16,8 @@ Feature: A conversation scrolls inside its own box, never the page (mw-jkrnxu.1)
     Then the conversation's box is scrolled to the top
     When a new message arrives
     Then the conversation's box is scrolled to its bottom
+
+  Scenario: mw-q6n8m0.6: Show earlier keeps the messages he was reading where they were
+    Given a conversation of 100 messages open in its own scroll box
+    When he scrolls to the top and taps Show earlier
+    Then the 40 earlier messages are above and the box is scrolled past them

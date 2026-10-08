@@ -237,6 +237,7 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
         <div className="mx-auto max-w-3xl">
           <Conversation
             items={items}
+            windowed={false}
             shareTitle={shareTitle(titleFor(threadKey, view?.index).title)}
             onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}
             empty={<EmptyState icon="talk" title="That post is not on this phone">It may still be arriving; Back returns to the channel.</EmptyState>}

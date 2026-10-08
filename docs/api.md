@@ -27,8 +27,8 @@ Authorization: Postern <pubkeyHex>:<nonceHex>:<sigHex>
 ```
 
 - `pubkeyHex` — the caller's compressed secp256k1 public key, hex.
-- `nonceHex` — a nonce this backend issued from `GET /api/challenge` and hasn't
-  already consumed.
+- `nonceHex` — a nonce this backend issued from `GET /api/challenge`, since it
+  started, and hasn't already consumed.
 - `sigHex` — a DER-encoded ECDSA signature, by `pubkeyHex`, over
   `sha256(nonceHex)` (the nonce string's UTF-8 bytes) — matching `@bsv/sdk`'s
   `PrivateKey.sign(nonceString)` (a single SHA-256, not a double hash) and
@@ -38,13 +38,23 @@ A nonce is consumed the moment it's presented and verified — it can never be
 reused on that backend, whether the proof it backed succeeded or failed. It also
 expires a short time (a few minutes) after being issued.
 
-A nonce is verifiable by any backend holding the same key: it carries its own
-expiry and a MAC (see `GET /api/challenge`), so the standby that answered the
-challenge and the home that receives the signed request agree on it. Only the
-single-use record is per process.
+A nonce is bound to the host that issued it and to the life of the process that
+issued it (see `GET /api/challenge` for its fields). A backend accepts a nonce
+only when all of these hold: its MAC verifies under the shared key; its host id
+is this host's own (so a challenge the standby relayed to the home is spent on
+the home and is no good on the standby, and the other way round); it was issued
+after this process started (so a nonce captured before a restart is dead after
+it); it has not expired; and this process has not consumed it. The single-use
+record is per process, and these two rules are what keep it from being enough to
+spend one header once on each backend, or once more after a restart.
 
-- `401` — the header is missing or malformed, the nonce is unknown/expired/already
-  used, the signature doesn't verify, or the key holds no licence. The body is
+Every one of those refusals is the same `401` with `reason: "nonce"`: the app
+retries it once with a fresh challenge and nothing has been acted on. The log
+line says which it was (`nonce-host`, `nonce-stale`, or `nonce` for a bad shape
+or MAC, an expired nonce or a replay); the wire does not.
+
+- `401` — the header is missing or malformed, the nonce is unknown, another host's, from before a restart, expired or
+  already used, the signature doesn't verify, or the key holds no licence. The body is
   `{"error": "<words>", "reason": "<code>"}`; the app matches on `reason`, never on
   `error`: `malformed_authorization`, `nonce`, `signature` or `no_licence`. Only
   `no_licence` is about a licence; the app retries a `nonce` refusal once with a
@@ -137,14 +147,21 @@ Issues a nonce for the caller to sign (see Authentication, above).
   { "nonce": "3af1b2c3..." }
   ```
 
-The nonce is always plain lowercase hex: 112 characters, the bytes
-`expiry(8, big-endian unix nanoseconds) || salt(16) || HMAC-SHA256(key, expiry || salt)(32)`.
+The nonce is always plain lowercase hex: exactly 128 characters, the bytes
+`expiry(8, big-endian unix nanoseconds) || salt(16) || hostid(8) || HMAC-SHA256(key, expiry || salt || hostid)(32)`.
+`hostid` is the first 8 bytes of `sha256(hostname)` of the backend that issued it
+(`os.Hostname`); the nonce's issue time is `expiry` minus the 2 minute TTL. A
+backend refuses a nonce whose `hostid` is not its own and one issued before it
+started; both answer `401 {"reason": "nonce"}` (see Authentication). The home
+and the standby must therefore have different hostnames.
+
 The key is 32 random bytes kept as hex in `POSTERN_DATA/postern-nonce.key` (mode
 600), created on first start and reused after a restart. **The boost needs the same
-key** — `mw postern mirror` copies it with the rest of `POSTERN_DATA` — or a
-challenge from one backend is refused by the other (nginx round-robins `/api` over
-both). The app refuses to sign
-anything else: the same key signs a hands step's approval (`docs/protocol.md` §17),
+key** — `mw postern mirror` copies it with the rest of `POSTERN_DATA` — or the
+standby cannot verify a nonce's MAC at all.
+
+The app signs only lowercase hex of 32 to 128 characters and refuses anything
+else: the same key signs a hands step's approval (`docs/protocol.md` §17),
 and a challenge must never be able to stand in for one.
 
 

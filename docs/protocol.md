@@ -976,7 +976,8 @@ lock wait plus a step's 10: a step is never killed after its approval is spent.
 ### Nothing else his key signs can be an approval
 
 His key also signs the backend's login challenge (`docs/api.md`). The app signs a
-challenge only when it is plain lowercase hex (what the backend issues), so a
+challenge only when it is plain lowercase hex, 32 to 128 characters (the backend issues
+exactly 128), so a
 backend can never get `hands-approve/v1\n…` signed in its place without him.
 
 ### Fingerprints

@@ -1,10 +1,11 @@
 // src/ui/primitives.tsx — the cockpit's small building blocks. Every screen is
 // made of these, so a button, a chip or a card looks and behaves the same
 // wherever it appears (plans/0021, decision 9).
-import { useEffect, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
+import { type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { relativeTime } from '../services/age';
 import { cx, TONE_DOT, type Tone } from './tokens';
+import { useNow } from './useNow';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -170,13 +171,9 @@ export function EmptyState({ icon, title, children }: { icon: IconName; title: s
   );
 }
 
-/** A time as "3 min ago", refreshed every half-minute, with the full time on hover. */
+/** A time as "3 min ago", refreshed every half-minute (not while the page is hidden), with the full time on hover. */
 export function TimeAgo({ at, className }: { at: string | number | Date | undefined; className?: string }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow(30_000);
   if (at === undefined || at === '') return null;
   const date = at instanceof Date ? at : typeof at === 'number' ? new Date(at < 1e12 ? at * 1000 : at) : new Date(at);
   if (Number.isNaN(date.getTime())) return null;

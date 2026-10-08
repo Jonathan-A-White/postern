@@ -32,6 +32,7 @@ import { sendCallLater } from './cockpit/send';
 import { settingsRepo } from './data/repositories';
 import type { Route } from './nav/route';
 import { saveLastRoute } from './nav/lastRoute';
+import { setVisibleInterval } from './ui/visibleInterval';
 
 function Place({ route }: { route: Route }) {
   switch (route.view) {
@@ -143,10 +144,11 @@ export function App() {
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     void drain();
-    const retry = setInterval(() => void drain(), 15_000);
+    // Not while the page is hidden; once on return (mw-xhtcup.1).
+    const stopRetry = setVisibleInterval(() => void drain(), 15_000);
     return () => {
       navigator.serviceWorker.removeEventListener('message', onMessage);
-      clearInterval(retry);
+      stopRetry();
     };
   }, [key]);
 

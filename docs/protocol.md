@@ -74,6 +74,17 @@ builds: `OP_FALSE OP_RETURN <push 'nftgate'> <push 0x01> <push payload>`. Decodi
 `mint`, `transfer`, and `write` shapes) — postern parses the JSON itself after
 `decodeRecordScript` hands back the raw payload bytes.
 
+Every backend call that carries or fetches these records but `GET /api/challenge` is
+signed (`docs/api.md`, Authentication): `Authorization: Postern2
+<pubkeyHex>:<nonceHex>:<sigHex>`, where `sigHex` is the key's DER ECDSA signature over
+`sha256` of `"postern-v2\n" + METHOD + "\n" + target + "\n" + hex(sha256(body)) + "\n" +
+nonceHex`; `target` is the request target exactly as sent, percent-encodings and query
+included, and an absent body hashes the empty string. A header so signed is good for
+that one method, path, query and body, once. The v1 header, `Postern
+<pubkeyHex>:<nonceHex>:<sigHex>` with the signature over the nonce alone, is accepted
+beside it until a dated removal, and the backend logs which scheme each accepted request
+used.
+
 ## 2. Encryption (BRC-78)
 
 `EncryptedMessage`, re-exported by `spell-forge-bsv` from `@bsv/sdk`:
@@ -391,7 +402,7 @@ backend never sees plaintext image bytes.
 ### Upload
 
 The ciphertext is the body of `POST /api/blobs` (`docs/api.md`, the same
-`Authorization: Postern <pubkey>:<nonce>:<sig>` proof every endpoint but
+`Authorization: Postern2 <pubkey>:<nonce>:<sig>` proof, §1, every endpoint but
 `GET /api/challenge` requires):
 
 - A body over 8 MiB plus 256 bytes of BRC-78 envelope overhead is refused

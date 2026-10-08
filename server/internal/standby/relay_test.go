@@ -2,6 +2,8 @@ package standby
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +15,8 @@ import (
 	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
 )
 
 // logLines collects what a monitor or relay logs.
@@ -363,5 +367,57 @@ func TestANonceSpentThroughTheRelayOnTheHomeCannotBeSpentOnTheStandby(t *testing
 	unspent, _ := homeNonces.Issue()
 	if standbyNonces.Consume(unspent) {
 		t.Fatal("the standby accepted a nonce the home issued")
+	}
+}
+
+// A v2 request the standby relays reaches the home byte for byte: the method,
+// the raw request target (encoded characters as sent) and the body the phone
+// signed, so the home verifies the signature (mw-xhtcup.7).
+func TestAV2RequestRelayedByTheStandbyVerifiesOnTheHome(t *testing.T) {
+	var mu sync.Mutex
+	var verdicts []string
+	home := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		parts := strings.Split(strings.TrimPrefix(r.Header.Get("Authorization"), "Postern2 "), ":")
+		ok := len(parts) == 3
+		if ok {
+			ok, _ = auth.VerifySignature(parts[0], auth.MessageV2(r.Method, r.RequestURI, b, parts[1]), parts[2])
+		}
+		mu.Lock()
+		verdicts = append(verdicts, fmt.Sprintf("%s %s verified=%v", r.Method, r.RequestURI, ok))
+		mu.Unlock()
+	}))
+	t.Cleanup(home.Close)
+	served := 0
+	h := Middleware(standbyMonitor("laptop"), localServer(&served), WithPeers(map[string]string{"laptop": home.URL}))
+
+	privKey, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatalf("NewPrivateKey: %v", err)
+	}
+	pubKeyHex := hex.EncodeToString(privKey.PubKey().SerializeCompressed())
+	for _, c := range []struct{ method, target, body string }{
+		{"POST", "/api/messages?x=%2F&y=a+b", `{"scriptHex":"00"}`},
+		{"GET", "/api/utxos/m%41bc?since=%30", ""},
+		{"GET", "/api/me", ""},
+	} {
+		nonce := strings.Repeat("ab", 64)
+		hash := sha256.Sum256([]byte(auth.MessageV2(c.method, c.target, []byte(c.body), nonce)))
+		sig := hex.EncodeToString(ecdsa.Sign(privKey, hash[:]).Serialize())
+		req := httptest.NewRequest(c.method, c.target, strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Postern2 "+pubKeyHex+":"+nonce+":"+sig)
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	if served != 0 {
+		t.Fatalf("the standby served %d of the sends itself", served)
+	}
+	want := []string{
+		"POST /api/messages?x=%2F&y=a+b verified=true",
+		"GET /api/utxos/m%41bc?since=%30 verified=true",
+		"GET /api/me verified=true",
+	}
+	if strings.Join(verdicts, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("the home saw\n%s\nwant\n%s", strings.Join(verdicts, "\n"), strings.Join(want, "\n"))
 	}
 }

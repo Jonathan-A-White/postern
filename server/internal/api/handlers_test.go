@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,8 +18,9 @@ import (
 	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
-	"github.com/Jonathan-A-White/postern/server/internal/buildinfo"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
+	"github.com/Jonathan-A-White/postern/server/internal/buildinfo"
+	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
@@ -133,6 +135,15 @@ func authorizedRequest(t *testing.T, server *httptest.Server) http.Header {
 // key, for tests that need to know which key the request authenticates as.
 func authorizedAs(t *testing.T, server *httptest.Server, privKey *btcec.PrivateKey) http.Header {
 	t.Helper()
+	nonce := challengeFrom(t, server)
+	header := http.Header{}
+	header.Set("Authorization", "Postern "+signedProof(privKey, nonce, nonce))
+	return header
+}
+
+// challengeFrom is a fresh nonce from server's GET /api/challenge.
+func challengeFrom(t *testing.T, server *httptest.Server) string {
+	t.Helper()
 	resp, err := http.Get(server.URL + "/api/challenge")
 	if err != nil {
 		t.Fatalf("GET /api/challenge: %v", err)
@@ -144,14 +155,30 @@ func authorizedAs(t *testing.T, server *httptest.Server, privKey *btcec.PrivateK
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decoding challenge response: %v", err)
 	}
+	return out.Nonce
+}
 
-	hash := sha256.Sum256([]byte(out.Nonce))
+// signedProof is "<pubkeyHex>:<nonce>:<sigHex>", privKey's signature over
+// message.
+func signedProof(privKey *btcec.PrivateKey, nonce, message string) string {
+	hash := sha256.Sum256([]byte(message))
 	sig := ecdsa.Sign(privKey, hash[:])
 	pubKeyHex := hex.EncodeToString(privKey.PubKey().SerializeCompressed())
-	sigHex := hex.EncodeToString(sig.Serialize())
+	return pubKeyHex + ":" + nonce + ":" + hex.EncodeToString(sig.Serialize())
+}
 
+// v2Header is a 'Postern2' Authorization header for a fresh nonce from
+// server, signed by a fresh key over method, the raw request target and body
+// (docs/api.md, mw-xhtcup.7).
+func v2Header(t *testing.T, server *httptest.Server, method, target string, body []byte) http.Header {
+	t.Helper()
+	privKey, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatalf("btcec.NewPrivateKey: %v", err)
+	}
+	nonce := challengeFrom(t, server)
 	header := http.Header{}
-	header.Set("Authorization", "Postern "+pubKeyHex+":"+out.Nonce+":"+sigHex)
+	header.Set("Authorization", "Postern2 "+signedProof(privKey, nonce, auth.MessageV2(method, target, body, nonce)))
 	return header
 }
 
@@ -1050,5 +1077,209 @@ func TestANonceIssuedBeforeTheProcessStartedIsRefusedWithReasonNonceAndLoggedAsS
 	now = now.Add(time.Second)
 	if got := statusOf(t, after, authorizedRequest(t, after)); got != http.StatusOK {
 		t.Fatalf("a nonce issued after the start: status %d, want 200", got)
+	}
+}
+
+// sendWith presents header with method, server.URL+target and body, and
+// returns the status, the refusal's wire reason ("" for none) and the body.
+func sendWith(t *testing.T, server *httptest.Server, method, target string, body []byte, header http.Header) (status int, reason string, got []byte) {
+	t.Helper()
+	var r io.Reader
+	if body != nil {
+		r = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, server.URL+target, r)
+	if err != nil {
+		t.Fatalf("building request: %v", err)
+	}
+	req.Header = header
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, target, err)
+	}
+	defer resp.Body.Close()
+	got, _ = io.ReadAll(resp.Body)
+	var refusal struct {
+		Reason string `json:"reason"`
+	}
+	json.Unmarshal(got, &refusal)
+	return resp.StatusCode, refusal.Reason, got
+}
+
+// A v2 header verifies only for the request it signed: the method, the path,
+// the query and the body are all under the signature (mw-xhtcup.7).
+func TestAV2HeaderIsRefusedForAnyRequestOtherThanTheOneItSigned(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, http.NotFound)
+	signed := []byte("the bytes that were signed")
+
+	cases := []struct {
+		name                   string
+		signMethod, signTarget string
+		signBody               []byte
+		sendMethod, sendTarget string
+		sendBody               []byte
+	}{
+		{"method", "POST", "/api/messages?since=0", nil, "GET", "/api/messages?since=0", nil},
+		{"path", "GET", "/api/me", nil, "GET", "/api/messages", nil},
+		{"query", "GET", "/api/messages?since=0", nil, "GET", "/api/messages?since=1", nil},
+		{"query added", "GET", "/api/messages", nil, "GET", "/api/messages?since=0", nil},
+		{"body", "POST", "/api/blobs", signed, "POST", "/api/blobs", []byte("the bytes that were sent")},
+		{"body dropped", "POST", "/api/blobs", signed, "POST", "/api/blobs", nil},
+		{"encoded target signed decoded", "GET", "/api/messages?since=0", nil, "GET", "/api/messages?since=%30", nil},
+	}
+	for _, c := range cases {
+		header := v2Header(t, server, c.signMethod, c.signTarget, c.signBody)
+		status, reason, body := sendWith(t, server, c.sendMethod, c.sendTarget, c.sendBody, header)
+		if status != http.StatusUnauthorized || reason != "signature" {
+			t.Errorf("%s altered: %d %q %s, want 401 \"signature\"", c.name, status, reason, body)
+		}
+	}
+
+	for _, c := range []struct {
+		method, target string
+		body           []byte
+		want           int
+	}{
+		{"GET", "/api/messages?since=0", nil, http.StatusOK},
+		{"GET", "/api/me", nil, http.StatusOK},
+		{"POST", "/api/blobs", signed, http.StatusCreated},
+	} {
+		header := v2Header(t, server, c.method, c.target, c.body)
+		if status, _, body := sendWith(t, server, c.method, c.target, c.body, header); status != c.want {
+			t.Errorf("the exact %s %s: %d %s, want %d", c.method, c.target, status, body, c.want)
+		}
+	}
+}
+
+// A Postern2 header carrying a v1 signature (over the nonce alone) is refused.
+func TestAV2HeaderSigningOnlyTheNonceIsRefused(t *testing.T) {
+	server, _ := newTestServer(t, http.NotFound)
+	privKey, _ := btcec.NewPrivateKey()
+	nonce := challengeFrom(t, server)
+	header := http.Header{}
+	header.Set("Authorization", "Postern2 "+signedProof(privKey, nonce, nonce))
+	if status, reason, _ := sendWith(t, server, "GET", "/api/messages", nil, header); status != http.StatusUnauthorized || reason != "signature" {
+		t.Fatalf("v2 header over the nonce alone: %d %q, want 401 \"signature\"", status, reason)
+	}
+}
+
+// The target is signed as it was sent: a path with an encoded character
+// verifies as written, not as the router decodes it.
+func TestAV2PathWithAnEncodedCharacterSignsAndVerifiesAsSent(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, http.NotFound)
+	data := []byte("a blob fetched by an encoded path")
+	sum := sha256.Sum256(data)
+	hash := hex.EncodeToString(sum[:])
+	if status, _, body := sendWith(t, server, "POST", "/api/blobs", data, v2Header(t, server, "POST", "/api/blobs", data)); status != http.StatusCreated {
+		t.Fatalf("upload: %d %s", status, body)
+	}
+
+	encoded := "/api/blobs/%" + strings.ToUpper(hex.EncodeToString([]byte{hash[0]})) + hash[1:]
+	status, _, got := sendWith(t, server, "GET", encoded, nil, v2Header(t, server, "GET", encoded, nil))
+	if status != http.StatusOK || !bytes.Equal(got, data) {
+		t.Fatalf("GET %s signed as sent: %d %q, want 200 and the blob", encoded, status, got)
+	}
+	decoded := "/api/blobs/" + hash
+	if status, reason, _ := sendWith(t, server, "GET", encoded, nil, v2Header(t, server, "GET", decoded, nil)); status != http.StatusUnauthorized || reason != "signature" {
+		t.Fatalf("GET %s signed as %s: %d %q, want 401 \"signature\"", encoded, decoded, status, reason)
+	}
+}
+
+// A v2 GET with no body hashes the empty string and passes, the event
+// stream included.
+func TestAV2GetWithNoBodyAndTheEventStreamPass(t *testing.T) {
+	server, _ := newServerWithOptions(t, WithEvents(events.NewHub(), time.Hour))
+	if status, _, body := sendWith(t, server, "GET", "/api/messages", nil, v2Header(t, server, "GET", "/api/messages", nil)); status != http.StatusOK {
+		t.Fatalf("v2 GET /api/messages: %d %s, want 200", status, body)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resp, frames := openStream(t, ctx, server.URL, v2Header(t, server, "GET", "/api/events", nil))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("v2 GET /api/events: status %d, want 200", resp.StatusCode)
+	}
+	if hello := nextEvent(t, frames); hello.name != "hello" {
+		t.Fatalf("first event = %+v, want hello", hello)
+	}
+}
+
+// The gate reads the body to hash it and gives every route the same bytes:
+// an 8 MiB attachment is stored intact, and a body over the blob cap is 413.
+func TestAV2BlobUploadAtTheCapKeepsItsBodyAndOverTheCapIs413(t *testing.T) {
+	server, blobStore := newTestServerWithBlobs(t, http.NotFound)
+	data := make([]byte, blobs.MaxBlobBytes)
+	for i := range data {
+		data[i] = byte(i * 7)
+	}
+	status, _, got := sendWith(t, server, "POST", "/api/blobs", data, v2Header(t, server, "POST", "/api/blobs", data))
+	if status != http.StatusCreated {
+		t.Fatalf("8 MiB v2 upload: %d %s, want 201", status, got)
+	}
+	var out struct {
+		Hash string `json:"hash"`
+		Size int    `json:"size"`
+	}
+	json.Unmarshal(got, &out)
+	sum := sha256.Sum256(data)
+	if out.Hash != hex.EncodeToString(sum[:]) || out.Size != len(data) {
+		t.Fatalf("stored %+v, want the body's sha256 and size %d", out, len(data))
+	}
+	f, _, err := blobStore.Open(out.Hash)
+	if err != nil {
+		t.Fatalf("blobStore.Open: %v", err)
+	}
+	stored, _ := io.ReadAll(f)
+	f.Close()
+	if !bytes.Equal(stored, data) {
+		t.Fatal("the stored blob differs from the body sent")
+	}
+
+	over := make([]byte, blobs.MaxBodyBytes+1)
+	if status, _, _ := sendWith(t, server, "POST", "/api/blobs", over, v2Header(t, server, "POST", "/api/blobs", over)); status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("v2 upload one byte over blobs.MaxBodyBytes: %d, want 413", status)
+	}
+}
+
+func TestAV2HeaderReplayedIsRefusedForTheNonce(t *testing.T) {
+	server, _ := newTestServer(t, http.NotFound)
+	header := v2Header(t, server, "GET", "/api/messages", nil)
+	if status, _, body := sendWith(t, server, "GET", "/api/messages", nil, header); status != http.StatusOK {
+		t.Fatalf("first use: %d %s, want 200", status, body)
+	}
+	if status, reason, _ := sendWith(t, server, "GET", "/api/messages", nil, header); status != http.StatusUnauthorized || reason != "nonce" {
+		t.Fatalf("replay: %d %q, want 401 \"nonce\"", status, reason)
+	}
+}
+
+// captureAcceptLog sends the gate's accepted-request lines to a buffer until
+// the test ends.
+func captureAcceptLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	acceptLog.SetOutput(&buf)
+	t.Cleanup(func() { acceptLog.SetOutput(os.Stderr) })
+	return &buf
+}
+
+// Every accepted request logs one line naming its scheme, so the end of v1
+// can be timed (mw-xhtcup.7).
+func TestEveryAcceptedRequestLogsOneLineNamingItsScheme(t *testing.T) {
+	server, _ := newTestServer(t, http.NotFound)
+	for _, c := range []struct {
+		scheme string
+		header http.Header
+	}{
+		{"v1", authorizedRequest(t, server)},
+		{"v2", v2Header(t, server, "GET", "/api/messages", nil)},
+	} {
+		buf := captureAcceptLog(t)
+		if status, _, body := sendWith(t, server, "GET", "/api/messages", nil, c.header); status != http.StatusOK {
+			t.Fatalf("%s: %d %s, want 200", c.scheme, status, body)
+		}
+		lines := logLines(buf)
+		if len(lines) != 1 || !strings.Contains(lines[0], "scheme="+c.scheme) || !strings.Contains(lines[0], "GET /api/messages") {
+			t.Fatalf("%s pass logged %q, want one line with scheme=%s and the route", c.scheme, lines, c.scheme)
+		}
 	}
 }

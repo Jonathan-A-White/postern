@@ -23,16 +23,56 @@ Every endpoint below except `GET /healthz` and `GET /api/challenge` requires pro
 that the caller holds a licensed key: an `Authorization` header of the form
 
 ```
-Authorization: Postern <pubkeyHex>:<nonceHex>:<sigHex>
+Authorization: Postern2 <pubkeyHex>:<nonceHex>:<sigHex>
 ```
 
 - `pubkeyHex` — the caller's compressed secp256k1 public key, hex.
 - `nonceHex` — a nonce this backend issued from `GET /api/challenge`, since it
   started, and hasn't already consumed.
-- `sigHex` — a DER-encoded ECDSA signature, by `pubkeyHex`, over
-  `sha256(nonceHex)` (the nonce string's UTF-8 bytes) — matching `@bsv/sdk`'s
-  `PrivateKey.sign(nonceString)` (a single SHA-256, not a double hash) and
+- `sigHex` — a DER-encoded ECDSA signature, by `pubkeyHex`, over `sha256` of the
+  request's v2 message (its UTF-8 bytes) — matching `@bsv/sdk`'s
+  `PrivateKey.sign(message)` (a single SHA-256, not a double hash) and
   `Signature.toDER()`.
+
+The v2 message is one string, five parts joined by `\n` (a single line feed, none
+at the end):
+
+```
+postern-v2
+<METHOD>
+<request target>
+<hex(sha256(body))>
+<nonceHex>
+```
+
+- `METHOD` — the request's method as sent, upper case (`GET`, `POST`, …).
+- `request target` — the path and query exactly as they go on the request line,
+  every percent-encoding as written: `/api/blobs/%61bc?since=%30` is signed as
+  that, not as `/api/blobs/abc?since=0`. The server checks it against the raw
+  target it received (Go's `r.RequestURI`, which nginx's `proxy_pass` with no URI
+  and the standby's relay pass on unchanged), never a decoded or re-encoded form.
+  A query, if any, is part of it, `?` included; no scheme, host or fragment.
+- `hex(sha256(body))` — the SHA-256 of the body's exact bytes, lower-case hex. A
+  request with no body (every `GET`, the event stream included) hashes the empty
+  string: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+- `nonceHex` — the nonce, as in the header.
+
+So a captured header proves only the one request it was signed for: a different
+method, path, query or body is refused `401` `reason: "signature"`, and the same
+request sent again is refused `401` `reason: "nonce"`. To hash the body the
+backend reads it whole before any route runs, up to `POST /api/blobs`'s cap (8 MiB
+plus 256 bytes); a v2 request with a longer body is refused `413` whatever its
+route, and each route still applies its own, smaller cap to the body it is
+handed.
+
+**v1, until its removal.** The older header,
+`Authorization: Postern <pubkeyHex>:<nonceHex>:<sigHex>`, signs the nonce alone
+(`sigHex` over `sha256(nonceHex)`) and is still accepted beside v2, under every
+rule here but the message signed. It will be dropped on a date fixed once the app
+and mw sign v2 and the log shows no v1 requests; that date will be written here.
+Every accepted request writes one log line, `accepted <METHOD> <path> (scheme=v1
+key <first 12 hex>)` or `scheme=v2`, so the last v1 request can be dated.
+`GET /api/challenge` stays unsigned under both.
 
 A nonce is consumed the moment it's presented and verified — it can never be
 reused on that backend, whether the proof it backed succeeded or failed. It also

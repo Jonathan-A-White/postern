@@ -35,3 +35,13 @@ func VerifySignature(pubKeyHex, message, sigHex string) (bool, error) {
 	hash := sha256.Sum256([]byte(message))
 	return sig.Verify(hash[:], pubKey), nil
 }
+
+// MessageV2 is the message a 'Postern2' Authorization header signs
+// (docs/api.md): "postern-v2", the method, the raw request target as sent
+// (the path with its encoding and the query, as http.Request.RequestURI holds
+// it on the server), the body's SHA-256 in lower-case hex (an absent body
+// hashes as the empty string) and the nonce, joined by "\n".
+func MessageV2(method, target string, body []byte, nonce string) string {
+	sum := sha256.Sum256(body)
+	return "postern-v2\n" + method + "\n" + target + "\n" + hex.EncodeToString(sum[:]) + "\n" + nonce
+}

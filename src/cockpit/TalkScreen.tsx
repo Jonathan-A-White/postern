@@ -299,11 +299,6 @@ export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: 
 
   const list = (
     <>
-      <div className="border-b border-line px-4 py-2.5">
-        <Button icon="mic" variant="primary" className="w-full" onClick={() => navigate({ view: 'line' })}>
-          Talk to the Mayor
-        </Button>
-      </div>
       <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
         <label className="relative flex-1">
           <span className="sr-only">Find a channel</span>
@@ -314,6 +309,11 @@ export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: 
       </div>
       <div ref={rememberList} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <ThreadList threads={threads} current={current} filter={filter} onToggleArchive={toggleArchive} />
+      </div>
+      <div className="shrink-0 border-t border-line px-4 py-2.5">
+        <Button icon="mic" variant="primary" className="w-full" onClick={() => navigate({ view: 'line' })}>
+          Talk to the Mayor
+        </Button>
       </div>
     </>
   );

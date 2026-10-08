@@ -1414,6 +1414,24 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario('AC-3: The Talk to the Mayor bar is at the foot of Channels', ({ Given, When, Then }) => {
+    Given('the cockpit shell on a phone with the Channels place open', shellOpen);
+    Then('the {string} button comes after the search box and the channel list', async (_c, name: string) => {
+      const button = await screen.findByRole('button', { name });
+      const search = await screen.findByRole('searchbox', { name: 'Find a channel' });
+      const list = await screen.findByTestId('thread-list');
+      expect(search.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(list.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+    When('he taps {string}', async (_c, name: string) => {
+      fireEvent.click(await screen.findByRole('button', { name }));
+    });
+    Then('the Talk line is open at ?v=line', async () => {
+      await openAt(undefined, '?v=line');
+      expect(await talkButton('Hold to talk')).toBeInTheDocument();
+    });
+  });
+
   Scenario('AC-3: a long press on the Channels tab vibrates and opens the Talk line', ({ Given, When, Then, And }) => {
     Given('the cockpit shell on a phone with the Channels place open', shellOpen);
     When('he long presses the {string} tab', async () => {

@@ -11,7 +11,7 @@ import { answeredQuestion, needOfQuestion } from '../model/needs';
 import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
 import { useLive } from '../services/live';
-import { speak, stop as stopSpeaking } from '../services/speech';
+import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import { useSpeaking } from './useSpeaking';
 import { useAnswers, useBeadTitles, useOutbox, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { pendingAnswer } from '../model/outbox';
@@ -333,7 +333,7 @@ function Bubble({ item, given, until, shareTitle, onQuote, onReply }: { item: Co
         <span>{item.onChain ? `Sent on chain ${clockTime(new Date(item.at))}` : clockTime(new Date(item.at))}</span>
         {item.pending && (item.failure !== undefined && item.outboxId !== undefined ? <FailedNote id={item.outboxId} failure={item.failure} /> : <PendingMark />)}
         {item.unread && <span className="font-semibold text-accent">· new</span>}
-        {item.speaker !== 'you' && item.text && (
+        {item.speaker !== 'you' && item.text && canSpeak() && (
           <button
             type="button"
             aria-label={reading ? 'Stop reading' : 'Read aloud'}
@@ -439,7 +439,7 @@ export function SpeakAll({ items }: { items: ConversationItem[] }) {
   const titles = useBeadTitles();
   const reading = useSpeaking('last-mayor-message');
   const last = [...items].reverse().find((item) => item.speaker === 'mayor' && item.text);
-  if (!last) return null;
+  if (!last || !canSpeak()) return null;
   return (
     <IconButton
       icon={reading ? 'stop' : 'speaker'}

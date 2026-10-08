@@ -35,7 +35,7 @@ import { takeRestoredBead } from '../nav/lastRoute';
 import { useScrollMemory } from '../nav/scrollMemory';
 import { sendAction, useSend } from './send';
 import { priorityLabel, priorityTone, statusWord, typeIcon } from './labels';
-import { speak, stop as stopSpeaking } from '../services/speech';
+import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import { useSpeaking } from './useSpeaking';
 import { markThreadSeen } from '../services/seen';
 
@@ -243,7 +243,7 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
       <section className="flex flex-col gap-2" aria-label="Description">
         <SectionTitle
           action={
-            description ? (
+            description && canSpeak() ? (
               <IconButton
                 icon={reading ? 'stop' : 'speaker'}
                 label={reading ? 'Stop reading' : 'Read the description aloud'}

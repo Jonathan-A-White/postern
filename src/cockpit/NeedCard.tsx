@@ -14,7 +14,7 @@ import type { TalkAbout } from '../model/talkLine';
 import { navigate } from '../router';
 import { threadKey } from '../services/threads';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
-import { speak, stop as stopSpeaking } from '../services/speech';
+import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import type { Need } from '../model/view';
 import { answeredByComment, answeredInWords, orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
@@ -44,10 +44,23 @@ function aboutNeed(need: Need): TalkAbout {
   return need.bead ? { kind: 'bead', id: need.bead, title: need.title || need.bead } : { kind: 'channel', id: GENERAL, title: need.title || titleFor(GENERAL).title };
 }
 
+/** An option as it is said: the letter, then the label ('A: Release it' -> 'A, Release it.'); an unlettered one as it is. */
+function spokenOption(option: string): string {
+  const lettered = /^([A-Z]):\s*(.*)$/.exec(option);
+  return lettered ? `${lettered[1]}, ${lettered[2]}.` : `${option}.`;
+}
+
+/** The label of an option without its letter, as the recommendation names it. */
+function optionLabel(option: string): string {
+  return /^[A-Z]:\s*(.*)$/.exec(option)?.[1] ?? option;
+}
+
+// The question, then the Mayor's recommendation (its wording is provisional, the Governor to confirm), then every option in order.
 function spokenText(need: Need): string {
   const parts = [`${NEED_META[need.kind].verb}: ${need.title}.`];
   if (need.text && need.text !== need.title) parts.push(need.text);
-  if (need.recommended) parts.push(`The Mayor recommends ${need.recommended}.`);
+  if (need.recommended) parts.push(`The Mayor recommends ${optionLabel(need.recommended)}.`);
+  for (const option of need.options) parts.push(spokenOption(option));
   return parts.join(' ');
 }
 
@@ -318,13 +331,15 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
             Open
           </a>
         )}
-        <IconButton
-          icon={reading ? 'stop' : 'speaker'}
-          label={reading ? 'Stop reading' : 'Read aloud'}
-          size="sm"
-          className="ml-auto"
-          onClick={() => (reading ? stopSpeaking() : speak(spokenText(need), { titles, key: speakKey }))}
-        />
+        {canSpeak() && (
+          <IconButton
+            icon={reading ? 'stop' : 'speaker'}
+            label={reading ? 'Stop reading' : 'Read aloud'}
+            size="sm"
+            className="ml-auto"
+            onClick={() => (reading ? stopSpeaking() : speak(spokenText(need), { titles, key: speakKey }))}
+          />
+        )}
       </div>
     </article>
   );

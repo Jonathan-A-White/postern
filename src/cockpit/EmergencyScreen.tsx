@@ -6,7 +6,7 @@ import { EmptyState, Icon, IconButton, Spinner, TimeAgo } from '../ui';
 import { Screen } from './Shell';
 import { useBeadTitles, useRecentEmergencies } from './hooks';
 import { useSpeaking } from './useSpeaking';
-import { speak, stop as stopSpeaking } from '../services/speech';
+import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import { navigate } from '../router';
 import type { EventRow } from '../data/db';
 
@@ -19,7 +19,7 @@ function EmergencyCard({ event }: { event: EventRow }) {
       <div className="flex items-center gap-2 text-blocked">
         <Icon name="alarm" size={18} />
         <h2 className="text-[15px] font-semibold">Emergency</h2>
-        {event.detail && (
+        {event.detail && canSpeak() && (
           <IconButton
             icon={reading ? 'stop' : 'speaker'}
             label={reading ? 'Stop reading' : 'Read aloud'}

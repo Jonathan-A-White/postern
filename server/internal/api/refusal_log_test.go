@@ -110,8 +110,8 @@ func TestEveryRefusalLogsOneLineAndNamesAStableReason(t *testing.T) {
 				server, _, _, _ := newTestServerWithChecker(t, http.NotFound, &stubChecker{held: true})
 				other, _ := btcec.NewPrivateKey()
 				header := authorizedAs(t, server, other)
-				parts := strings.SplitN(strings.TrimPrefix(header.Get("Authorization"), "Postern "), ":", 3)
-				header.Set("Authorization", "Postern "+keyHex+":"+parts[1]+":"+parts[2])
+				parts := strings.SplitN(strings.TrimPrefix(header.Get("Authorization"), "Postern2 "), ":", 3)
+				header.Set("Authorization", "Postern2 "+keyHex+":"+parts[1]+":"+parts[2])
 				req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/messages", nil)
 				req.Header = header
 				resp, err := http.DefaultClient.Do(req)
@@ -127,7 +127,7 @@ func TestEveryRefusalLogsOneLineAndNamesAStableReason(t *testing.T) {
 			attempt: func(t *testing.T) *http.Response {
 				server, _, _, _ := newTestServerWithChecker(t, http.NotFound, &stubChecker{held: false})
 				req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/messages", nil)
-				req.Header = authorizedAs(t, server, key)
+				signRequest(t, server, key, req)
 				resp, err := http.DefaultClient.Do(req)
 				if err != nil {
 					t.Fatal(err)
@@ -154,7 +154,7 @@ func TestEveryRefusalLogsOneLineAndNamesAStableReason(t *testing.T) {
 				priv, millHex := s.v.key(t, "mill")
 				wantKey = millHex[:12]
 				req, _ := http.NewRequest(http.MethodGet, s.URL+"/api/view", nil)
-				req.Header = authorizedAs(t, s.Server, priv)
+				signRequest(t, s.Server, priv, req)
 				var err error
 				if resp, err = http.DefaultClient.Do(req); err != nil {
 					t.Fatal(err)

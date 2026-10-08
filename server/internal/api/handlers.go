@@ -215,36 +215,36 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	return withCORS(o.cors, mux)
 }
 
-// The Authorization header's scheme tokens: "Postern2
+// The Authorization header's scheme token: "Postern2
 // <pubkeyHex>:<nonceHex>:<sigHex>", where sigHex is a DER-encoded ECDSA
 // signature by the compressed secp256k1 key pubkeyHex over
-// auth.MessageV2(method, raw request target, body, nonce); and v1's
-// "Postern ...", the same three parts with the signature over the nonce
-// alone, accepted until its dated removal (docs/api.md).
+// auth.MessageV2(method, raw request target, body, nonce). The older
+// "Postern ..." (v1, the signature over the nonce alone) is refused with
+// reasonSignatureV1 (docs/api.md).
 const (
 	authSchemeV2 = "Postern2 "
 	authSchemeV1 = "Postern "
 )
 
-// parseAuthorization splits a "Postern2 <pubkeyHex>:<nonceHex>:<sigHex>" or
-// "Postern <pubkeyHex>:<nonceHex>:<sigHex>" Authorization header into its
-// scheme ("v2" or "v1") and three parts, reporting ok=false for anything
+// parseAuthorization splits a "Postern2 <pubkeyHex>:<nonceHex>:<sigHex>"
+// Authorization header into its three parts, reporting ok=false for anything
 // else, including any empty part.
-func parseAuthorization(header string) (scheme, pubKeyHex, nonce, sigHex string, ok bool) {
-	var proof string
-	switch {
-	case strings.HasPrefix(header, authSchemeV2):
-		scheme, proof = "v2", strings.TrimPrefix(header, authSchemeV2)
-	case strings.HasPrefix(header, authSchemeV1):
-		scheme, proof = "v1", strings.TrimPrefix(header, authSchemeV1)
-	default:
-		return "", "", "", "", false
+func parseAuthorization(header string) (pubKeyHex, nonce, sigHex string, ok bool) {
+	if !strings.HasPrefix(header, authSchemeV2) {
+		return "", "", "", false
 	}
-	parts := strings.Split(proof, ":")
+	parts := strings.Split(strings.TrimPrefix(header, authSchemeV2), ":")
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return "", "", "", "", false
+		return "", "", "", false
 	}
-	return scheme, parts[0], parts[1], parts[2], true
+	return parts[0], parts[1], parts[2], true
+}
+
+// v1KeyPrefix is the key a refused v1 header named, for the log line, or ""
+// when it names none (keyPrefix then prints "-").
+func v1KeyPrefix(header string) string {
+	key, _, _ := strings.Cut(strings.TrimPrefix(header, authSchemeV1), ":")
+	return key
 }
 
 // authKey is the request-context key requireLicence stores the
@@ -262,18 +262,23 @@ func AuthenticatedKey(ctx context.Context) string {
 // requireLicence wraps next so it only runs once the request's Authorization
 // header proves a signed, licensed key: the header must carry a nonce this
 // nonces store issued and hasn't already consumed, a valid signature by the
-// named public key (v2: over the method, raw request target, body hash and
-// nonce; v1: over the nonce alone), and that key must hold a licence per
-// checker (or be the mill's key). Anything short of that is a 401; a v2 body
-// over blobs.MaxBodyBytes is a 413; a failure to check the licence itself (a
-// chain read failing) is a 502, like this backend's other provider-proxy
-// failures. A proved key whose kind who does not admit is a 403
-// (docs/protocol.md §19). An accepted request logs one line naming its
-// scheme. next finds the proved key with AuthenticatedKey and what it may do
+// named public key (over the method, raw request target, body hash and
+// nonce), and that key must hold a licence per checker (or be the mill's
+// key). Anything short of that is a 401, a v1 ("Postern ") header included
+// (reason "signature-v1"); a body over blobs.MaxBodyBytes is a 413; a failure
+// to check the licence itself (a chain read failing) is a 502, like this
+// backend's other provider-proxy failures. A proved key whose kind who does not
+// admit is a 403 (docs/protocol.md §19). An accepted request logs one line
+// naming its scheme. next finds the proved key with AuthenticatedKey and what it may do
 // with rightsOf.
 func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *options, who access, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		scheme, pubKeyHex, nonce, sigHex, ok := parseAuthorization(r.Header.Get("Authorization"))
+		authorization := r.Header.Get("Authorization")
+		if strings.HasPrefix(authorization, authSchemeV1) {
+			refuse(w, r, http.StatusUnauthorized, reasonSignatureV1, "the v1 'Postern' scheme is no longer accepted; sign with 'Postern2'", v1KeyPrefix(authorization))
+			return
+		}
+		pubKeyHex, nonce, sigHex, ok := parseAuthorization(authorization)
 		if !ok {
 			refuse(w, r, http.StatusUnauthorized, reasonMalformed, "missing or malformed Authorization header", "")
 			return
@@ -284,15 +289,11 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 			refuseLogged(w, r, http.StatusUnauthorized, reasonNonce, err.Error(), "nonce is missing, expired, or already used", pubKeyHex)
 			return
 		}
-		message := nonce
-		if scheme == "v2" {
-			body, ok := readSignedBody(w, r)
-			if !ok {
-				return
-			}
-			message = auth.MessageV2(r.Method, r.RequestURI, body, nonce)
+		body, ok := readSignedBody(w, r)
+		if !ok {
+			return
 		}
-		valid, err := auth.VerifySignature(pubKeyHex, message, sigHex)
+		valid, err := auth.VerifySignature(pubKeyHex, auth.MessageV2(r.Method, r.RequestURI, body, nonce), sigHex)
 		if err != nil || !valid {
 			refuse(w, r, http.StatusUnauthorized, reasonSignature, "signature does not verify", pubKeyHex)
 			return
@@ -311,7 +312,7 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 			refuse(w, r, http.StatusForbidden, reasonForbidden, "this key's licence does not open this route", key)
 			return
 		}
-		acceptLog.Printf("accepted %s %s (scheme=%s key %s)", r.Method, r.URL.EscapedPath(), scheme, keyPrefix(key))
+		acceptLog.Printf("accepted %s %s (scheme=v2 key %s)", r.Method, r.URL.EscapedPath(), keyPrefix(key))
 		ctx := context.WithValue(r.Context(), authKey{}, key)
 		next(w, r.WithContext(context.WithValue(ctx, rightsKey{}, granted)))
 	}
@@ -339,8 +340,8 @@ func readSignedBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 }
 
 // acceptLog takes the one line each accepted request writes: the route, the
-// signature scheme it came with and the key's first 12 hex characters, so the
-// last v1 request can be dated before v1 is dropped. It writes where the
+// signature scheme it came with (v2, the only one left) and the key's first 12
+// hex characters. It writes where the
 // standard logger does, in the same format, but is its own logger so a route's
 // own log lines are told apart from the gate's.
 var acceptLog = log.New(os.Stderr, "", log.LstdFlags)
@@ -352,8 +353,10 @@ const (
 	reasonMalformed = "malformed_authorization"
 	reasonNonce     = "nonce"
 	reasonSignature = "signature"
-	reasonNoLicence = "no_licence"
-	reasonForbidden = "forbidden"
+	// reasonSignatureV1 answers the retired 'Postern' scheme, whatever its signature.
+	reasonSignatureV1 = "signature-v1"
+	reasonNoLicence   = "no_licence"
+	reasonForbidden   = "forbidden"
 )
 
 // refuse answers a refused request and logs it as one line: the status, the

@@ -96,7 +96,7 @@ func postDirect(t *testing.T, server *httptest.Server, key *btcec.PrivateKey, bo
 	if err != nil {
 		t.Fatalf("building request: %v", err)
 	}
-	req.Header = authorizedAs(t, server, key)
+	signRequest(t, server, key, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/messages: %v", err)
@@ -313,10 +313,9 @@ func TestMeAnswersTheCallerTheMayorAndTheFeatures(t *testing.T) {
 	key, pubKeyHex := newKey(t)
 
 	req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/me", nil)
-	header := authorizedAs(t, server, key)
+	signRequest(t, server, key, req)
 	// The key's hex case in the header must not matter.
-	header.Set("Authorization", strings.Replace(header.Get("Authorization"), pubKeyHex, strings.ToUpper(pubKeyHex), 1))
-	req.Header = header
+	req.Header.Set("Authorization", strings.Replace(req.Header.Get("Authorization"), pubKeyHex, strings.ToUpper(pubKeyHex), 1))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /api/me: %v", err)

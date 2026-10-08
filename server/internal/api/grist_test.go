@@ -149,7 +149,7 @@ func (s gristServer) do(t *testing.T, as, method, path, body string) *http.Respo
 	if err != nil {
 		t.Fatalf("building request: %v", err)
 	}
-	req.Header = authorizedAs(t, s.Server, priv)
+	signRequest(t, s.Server, priv, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, path, err)

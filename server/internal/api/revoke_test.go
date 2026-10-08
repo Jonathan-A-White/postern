@@ -131,7 +131,7 @@ func TestMeAnswers401OnceTheIssuerRevokedTheKeysLicence(t *testing.T) {
 		checker := auth.NewCachedChecker(chain, time.Minute, auth.WithRule(licence.Rule{IssuerKey: issuerHex}))
 		server, _, _, _ := newTestServerWithChecker(t, http.NotFound, checker)
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/me", nil)
-		req.Header = authorizedAs(t, server, holder)
+		signRequest(t, server, holder, req)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("GET /api/me: %v", err)

@@ -225,7 +225,7 @@ func TestTheListCarriesAnETagAndAMatchingIfNoneMatchIs304(t *testing.T) {
 	again := func(match string) *http.Response {
 		priv, _ := s.v.key(t, "cairnPhone")
 		req, _ := http.NewRequest(http.MethodGet, s.URL+"/api/prompts", nil)
-		req.Header = authorizedAs(t, s.Server, priv)
+		signRequest(t, s.Server, priv, req)
 		req.Header.Set("If-None-Match", match)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

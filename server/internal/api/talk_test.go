@@ -34,7 +34,7 @@ func TestATalkRecordIsAcceptedAndPublishedToTheMayorsStream(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	resp, frames := openStream(t, ctx, s.URL, authorizedAs(t, s.Server, mayor))
+	resp, frames := openStream(t, ctx, s.URL, v2As(t, s.Server, mayor, "GET", "/api/events", nil))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /api/events as the Mayor's unlicensed key: status %d, want 200", resp.StatusCode)
 	}
@@ -68,7 +68,7 @@ func TestACallRequestIsAcceptedAndPublishedToTheMayorsStream(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	resp, frames := openStream(t, ctx, s.URL, authorizedAs(t, s.Server, mayor))
+	resp, frames := openStream(t, ctx, s.URL, v2As(t, s.Server, mayor, "GET", "/api/events", nil))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /api/events as the Mayor's key: status %d, want 200", resp.StatusCode)
 	}
@@ -102,7 +102,7 @@ func TestAStrangersKeyIsStillRefusedTheEventStream(t *testing.T) {
 		t.Fatalf("btcec.NewPrivateKey: %v", err)
 	}
 	req, _ := http.NewRequest(http.MethodGet, s.URL+"/api/events", nil)
-	req.Header = authorizedAs(t, s.Server, other)
+	signRequest(t, s.Server, other, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /api/events: %v", err)
@@ -173,7 +173,7 @@ func TestAFailingLicenceCheckNeverCutsTheMayorsStreamNorOpensTheCockpit(t *testi
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	resp, frames := openStream(t, ctx, server.URL, authorizedAs(t, server, mayor))
+	resp, frames := openStream(t, ctx, server.URL, v2As(t, server, mayor, "GET", "/api/events", nil))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /api/events as the Mayor while the licence check fails: status %d, want 200", resp.StatusCode)
 	}
@@ -182,7 +182,7 @@ func TestAFailingLicenceCheckNeverCutsTheMayorsStreamNorOpensTheCockpit(t *testi
 	}
 
 	req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/messages", nil)
-	req.Header = authorizedAs(t, server, mayor)
+	signRequest(t, server, mayor, req)
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /api/messages: %v", err)

@@ -56,7 +56,7 @@ func TestThePresenceSaysTheMayorIsHereWhileHisStreamIsOpen(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	resp, frames := openStream(t, ctx, s.URL, authorizedAs(t, s.Server, mayor))
+	resp, frames := openStream(t, ctx, s.URL, v2As(t, s.Server, mayor, "GET", "/api/events", nil))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /api/events as the Mayor: status %d, want 200", resp.StatusCode)
 	}
@@ -76,7 +76,7 @@ func TestAnotherKeysStreamDoesNotMakeTheMayorHere(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, frames := openStream(t, ctx, s.URL, authorizedAs(t, s.Server, governor))
+	_, frames := openStream(t, ctx, s.URL, v2As(t, s.Server, governor, "GET", "/api/events", nil))
 	nextEvent(t, frames)
 	if _, here := s.presence(t, "governor"); here {
 		t.Fatalf("the Governor's own stream made the Mayor here")
@@ -91,9 +91,9 @@ func TestTwoMayorStreamsAreHereWhileEitherIsOpen(t *testing.T) {
 	defer cancelA()
 	ctxB, cancelB := context.WithCancel(context.Background())
 	defer cancelB()
-	_, framesA := openStream(t, ctxA, s.URL, authorizedAs(t, s.Server, mayor))
+	_, framesA := openStream(t, ctxA, s.URL, v2As(t, s.Server, mayor, "GET", "/api/events", nil))
 	nextEvent(t, framesA)
-	_, framesB := openStream(t, ctxB, s.URL, authorizedAs(t, s.Server, mayor))
+	_, framesB := openStream(t, ctxB, s.URL, v2As(t, s.Server, mayor, "GET", "/api/events", nil))
 	nextEvent(t, framesB)
 
 	cancelA()

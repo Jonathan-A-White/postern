@@ -84,7 +84,7 @@ func getWithin(t *testing.T, server *httptest.Server, key *btcec.PrivateKey, pat
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header = authorizedAs(t, server, key)
+	signRequest(t, server, key, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: no answer within 1 s: %v", path, err)
@@ -141,7 +141,7 @@ func getEventsWithin(t *testing.T, server *httptest.Server, key *btcec.PrivateKe
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header = authorizedAs(t, server, key)
+	signRequest(t, server, key, req)
 	resp, err := http.DefaultClient.Do(req) // headers arrive once the stream opens
 	if err != nil {
 		t.Fatalf("GET /api/events as the Mayor: no answer within 1 s: %v", err)
@@ -160,7 +160,7 @@ func TestAMayorRouteThatNeedsALicenceStillWaitsForTheWalk(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/messages", nil)
-		req.Header = authorizedAs(t, server, mayor)
+		signRequest(t, server, mayor, req)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			done <- 0

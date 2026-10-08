@@ -107,7 +107,7 @@ func TestEventsStreamsHelloThenMessageAndViewEvents(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	resp, frames := openStream(t, ctx, server.URL, authorizedRequest(t, server))
+	resp, frames := openStream(t, ctx, server.URL, v2Header(t, server, "GET", "/api/events", nil))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -148,7 +148,7 @@ func TestEventsHelloNamesAnEmptyViewWhenThereIsNone(t *testing.T) {
 	server, _ := newServerWithOptions(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, frames := openStream(t, ctx, server.URL, authorizedRequest(t, server))
+	_, frames := openStream(t, ctx, server.URL, v2Header(t, server, "GET", "/api/events", nil))
 
 	if hello := nextEvent(t, frames); hello.name != "hello" || hello.data != `{"head":0,"view":""}` {
 		t.Fatalf("hello = %+v, want head 0 and an empty view", hello)
@@ -159,7 +159,7 @@ func TestEventsSendsAPingComment(t *testing.T) {
 	server, _ := newServerWithOptions(t, WithEvents(events.NewHub(), 20*time.Millisecond))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, frames := openStream(t, ctx, server.URL, authorizedRequest(t, server))
+	_, frames := openStream(t, ctx, server.URL, v2Header(t, server, "GET", "/api/events", nil))
 
 	nextEvent(t, frames) // hello
 	if frame := nextFrame(t, frames); frame.comment != "ping" || frame.name != "" {
@@ -171,7 +171,7 @@ func TestEventsDropsTheSubscriberWhenTheClientGoes(t *testing.T) {
 	hub := events.NewHub()
 	server, _ := newServerWithOptions(t, WithEvents(hub, time.Hour))
 	ctx, cancel := context.WithCancel(context.Background())
-	_, frames := openStream(t, ctx, server.URL, authorizedRequest(t, server))
+	_, frames := openStream(t, ctx, server.URL, v2Header(t, server, "GET", "/api/events", nil))
 	nextEvent(t, frames) // hello
 	if hub.Subscribers() != 1 {
 		t.Fatalf("Subscribers() = %d with one stream open, want 1", hub.Subscribers())

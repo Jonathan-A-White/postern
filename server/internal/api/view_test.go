@@ -49,7 +49,7 @@ func TestViewAnswers304ForAMatchingIfNoneMatch(t *testing.T) {
 
 	for _, ifNoneMatch := range []string{etag, `"stale", ` + etag, "W/" + etag} {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/view", nil)
-		req.Header = authorizedRequest(t, server)
+		signRequest(t, server, nil, req)
 		req.Header.Set("If-None-Match", ifNoneMatch)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -66,7 +66,7 @@ func TestViewAnswers304ForAMatchingIfNoneMatch(t *testing.T) {
 	}
 
 	req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/view", nil)
-	req.Header = authorizedRequest(t, server)
+	signRequest(t, server, nil, req)
 	req.Header.Set("If-None-Match", `"stale"`)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

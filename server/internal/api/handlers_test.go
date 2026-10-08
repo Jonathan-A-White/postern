@@ -119,9 +119,10 @@ func newTestServerWithBlobs(t *testing.T, wocHandler http.HandlerFunc) (*httptes
 	return server, blobStore
 }
 
-// authorizedRequest issues its own request against server so it always
-// starts from a fresh, unconsumed nonce, then signs it with a freshly
-// generated key and attaches the resulting Authorization header.
+// authorizedRequest is a 'Postern2' header for GET /api/messages, signed by a
+// freshly generated key over a fresh nonce from server (v2 is the only scheme
+// the backend takes). A header is good for one method, target and body, so a
+// test that sends anything else uses v2As.
 func authorizedRequest(t *testing.T, server *httptest.Server) http.Header {
 	t.Helper()
 	privKey, err := btcec.NewPrivateKey()
@@ -135,9 +136,17 @@ func authorizedRequest(t *testing.T, server *httptest.Server) http.Header {
 // key, for tests that need to know which key the request authenticates as.
 func authorizedAs(t *testing.T, server *httptest.Server, privKey *btcec.PrivateKey) http.Header {
 	t.Helper()
+	return v2As(t, server, privKey, http.MethodGet, "/api/messages", nil)
+}
+
+// v2As is a 'Postern2' Authorization header for a fresh nonce from server,
+// signed by privKey over method, the raw request target and body
+// (docs/api.md).
+func v2As(t *testing.T, server *httptest.Server, privKey *btcec.PrivateKey, method, target string, body []byte) http.Header {
+	t.Helper()
 	nonce := challengeFrom(t, server)
 	header := http.Header{}
-	header.Set("Authorization", "Postern "+signedProof(privKey, nonce, nonce))
+	header.Set("Authorization", "Postern2 "+signedProof(privKey, nonce, auth.MessageV2(method, target, body, nonce)))
 	return header
 }
 
@@ -167,28 +176,55 @@ func signedProof(privKey *btcec.PrivateKey, nonce, message string) string {
 	return pubKeyHex + ":" + nonce + ":" + hex.EncodeToString(sig.Serialize())
 }
 
-// v2Header is a 'Postern2' Authorization header for a fresh nonce from
-// server, signed by a fresh key over method, the raw request target and body
-// (docs/api.md, mw-xhtcup.7).
+// signRequest sets req's Authorization header to a 'Postern2' proof signed by
+// privKey (a fresh key when nil) over req's own method, raw request target
+// and body, with a fresh nonce from server.
+func signRequest(t *testing.T, server *httptest.Server, privKey *btcec.PrivateKey, req *http.Request) {
+	t.Helper()
+	var body []byte
+	if req.GetBody != nil {
+		rc, err := req.GetBody()
+		if err != nil {
+			t.Fatalf("reading body: %v", err)
+		}
+		defer rc.Close()
+		if body, err = io.ReadAll(rc); err != nil {
+			t.Fatalf("reading body: %v", err)
+		}
+	}
+	if privKey == nil {
+		var err error
+		if privKey, err = btcec.NewPrivateKey(); err != nil {
+			t.Fatalf("btcec.NewPrivateKey: %v", err)
+		}
+	}
+	req.Header.Set("Authorization", v2As(t, server, privKey, req.Method, req.URL.RequestURI(), body).Get("Authorization"))
+}
+
+// v2Header is v2As for a fresh key.
 func v2Header(t *testing.T, server *httptest.Server, method, target string, body []byte) http.Header {
 	t.Helper()
 	privKey, err := btcec.NewPrivateKey()
 	if err != nil {
 		t.Fatalf("btcec.NewPrivateKey: %v", err)
 	}
-	nonce := challengeFrom(t, server)
-	header := http.Header{}
-	header.Set("Authorization", "Postern2 "+signedProof(privKey, nonce, auth.MessageV2(method, target, body, nonce)))
-	return header
+	return v2As(t, server, privKey, method, target, body)
 }
 
 func doAuthorized(t *testing.T, method, url string, body io.Reader, server *httptest.Server) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(method, url, body)
+	var raw []byte
+	if body != nil {
+		var err error
+		if raw, err = io.ReadAll(body); err != nil {
+			t.Fatalf("reading body: %v", err)
+		}
+	}
+	req, err := http.NewRequest(method, url, bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf("building request: %v", err)
 	}
-	req.Header = authorizedRequest(t, server)
+	req.Header = v2Header(t, server, method, strings.TrimPrefix(url, server.URL), raw)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, url, err)
@@ -433,7 +469,7 @@ func TestPushSubscribeStoresSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("building request: %v", err)
 	}
-	req.Header = authorizedAs(t, server, key)
+	signRequest(t, server, key, req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /api/push/subscribe: %v", err)
@@ -632,13 +668,13 @@ func TestMessagesRejects401ForASignatureByTheWrongKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("btcec.NewPrivateKey: %v", err)
 	}
-	hash := sha256.Sum256([]byte(out.Nonce))
+	hash := sha256.Sum256([]byte(auth.MessageV2(http.MethodGet, "/api/messages", nil, out.Nonce)))
 	sig := ecdsa.Sign(signingKey, hash[:])
 	claimedPubKeyHex := hex.EncodeToString(claimedKey.PubKey().SerializeCompressed())
 	sigHex := hex.EncodeToString(sig.Serialize())
 
 	req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/messages", nil)
-	req.Header.Set("Authorization", "Postern "+claimedPubKeyHex+":"+out.Nonce+":"+sigHex)
+	req.Header.Set("Authorization", "Postern2 "+claimedPubKeyHex+":"+out.Nonce+":"+sigHex)
 	resp2, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /api/messages: %v", err)
@@ -875,7 +911,7 @@ func TestATamperedChallengeIsRefusedByBothBackends(t *testing.T) {
 	a, b := twoBackends(t, time.Now)
 
 	header := signedHeaderFrom(t, a)
-	parts := strings.Split(strings.TrimPrefix(header.Get("Authorization"), "Postern "), ":")
+	parts := strings.Split(strings.TrimPrefix(header.Get("Authorization"), "Postern2 "), ":")
 	raw := []byte(parts[1])
 	if raw[len(raw)-1] == '0' {
 		raw[len(raw)-1] = '1'
@@ -885,10 +921,8 @@ func TestATamperedChallengeIsRefusedByBothBackends(t *testing.T) {
 	// The signature is over the original nonce, so re-sign the tampered one
 	// with the same key to isolate the nonce check.
 	privKey, _ := btcec.NewPrivateKey()
-	hash := sha256.Sum256(raw)
-	sig := ecdsa.Sign(privKey, hash[:])
 	tampered := http.Header{}
-	tampered.Set("Authorization", "Postern "+hex.EncodeToString(privKey.PubKey().SerializeCompressed())+":"+string(raw)+":"+hex.EncodeToString(sig.Serialize()))
+	tampered.Set("Authorization", "Postern2 "+signedProof(privKey, string(raw), auth.MessageV2(http.MethodGet, "/api/messages", nil, string(raw))))
 
 	for name, server := range map[string]*httptest.Server{"A": a, "B": b} {
 		if got := statusOf(t, server, tampered); got != http.StatusUnauthorized {
@@ -1262,24 +1296,75 @@ func captureAcceptLog(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// Every accepted request logs one line naming its scheme, so the end of v1
-// can be timed (mw-xhtcup.7).
+// Every accepted request logs one line naming its scheme (mw-xhtcup.7); v2 is
+// the only one left.
 func TestEveryAcceptedRequestLogsOneLineNamingItsScheme(t *testing.T) {
 	server, _ := newTestServer(t, http.NotFound)
+	buf := captureAcceptLog(t)
+	header := v2Header(t, server, "GET", "/api/messages", nil)
+	if status, _, body := sendWith(t, server, "GET", "/api/messages", nil, header); status != http.StatusOK {
+		t.Fatalf("v2: %d %s, want 200", status, body)
+	}
+	lines := logLines(buf)
+	if len(lines) != 1 || !strings.Contains(lines[0], "scheme=v2") || !strings.Contains(lines[0], "GET /api/messages") {
+		t.Fatalf("v2 pass logged %q, want one line with scheme=v2 and the route", lines)
+	}
+}
+
+// v1Header is an Authorization header under the retired 'Postern' scheme
+// (mw-xhtcup.10): a proof that would verify under v2 for GET /api/messages,
+// carried under the old label. No test signs v1 any more; the label alone is
+// what is refused, so a valid signature does not save it.
+func v1Header(t *testing.T, server *httptest.Server) http.Header {
+	t.Helper()
+	header := v2Header(t, server, "GET", "/api/messages", nil)
+	header.Set("Authorization", strings.Replace(header.Get("Authorization"), "Postern2 ", "Postern ", 1))
+	return header
+}
+
+// A 'Postern' (v1) header is refused 401 with reason "signature-v1", whoever
+// signed it and however well, on every route that takes a proof; the
+// refusal is logged and nothing is accepted.
+func TestAV1HeaderIsRefusedWithReasonSignatureV1(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, http.NotFound)
 	for _, c := range []struct {
-		scheme string
-		header http.Header
+		method, target string
+		body           []byte
 	}{
-		{"v1", authorizedRequest(t, server)},
-		{"v2", v2Header(t, server, "GET", "/api/messages", nil)},
+		{"GET", "/api/messages", nil},
+		{"GET", "/api/events", nil},
+		{"POST", "/api/blobs", []byte("a blob")},
 	} {
-		buf := captureAcceptLog(t)
-		if status, _, body := sendWith(t, server, "GET", "/api/messages", nil, c.header); status != http.StatusOK {
-			t.Fatalf("%s: %d %s, want 200", c.scheme, status, body)
+		accepted := captureAcceptLog(t)
+		header := v1Header(t, server)
+		status, reason, body := sendWith(t, server, c.method, c.target, c.body, header)
+		if status != http.StatusUnauthorized || reason != "signature-v1" {
+			t.Fatalf("v1 %s %s: %d %q (%s), want 401 \"signature-v1\"", c.method, c.target, status, reason, body)
 		}
-		lines := logLines(buf)
-		if len(lines) != 1 || !strings.Contains(lines[0], "scheme="+c.scheme) || !strings.Contains(lines[0], "GET /api/messages") {
-			t.Fatalf("%s pass logged %q, want one line with scheme=%s and the route", c.scheme, lines, c.scheme)
+		if lines := logLines(accepted); len(lines) != 0 {
+			t.Fatalf("v1 %s %s was logged as accepted: %q", c.method, c.target, lines)
 		}
+	}
+}
+
+// The refusal is logged as a refusal, with the route and the key's prefix, so
+// a client still on v1 is found in the log.
+func TestAV1RefusalIsLoggedWithTheRouteAndKey(t *testing.T) {
+	server, _ := newTestServer(t, http.NotFound)
+	buf := captureLog(t)
+
+	header := v1Header(t, server)
+	keyHex := strings.SplitN(strings.TrimPrefix(header.Get("Authorization"), "Postern "), ":", 2)[0]
+	if status, _, _ := sendWith(t, server, "GET", "/api/messages", nil, header); status != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", status)
+	}
+	line := buf.String()
+	for _, want := range []string{"refused 401", "GET /api/messages", "signature-v1", keyHex[:12]} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("log line %q does not name %q", line, want)
+		}
+	}
+	if strings.Contains(line, keyHex[:13]) || strings.Contains(line, header.Get("Authorization")) {
+		t.Fatalf("log line %q carries more than the key's prefix", line)
 	}
 }

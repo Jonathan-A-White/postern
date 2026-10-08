@@ -17,7 +17,7 @@ func TestAnEventsRecordFromTheMayorsKeyIsIndexedAndPublishedOnce(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	resp, frames := openStream(t, ctx, s.URL, authorizedAs(t, s.Server, governor))
+	resp, frames := openStream(t, ctx, s.URL, v2As(t, s.Server, governor, "GET", "/api/events", nil))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /api/events as the Governor: status %d, want 200", resp.StatusCode)
 	}

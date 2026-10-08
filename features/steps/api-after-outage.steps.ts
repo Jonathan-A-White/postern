@@ -87,7 +87,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
     And('the fetch asked for since=15678', () => {
       expect(asked).toHaveLength(2);
-      for (const url of asked) expect(url).toMatch(/\/messages\?since=15678$/);
+      for (const url of asked) expect(url).toMatch(/\/messages\?since=15678&limit=200$/);
     });
   });
 

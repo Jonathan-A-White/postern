@@ -53,7 +53,7 @@ test('a draft survives Lock now and a reload, is cleared by Send, and is never i
   await expect.poll(() => posted.length).toBeGreaterThan(0);
   await page.reload();
   await expect(box).toHaveValue('');
-  await expect(page.getByRole('button', { name: 'Record a voice note' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Speak a message' })).toBeVisible();
 
   // the words went into the stored draft only: no request carries them, in the clear or in a record's body
   expect(seen.filter((line) => line.includes(WORDS) || line.includes(encodeURIComponent(WORDS)))).toEqual([]);

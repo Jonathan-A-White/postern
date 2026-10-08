@@ -13,6 +13,7 @@ import { ToastHost } from '../../src/ui/toast';
 import { dismissAllToasts } from '../../src/ui/toastStore';
 import { db } from '../../src/data/db';
 import { lock, setKey } from '../../src/services/keySession';
+import { forgetSilentInputs } from '../../src/services/micInput';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import type { Attachment } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
@@ -68,8 +69,10 @@ class FakeRecognizer {
   onend: (() => void) | null = null;
   onerror: ((event: { error: string }) => void) | null = null;
   started = false;
-  start() {
+  startedWith: unknown = undefined;
+  start(track?: unknown) {
     this.started = true;
+    this.startedWith = track;
     recognizers.push(this);
     queueMicrotask(() => this.onaudiostart?.());
   }
@@ -85,6 +88,22 @@ function installBrowser(): void {
   (window as unknown as { webkitSpeechRecognition: unknown }).webkitSpeechRecognition = FakeRecognizer;
   Object.defineProperty(navigator, 'vibrate', { value: vi.fn(() => true), configurable: true, writable: true });
   Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true, writable: true });
+}
+
+/** The phone's audio inputs (mw-f7gmps.1): these are listed, and opening one by its id gives a track named after it. */
+const opened: (string | undefined)[] = [];
+function setInputs(inputs: { deviceId: string; label: string }[]): void {
+  opened.length = 0;
+  const mediaDevices = {
+    enumerateDevices: () => Promise.resolve(inputs.map((input) => ({ ...input, kind: 'audioinput' }))),
+    getUserMedia: (constraints: { audio: { deviceId?: { exact: string } } | boolean }) => {
+      const wanted = typeof constraints.audio === 'object' ? constraints.audio.deviceId?.exact : undefined;
+      opened.push(wanted);
+      const track = { label: inputs.find((input) => input.deviceId === wanted)?.label ?? 'default', stop: () => {}, clone: () => ({ ...track }) };
+      return Promise.resolve({ getAudioTracks: () => [track], getTracks: () => [track] });
+    },
+  };
+  Object.defineProperty(navigator, 'mediaDevices', { value: mediaDevices, configurable: true, writable: true });
 }
 
 afterAll(() => {
@@ -119,6 +138,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     URL.createObjectURL = () => 'blob:preview';
     URL.revokeObjectURL = () => {};
     installBrowser();
+    forgetSilentInputs();
     setKey(doubles.key);
     doubles.delivered = [];
     doubles.uploads = 0;
@@ -331,6 +351,85 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('nothing is delivered', nothingDelivered);
     And('the screen says {string}', async (_c, words: string) => {
       expect(await screen.findByText(words)).toBeInTheDocument();
+    });
+  });
+  const phoneHas = (_c: unknown, a: string, b: string) => {
+    setInputs([
+      { deviceId: 'phone', label: a },
+      { deviceId: 'buds', label: b },
+    ]);
+  };
+  const listensOn = async (_c: unknown, label: string) => {
+    await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+    expect((recognizers.at(-1)?.startedWith as { label: string } | undefined)?.label).toBe(label);
+  };
+  const namesBluetooth = async (_c: unknown, label: string) => {
+    await waitFor(() => expect(screen.getByTestId('mic-name')).toHaveTextContent(`Listening on the Bluetooth microphone: ${label}.`));
+  };
+  // Real time, not a fake clock: the hold's own timers run as they do on the phone.
+  const quietFor = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const startedAgainOnDefault = async () => {
+    await waitFor(() => expect(recognizers.at(-1)?.startedWith).toBeUndefined());
+    expect(recognizers.length).toBeGreaterThan(1);
+    // his finger never left the bar
+    expect(bar()).toHaveTextContent(/Release to send|Starting the mic…/);
+  };
+  const namesThePhone = async () => {
+    await waitFor(() => expect(screen.getByTestId('mic-name')).toHaveTextContent("Listening on the phone's own microphone."));
+  };
+
+  Scenario('AC-10: earbuds whose microphone gives no words within 2.5 s are let go while he still holds, and what he says after that reaches the message (mw-f7gmps.1)', ({ Given, When, And, Then }) => {
+    Given('the phone has the inputs {string} and {string}', phoneHas);
+    And('the composer is open', open);
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    Then('the recogniser listens on the {string} input', listensOn);
+    And('the screen says it is listening on {string}', namesBluetooth);
+    When('2.5 seconds pass with no words, his finger still on the bar', async () => {
+      await quietFor(2600);
+    });
+    Then('the recogniser is started again on the default input', startedAgainOnDefault);
+    And("the screen says it is listening on the phone's own microphone", namesThePhone);
+    When('he says {string} and lets go', async (_c, words: string) => {
+      await hear(words);
+      await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
+      fireEvent.pointerUp(bar(), ON);
+      await act(async () => settledOutbox());
+    });
+    Then('one message is delivered with the words {string}', oneMessageWith);
+    And('the message carries no voice note from the earbuds', () => {
+      expect(files()).toHaveLength(0);
+    });
+  });
+
+  Scenario("AC-11: the earbuds that heard nothing are not chosen again, and the next hold starts on the phone's own microphone at once (mw-f7gmps.1)", ({ Given, When, And, Then }) => {
+    Given('the phone has the inputs {string} and {string}', phoneHas);
+    And('the composer is open', open);
+    When('he taps the mic beside Send', tapMic);
+    And('he holds the bar on the earbuds until they are given up on, says {string} and lets go', async (_c, words: string) => {
+      await press();
+      await listensOn(undefined, 'Bluetooth headset');
+      await quietFor(2600);
+      await startedAgainOnDefault();
+      await hear(words);
+      fireEvent.pointerUp(bar(), ON);
+      await act(async () => settledOutbox());
+      await waitFor(() => expect(doubles.delivered).toHaveLength(1));
+      await screen.findByRole('button', { name: 'Hold to talk' });
+    });
+    And('he presses and holds the bar again', async () => {
+      opened.length = 0;
+      recognizers = [];
+      fireEvent.pointerDown(await screen.findByRole('button', { name: 'Hold to talk' }));
+    });
+    Then('the recogniser listens on the default input at once', async () => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      expect(recognizers).toHaveLength(1);
+      expect(recognizers[0].startedWith).toBeUndefined();
+      await namesThePhone();
+    });
+    And('the earbuds are not opened again', () => {
+      expect(opened).not.toContain('buds');
     });
   });
 });

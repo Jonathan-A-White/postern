@@ -19,7 +19,7 @@ import { takePendingShare } from './shareInbox';
 import { quoteBlock } from './quote';
 import { usePrompts } from './usePrompts';
 import { HoldToTalkBar } from './HoldToTalkBar';
-import { useHold } from './useHold';
+import { micName, useHold } from './useHold';
 import { useDraft } from './useDraft';
 import { draftsRepo } from '../data/repositories';
 import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext } from '../model/prompts';
@@ -338,9 +338,16 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
         <div className="flex flex-col items-center gap-2 px-4 pt-3 pb-3">
           <div role="status" aria-live="polite" className="min-h-[2.75rem] w-full max-w-xl text-center text-[14px]">
             {holding ? (
-              <p data-testid="live-transcript" className="text-fg">
-                {hold.mic === 'ready' ? hold.transcript || 'Listening…' : 'Starting the mic…'}
-              </p>
+              <>
+                <p data-testid="live-transcript" className="text-fg">
+                  {hold.mic === 'ready' ? hold.transcript || 'Listening…' : 'Starting the mic…'}
+                </p>
+                {hold.mic === 'ready' && (
+                  <p data-testid="mic-name" className="text-[11.5px] text-faint">
+                    {micName(hold.input)}
+                  </p>
+                )}
+              </>
             ) : (
               <p className={hold.notice ? 'text-danger' : 'text-muted'}>{hold.notice ?? 'Hold the bar and speak. Slide off it to drop.'}</p>
             )}

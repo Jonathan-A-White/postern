@@ -77,3 +77,26 @@ Feature: The composer's mic is the Talk line's hold-to-talk (mw-q6n8m0.3)
     And he lets go on the bar
     Then nothing is delivered
     And the screen says "No speech was heard."
+
+  Scenario: AC-10: earbuds whose microphone gives no words within 2.5 s are let go while he still holds, and what he says after that reaches the message (mw-f7gmps.1)
+    Given the phone has the inputs "Phone microphone" and "Bluetooth headset"
+    And the composer is open
+    When he taps the mic beside Send
+    And he presses and holds the bar
+    Then the recogniser listens on the "Bluetooth headset" input
+    And the screen says it is listening on "Bluetooth headset"
+    When 2.5 seconds pass with no words, his finger still on the bar
+    Then the recogniser is started again on the default input
+    And the screen says it is listening on the phone's own microphone
+    When he says "check the build" and lets go
+    Then one message is delivered with the words "check the build"
+    And the message carries no voice note from the earbuds
+
+  Scenario: AC-11: the earbuds that heard nothing are not chosen again, and the next hold starts on the phone's own microphone at once (mw-f7gmps.1)
+    Given the phone has the inputs "Phone microphone" and "Bluetooth headset"
+    And the composer is open
+    When he taps the mic beside Send
+    And he holds the bar on the earbuds until they are given up on, says "first" and lets go
+    And he presses and holds the bar again
+    Then the recogniser listens on the default input at once
+    And the earbuds are not opened again

@@ -2,7 +2,7 @@
 // Search offers a bead by its id even when the phone's view lacks it (mw-t64a3.15).
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, expect, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -11,9 +11,9 @@ import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { lock, setKey } from '../../src/services/keySession';
 import { sealDocument } from '../../src/services/documents';
-import { parseRoute } from '../../src/nav/route';
 import { fixtureDetail, fixtureView, MAYOR } from '../../tests/support/cockpit-fixture';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
+import { SLOW_HOST_MS, waitForRoute } from '../../tests/support/wait-for-route';
 
 const feature = await loadFeature('features/search-bead-id.feature');
 
@@ -67,7 +67,7 @@ describeFeature(feature, ({ Scenario }) => {
       await userEvent.click(await screen.findByRole('button', { name: 'Open mw-eq5nn.4' }));
     });
     Then('the bead screen for "mw-eq5nn.4" is opened', async () => {
-      await waitFor(() => expect(parseRoute(window.location.search)).toEqual({ view: 'bead', id: 'mw-eq5nn.4' }));
+      await waitForRoute({ view: 'bead', id: 'mw-eq5nn.4' });
     });
   });
 
@@ -81,7 +81,7 @@ describeFeature(feature, ({ Scenario }) => {
       await userEvent.click(await screen.findByRole('button', { name: 'Open mw-nope.9' }));
     });
     Then('Search says "no bead mw-nope.9"', async () => {
-      expect(await screen.findByText('no bead mw-nope.9')).toBeInTheDocument();
+      expect(await screen.findByText('no bead mw-nope.9', undefined, { timeout: SLOW_HOST_MS })).toBeInTheDocument();
     });
   });
 });

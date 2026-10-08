@@ -14,8 +14,8 @@ function meKeyBytes(): Uint8Array {
   return new Uint8Array(Utils.toArray(ME.toHex(), 'hex'));
 }
 
-function apiResponse(records: unknown[], next: number): Response {
-  return new Response(JSON.stringify({ records, next }), {
+function apiResponse(records: unknown[], next: number, more?: boolean): Response {
+  return new Response(JSON.stringify(more === undefined ? { records, next } : { records, next, more }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
@@ -93,7 +93,7 @@ describe('syncMessages', () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (isChallengeRequest(url)) return challengeResponse();
-      if (url === '/api/messages?since=0') return apiResponse([recordFor(1, payload)], 1);
+      if (url === '/api/messages?since=0&limit=200') return apiResponse([recordFor(1, payload)], 1);
       return apiResponse([], 1);
     });
 
@@ -101,7 +101,7 @@ describe('syncMessages', () => {
     await syncMessages({ publicKeyHex: ME.toPublicKey().toString(), unlockedKey: meKeyBytes(), fetchImpl });
 
     const messagesCalls = fetchImpl.mock.calls.map(([url]) => String(url)).filter((url) => !isChallengeRequest(url));
-    expect(messagesCalls).toEqual(['/api/messages?since=0', '/api/messages?since=1']);
+    expect(messagesCalls).toEqual(['/api/messages?since=0&limit=200', '/api/messages?since=1&limit=200']);
     expect(await messagesRepo.getAll()).toHaveLength(1);
   });
 
@@ -242,5 +242,104 @@ describe('syncMessages and events records (mw-jrx0s.7)', () => {
 
     expect(result.events).toEqual([]);
     expect(await messagesRepo.getAll()).toHaveLength(0);
+  });
+
+  describe('draining in pages', () => {
+    const publicKeyHex = ME.toPublicKey().toString();
+
+    function payloadOf(text: string) {
+      return encryptMessage({ text, class: 'message', senderPrivateKeyHex: SENDER.toHex(), recipientPublicKeyHex: publicKeyHex });
+    }
+
+    function pagedServer(pages: Map<number, Response | (() => Response)>) {
+      return vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (isChallengeRequest(url)) return challengeResponse();
+        const since = Number(new URL(url, 'http://x').searchParams.get('since'));
+        const page = pages.get(since);
+        if (!page) return apiResponse([], since, false);
+        return typeof page === 'function' ? page() : page.clone();
+      });
+    }
+
+    const messageUrls = (fetchImpl: ReturnType<typeof pagedServer>) =>
+      fetchImpl.mock.calls.map(([url]) => String(url)).filter((url) => !isChallengeRequest(url));
+
+    it('follows next while more is true, storing the cursor after each page and every record once', async () => {
+      const pages = new Map<number, Response>([
+        [0, apiResponse([recordFor(1, payloadOf('one')), recordFor(2, payloadOf('two'))], 2, true)],
+        [2, apiResponse([recordFor(3, payloadOf('three')), recordFor(4, payloadOf('four'))], 4, true)],
+        [4, apiResponse([recordFor(5, payloadOf('five'))], 5, false)],
+      ]);
+      const fetchImpl = pagedServer(pages);
+      const cursors: unknown[] = [];
+      const base = fetchImpl.getMockImplementation()!;
+      fetchImpl.mockImplementation(async (input) => {
+        if (!isChallengeRequest(String(input))) cursors.push(await settingsRepo.get('messages-cursor'));
+        return base(input);
+      });
+
+      await syncMessages({ publicKeyHex, unlockedKey: meKeyBytes(), fetchImpl });
+
+      expect(messageUrls(fetchImpl)).toEqual(['/api/messages?since=0&limit=200', '/api/messages?since=2&limit=200', '/api/messages?since=4&limit=200']);
+      expect(cursors).toEqual([undefined, 2, 4]);
+      expect(await settingsRepo.get('messages-cursor')).toBe(5);
+      const rows = await messagesRepo.getAll();
+      expect(rows.map((row) => row.plaintext).sort()).toEqual(['five', 'four', 'one', 'three', 'two']);
+    });
+
+    it('hands back the events batches of every page', async () => {
+      const eventsPayload = (text: string) =>
+        encryptMessage({ text, class: 'events', senderPrivateKeyHex: SENDER.toHex(), recipientPublicKeyHex: publicKeyHex });
+      const batchOf = (seq: number) =>
+        JSON.stringify({ from: seq, to: seq, lane: 'normal', events: [{ seq, ts: '2026-10-01T16:14:05Z', kind: 'bead_changed', bead: 'mw-x', actor: 'root', from: 'held', to: 'open', detail: 'status', lane: 'normal' }] });
+      const fetchImpl = pagedServer(
+        new Map<number, Response>([
+          [0, apiResponse([recordFor(1, eventsPayload(batchOf(1)))], 1, true)],
+          [1, apiResponse([recordFor(2, eventsPayload(batchOf(2)))], 2, false)],
+        ]),
+      );
+
+      const { events } = await syncMessages({ publicKeyHex, unlockedKey: meKeyBytes(), mayorKey: SENDER.toPublicKey().toString(), fetchImpl });
+
+      expect(events.map((batch) => batch.from)).toEqual([1, 2]);
+    });
+
+    it('keeps the cursor at the last stored page when a later page fails, and the next call resumes there', async () => {
+      let healthy = false;
+      const pages = new Map<number, Response | (() => Response)>([
+        [0, apiResponse([recordFor(1, payloadOf('one'))], 1, true)],
+        [1, () => (healthy ? apiResponse([recordFor(2, payloadOf('two'))], 2, false) : new Response('boom', { status: 500 }))],
+      ]);
+      const fetchImpl = pagedServer(pages);
+
+      await expect(syncMessages({ publicKeyHex, unlockedKey: meKeyBytes(), fetchImpl })).rejects.toThrow('Could not fetch messages (500).');
+      expect(await settingsRepo.get('messages-cursor')).toBe(1);
+      expect(await messagesRepo.getAll()).toHaveLength(1);
+
+      healthy = true;
+      await syncMessages({ publicKeyHex, unlockedKey: meKeyBytes(), fetchImpl });
+
+      expect(messageUrls(fetchImpl).slice(2)).toEqual(['/api/messages?since=1&limit=200']);
+      expect(await settingsRepo.get('messages-cursor')).toBe(2);
+      expect((await messagesRepo.getAll()).map((row) => row.plaintext).sort()).toEqual(['one', 'two']);
+    });
+
+    it('takes an answer without more (an older server) as one page', async () => {
+      const fetchImpl = pagedServer(new Map<number, Response>([[0, apiResponse([recordFor(1, payloadOf('one'))], 1)]]));
+
+      await syncMessages({ publicKeyHex, unlockedKey: meKeyBytes(), fetchImpl });
+
+      expect(messageUrls(fetchImpl)).toEqual(['/api/messages?since=0&limit=200']);
+      expect(await settingsRepo.get('messages-cursor')).toBe(1);
+    });
+
+    it('stops when a page says more but does not move the cursor on', async () => {
+      const fetchImpl = pagedServer(new Map<number, Response>([[0, apiResponse([], 0, true)]]));
+
+      await syncMessages({ publicKeyHex, unlockedKey: meKeyBytes(), fetchImpl });
+
+      expect(messageUrls(fetchImpl)).toEqual(['/api/messages?since=0&limit=200']);
+    });
   });
 });

@@ -5,12 +5,12 @@
 // stubbed, since jsdom implements none of the Push API.
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { PrivateKey, PublicKey, Signature, Utils } from '@bsv/sdk';
+import { PrivateKey, Utils } from '@bsv/sdk';
 import { notificationSpecForClass } from '../../src/push/classOptions';
 import type { NotificationSpec } from '../../src/push/classOptions';
 import { subscribeToPush } from '../../src/services/push';
 import type { MessageClass } from '../../src/data/db';
-import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
+import { challengeResponse, isChallengeRequest, receivedRequest, verifiesV2, type ReceivedRequest } from '../../tests/support/challenge-fetch';
 
 const PUBLIC_KEY_HEX = 'aa'.repeat(33);
 const FAKE_SUBSCRIPTION_JSON = { endpoint: 'https://push.example/1', keys: { p256dh: 'p', auth: 'a' } };
@@ -40,16 +40,21 @@ function installServiceWorkerMock(): void {
 let vapidKeyFetched: boolean;
 let subscribeBody: unknown;
 let authHeaders: string[];
+let receivedRequests: ReceivedRequest[];
 
 function installFetchMock(options: { unauthorized?: boolean } = {}) {
   vapidKeyFetched = false;
   subscribeBody = null;
   authHeaders = [];
+  receivedRequests = [];
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (isChallengeRequest(url)) return challengeResponse();
     const auth = new Headers(init?.headers).get('Authorization');
-    if (auth) authHeaders.push(auth);
+    if (auth) {
+      authHeaders.push(auth);
+      receivedRequests.push(receivedRequest(input, init));
+    }
     if (options.unauthorized) return new Response(JSON.stringify({ error: 'no licence held' }), { status: 401 });
     if (url.endsWith('/push/vapid-public-key')) {
       vapidKeyFetched = true;
@@ -204,14 +209,13 @@ describeFeature(feature, ({ Scenario }) => {
       await subscribeToPush({ publicKeyHex: PUBLIC_KEY_HEX, unlockedKey: UNLOCKED_MASTER_KEY });
     });
 
-    Then('both calls carried a signed proof of the unlocked key', () => {
+    Then('both calls carried a signed proof of the unlocked key', async () => {
       expect(authHeaders).toHaveLength(2);
-      for (const header of authHeaders) {
-        const match = header.match(/^Postern ([0-9a-f]+):([0-9a-f]+):([0-9a-f]+)$/);
+      for (const [i, header] of authHeaders.entries()) {
+        const match = header.match(/^Postern2 ([0-9a-f]+):([0-9a-f]+):([0-9a-f]+)$/);
         expect(match).not.toBeNull();
-        const [, pubkeyHex, nonceHex, sigHex] = match!;
-        expect(pubkeyHex).toBe(UNLOCKED_KEY.toPublicKey().toString());
-        expect(PublicKey.fromString(pubkeyHex).verify(nonceHex, Signature.fromDER(sigHex, 'hex'))).toBe(true);
+        expect(match![1]).toBe(UNLOCKED_KEY.toPublicKey().toString());
+        expect(await verifiesV2(header, receivedRequests[i])).toBe(true);
       }
     });
   });

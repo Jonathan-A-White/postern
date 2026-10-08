@@ -24,6 +24,9 @@
 // of the hold ends with no result at all on it (earbuds whose microphone is not routed hear
 // nothing and raise no error): the hold goes on on the default microphone and the input is
 // marked silent, so the page does not choose it again. An input that gave any words is kept (mw-j0f2d.34).
+// The hold does not wait for that stretch to end: an input that gives no result within INPUT_SILENT_MS of
+// the recogniser starting on it is given up on there and then, and a fresh recogniser goes on on the
+// default microphone while he still holds (mw-f7gmps.1).
 
 /** The language the recogniser is asked for when the page names none, and the one it falls back to. */
 export const DEFAULT_LANG = 'en-US';
@@ -172,6 +175,13 @@ export const MIN_LIVE_STRETCH_MS = 1500;
  */
 export const IDLE_RESTART_WAIT_MS = 500;
 
+/**
+ * How long a chosen input has to give a result after the recogniser starts on it. Earbuds whose microphone is
+ * not routed give none and raise no error, and Android may not end the stretch for many seconds, so the hold
+ * goes on on the default microphone once this has passed with nothing heard (mw-f7gmps.1).
+ */
+export const INPUT_SILENT_MS = 2500;
+
 /** What an on-device attempt can fail with when the phone lacks the speech pack or service for it. */
 const ON_DEVICE_FAILURES = new Set(['language-not-supported', 'service-not-allowed']);
 
@@ -300,6 +310,8 @@ export function startListening(options: ListenOptions = {}): ListenStart {
   let inputHeard = false;
   let pending = options.openInput !== undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // Runs out INPUT_SILENT_MS after the recogniser starts on a chosen input that has not been heard yet.
+  let inputWatch: ReturnType<typeof setTimeout> | undefined;
   // A restart put off by IDLE_RESTART_WAIT_MS; released while it waits, the hold settles at once.
   let waiting: ReturnType<typeof setTimeout> | undefined;
   let settle: (result: ListenResult) => void = () => {};
@@ -313,6 +325,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     options.onStart?.();
   };
   const dropInput = () => {
+    clearTimeout(inputWatch);
     const open = input;
     input = undefined;
     try {
@@ -327,6 +340,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     if (input) {
       try {
         recognizer.start(input.track);
+        if (!inputHeard && inputWatch === undefined) inputWatch = setTimeout(leaveSilentInput, INPUT_SILENT_MS);
         return;
       } catch {
         dropInput();
@@ -334,6 +348,28 @@ export function startListening(options: ListenOptions = {}): ListenStart {
       }
     }
     recognizer.start();
+  };
+  /** Marks the chosen input silent and lets it go, telling the caller the hold is on the default microphone now. */
+  const giveUpInput = () => {
+    try {
+      input?.silent?.();
+    } catch {
+      // the mark is only a courtesy to later holds
+    }
+    dropInput();
+    options.onInput?.(undefined);
+  };
+  /** The chosen input gave nothing in INPUT_SILENT_MS: a fresh recogniser goes on on the default microphone and the one on the input is stopped. */
+  const leaveSilentInput = () => {
+    if (outcome || stopping || !input || inputHeard) return;
+    giveUpInput();
+    const quiet = current;
+    if (!restart(lang, mode === 'on-device', false)) return;
+    try {
+      quiet.abort();
+    } catch {
+      // already stopped
+    }
   };
   const finish = () => {
     if (outcome) return;
@@ -379,7 +415,10 @@ export function startListening(options: ListenOptions = {}): ListenStart {
       text = heard.join(' ');
       transient = null;
       idleRestarts = 0;
-      if (input) inputHeard = true;
+      if (input) {
+        inputHeard = true;
+        clearTimeout(inputWatch);
+      }
       announce();
       options.onInterim?.(text);
     };
@@ -413,16 +452,8 @@ export function startListening(options: ListenOptions = {}): ListenStart {
         // He is still holding: the recogniser ended by itself, so start it again and keep what was heard.
         // A stretch that listened for a while only met his silence: it is a pause, not a failure, so it does not count.
         if (Date.now() - stretchStart >= MIN_LIVE_STRETCH_MS) idleRestarts = 0;
-        if (input && !inputHeard) {
-          // The chosen input gave nothing in a whole stretch: go on the phone's default microphone, and not that input again.
-          try {
-            input.silent?.();
-          } catch {
-            // the mark is only a courtesy to later holds
-          }
-          dropInput();
-          options.onInput?.(undefined);
-        }
+        // The chosen input gave nothing in a whole stretch: go on the phone's default microphone, and not that input again.
+        if (input && !inputHeard) giveUpInput();
         carried = heard;
         if (idleRestarts < MAX_IDLE_RESTARTS) {
           try {
@@ -516,6 +547,7 @@ export function startListening(options: ListenOptions = {}): ListenStart {
     },
     abort() {
       clearTimeout(timer);
+      clearTimeout(inputWatch);
       clearTimeout(waiting);
       dropInput();
       outcome = outcome ?? { ok: true, text: '', mode };

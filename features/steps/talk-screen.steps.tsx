@@ -558,6 +558,44 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario('AC-1: earbuds whose microphone gives no words within 2.5 s of the hold are let go while he still holds, and his words after that are sent (mw-f7gmps.1)', ({ Given, When, Then, And }) => {
+    Given('the phone has the inputs {string} and {string}', (_c, a: string, b: string) => {
+      setInputs([
+        { deviceId: 'phone', label: a },
+        { deviceId: 'buds', label: b },
+      ]);
+    });
+    And('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', async () => {
+      fireEvent.pointerDown(await talkButton('Hold to talk'));
+    });
+    Then('the recogniser listens on the {string} input', async (_c, label: string) => {
+      await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
+      expect((recognizers.at(-1)?.startedWith as { label: string }).label).toBe(label);
+    });
+    When('2.5 seconds pass with no words, his finger still on the button', async () => {
+      // Real time, not a fake clock: the hold's own timers run as they do on the phone.
+      await act(() => new Promise<void>((resolve) => setTimeout(resolve, 2600)));
+    });
+    Then('the recogniser is started again on the default input', async () => {
+      await waitFor(() => expect(recognizers.at(-1)?.startedWith).toBeUndefined());
+      expect(recognizers.length).toBeGreaterThan(1);
+      expect(inputTrack.stop).toHaveBeenCalled();
+    });
+    And('the screen says it is listening on the phone\'s own microphone', async () => {
+      await micOpens();
+      await waitFor(() => expect(screen.getByTestId('mic-name')).toHaveTextContent("Listening on the phone's own microphone."));
+    });
+    When('he says {string} and lets go', async (_c, words: string) => {
+      await hear(words);
+      fireEvent.pointerUp(await talkButton('Release to send'));
+      await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
+    });
+    Then('the turn sent is {string}', (_c, words: string) => {
+      expect(lastSent().text).toBe(words);
+    });
+  });
+
   Scenario('AC-1: an Android phone that sends each growing hypothesis as a new result shows and sends the phrase once (mw-j0f2d.12)', ({ Given, When, Then, And }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     When('he presses and holds the talk button', async () => {

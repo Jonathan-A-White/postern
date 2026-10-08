@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { DEFAULT_LANG, isListenSupported, recognizerLang, startListening, IDLE_RESTART_WAIT_MS, MAX_IDLE_RESTARTS, STOP_TIMEOUT_MS, type ListenOptions } from '../../src/services/listen';
+import { DEFAULT_LANG, isListenSupported, recognizerLang, startListening, IDLE_RESTART_WAIT_MS, INPUT_SILENT_MS, MAX_IDLE_RESTARTS, STOP_TIMEOUT_MS, type ListenOptions } from '../../src/services/listen';
 
 interface FakeAlt {
   transcript: string;
@@ -813,6 +813,88 @@ describe('the recogniser language (mw-j0f2d.24)', () => {
         expect(input.silent).not.toHaveBeenCalled();
       });
     });
+  });
+});
+
+describe('an input that gives no result soon after the hold starts (his earbuds, mw-f7gmps.1)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+  const buds = () => ({ label: 'Bluetooth headset', track: { kind: 'audio' } as unknown as MediaStreamTrack, close: vi.fn(), silent: vi.fn() });
+
+  async function holdOn(input: ReturnType<typeof buds>, extra: ListenOptions = {}) {
+    const begun = startListening({ openInput: () => Promise.resolve(input), ...extra });
+    if (!begun.ok) throw new Error('expected listening to start');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledWith(input.track);
+    return begun.session;
+  }
+
+  it(`goes on the default microphone ${INPUT_SILENT_MS} ms after it started on the input with no result, without waiting for the recogniser to end`, async () => {
+    vi.useFakeTimers();
+    install();
+    const input = buds();
+    const onInput = vi.fn();
+    const onError = vi.fn();
+    const session = await holdOn(input, { onInput, onError });
+    const first = FakeRecognizer.instances[0];
+    await vi.advanceTimersByTimeAsync(INPUT_SILENT_MS - 1);
+    expect(FakeRecognizer.instances).toHaveLength(1);
+    expect(input.close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(input.silent).toHaveBeenCalledTimes(1);
+    expect(input.close).toHaveBeenCalled();
+    expect(onInput).toHaveBeenLastCalledWith(undefined);
+    expect(first.abortFn).toHaveBeenCalled();
+    const next = FakeRecognizer.instances.at(-1)!;
+    expect(next).not.toBe(first);
+    expect(next.startFn).toHaveBeenCalledTimes(1);
+    expect(next.startFn).toHaveBeenCalledWith(undefined);
+    expect(onError).not.toHaveBeenCalled();
+    next.say([result('check the build', false)]);
+    expect(await session.stop()).toEqual({ ok: true, text: 'check the build', mode: 'on-device' });
+  });
+
+  it('keeps the track when the input gives a result within the window (the car), through later quiet and restarts', async () => {
+    vi.useFakeTimers();
+    install();
+    const input = buds();
+    const onInput = vi.fn();
+    const session = await holdOn(input, { onInput });
+    const recognizer = FakeRecognizer.instances[0];
+    await vi.advanceTimersByTimeAsync(INPUT_SILENT_MS / 2);
+    recognizer.say([result('what landed', false)]);
+    await vi.advanceTimersByTimeAsync(INPUT_SILENT_MS * 4);
+    recognizer.onend?.();
+    expect(FakeRecognizer.instances).toHaveLength(1);
+    expect(recognizer.startFn.mock.calls.every(([track]) => track === input.track)).toBe(true);
+    expect(input.silent).not.toHaveBeenCalled();
+    expect(input.close).not.toHaveBeenCalled();
+    expect(onInput).toHaveBeenCalledTimes(1);
+    expect(await session.stop()).toEqual({ ok: true, text: 'what landed', mode: 'on-device' });
+  });
+
+  it('does not mark the input silent when he lets go before the window is out', async () => {
+    vi.useFakeTimers();
+    install();
+    const input = buds();
+    const session = await holdOn(input);
+    await vi.advanceTimersByTimeAsync(INPUT_SILENT_MS / 2);
+    await session.stop();
+    await vi.advanceTimersByTimeAsync(INPUT_SILENT_MS * 2);
+    expect(input.silent).not.toHaveBeenCalled();
+    expect(FakeRecognizer.instances).toHaveLength(1);
+  });
+
+  it('starts no window on the default microphone', async () => {
+    vi.useFakeTimers();
+    install();
+    const begun = startListening({ openInput: () => Promise.resolve(undefined) });
+    if (!begun.ok) throw new Error('expected listening to start');
+    await vi.advanceTimersByTimeAsync(INPUT_SILENT_MS * 2);
+    expect(FakeRecognizer.instances).toHaveLength(1);
+    expect(FakeRecognizer.instances[0].startFn).toHaveBeenCalledTimes(1);
   });
 });
 

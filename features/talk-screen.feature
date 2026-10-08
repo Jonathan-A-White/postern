@@ -51,6 +51,17 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he says "what landed" and lets go
     Then the turn sent is "what landed"
 
+  Scenario: AC-1: earbuds whose microphone gives no words within 2.5 s of the hold are let go while he still holds, and his words after that are sent (mw-f7gmps.1)
+    Given the phone has the inputs "Phone microphone" and "Bluetooth headset"
+    And the Talk line is open with a believable speech recogniser
+    When he presses and holds the talk button
+    Then the recogniser listens on the "Bluetooth headset" input
+    When 2.5 seconds pass with no words, his finger still on the button
+    Then the recogniser is started again on the default input
+    And the screen says it is listening on the phone's own microphone
+    When he says "what landed" and lets go
+    Then the turn sent is "what landed"
+
   Scenario: AC-1: an Android phone that sends each growing hypothesis as a new result shows and sends the phrase once (mw-j0f2d.12)
     Given the Talk line is open with a believable speech recogniser
     When he presses and holds the talk button

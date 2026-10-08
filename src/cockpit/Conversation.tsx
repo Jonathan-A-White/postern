@@ -3,7 +3,7 @@
 // marked as theirs; each with who and when, Markdown rendered, a question with
 // its answers tappable in place, a voice note playable with what was heard in
 // it, an image shown, a file openable, and the Mayor's words readable aloud.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { Markdown } from '../markdown';
 import { answersGiven, askedAgainAt, attachmentLabel, type ConversationItem, type GivenAnswer } from '../model/conversation';
@@ -293,6 +293,32 @@ function QuestionBlock({ item, given, until }: { item: ConversationItem; given?:
   );
 }
 
+/** What the Mayor's host heard in a voice note (docs/protocol.md §14), under its player: two lines, with
+ * 'more' only when the words run past them, so the tap always has something to open. */
+function Transcript({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const [runsLong, setRunsLong] = useState(false);
+  // Measured on the clamped paragraph; where nothing is laid out (clientHeight 0) the length stands in.
+  const measure = useCallback(
+    (el: HTMLElement | null) => {
+      if (el && !open) setRunsLong(el.clientHeight > 0 ? el.scrollHeight > el.clientHeight + 1 : text.length > 120);
+    },
+    [open, text],
+  );
+  return (
+    <div className="mt-1.5 border-l-2 border-line-strong pl-2 text-[13px] text-muted" data-testid="transcript">
+      <p ref={measure} data-testid="transcript-text" className={cx('break-words', !open && 'line-clamp-2')}>
+        <span className="font-semibold">Heard:</span> {text}
+      </p>
+      {runsLong && (
+        <button type="button" aria-expanded={open} className="font-semibold text-accent hover:underline" onClick={() => setOpen((was) => !was)}>
+          {open ? 'less' : 'more'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Bubble({ item, given, until, shareTitle, onQuote, onReply }: { item: ConversationItem; given?: GivenAnswer; until?: number; shareTitle: string; onQuote?: (item: ConversationItem) => void; onReply?: (item: ConversationItem) => void }) {
   const titles = useBeadTitles();
   const speakKey = `message:${item.id}`;
@@ -322,11 +348,7 @@ function Bubble({ item, given, until, shareTitle, onQuote, onReply }: { item: Co
         {!mine && <p className={cx('mb-0.5 text-[11.5px] font-semibold', item.speaker === 'mayor' ? 'text-accent' : 'text-muted')}>{item.speakerLabel}</p>}
         {item.attachments && item.attachments.length > 0 && <AttachmentList attachments={item.attachments} direction={mine ? 'sent' : 'received'} />}
         {item.text && <Markdown text={item.text} wrap />}
-        {item.transcript !== undefined && (
-          <p className="mt-1.5 border-l-2 border-line-strong pl-2 text-[13px] text-muted">
-            <span className="font-semibold">Heard:</span> {item.transcript}
-          </p>
-        )}
+        {item.transcript !== undefined && item.transcript.trim() !== '' && <Transcript text={item.transcript} />}
         {item.kind === 'question' && <QuestionBlock item={item} given={given} until={until} />}
       </div>
       <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-faint">

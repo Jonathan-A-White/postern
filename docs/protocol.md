@@ -845,6 +845,19 @@ decision 11: on the desktop, never a third party), records the transcript on the
 bead as the Governor's words, and sends it back as a `role: "transcript"` message
 in the same thread, so he sees exactly what was heard under the note he sent.
 
+That holds in every channel, General included: a voice note sent with no thread is
+General's, and its transcript is `{ "text": "<transcript>", "re": "<the note's txid>",
+"role": "transcript" }` with no `thread` field, which is General too. No new field or
+record kind is needed: the transcript is the record above, and the host sends it for
+every voice note, whichever channel the note was in. The app folds a transcript into the
+note whose txid its `re` names (`mergeConversation` in `src/model/conversation.ts`) and
+shows it under the player as "Heard: …", held to two lines with a "more" that opens the
+rest ("less" folds it again; "more" appears only when the words run past two lines). A
+note with no transcript shows the player alone. Nothing is backfilled by the app or the
+backend: the backend only relays encrypted records and cannot read a note, so a note
+sent before its transcript exists gets its words when that record reaches the phone,
+and a host that transcribes notes it has already applied sends the same record for them.
+
 ## 15. Who is who: `GET /api/me`
 
 `GET /api/me`, authenticated, answers who the caller is and who the Mayor is:

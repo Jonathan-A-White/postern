@@ -14,6 +14,8 @@ import { applyCardRow } from './cards';
 import { noteArrivedAnswer } from './answerWaiting';
 
 const CURSOR_SETTING_KEY = 'messages-cursor';
+/** Records asked for per page of GET /api/messages (the backend caps a page at 500). */
+const PAGE_LIMIT = 200;
 
 interface ApiRecord {
   seq: number;
@@ -25,6 +27,8 @@ interface ApiRecord {
 interface ApiResponse {
   records: ApiRecord[];
   next: number;
+  /** True when the page was cut short and `next` has more behind it; absent from an older backend. */
+  more?: boolean;
 }
 
 export function isMessagePayload(payload: unknown): payload is MessagePayload {
@@ -168,37 +172,44 @@ export function eventBatchOf(payload: MessagePayload, params: Pick<SyncMessagesP
 }
 
 /**
- * Fetches every record newer than the stored cursor, keeps the ones naming this
- * key as sender or recipient, decrypts what the unlocked key can, and advances the
- * cursor to the backend's new head. An events record is not kept as a message: its
- * batch is handed back for src/services/events.ts to project. Throws (leaving the cursor and stored rows
- * untouched) if the fetch itself fails — an offline caller should catch and fall
- * back to messagesRepo.getAll() for what's already stored.
+ * Drains every record newer than the stored cursor, a page (PAGE_LIMIT) at a time while
+ * the backend says `more`: keeps the ones naming this key as sender or recipient,
+ * decrypts what the unlocked key can, and stores the cursor after each page, so a
+ * failure part-way leaves it at the last page stored and the next call resumes there.
+ * An answer without `more` (an older backend) is one page. An events record is not kept
+ * as a message: its batches, from every page, are handed back for src/services/events.ts
+ * to project. Throws if a fetch fails — an offline caller should catch and fall back to
+ * messagesRepo.getAll() for what's already stored.
  */
 export async function syncMessages(params: SyncMessagesParams): Promise<SyncMessagesResult> {
   const unlockedKeyHex = params.unlockedKey ? keyToHex(params.unlockedKey) : undefined;
-
-  const since = ((await settingsRepo.get(CURSOR_SETTING_KEY)) as number | undefined) ?? 0;
-  const response = await apiFetch(`/messages?since=${since}`, undefined, {
-    unlockedKey: params.unlockedKey,
-    apiBase: params.apiBase,
-    fetchImpl: params.fetchImpl,
-  });
-  if (!response.ok) throw new Error(`Could not fetch messages (${response.status}).`);
-  const body = (await response.json()) as ApiResponse;
-
   const events: EventBatch[] = [];
-  for (const record of body.records ?? []) {
-    if (!isMessagePayload(record.payload)) continue;
-    if (record.payload.class === 'events') {
-      const batch = eventBatchOf(record.payload, params, unlockedKeyHex);
-      if (batch) events.push(batch);
-      continue;
-    }
-    await storeRecord({ seq: record.seq, txid: record.txid, vout: record.vout, payload: record.payload }, params.publicKeyHex, unlockedKeyHex);
-  }
 
-  await settingsRepo.set(CURSOR_SETTING_KEY, body.next);
+  let since = ((await settingsRepo.get(CURSOR_SETTING_KEY)) as number | undefined) ?? 0;
+  for (;;) {
+    const response = await apiFetch(`/messages?since=${since}&limit=${PAGE_LIMIT}`, undefined, {
+      unlockedKey: params.unlockedKey,
+      apiBase: params.apiBase,
+      fetchImpl: params.fetchImpl,
+    });
+    if (!response.ok) throw new Error(`Could not fetch messages (${response.status}).`);
+    const body = (await response.json()) as ApiResponse;
+
+    for (const record of body.records ?? []) {
+      if (!isMessagePayload(record.payload)) continue;
+      if (record.payload.class === 'events') {
+        const batch = eventBatchOf(record.payload, params, unlockedKeyHex);
+        if (batch) events.push(batch);
+        continue;
+      }
+      await storeRecord({ seq: record.seq, txid: record.txid, vout: record.vout, payload: record.payload }, params.publicKeyHex, unlockedKeyHex);
+    }
+
+    await settingsRepo.set(CURSOR_SETTING_KEY, body.next);
+    // A page that claims more but does not move the cursor on would be fetched again for ever.
+    if (body.more !== true || body.next <= since) break;
+    since = body.next;
+  }
 
   if (params.unlockedKey) {
     await decryptPendingMessages(params.unlockedKey);

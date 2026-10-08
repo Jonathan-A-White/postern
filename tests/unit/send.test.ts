@@ -100,7 +100,7 @@ describe('sendTextMessage', () => {
 
     expect(authHeaders).toHaveLength(2);
     for (const header of authHeaders) {
-      const match = header.match(/^Postern ([0-9a-f]+):([0-9a-f]+):([0-9a-f]+)$/);
+      const match = header.match(/^Postern2 ([0-9a-f]+):([0-9a-f]+):([0-9a-f]+)$/);
       expect(match).not.toBeNull();
       expect(match![1]).toBe(senderKey.toPublicKey().toString());
     }

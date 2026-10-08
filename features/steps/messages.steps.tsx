@@ -186,7 +186,7 @@ describeFeature(feature, ({ Scenario }) => {
     Then('each POST carried its own freshly signed challenge', () => {
       expect(captured.posts).toHaveLength(2);
       const nonces = captured.posts.map((post) => post.auth.split(':')[1]);
-      expect(captured.posts.every((post) => post.auth.startsWith(`Postern ${HIM_PUB}:`))).toBe(true);
+      expect(captured.posts.every((post) => post.auth.startsWith(`Postern2 ${HIM_PUB}:`))).toBe(true);
       expect(new Set(nonces).size).toBe(2);
     });
   });

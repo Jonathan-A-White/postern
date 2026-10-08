@@ -109,7 +109,7 @@ describeFeature(feature, ({ Scenario }) => {
           return challengeResponse(nonce);
         }
         const header = new Headers(init?.headers).get('Authorization') ?? '';
-        const nonce = header.replace(/^Postern /, '').split(':')[1] ?? '';
+        const nonce = header.replace(/^Postern2 /, '').split(':')[1] ?? '';
         if (!issued.has(nonce) || used.includes(nonce)) return json({ error: 'nonce is missing, expired, or already used', reason: 'nonce' }, 401);
         used.push(nonce);
         return json({ ok: true });

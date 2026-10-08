@@ -152,6 +152,34 @@ describe('refreshView', () => {
     expect(stored?.source).toBe('snapshot');
     expect(stored?.view.beads[0]).toMatchObject({ id: 'e', type: 'epic' });
   });
+
+  it.each([
+    ['an HTML page', '<!doctype html>\n<html lang="en">\n<head><title>Postern</title></head>\n<body><div id="root"></div></body>\n</html>\n'],
+    ['an empty body', ''],
+    ['a body of only whitespace', ' \n\t '],
+    ['text that is not base64', 'Not a snapshot: 404 (nginx)!'],
+  ])('reads %s at /snapshot as absent: nothing thrown, nothing saved', async (_name, body) => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/challenge')) return json({ nonce: 'ab'.repeat(32) });
+      if (url.endsWith('/view')) return new Response('404 page not found', { status: 404 });
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'text/html' } });
+    });
+    expect(await refreshView({ key: GOV_KEY, live: true, fetchImpl, snapshotUrl: '/snapshot' })).toBe('absent');
+    expect(await db.view.count()).toBe(0);
+    expect(await storedView()).toBeUndefined();
+  });
+
+  it('keeps the stored snapshot view when a later /snapshot answer is an HTML page', async () => {
+    const snapshot = { written_at: 'w', epics: [{ id: 'e', title: 'E', priority: 'P2', status: 'open', needs_you: [], landed: [], working: [], closed_count: 0 }] };
+    const ct = Utils.toBase64(EncryptedMessage.encrypt(Utils.toArray(JSON.stringify(snapshot), 'utf8'), MAYOR, PublicKey.fromString(GOV_PUB)));
+    let body = ct;
+    const fetchImpl = vi.fn(async () => new Response(body, { status: 200 }));
+    expect(await refreshView({ key: GOV_KEY, live: false, fetchImpl, snapshotUrl: '/snapshot' })).toBe('updated');
+    body = '<!doctype html><html><body>Not found</body></html>';
+    expect(await refreshView({ key: GOV_KEY, live: false, fetchImpl, snapshotUrl: '/snapshot' })).toBe('absent');
+    expect((await storedView())?.source).toBe('snapshot');
+  });
 });
 
 describe('parseEventBlock', () => {

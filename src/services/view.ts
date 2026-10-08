@@ -45,12 +45,21 @@ async function refreshLive(options: RefreshViewOptions): Promise<ViewRefresh> {
   return 'updated';
 }
 
+/** True when `text` could be the base64 ciphertext docs/protocol.md §7 promises. An nginx
+ * SPA fallback (index.html) or an empty body at /snapshot is not one: it means no snapshot
+ * is published, and must not reach the base64 decoder, whose raw error is no use to anyone. */
+function looksLikeBase64Ciphertext(text: string): boolean {
+  return /^[A-Za-z0-9+/_-]+={0,2}$/.test(text.replace(/\s+/g, ''));
+}
+
 async function refreshFromSnapshot(options: RefreshViewOptions): Promise<ViewRefresh> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl(options.snapshotUrl ?? SNAPSHOT_URL, { cache: 'no-store' });
   if (response.status === 404) return 'absent';
   if (!response.ok) throw new Error(`The snapshot answered ${response.status}.`);
-  const snapshotPlaintext = decryptSnapshotCiphertext((await response.text()).trim(), Utils.toHex(Array.from(options.key)));
+  const sealed = (await response.text()).trim();
+  if (!looksLikeBase64Ciphertext(sealed)) return 'absent';
+  const snapshotPlaintext = decryptSnapshotCiphertext(sealed, Utils.toHex(Array.from(options.key)));
   const view = viewFromSnapshot(decodeSnapshot(snapshotPlaintext));
   const stored = await viewRepo.get();
   if (stored?.source === 'snapshot' && stored.written_at === view.written_at) return 'unchanged';

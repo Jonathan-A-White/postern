@@ -556,7 +556,8 @@ data: {"etag": "<the new view's ETag>"}
 - `hello` — sent once on connect: the index head and the current view's ETag, so
   a client that reconnects knows at once whether it missed anything.
 - `message` — a record was indexed (either channel); `seq` is its sequence number.
-  The client pages `GET /api/messages?since=` from its own cursor.
+  The client pages `GET /api/messages?since=` from its own cursor, with `limit`
+  (at most 500) to take a page at a time: it follows `next` until `more` is false.
 - `view` — the view file (§11) changed.
 - `: ping` — a comment line every 25 seconds, so a proxy never idles the stream out.
 

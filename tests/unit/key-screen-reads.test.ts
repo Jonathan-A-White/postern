@@ -52,6 +52,7 @@ describe('one Key screen open asks WhatsOnChain for each thing once', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     setChainReadGapMs(0);
   });
 
@@ -110,6 +111,18 @@ describe('one Key screen open asks WhatsOnChain for each thing once', () => {
     setChainReadGapMs(25);
     await openKeyScreen();
     const gaps = stub.at.slice(1).map((time, i) => time - stub.at[i]);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(20);
+  });
+
+  it('still spaces every request the gap apart when the wall clock steps backwards (WSL2 resync)', async () => {
+    serve(await history(6, 2));
+    setChainReadGapMs(25);
+    // Every read of the wall clock is 3 s earlier than the one before: only a monotonic clock can measure a gap.
+    let wall = 1_800_000_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => (wall -= 3000));
+    await openKeyScreen();
+    const gaps = stub.at.slice(1).map((time, i) => time - stub.at[i]);
+    expect(gaps.length).toBeGreaterThan(5);
     expect(Math.min(...gaps)).toBeGreaterThanOrEqual(20);
   });
 

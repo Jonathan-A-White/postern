@@ -16,7 +16,7 @@ export interface WocStubOptions {
 export interface WocStub {
   /** Every request so far: pathname plus search, in the order made. */
   requested: string[];
-  /** The time each request arrived, in ms. */
+  /** When each request arrived, in ms on the monotonic clock (performance.now), so a wall clock that steps back cannot make a gap negative. */
   at: number[];
   /** Transactions whose /hex answers like a rate-limited fetch (a rejection) while in this set. */
   failingHex: Set<string>;
@@ -30,7 +30,7 @@ export function wocStub(options: WocStubOptions): WocStub {
   const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input));
     requested.push(url.pathname + url.search);
-    at.push(Date.now());
+    at.push(performance.now());
     if (url.pathname.endsWith('/confirmed/history')) {
       const token = url.searchParams.get('token');
       const index = token === null ? 0 : Number(token.replace('page-', ''));

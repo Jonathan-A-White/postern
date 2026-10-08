@@ -95,6 +95,7 @@ class Recognizer implements FakeRecognizer {
 }
 class Utterance {
   voice: unknown = null;
+  lang = '';
   onend: (() => void) | null = null;
   constructor(public text: string) {}
 }
@@ -908,6 +909,18 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the phone speaks {string}', async (_c, text: string) => {
       await waitFor(() => expect(speak).toHaveBeenCalled());
       expect((speak.mock.calls.at(-1)?.[0] as Utterance).text).toBe(text);
+    });
+  });
+
+  Scenario('mw-44omaq.7 AC-1: a spoken answer names its language, so another app\'s voice is not used', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    Then('the phone speaks {string} in {string}', async (_c, text: string, lang: string) => {
+      await waitFor(() => expect(speak).toHaveBeenCalled());
+      const utterance = speak.mock.calls.at(-1)?.[0] as Utterance;
+      expect(utterance.text).toBe(text);
+      expect(utterance.lang).toBe(lang);
     });
   });
 

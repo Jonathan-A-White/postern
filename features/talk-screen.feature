@@ -185,6 +185,12 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the screen shows "Three things landed." as the answer
     And the phone speaks "Three things landed."
 
+  Scenario: mw-44omaq.7 AC-1: a spoken answer names its language, so another app's voice is not used
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet"
+    Then the phone speaks "Three things landed." in "en-US"
+
   Scenario: AC-2: an answer that comes while he has left the app is announced, and spoken when he returns (mw-j0f2d.29)
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "What landed today?" and lets go

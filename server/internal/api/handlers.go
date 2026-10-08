@@ -4,6 +4,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -213,24 +215,36 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	return withCORS(o.cors, mux)
 }
 
-// authScheme is the Authorization header's scheme token: "Postern
+// The Authorization header's scheme tokens: "Postern2
 // <pubkeyHex>:<nonceHex>:<sigHex>", where sigHex is a DER-encoded ECDSA
-// signature by the compressed secp256k1 key pubkeyHex over the nonce
-// (docs/api.md).
-const authScheme = "Postern "
+// signature by the compressed secp256k1 key pubkeyHex over
+// auth.MessageV2(method, raw request target, body, nonce); and v1's
+// "Postern ...", the same three parts with the signature over the nonce
+// alone, accepted until its dated removal (docs/api.md).
+const (
+	authSchemeV2 = "Postern2 "
+	authSchemeV1 = "Postern "
+)
 
-// parseAuthorization splits a "Postern <pubkeyHex>:<nonceHex>:<sigHex>"
-// Authorization header into its three parts, reporting ok=false for
-// anything else, including any empty part.
-func parseAuthorization(header string) (pubKeyHex, nonce, sigHex string, ok bool) {
-	if !strings.HasPrefix(header, authScheme) {
-		return "", "", "", false
+// parseAuthorization splits a "Postern2 <pubkeyHex>:<nonceHex>:<sigHex>" or
+// "Postern <pubkeyHex>:<nonceHex>:<sigHex>" Authorization header into its
+// scheme ("v2" or "v1") and three parts, reporting ok=false for anything
+// else, including any empty part.
+func parseAuthorization(header string) (scheme, pubKeyHex, nonce, sigHex string, ok bool) {
+	var proof string
+	switch {
+	case strings.HasPrefix(header, authSchemeV2):
+		scheme, proof = "v2", strings.TrimPrefix(header, authSchemeV2)
+	case strings.HasPrefix(header, authSchemeV1):
+		scheme, proof = "v1", strings.TrimPrefix(header, authSchemeV1)
+	default:
+		return "", "", "", "", false
 	}
-	parts := strings.Split(strings.TrimPrefix(header, authScheme), ":")
+	parts := strings.Split(proof, ":")
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
-	return parts[0], parts[1], parts[2], true
+	return scheme, parts[0], parts[1], parts[2], true
 }
 
 // authKey is the request-context key requireLicence stores the
@@ -247,16 +261,19 @@ func AuthenticatedKey(ctx context.Context) string {
 
 // requireLicence wraps next so it only runs once the request's Authorization
 // header proves a signed, licensed key: the header must carry a nonce this
-// nonces store issued and hasn't already consumed, a valid signature over
-// that nonce by the named public key, and that key must hold a licence per
-// checker (or be the mill's key). Anything short of that is a 401; a
-// failure to check the licence itself (a chain read failing) is a 502, like
-// this backend's other provider-proxy failures. A proved key whose kind who
-// does not admit is a 403 (docs/protocol.md §19). next finds the proved key
-// with AuthenticatedKey and what it may do with rightsOf.
+// nonces store issued and hasn't already consumed, a valid signature by the
+// named public key (v2: over the method, raw request target, body hash and
+// nonce; v1: over the nonce alone), and that key must hold a licence per
+// checker (or be the mill's key). Anything short of that is a 401; a v2 body
+// over blobs.MaxBodyBytes is a 413; a failure to check the licence itself (a
+// chain read failing) is a 502, like this backend's other provider-proxy
+// failures. A proved key whose kind who does not admit is a 403
+// (docs/protocol.md §19). An accepted request logs one line naming its
+// scheme. next finds the proved key with AuthenticatedKey and what it may do
+// with rightsOf.
 func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *options, who access, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		pubKeyHex, nonce, sigHex, ok := parseAuthorization(r.Header.Get("Authorization"))
+		scheme, pubKeyHex, nonce, sigHex, ok := parseAuthorization(r.Header.Get("Authorization"))
 		if !ok {
 			refuse(w, r, http.StatusUnauthorized, reasonMalformed, "missing or malformed Authorization header", "")
 			return
@@ -267,7 +284,15 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 			refuseLogged(w, r, http.StatusUnauthorized, reasonNonce, err.Error(), "nonce is missing, expired, or already used", pubKeyHex)
 			return
 		}
-		valid, err := auth.VerifySignature(pubKeyHex, nonce, sigHex)
+		message := nonce
+		if scheme == "v2" {
+			body, ok := readSignedBody(w, r)
+			if !ok {
+				return
+			}
+			message = auth.MessageV2(r.Method, r.RequestURI, body, nonce)
+		}
+		valid, err := auth.VerifySignature(pubKeyHex, message, sigHex)
 		if err != nil || !valid {
 			refuse(w, r, http.StatusUnauthorized, reasonSignature, "signature does not verify", pubKeyHex)
 			return
@@ -286,10 +311,39 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 			refuse(w, r, http.StatusForbidden, reasonForbidden, "this key's licence does not open this route", key)
 			return
 		}
+		acceptLog.Printf("accepted %s %s (scheme=%s key %s)", r.Method, r.URL.EscapedPath(), scheme, keyPrefix(key))
 		ctx := context.WithValue(r.Context(), authKey{}, key)
 		next(w, r.WithContext(context.WithValue(ctx, rightsKey{}, granted)))
 	}
 }
+
+// readSignedBody reads a v2 request's whole body so its hash can be checked,
+// and puts the same bytes back for the route. The gate runs before the route
+// and cannot know the route's own cap, so it reads up to the largest any
+// route takes, blobs.MaxBodyBytes, and answers 413 beyond it; each route
+// still applies its own cap to the restored body. It reports false once it
+// has answered.
+func readSignedBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, blobs.MaxBodyBytes))
+	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "body exceeds the largest any route takes")
+			return nil, false
+		}
+		writeError(w, http.StatusBadRequest, "reading body: "+err.Error())
+		return nil, false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return body, true
+}
+
+// acceptLog takes the one line each accepted request writes: the route, the
+// signature scheme it came with and the key's first 12 hex characters, so the
+// last v1 request can be dated before v1 is dropped. It writes where the
+// standard logger does, in the same format, but is its own logger so a route's
+// own log lines are told apart from the gate's.
+var acceptLog = log.New(os.Stderr, "", log.LstdFlags)
 
 // The machine-readable reason in a refusal's body ({"error", "reason"}): the
 // app matches on these, never on the English in "error" (docs/api.md). Only

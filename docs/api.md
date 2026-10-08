@@ -148,15 +148,20 @@ anything else: the same key signs a hands step's approval (`docs/protocol.md` §
 and a challenge must never be able to stand in for one.
 
 
-## GET /api/messages?since=\<seq\>
+## GET /api/messages?since=\<seq\>[&limit=\<n\>]
 
-Returns every indexed record after sequence number `since`, oldest first. For an
+Returns the indexed records after sequence number `since`, oldest first: all of
+them, or with `limit` one page. For an
 app's key or the mill's, only the records whose envelope names the caller as `to`
-or `from` (`docs/protocol.md` §19); `next` is still the index head, so a cursor
-moves past records the caller cannot see.
+or `from` (`docs/protocol.md` §19); a page is cut from the whole index before
+that filter, so `next` moves past records the caller cannot see.
 
 - `since` (query, optional) — a non-negative integer. Defaults to `0` (return
   everything indexed so far).
+- `limit` (query, optional) — the most records one answer carries. Absent: no
+  limit, every record after `since`, as before. Present: an integer from `1`;
+  anything above the cap of `500` is clamped to `500`. `0`, a negative number or
+  anything that is not an integer is `400` with a reason.
 - `200 application/json`:
 
   ```json
@@ -182,13 +187,21 @@ moves past records the caller cannot see.
         }
       }
     ],
-    "next": 2
+    "next": 2,
+    "more": false
   }
   ```
 
-  - `records` — every stored record with `seq > since`, oldest first. Empty
-    (`[]` or omitted, per Go's JSON encoding of a nil slice) if there's nothing
-    newer.
+  - `records` — every stored record with `seq > since`, oldest first (at most
+    `limit` of them, if given). Empty (`[]`) if there's nothing newer.
+  - `next` — the cursor for the following request. On a truncated page (`more`
+    true) it is the sequence number of the last record scanned into the page,
+    whether or not the caller may see it, so a page that filters to nothing
+    still moves on. Otherwise it is the index head (or `since`, if that is
+    already past the head).
+  - `more` — `true` if records beyond this page remain, so the client asks again
+    with `since=next`; `false` once it has the head. Without `limit` it is always
+    `false`.
   - `height` — the confirming block height, or `0` if the transaction was
     still unconfirmed when indexed.
   - `txid` — the carrying transaction's id, or `direct:<sha256 hex of the

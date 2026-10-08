@@ -504,3 +504,33 @@ func TestABlobOnlyTheMillCouldNotHaveBeenNamedIsNotFoundNotForbidden(t *testing.
 		t.Fatalf("mill DELETE of a hash nobody uploaded: status %d, want 404", del.StatusCode)
 	}
 }
+
+func TestAPageThatFiltersToNothingStillAdvancesNext(t *testing.T) {
+	s := newGristServer(t)
+	for _, r := range []struct{ class, from, to string }{
+		{"message", "governor", "mill"},
+		{"grist", "mill", "governor"},
+		{"grist", "cairnPhone", "mill"},
+	} {
+		if resp := s.deliver(t, r.class, r.from, r.to); resp.StatusCode != http.StatusCreated {
+			t.Fatalf("delivering %s %s→%s: status %d", r.class, r.from, r.to, resp.StatusCode)
+		}
+	}
+
+	resp := s.do(t, "cairnPhone", http.MethodGet, "/api/messages?since=0&limit=2", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		Records []index.Record `json:"records"`
+		Next    uint64         `json:"next"`
+		More    bool           `json:"more"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decoding messages: %v", err)
+	}
+	if len(out.Records) != 0 || out.Next != 2 || !out.More {
+		t.Fatalf("page = %+v, want 0 records, next 2 (past the two not its own), more true", out)
+	}
+}

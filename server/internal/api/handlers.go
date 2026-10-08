@@ -385,6 +385,10 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 	}{OK: true, Commit: buildinfo.Commit()})
 }
 
+// messagesLimitCap is the most records one GET /api/messages page carries; a
+// larger ?limit is clamped to it.
+const messagesLimitCap = 500
+
 func handleMessages(store *index.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sinceParam := r.URL.Query().Get("since")
@@ -398,14 +402,27 @@ func handleMessages(store *index.Store) http.HandlerFunc {
 			since = parsed
 		}
 
-		records, next := store.Since(since)
+		limit := 0 // absent: no limit
+		if values, ok := r.URL.Query()["limit"]; ok {
+			parsed, err := strconv.Atoi(values[0])
+			if err != nil || parsed < 1 {
+				writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+				return
+			}
+			limit = min(parsed, messagesLimitCap)
+		}
+
+		// The page is cut from the whole index, then filtered, so a page that
+		// filters to nothing still moves next on.
+		records, next, more := store.SinceLimit(since, limit)
 		if !rightsOf(r.Context()).cockpit {
 			records = ownRecords(records, AuthenticatedKey(r.Context()))
 		}
 		writeJSON(w, http.StatusOK, struct {
 			Records []index.Record `json:"records"`
 			Next    uint64         `json:"next"`
-		}{Records: records, Next: next})
+			More    bool           `json:"more"`
+		}{Records: records, Next: next, More: more})
 	}
 }
 

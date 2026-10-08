@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -277,6 +278,34 @@ func (s *Store) Since(since uint64) ([]Record, uint64) {
 		head = since
 	}
 	return out, head
+}
+
+// SinceLimit is Since with a page size: at most n records with a sequence
+// number greater than since, oldest first (n <= 0 takes them all). When the
+// page stops short of the head, more is true and next is the last taken
+// record's sequence number, the cursor for the following page; otherwise next
+// is the head, as Since answers it.
+func (s *Store) SinceLimit(since uint64, n int) (page []Record, next uint64, more bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// records are in append order, so their Seq ascends: find the first after since.
+	start := sort.Search(len(s.records), func(i int) bool { return s.records[i].Seq > since })
+	end := len(s.records)
+	if n > 0 && end-start > n {
+		end = start + n
+		more = true
+	}
+	page = append([]Record{}, s.records[start:end]...)
+
+	if more {
+		return page, page[len(page)-1].Seq, true
+	}
+	next = s.nextSeq
+	if next < since {
+		next = since
+	}
+	return page, next, false
 }
 
 // Any reports whether any stored record satisfies match.

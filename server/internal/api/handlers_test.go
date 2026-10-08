@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -891,5 +892,97 @@ func TestANonceIsRefusedASecondTimeOnTheSameBackend(t *testing.T) {
 	}
 	if got := statusOf(t, a, header); got != http.StatusUnauthorized {
 		t.Fatalf("second use on A: status = %d, want 401", got)
+	}
+}
+
+type messagesPage struct {
+	Records []index.Record `json:"records"`
+	Next    uint64         `json:"next"`
+	More    bool           `json:"more"`
+}
+
+func getMessagesPage(t *testing.T, server *httptest.Server, query string) messagesPage {
+	t.Helper()
+	resp := doAuthorized(t, http.MethodGet, server.URL+"/api/messages"+query, nil, server)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/messages%s: status %d, want 200", query, resp.StatusCode)
+	}
+	var out messagesPage
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	return out
+}
+
+func appendFive(store *index.Store) {
+	for _, id := range []string{"tx1", "tx2", "tx3", "tx4", "tx5"} {
+		store.Append(index.Record{TxID: id, Vout: 0, ScriptHex: "00", FirstSeen: time.Now()})
+	}
+}
+
+func TestMessagesLimitPagesAndFollowingNextDrainsTheIndex(t *testing.T) {
+	server, store := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
+	appendFive(store)
+
+	page := getMessagesPage(t, server, "?since=0&limit=2")
+	if len(page.Records) != 2 || page.Next != page.Records[1].Seq || !page.More {
+		t.Fatalf("first page = %+v, want 2 records, next the 2nd's seq, more true", page)
+	}
+
+	var seen []string
+	cursor := uint64(0)
+	for i := 0; i < 10; i++ {
+		page = getMessagesPage(t, server, fmt.Sprintf("?since=%d&limit=2", cursor))
+		for _, rec := range page.Records {
+			seen = append(seen, rec.TxID)
+		}
+		cursor = page.Next
+		if !page.More {
+			break
+		}
+	}
+	if got := strings.Join(seen, ","); got != "tx1,tx2,tx3,tx4,tx5" {
+		t.Fatalf("drained %s, want all five in order with no duplicate", got)
+	}
+	if page.More || page.Next != 5 {
+		t.Fatalf("last page = %+v, want more false and next the head 5", page)
+	}
+}
+
+func TestMessagesWithoutLimitAnswersEverythingAndMoreFalse(t *testing.T) {
+	server, store := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
+	appendFive(store)
+
+	page := getMessagesPage(t, server, "?since=0")
+	if len(page.Records) != 5 || page.Next != 5 || page.More {
+		t.Fatalf("page = %+v (%d records), want 5 records, next 5, more false", page, len(page.Records))
+	}
+}
+
+func TestMessagesRejectsALimitOfZeroOrJunk(t *testing.T) {
+	server, _ := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
+	for _, limit := range []string{"0", "abc", "-1", "", "1.5"} {
+		resp := doAuthorized(t, http.MethodGet, server.URL+"/api/messages?since=0&limit="+limit, nil, server)
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("limit=%q: status %d, want 400", limit, resp.StatusCode)
+		}
+		if !strings.Contains(string(body), "limit") {
+			t.Errorf("limit=%q: body %s, want a reason naming limit", limit, body)
+		}
+	}
+}
+
+func TestMessagesLimitIsClampedToTheCap(t *testing.T) {
+	server, store := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
+	for i := 0; i < messagesLimitCap+3; i++ {
+		store.Append(index.Record{TxID: fmt.Sprintf("tx%d", i), Vout: 0, ScriptHex: "00", FirstSeen: time.Now()})
+	}
+
+	page := getMessagesPage(t, server, "?since=0&limit=10000")
+	if len(page.Records) != messagesLimitCap || !page.More {
+		t.Fatalf("got %d records, more %v; want the cap %d and more true", len(page.Records), page.More, messagesLimitCap)
 	}
 }

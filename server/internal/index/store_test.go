@@ -586,3 +586,60 @@ func TestAnAppendThatWritesPartAndFailsIsCutBack(t *testing.T) {
 		t.Fatalf("next.Seq = %d, want 3", next.Seq)
 	}
 }
+
+func TestSinceLimitPagesInOrderAndEndsAtTheHead(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+	for _, id := range []string{"tx1", "tx2", "tx3", "tx4", "tx5"} {
+		store.Append(newRecord(id, 0))
+	}
+
+	page, next, more := store.SinceLimit(0, 2)
+	if len(page) != 2 || page[0].TxID != "tx1" || page[1].TxID != "tx2" {
+		t.Fatalf("first page = %v, want tx1, tx2", page)
+	}
+	if next != 2 || !more {
+		t.Fatalf("first page: next = %d, more = %v; want 2, true", next, more)
+	}
+
+	var drained []string
+	cursor := uint64(0)
+	for {
+		page, next, more = store.SinceLimit(cursor, 2)
+		for _, rec := range page {
+			drained = append(drained, rec.TxID)
+		}
+		cursor = next
+		if !more {
+			break
+		}
+	}
+	if got := strings.Join(drained, ","); got != "tx1,tx2,tx3,tx4,tx5" {
+		t.Fatalf("drained %s, want all five in order with no duplicate", got)
+	}
+	if cursor != 5 {
+		t.Fatalf("final next = %d, want the head 5", cursor)
+	}
+}
+
+func TestSinceLimitExactFitIsNotMoreAndEmptyPageKeepsTheCursor(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+	store.Append(newRecord("tx1", 0))
+	store.Append(newRecord("tx2", 0))
+
+	page, next, more := store.SinceLimit(0, 2)
+	if len(page) != 2 || next != 2 || more {
+		t.Fatalf("exact fit: %d records, next %d, more %v; want 2, 2, false", len(page), next, more)
+	}
+	page, next, more = store.SinceLimit(7, 2)
+	if len(page) != 0 || next != 7 || more {
+		t.Fatalf("since past the head: %d records, next %d, more %v; want 0, 7, false", len(page), next, more)
+	}
+}

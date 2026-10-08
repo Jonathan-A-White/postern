@@ -4,12 +4,13 @@
 // second tap was easy and every one reached the Mayor. Whoever offers the same
 // action for the same bead shares one state, held outside React so even two
 // taps in the same tick send once: it is "sending" while the send runs, then
-// "sent" until a view newer than the tap says otherwise, and back to idle at
-// once if the send failed.
+// "sent" until the view has passed the event that echoed the tap (docs/protocol.md §13;
+// no clock is compared when the view carries a seq), and back to idle at once if the send failed.
 import { useSyncExternalStore } from 'react';
-import { useAnswers, useOutbox, useViewIndex } from './hooks';
+import { eventsRepo } from '../data/repositories';
+import { useAnswers, useLiveQuery, useOutbox, useViewIndex } from './hooks';
 import { pendingAction } from '../model/outbox';
-import { actionRemembered } from './remembered';
+import { actionRemembered, rememberedTxid } from './remembered';
 import { useSend, type SuccessToast } from './send';
 
 const sending = new Set<string>();
@@ -59,15 +60,22 @@ export function forgetTaps(): void {
 export function useOneTap(bead: string, action: string) {
   const { run } = useSend();
   const answers = useAnswers();
-  const viewWrittenAt = useViewIndex()?.index.view.written_at;
+  const view = useViewIndex()?.index.view;
+  const stamp = { writtenAt: view?.written_at, seq: view?.seq };
   useSyncExternalStore(subscribe, () => version);
   const key = keyOf(bead, action);
   const sentTs = sentAt.get(key);
-  const published = Date.parse(viewWrittenAt ?? '');
-  const sentSinceView = sentTs !== undefined && (Number.isNaN(published) || sentTs > published);
+  const txid = rememberedTxid(answers, bead, action);
+  const echoSeq = useLiveQuery(() => (txid ? eventsRepo.seqOfDetail(txid) : Promise.resolve(undefined)), [txid], undefined as number | undefined);
+  const row = answers.find((candidate) => candidate.bead === bead && candidate.answer === action);
+  // Sent in this session but not yet remembered: with a seq on the view the remembered row decides
+  // as soon as it is written (from this tap on); without one, the view's written_at does.
+  const sentSinceView =
+    sentTs !== undefined &&
+    (stamp.seq !== undefined ? !(row && row.ts >= Math.floor((tapped.get(key)?.at ?? sentTs) / 1000)) : Number.isNaN(Date.parse(stamp.writtenAt ?? '')) || sentTs > Date.parse(stamp.writtenAt ?? ''));
   // An action still in the outbox (mw-jrx0s.10) keeps the button dead, across a reload too.
   const queued = pendingAction(useOutbox(), bead, action);
-  const waiting = sending.has(key) || sentSinceView || actionRemembered(answers, bead, action, viewWrittenAt) || queued !== undefined;
+  const waiting = sending.has(key) || sentSinceView || actionRemembered(answers, bead, action, stamp, echoSeq) || queued !== undefined;
 
   /** `label` is what the tap said (the option he chose); `said` hands it back while the tap is waiting. */
   async function tap<T>(task: () => Promise<T>, success?: string | SuccessToast, label = ''): Promise<T | undefined> {

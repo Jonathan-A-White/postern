@@ -260,6 +260,8 @@ export function projectEvents(view: View, events: FactoryEvent[], lookups: Proje
         // talk_turn, mail and job change nothing in the view.
         break;
     }
+    // The view has now seen this event; early batches may be applied out of order, so never step back (§22).
+    if (next.seq !== undefined && event.seq > next.seq) next = { ...next, seq: event.seq };
   }
   return { view: next, ...out };
 }

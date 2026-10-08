@@ -83,6 +83,8 @@ export interface HostState {
 export interface View {
   v: 2;
   written_at: string;
+  /** The view's place in the factory's event order (§11); absent from an older mw's. */
+  seq?: number;
   host: string;
   hosts: HostState[];
   needs: Need[];
@@ -234,9 +236,11 @@ export function decodeView(text: string): View {
         .filter((host): host is Record<string, unknown> => host !== undefined && typeof host.name === 'string')
         .map((host) => ({ name: str(host.name), last_sync: str(host.last_sync) }))
     : [];
+  const seq = typeof raw.seq === 'number' && Number.isFinite(raw.seq) ? raw.seq : undefined;
   return {
     v: 2,
     written_at: str(raw.written_at),
+    ...(seq !== undefined ? { seq } : {}),
     host: str(raw.host),
     hosts,
     needs: Array.isArray(raw.needs) ? raw.needs.map(decodeNeed).filter((need): need is Need => need !== undefined) : [],

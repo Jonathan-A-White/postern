@@ -22,6 +22,21 @@ async function expectBarUnderComposer(page: Page): Promise<void> {
   expect(composer && menu && composer.y + composer.height <= menu.y + 1).toBe(true);
 }
 
+// mw-q6n8m0.7: on a phone the 'Talk to the Mayor' bar sits at the foot of Channels, just above the bottom menu.
+async function expectTalkBarAtFoot(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 0) >= 1024) return;
+  const talk = await page.getByRole('button', { name: 'Talk to the Mayor' }).boundingBox();
+  const menu = await page.getByRole('navigation', { name: 'Places' }).boundingBox();
+  // The last row the scrolling list shows (rows clipped below its edge are not visible).
+  const lastVisibleTop = await page.getByTestId('thread-list').evaluate((ul) => {
+    const scroller = ul.parentElement?.getBoundingClientRect();
+    const tops = [...ul.querySelectorAll('li')].map((li) => li.getBoundingClientRect()).filter((r) => scroller && r.top < scroller.bottom).map((r) => r.top);
+    return Math.max(...tops);
+  });
+  expect(talk && menu && talk.y + talk.height <= menu.y + 1).toBe(true);
+  expect(talk && talk.y > lastVisibleTop).toBe(true);
+}
+
 test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ page }) => {
   const mnemonic = createMnemonic();
   const governorKeyBytes = await deriveMasterKey(mnemonic);
@@ -73,6 +88,7 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
 
   await page.goto('/?v=talk');
   await expect(page.getByTestId('thread-list')).toBeVisible();
+  await expectTalkBarAtFoot(page);
   await shot(page, 'cockpit-talk');
 
   await page.goto('/?v=talk&t=general');
@@ -120,4 +136,32 @@ test('a tapped push opens the bead thread it is about, and a watchdog alarm open
   await expect(page.getByRole('heading', { name: 'desktop unreachable' })).toBeVisible();
   await expect(page.getByText('no answer for 10 min since 09:12Z')).toBeVisible();
   await shot(page, 'tap-alarm');
+});
+
+test('Channels: with more channels than fit, the last row scrolls fully into view above the Talk to the Mayor bar', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) >= 1024, 'the foot bar is the phone layout');
+  const mnemonic = createMnemonic();
+  const governorKeyBytes = await deriveMasterKey(mnemonic);
+  const governor = PrivateKey.fromHex(Buffer.from(governorKeyBytes).toString('hex'));
+  await stubBackend(page, governor, undefined, { manyChannels: true });
+  await seedVault(page, mnemonic);
+
+  await page.goto('/');
+  await page.getByLabel('Recovery phrase').fill(mnemonic);
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible();
+
+  await page.goto('/?v=talk');
+  const rows = page.getByTestId('thread-list').locator('li');
+  await expect(rows.last()).toBeAttached();
+  await expect.poll(() => rows.count()).toBeGreaterThan(20);
+  const talkButton = page.getByRole('button', { name: 'Talk to the Mayor' });
+  await expect(talkButton).toBeVisible();
+  await expectTalkBarAtFoot(page);
+
+  await rows.last().scrollIntoViewIfNeeded();
+  const talk = await talkButton.boundingBox();
+  const last = await rows.last().boundingBox();
+  expect(talk && last && last.y + last.height <= talk.y + 1).toBe(true);
+  await shot(page, 'cockpit-talk-many');
 });

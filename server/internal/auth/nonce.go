@@ -20,26 +20,45 @@ import (
 )
 
 const (
-	saltBytes = 16
+	saltBytes   = 16
+	hostIDBytes = 8
 	// A nonce is hex(expiry(8, big-endian unix nanoseconds) || salt(16) ||
-	// HMAC-SHA256(key, expiry || salt)(32)): 112 lowercase hex characters, inside
-	// the 32..128 the app agrees to sign (src/services/apiAuth.ts).
-	nonceRawBytes = 8 + saltBytes + sha256.Size
+	// hostid(8) || HMAC-SHA256(key, expiry || salt || hostid)(32)): exactly 128
+	// lowercase hex characters, the top of the 32..128 the app agrees to sign
+	// (src/services/apiAuth.ts). The host id is the first 8 bytes of
+	// sha256(hostname) of the backend that issued it.
+	nonceBodyBytes = 8 + saltBytes + hostIDBytes
+	nonceRawBytes  = nonceBodyBytes + sha256.Size
 
 	// NonceKeyFile is the key's name under POSTERN_DATA.
 	NonceKeyFile = "postern-nonce.key"
 	nonceKeySize = 32
 )
 
+// Why Spend refused a nonce. Every one of them is the wire reason "nonce"; the
+// finer cause is for the log (mw-xhtcup.6).
+var (
+	// ErrNonceInvalid: not a nonce of this shape and key, expired, or already used.
+	ErrNonceInvalid = errors.New("nonce")
+	// ErrNonceHost: a genuine nonce, issued by another host.
+	ErrNonceHost = errors.New("nonce-host")
+	// ErrNonceStale: a genuine nonce of this host, issued before this process started.
+	ErrNonceStale = errors.New("nonce-stale")
+)
+
 // NonceStore issues short-lived, single-use nonces and consumes them. A
-// nonce carries its own expiry and a MAC under a key that both backends
-// (the home and the boost) share, so either can verify a nonce the other
-// issued (mw-43v9x.19); only the single-use record is per process. Safe for
-// concurrent use.
+// nonce carries its own expiry, the id of the host that issued it and a MAC
+// under a key that both backends (the home and the boost) share. Only the
+// issuing host accepts it, and only if this process was already running when
+// it was issued: the single-use record is per process, so a nonce that
+// another host or an earlier life could have spent must not be spent here.
+// Safe for concurrent use.
 type NonceStore struct {
-	ttl time.Duration
-	now func() time.Time
-	key []byte
+	ttl     time.Duration
+	now     func() time.Time
+	key     []byte
+	hostID  [hostIDBytes]byte
+	started time.Time
 
 	mu   sync.Mutex
 	used map[string]time.Time // consumed nonce -> expiry, kept until it would have expired anyway
@@ -61,6 +80,17 @@ func WithKey(key []byte) NonceStoreOption {
 	return func(s *NonceStore) { s.key = append([]byte(nil), key...) }
 }
 
+// WithHostname sets the name this store's host id is made from (the first 8
+// bytes of sha256(name)). Without it the store uses the machine's hostname.
+func WithHostname(name string) NonceStoreOption {
+	return func(s *NonceStore) { s.hostID = hostIDOf(name) }
+}
+
+func hostIDOf(name string) [hostIDBytes]byte {
+	sum := sha256.Sum256([]byte(name))
+	return [hostIDBytes]byte(sum[:hostIDBytes])
+}
+
 // NewNonceStore builds a NonceStore whose issued nonces expire after ttl.
 func NewNonceStore(ttl time.Duration, opts ...NonceStoreOption) *NonceStore {
 	s := &NonceStore{
@@ -68,9 +98,12 @@ func NewNonceStore(ttl time.Duration, opts ...NonceStoreOption) *NonceStore {
 		now:  time.Now,
 		used: make(map[string]time.Time),
 	}
+	name, _ := os.Hostname()
+	s.hostID = hostIDOf(name)
 	for _, opt := range opts {
 		opt(s)
 	}
+	s.started = s.now()
 	if s.key == nil {
 		s.key = make([]byte, nonceKeySize)
 		if _, err := rand.Read(s.key); err != nil {
@@ -143,8 +176,9 @@ func (s *NonceStore) mac(body []byte) []byte {
 	return m.Sum(nil)
 }
 
-// Issue generates a new nonce (lowercase hex) that expires ttl from now and
-// that any store sharing this store's key can verify.
+// Issue generates a new nonce (lowercase hex) that expires ttl from now, that
+// this host alone will accept, and that any store sharing this store's key
+// can verify.
 func (s *NonceStore) Issue() (string, error) {
 	raw := make([]byte, 0, nonceRawBytes)
 	raw = binary.BigEndian.AppendUint64(raw, uint64(s.now().Add(s.ttl).UnixNano()))
@@ -153,27 +187,38 @@ func (s *NonceStore) Issue() (string, error) {
 		return "", fmt.Errorf("generating nonce: %w", err)
 	}
 	raw = append(raw, salt...)
+	raw = append(raw, s.hostID[:]...)
 	raw = append(raw, s.mac(raw)...)
 	return hex.EncodeToString(raw), nil
 }
 
-// Consume reports whether nonce was issued under this store's key, has not
-// expired, and has not been consumed here before, recording it so it can
-// never be presented to this store again. A nonce that fails verification is
-// not recorded.
-func (s *NonceStore) Consume(nonce string) bool {
+// Consume reports whether Spend accepted nonce.
+func (s *NonceStore) Consume(nonce string) bool { return s.Spend(nonce) == nil }
+
+// Spend accepts nonce if it was issued under this store's key by this host
+// after this process started, has not expired, and has not been spent here
+// before, recording it so it can never be presented to this store again.
+// Otherwise it says why: ErrNonceHost, ErrNonceStale or ErrNonceInvalid. A
+// nonce that fails is not recorded.
+func (s *NonceStore) Spend(nonce string) error {
 	raw, err := hex.DecodeString(nonce)
 	if err != nil || len(raw) != nonceRawBytes || nonce != strings.ToLower(nonce) {
-		return false
+		return ErrNonceInvalid
 	}
-	body, mac := raw[:8+saltBytes], raw[8+saltBytes:]
+	body, mac := raw[:nonceBodyBytes], raw[nonceBodyBytes:]
 	if !hmac.Equal(mac, s.mac(body)) {
-		return false
+		return ErrNonceInvalid
+	}
+	if !hmac.Equal(body[8+saltBytes:], s.hostID[:]) {
+		return ErrNonceHost
 	}
 	now := s.now()
 	expiry := time.Unix(0, int64(binary.BigEndian.Uint64(raw[:8])))
 	if now.After(expiry) {
-		return false
+		return ErrNonceInvalid
+	}
+	if expiry.Add(-s.ttl).Before(s.started) {
+		return ErrNonceStale
 	}
 
 	s.mu.Lock()
@@ -184,10 +229,10 @@ func (s *NonceStore) Consume(nonce string) bool {
 		}
 	}
 	if _, seen := s.used[nonce]; seen {
-		return false
+		return ErrNonceInvalid
 	}
 	s.used[nonce] = expiry
-	return true
+	return nil
 }
 
 // usedCount is how many consumed nonces the store still remembers, for tests.

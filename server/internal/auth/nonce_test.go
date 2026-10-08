@@ -2,8 +2,14 @@ package auth
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 )
@@ -203,5 +209,99 @@ func TestConsumedNonceSetForgetsExpiredEntries(t *testing.T) {
 	store.Consume(nonce)
 	if n := store.usedCount(); n != 1 {
 		t.Fatalf("used set holds %d entries after expiry, want 1", n)
+	}
+}
+
+// A nonce is expiry(8) || salt(16) || hostid(8) || MAC(32): exactly 128 hex,
+// the top of what the app agrees to sign (mw-xhtcup.6).
+func TestNonceIsExactly128LowercaseHex(t *testing.T) {
+	store := NewNonceStore(time.Minute)
+	for i := 0; i < 20; i++ {
+		nonce, err := store.Issue()
+		if err != nil {
+			t.Fatalf("Issue: %v", err)
+		}
+		if !regexp.MustCompile(`^[0-9a-f]{32,128}$`).MatchString(nonce) {
+			t.Fatalf("nonce %q does not match the app's ^[0-9a-f]{32,128}$", nonce)
+		}
+		if len(nonce) != 128 {
+			t.Fatalf("nonce length = %d, want exactly 128", len(nonce))
+		}
+	}
+}
+
+func TestNonceCarriesTheFirst8BytesOfSha256OfTheHostname(t *testing.T) {
+	store := NewNonceStore(time.Minute, WithHostname("laptop"))
+	nonce, _ := store.Issue()
+	sum := sha256.Sum256([]byte("laptop"))
+	// expiry(8) || salt(16) puts the host id at hex offset 48..64.
+	if got, want := nonce[48:64], hex.EncodeToString(sum[:8]); got != want {
+		t.Fatalf("host id in nonce = %s, want %s", got, want)
+	}
+}
+
+func TestNonceIssuedByAnotherHostIsRefusedAndTheIssuerAcceptsIt(t *testing.T) {
+	key := bytes.Repeat([]byte{7}, 32)
+	a := NewNonceStore(time.Minute, WithKey(key), WithHostname("laptop"))
+	b := NewNonceStore(time.Minute, WithKey(key), WithHostname("desktop"))
+
+	nonce, _ := a.Issue()
+	if err := b.Spend(nonce); !errors.Is(err, ErrNonceHost) {
+		t.Fatalf("B on A's nonce: err = %v, want ErrNonceHost", err)
+	}
+	if b.Consume(nonce) {
+		t.Fatal("B consumed a nonce another host issued")
+	}
+	if err := a.Spend(nonce); err != nil {
+		t.Fatalf("A on its own nonce: %v (a refusal elsewhere must not burn it)", err)
+	}
+}
+
+func TestNonceIssuedBeforeThisProcessStartedIsRefused(t *testing.T) {
+	key := bytes.Repeat([]byte{7}, 32)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	clock := WithClock(func() time.Time { return now })
+
+	before := NewNonceStore(2*time.Minute, WithKey(key), WithHostname("laptop"), clock)
+	old, _ := before.Issue()
+
+	now = now.Add(30 * time.Second)
+	restarted := NewNonceStore(2*time.Minute, WithKey(key), WithHostname("laptop"), clock)
+	if err := restarted.Spend(old); !errors.Is(err, ErrNonceStale) {
+		t.Fatalf("restarted store on a pre-restart nonce: err = %v, want ErrNonceStale", err)
+	}
+	if restarted.Consume(old) {
+		t.Fatal("a nonce issued before the process started was consumed")
+	}
+
+	now = now.Add(time.Second)
+	fresh, _ := restarted.Issue()
+	if err := restarted.Spend(fresh); err != nil {
+		t.Fatalf("a nonce issued after the start: %v", err)
+	}
+}
+
+func TestReplayOnTheSameStoreIsStillRefused(t *testing.T) {
+	store := NewNonceStore(time.Minute, WithHostname("laptop"))
+	nonce, _ := store.Issue()
+	if err := store.Spend(nonce); err != nil {
+		t.Fatalf("first Spend: %v", err)
+	}
+	if err := store.Spend(nonce); !errors.Is(err, ErrNonceInvalid) {
+		t.Fatalf("replay: err = %v, want ErrNonceInvalid", err)
+	}
+}
+
+func TestNonceOfTheOldSeventeenByteShapeIsRefused(t *testing.T) {
+	// A 112-hex v1 nonce (no host id) made under the same key must not verify.
+	key := bytes.Repeat([]byte{7}, 32)
+	store := NewNonceStore(time.Minute, WithKey(key))
+	raw := make([]byte, 24)
+	binary.BigEndian.PutUint64(raw, uint64(time.Now().Add(time.Minute).UnixNano()))
+	m := hmac.New(sha256.New, key)
+	m.Write(raw)
+	v1 := hex.EncodeToString(append(raw, m.Sum(nil)...))
+	if err := store.Spend(v1); !errors.Is(err, ErrNonceInvalid) {
+		t.Fatalf("v1 nonce: err = %v, want ErrNonceInvalid", err)
 	}
 }

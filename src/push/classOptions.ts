@@ -151,6 +151,15 @@ export function notificationSpecForRing(txid: string, text: { title?: string; bo
   };
 }
 
+/** A message's notification as it is shown while the Talk line is on his screen (mw-q6n8m0.2): the
+ * same words and tap, but silent, because a chime or buzz in the middle of a talk is a bell he did not
+ * ask for. The ring and the emergency do not pass through here: they always sound. */
+export function quietedForTalk(spec: NotificationSpec): NotificationSpec {
+  const options: NotificationOptions & { vibrate?: unknown } = { ...spec.options, silent: true };
+  delete options.vibrate;
+  return { ...spec, options };
+}
+
 /** The tag a talk answer's notification wears, so a second one replaces the first. */
 export const TALK_ANSWER_TAG = 'talk-answer';
 

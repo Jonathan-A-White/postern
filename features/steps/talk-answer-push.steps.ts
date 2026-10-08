@@ -60,4 +60,40 @@ describeFeature(feature, ({ BeforeEachScenario, Scenario }) => {
       expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=line' });
     });
   });
+  const landing = () => worker.push({ class: 'landing', ts: 1_790_000_000 });
+  const ring = () => worker.push({ class: 'call', txid: TXID, ts: 1_790_000_000 });
+
+  Scenario('mw-q6n8m0.2 AC-2d: another message\'s push, while the Talk line is on his screen, shows without sound or buzz', ({ Given, When, Then }) => {
+    Given('the Talk line is focused and visible', () => {
+      worker.openWindows.push(fakeWindowClient('https://postern.allmymind.org/?v=line'));
+    });
+    When('the push for a landing arrives', landing);
+    Then('a notification is shown that is silent and does not vibrate', () => {
+      expect(worker.shown).toHaveLength(1);
+      expect(worker.shown[0].options.silent).toBe(true);
+      expect(worker.shown[0].options.vibrate).toBeUndefined();
+    });
+  });
+
+  Scenario('mw-q6n8m0.2 AC-2e: another message\'s push still sounds when a different place is on his screen', ({ Given, When, Then }) => {
+    Given('the Needs you place is focused and visible', () => {
+      worker.openWindows.push(fakeWindowClient('https://postern.allmymind.org/?v=needs'));
+    });
+    When('the push for a landing arrives', landing);
+    Then('a notification is shown that is not silent', () => {
+      expect(worker.shown).toHaveLength(1);
+      expect(worker.shown[0].options.silent).toBe(false);
+    });
+  });
+
+  Scenario('mw-q6n8m0.2 AC-2f: the Mayor\'s ring still rings while the Talk line is on his screen', ({ Given, When, Then }) => {
+    Given('the Talk line is focused and visible', () => {
+      worker.openWindows.push(fakeWindowClient('https://postern.allmymind.org/?v=line'));
+    });
+    When('the push for a ring arrives', ring);
+    Then('a notification is shown that is not silent', () => {
+      expect(worker.shown).toHaveLength(1);
+      expect(worker.shown[0].options.silent).toBe(false);
+    });
+  });
 });

@@ -15,14 +15,16 @@
 //    Answer opens the Talk line, Later leaves a missed call on it (src/push/classOptions.ts);
 //  - the Mayor's talk answer (class talk, docs/protocol.md §20) is pushed with no words in it: the
 //    notification says only that the Mayor answered, unless a window already shows the app, and a tap opens the Talk line;
+//  - a message's notification shows without sound or buzz while the Talk line is on his screen (mw-q6n8m0.2);
 //  - an emergency events record (class events, docs/protocol.md §22) is pushed too, at once and until
 //    dealt with (src/push/classOptions.ts); the app's banner shows what it was;
 //  - files shared from another app (the manifest's share_target) are parked in
 //    IndexedDB and the app opens on the Share screen to place them.
 import { precacheAndRoute } from 'workbox-precaching';
 import { healPrecache, isGuardedAsset, serveAsset } from './precacheGuard';
-import { notificationSpecForClass, notificationSpecForEmergency, notificationSpecForRing, notificationSpecForTalkAnswer, type PushClass } from './push/classOptions';
+import { notificationSpecForClass, notificationSpecForEmergency, notificationSpecForRing, notificationSpecForTalkAnswer, quietedForTalk, type PushClass } from './push/classOptions';
 import { resolveTapUrl, type TapData } from './push/tapTarget';
+import { parseRoute } from './nav/route';
 import { settingsRepo } from './data/repositories/settings-repo';
 import { sharesRepo } from './data/repositories/view-repo';
 
@@ -72,6 +74,15 @@ const seenWaiters = new Set<(message: SeenMessage) => void>();
 function isShowingTheApp(client: Client): boolean {
   const page = client as WindowClient;
   return page.focused === true && page.visibilityState === 'visible';
+}
+
+/** True when this window is on the Talk line, where a chime or buzz would break into his talk (mw-q6n8m0.2). */
+function isOnTheTalkLine(client: Client): boolean {
+  try {
+    return parseRoute(new URL(client.url).search).view === 'line';
+  } catch {
+    return false;
+  }
 }
 
 /** Asks these windows whether the message `txid` is on their screen; no answer in
@@ -125,8 +136,8 @@ async function onPush(payload: PushPayload): Promise<void> {
     return;
   }
   // A message already on a window he is looking at needs no notification, whatever its class.
+  const showing = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).filter(isShowingTheApp);
   if (payload.txid) {
-    const showing = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).filter(isShowingTheApp);
     if (showing.length > 0 && (await askWhetherSeen(showing, payload.txid))) {
       for (const client of showing) client.postMessage({ type: 'sync-inbox' });
       return;
@@ -134,7 +145,9 @@ async function onPush(payload: PushPayload): Promise<void> {
   }
   const settings = await settingsRepo.getNotificationSettings();
   const spec = notificationSpecForClass(payload.class, payload.txid ?? '', settings[payload.class], { title: payload.title, body: payload.body, ts: payload.ts });
-  await self.registration.showNotification(spec.title, spec.options);
+  // While the Talk line is on his screen it shows without sound or buzz: no bell in the middle of a talk (mw-q6n8m0.2).
+  const shown = showing.some(isOnTheTalkLine) ? quietedForTalk(spec) : spec;
+  await self.registration.showNotification(shown.title, shown.options);
 }
 
 self.addEventListener('push', (event) => {

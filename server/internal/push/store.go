@@ -65,7 +65,7 @@ func (s *Store) Add(sub Subscription) error {
 }
 
 // Remove deletes the subscription with the given endpoint, if any — used
-// when a push endpoint reports itself gone (410).
+// when a push endpoint reports itself gone (410, or 404 as FCM answers).
 func (s *Store) Remove(endpoint string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

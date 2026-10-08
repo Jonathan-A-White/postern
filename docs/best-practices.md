@@ -430,7 +430,7 @@ reconnects and syncs.
 chatty ones (voice turns, event batches, cards) never do, and their few exceptions (the agent
 calling, an emergency, the agent's answer on the voice line, with no words) are named one by one. An
 ordinary push lives 30 seconds at the push service; an emergency lives an hour. A subscription
-whose endpoint answers `410 Gone` is dropped. The VAPID keys are made once and kept.
+whose endpoint answers `410 Gone` or `404` is dropped. The VAPID keys are made once and kept.
 
 **Why.** A push that arrives late is noise, except an emergency. Pushing every chatty record
 drains the battery and teaches the human to mute the app.

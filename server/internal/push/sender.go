@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -21,13 +22,25 @@ type Sender struct {
 	store      *Store
 	httpClient webpush.HTTPClient
 	twins      *twinMemory
+	timeout    time.Duration
 }
 
 // NewSender builds a Sender that signs pushes with keys, identifies this
 // backend to push services as subscriber (an https URL or email address, per
 // VAPID), and looks up (and prunes) subscriptions in store.
 func NewSender(keys VAPIDKeys, subscriber string, store *Store) *Sender {
-	return &Sender{keys: keys, subscriber: subscriber, store: store, twins: newTwinMemory(twinMemoryTTL, twinMemoryCap)}
+	return &Sender{keys: keys, subscriber: subscriber, store: store, timeout: defaultTimeout, twins: newTwinMemory(twinMemoryTTL, twinMemoryCap)}
+}
+
+// defaultTimeout bounds one push: a push service that never answers must not hold a goroutine
+// (or a Broadcast) forever.
+const defaultTimeout = 15 * time.Second
+
+// WithTimeout overrides how long one push may take (defaultTimeout). It bounds the request's
+// context, so it holds for an injected HTTP client that has no timeout of its own.
+func (s *Sender) WithTimeout(d time.Duration) *Sender {
+	s.timeout = d
+	return s
 }
 
 // WithHTTPClient overrides the HTTP client used to reach a push endpoint.
@@ -255,7 +268,7 @@ func clipSummary(summary string) string {
 
 // Broadcast pushes payload to every stored subscription, whoever it is
 // registered for, and reports how many push services accepted it. A
-// subscription whose service answers 410 is dropped, as NotifyRecord does.
+// subscription whose service answers 410 or 404 is dropped, as NotifyRecord does.
 func (s *Sender) Broadcast(payload Payload) (delivered int, err error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -276,14 +289,21 @@ func (s *Sender) Broadcast(payload Payload) (delivered int, err error) {
 }
 
 // deliver pushes body to sub's endpoint, to be kept ttl seconds, and reports whether the push
-// service accepted it (a 2xx). It drops sub from the store if the service reports it gone (410):
-// the standard signal that the browser unsubscribed or the installation was uninstalled.
+// service accepted it (a 2xx). It drops sub from the store if the service reports it gone (410,
+// or 404 as FCM answers for a dead endpoint): the signal that the browser unsubscribed or the
+// installation was uninstalled. The request is cut off after the sender's timeout.
 func (s *Sender) deliver(sub Subscription, body []byte, ttl int) (bool, error) {
-	resp, err := webpush.SendNotificationWithContext(context.Background(), body, &webpush.Subscription{
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+	client := s.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: s.timeout}
+	}
+	resp, err := webpush.SendNotificationWithContext(ctx, body, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys:     sub.Keys,
 	}, &webpush.Options{
-		HTTPClient:      s.httpClient,
+		HTTPClient:      client,
 		Subscriber:      s.subscriber,
 		TTL:             ttl,
 		Urgency:         webpush.UrgencyHigh,
@@ -295,7 +315,7 @@ func (s *Sender) deliver(sub Subscription, body []byte, ttl int) (bool, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusGone {
+	if resp.StatusCode == http.StatusGone || resp.StatusCode == http.StatusNotFound {
 		return false, s.store.Remove(sub.Endpoint)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

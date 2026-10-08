@@ -569,7 +569,7 @@ cut to 80 runes, as the push's `body`, only when the class is `message`,
 record's are ignored, and a record with no `summary` pushes exactly as above. A
 record with no `to`/`class` (a License mint/transfer record, for instance) or a
 `to` no device has subscribed for is silently skipped. A push endpoint that
-answers `410 Gone` has its subscription dropped from the store.
+answers `410 Gone` or `404` has its subscription dropped from the store.
 
 One notification per message: the Mayor's post reaches the backend twice, direct and, a little later,
 on chain under its own transaction id, and the phone keeps only the direct row. The sender remembers

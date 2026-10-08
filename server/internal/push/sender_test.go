@@ -271,3 +271,108 @@ func TestBroadcastPushesToEverySubscription(t *testing.T) {
 		t.Fatalf("subscriptions = %+v, want the gone one dropped", store.All())
 	}
 }
+
+// statusEndpoint answers every push with status.
+func statusEndpoint(t *testing.T, status int) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func notifyEndpoint(t *testing.T, endpoint string, configure func(*Sender)) (*Store, error) {
+	t.Helper()
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	if err := store.Add(Subscription{
+		PublicKeyHex: "recipient-key",
+		Endpoint:     endpoint,
+		Keys:         webpush.Keys{P256dh: testP256dh, Auth: testAuth},
+	}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	sender := NewSender(testKeys(t), "https://postern.allmymind.org", store)
+	if configure != nil {
+		configure(sender)
+	}
+	addressed, err := json.Marshal(map[string]any{"kind": "msg", "class": "message", "to": "recipient-key", "ts": 1})
+	if err != nil {
+		t.Fatalf("marshaling payload: %v", err)
+	}
+	return store, sender.NotifyRecord("txid-1", addressed)
+}
+
+func TestPushServiceStatusDecidesWhetherTheSubscriptionIsPruned(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		pruned  bool
+		wantErr bool
+	}{
+		{http.StatusGone, true, false},
+		{http.StatusNotFound, true, false},
+		{http.StatusInternalServerError, false, true},
+		{http.StatusCreated, false, false},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			server := statusEndpoint(t, tc.status)
+			store, err := notifyEndpoint(t, server.URL+"/sub1", nil)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("NotifyRecord error = %v, want error: %v", err, tc.wantErr)
+			}
+			if kept := len(store.ByPublicKey("recipient-key")) == 1; kept == tc.pruned {
+				t.Fatalf("status %d: subscription kept = %v, want pruned = %v", tc.status, kept, tc.pruned)
+			}
+		})
+	}
+}
+
+func TestAPushEndpointThatNeverAnswersFailsWithinTheTimeout(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer server.Close()
+	defer close(release)
+
+	started := time.Now()
+	store, err := notifyEndpoint(t, server.URL+"/sub1", func(s *Sender) { s.WithTimeout(200 * time.Millisecond) })
+	if err == nil {
+		t.Fatal("NotifyRecord returned nil for an endpoint that never answered")
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("NotifyRecord took %v, want it cut off near the 200ms timeout", elapsed)
+	}
+	if len(store.ByPublicKey("recipient-key")) != 1 {
+		t.Fatal("a timed-out push must not prune the subscription")
+	}
+}
+
+func TestAnInjectedClientWithoutATimeoutIsStillBoundedByTheContext(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer server.Close()
+	defer close(release)
+
+	started := time.Now()
+	_, err := notifyEndpoint(t, server.URL+"/sub1", func(s *Sender) {
+		s.WithHTTPClient(&http.Client{}).WithTimeout(200 * time.Millisecond)
+	})
+	if err == nil {
+		t.Fatal("NotifyRecord returned nil for an endpoint that never answered")
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("NotifyRecord took %v, want it cut off near the 200ms timeout", elapsed)
+	}
+}

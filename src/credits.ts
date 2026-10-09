@@ -180,6 +180,15 @@ export const CREDIT_GROUPS: CreditGroup[] = [
         covers: ['spell-forge-bsv'],
       },
       {
+        name: 'bsv-kit',
+        url: 'https://github.com/Jonathan-A-White/bsv-kit',
+        use: "The Governor's shared library: the hold-to-talk composer (the bar, the recogniser and its fallbacks, the voice recorder) that Postern's composer and Talk line are built on.",
+        ...MIT,
+        licenceUrl: 'https://github.com/Jonathan-A-White/bsv-kit/blob/main/LICENSE',
+        changes: AS_PUBLISHED,
+        covers: ['bsv-kit'],
+      },
+      {
         name: 'scure-bip39',
         url: 'https://paulmillr.com/noble/#scure',
         use: "Paul Miller's audited BIP-39 library: makes and checks the recovery phrase.",

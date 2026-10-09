@@ -23,6 +23,7 @@
   "dependencies": {
     "@bsv/sdk": "^2.2.0",
     "@scure/bip39": "^2.4.0",
+    "bsv-kit": "github:Jonathan-A-White/bsv-kit#29230e0818449c76ae8ae630a858c68e4601ed97",
     "dexie": "^4.3.0",
     "mermaid": "^12.0.0",
     "qrcode": "^1.5.4",
@@ -59,5 +60,8 @@
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.0.18"
+  },
+  "allowScripts": {
+    "github:Jonathan-A-White/bsv-kit#29230e0818449c76ae8ae630a858c68e4601ed97": true
   }
 }

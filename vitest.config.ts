@@ -29,5 +29,8 @@ export default defineConfig({
     // CPU-bound unit tests (real @bsv/sdk signing) pass the default 5 s on a loaded host:
     // mint-licence.test.ts refused mw-yjxcw.12's unrelated landing on 2026-09-30.
     testTimeout: 20_000,
+    // bsv-kit/composer is run through vite, not loaded by node on its own, so a test can vi.mock one of
+    // its inner modules (the voice recorder) and the package's own hold sees the double (mw-jtzpw0.2).
+    server: { deps: { inline: ['bsv-kit'] } },
   },
 });

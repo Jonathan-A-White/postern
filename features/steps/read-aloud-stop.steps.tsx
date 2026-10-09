@@ -9,7 +9,7 @@ import { BeadScreen } from '../../src/cockpit/BeadScreen';
 import { NeedCard } from '../../src/cockpit/NeedCard';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
 import { Shell } from '../../src/cockpit/Shell';
-import { useRoute } from '../../src/router';
+import { navigate, useRoute } from '../../src/router';
 import { getSpeech, stop } from '../../src/services/speech';
 import { db } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
@@ -66,20 +66,17 @@ const need: Need = {
   steps: [],
 } as Need;
 
+// The shell with a screen to leave for: the general thread at ?v=talk, anything else is another screen.
 // eslint-disable-next-line react-refresh/only-export-components
-function GeneralInShell() {
+function RoutedShell() {
   const route = useRoute();
-  return (
-    <Shell route={route}>
-      <TalkScreen thread="general" />
-    </Shell>
-  );
+  return <Shell route={route}>{route.view === 'talk' ? <TalkScreen thread="general" /> : <p>Another screen</p>}</Shell>;
 }
 
 async function openGeneral(inShell = false): Promise<void> {
   await viewRepo.save({ plaintext: JSON.stringify(fixtureView(now)), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
   for (const row of seeded) await messagesRepo.put(row);
-  render(inShell ? <GeneralInShell /> : <TalkScreen thread="general" />);
+  render(inShell ? <RoutedShell /> : <TalkScreen thread="general" />);
   await screen.findByTestId('conversation');
 }
 
@@ -246,18 +243,82 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('mw-q6n8m0.9 AC-3: leaving the screen stops the speech', ({ Given, When, Then, And }) => {
+  const leaves = async () => {
+    act(() => navigate('?v=me'));
+    await screen.findByText('Another screen');
+    await waitFor(() => expect(screen.queryByTestId('conversation')).not.toBeInTheDocument());
+  };
+  const comesBack = async () => {
+    act(() => navigate('?v=talk&t=general'));
+    await screen.findByTestId('conversation');
+  };
+  const begunSecond = () => {
+    act(() => {
+      utterances[0].onstart?.();
+      utterances[0].onend?.();
+      utterances[1].onstart?.();
+    });
+  };
+
+  Scenario('mw-q6n8m0.10 AC1: leaving the screen pauses the speech, and the bar on the next screen offers Resume at the same sentence', ({ Given, When, Then, And }) => {
     Given("the Mayor's message in the general thread is {string}", (_c, text: string) => {
       seeded.push(generalMessage(1, text));
     });
     When('the general thread is opened in the shell and he taps {string}', opensInShell);
-    And('the screen is left', () => {
-      cleanup();
+    And('the phone has begun the second sentence', begunSecond);
+    And('he leaves for another screen', leaves);
+    Then('the speech is paused, not stopped, and the speaking bar offers {string}, {string} and {string}', async (_c, a: string, b: string, c: string) => {
+      expect(getSpeech()).toMatchObject({ status: 'paused', index: 1 });
+      await bar(_c, a, b, c);
     });
-    Then('nothing is speaking and the speaking bar is gone', () => {
+    When('he taps {string} in the bar to carry on', tapsInBar);
+    Then('the phone speaks {string} and then {string} again', speaksAgain);
+  });
+
+  Scenario('mw-q6n8m0.10 AC1: coming back to the screen still offers Resume', ({ Given, When, Then, And }) => {
+    Given("the Mayor's message in the general thread is {string}", (_c, text: string) => {
+      seeded.push(generalMessage(1, text));
+    });
+    When('the general thread is opened in the shell and he taps {string}', opensInShell);
+    And('he leaves for another screen', leaves);
+    And('he comes back to the general thread', comesBack);
+    Then('the speaking bar offers {string}, {string} and {string}', bar);
+    And("the message's button still says {string}", async (_c, label: string) => {
+      expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-q6n8m0.10 AC2: a new read-aloud while one waits paused ends the paused one', ({ Given, When, Then, And }) => {
+    Given("the Mayor's messages in the general thread are {string} and {string}", (_c, first: string, second: string) => {
+      seeded.push(generalMessage(1, first), generalMessage(2, second));
+    });
+    When("the general thread is opened in the shell and he taps the first message's speaker", async () => {
+      await openGeneral(true);
+      await tap('Read aloud', 0);
+    });
+    And('he leaves for another screen', leaves);
+    And('he comes back to the general thread', comesBack);
+    And("he taps the second message's speaker", async () => {
+      await tap('Read aloud');
+    });
+    Then("only the second message's speaker says {string}", async (_c, label: string) => {
+      await waitFor(() => expect(screen.getAllByRole('button', { name: label })).toHaveLength(1));
+      const all = screen.getAllByRole('button', { name: /^(Read aloud|Stop reading)$/ });
+      expect(all.map((b) => b.getAttribute('aria-label'))).toEqual(['Read aloud', 'Stop reading']);
+    });
+    And('the speaking bar offers {string}, {string} and {string}', bar);
+  });
+
+  Scenario('mw-q6n8m0.10 AC2: Stop on a paused read-aloud ends it and the bar goes', ({ Given, When, Then, And }) => {
+    Given("the Mayor's message in the general thread is {string}", (_c, text: string) => {
+      seeded.push(generalMessage(1, text));
+    });
+    When('the general thread is opened in the shell and he taps {string}', opensInShell);
+    And('he leaves for another screen', leaves);
+    And('he taps {string} in the bar to end it', tapsInBar);
+    Then('the speaking bar is gone and nothing is speaking', async () => {
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'Speaking' })).not.toBeInTheDocument());
       expect(getSpeech().status).toBe('idle');
-      expect(cancelFn).toHaveBeenCalled();
-      expect(screen.queryByRole('region', { name: 'Speaking' })).not.toBeInTheDocument();
     });
   });
 });

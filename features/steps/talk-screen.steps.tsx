@@ -14,6 +14,7 @@ import { messagesRepo } from '../../src/data/repositories';
 import { formatRoute, parseRoute, topViewOf } from '../../src/nav/route';
 import { navigate, useRoute } from '../../src/router';
 import { lock, setKey } from '../../src/services/keySession';
+import { getSpeech, stop as stopSpeaking, TALK_ANSWER_KEY } from '../../src/services/speech';
 import { forgetSilentInputs } from 'bsv-kit/composer';
 import { encodeTurn } from '../../src/services/talk';
 import { deliverCallRequest, encodeCall, type CallRecord } from '../../src/services/call';
@@ -296,6 +297,7 @@ const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + silent
 
 async function fresh(): Promise<void> {
   cleanup();
+  stopSpeaking(); // a speech paused by a screen left in the last scenario must not be resumed by this one
   silentFor = 0;
   quiet.ms = undefined;
   mayor.here = undefined;
@@ -2347,5 +2349,154 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the speaking bar offers {string}, {string} and {string}', barOffers);
     When('he taps {string}', tapsBar);
     Then('the phone is told to speak {string} and then {string}', toldToSpeak);
+  });
+
+  // mw-q6n8m0.10: leaving the screen pauses the answer.
+  // The real inbox stores a Mayor answer with heard: false (src/services/inbox.ts); the helper that stores one here leaves it unset.
+  const storedUnheard = async () => {
+    await waitFor(async () => expect(await answerRows()).toHaveLength(1));
+    await db.messages.filter((row) => row.class === 'talk' && row.direction === 'received').modify({ heard: false });
+  };
+  const answerPausedAfterLeaving = () => {
+    expect(getSpeech()).toMatchObject({ status: 'paused', key: TALK_ANSWER_KEY, index: 1 });
+  };
+
+  Scenario('mw-q6n8m0.10 AC1: leaving the Talk line pauses the answer, and the bar on the next screen offers Resume at the same sentence', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the stored answer is unheard, as the real inbox stores it', storedUnheard);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    And('he leaves the Talk line', leavesTheLine);
+    Then('the speech is paused, not stopped', answerPausedAfterLeaving);
+    And('the speaking bar offers {string}, {string} and {string}', barOffers);
+    And('the answer is not marked heard in the store', async () => {
+      expect((await answerRows()).every((row) => row.heard !== true)).toBe(true);
+    });
+    When('he taps {string}', tapsBar);
+    Then('the phone is told to speak {string} and then {string}', toldToSpeak);
+  });
+
+  Scenario('mw-q6n8m0.10 AC1: back on the Talk line the paused answer is still not heard yet and Resume carries on from the same sentence', ({ Given, When, Then, And }) => {
+    let spokenBefore = 0;
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the stored answer is unheard, as the real inbox stores it', storedUnheard);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    And('he leaves the Talk line and comes back', async () => {
+      spokenBefore = speak.mock.calls.length;
+      await leavesTheLine();
+      await comesBack();
+    });
+    Then('the answer is marked {string}', async (_c, mark: string) => {
+      expect(await within(await screen.findByTestId('talk-answer')).findByText(mark)).toBeInTheDocument();
+    });
+    And('the speaking bar offers {string}, {string} and {string}', barOffers);
+    And('the phone has not spoken since', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(speak.mock.calls.length).toBe(spokenBefore);
+    });
+    When('he taps {string}', tapsBar);
+    Then('the phone is told to speak {string} and then {string}', toldToSpeak);
+    When('the phone finishes the last sentence', () => {
+      act(() => {
+        (speak.mock.calls.at(-1)?.[0] as Utterance).onend?.();
+      });
+    });
+    Then('the speaking bar is gone', barGone);
+    And('the answer is marked heard', async () => {
+      await waitFor(async () => expect((await answerRows()).every((row) => row.heard === true)).toBe(true));
+      expect(screen.queryByTestId('talk-unheard')).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-q6n8m0.10 AC1: a paused answer resumed on another screen and played to its end is heard', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the stored answer is unheard, as the real inbox stores it', storedUnheard);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    And('he leaves the Talk line', leavesTheLine);
+    And('he taps {string}', tapsBar);
+    And('the phone finishes the last sentence', async () => {
+      await waitFor(() => expect(spokenSince(spokenMark).length).toBeGreaterThan(0));
+      act(() => {
+        (speak.mock.calls.at(-1)?.[0] as Utterance).onend?.();
+      });
+    });
+    Then('the speaking bar is gone', barGone);
+    And('the answer is marked heard', async () => {
+      await waitFor(async () => expect((await answerRows()).every((row) => row.heard === true)).toBe(true));
+    });
+    When('he comes back to the Talk line', comesBack);
+    Then('the answer is no longer marked {string}', async (_c, mark: string) => {
+      await screen.findByTestId('talk-answer');
+      await waitFor(() => expect(within(screen.getByTestId('talk-answer')).queryByText(mark)).not.toBeInTheDocument());
+    });
+  });
+
+  Scenario('mw-q6n8m0.10 AC2: Stop on another screen ends the paused answer, and back on the line it is heard and silent', ({ Given, When, Then, And }) => {
+    let spokenBefore = 0;
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the stored answer is unheard, as the real inbox stores it', storedUnheard);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    And('he leaves the Talk line', leavesTheLine);
+    And('he taps {string}', async (_c, name: string) => {
+      spokenBefore = speak.mock.calls.length;
+      await tapsBar(_c, name);
+    });
+    Then('the speaking bar is gone', barGone);
+    And('the answer is marked heard', async () => {
+      await waitFor(async () => expect((await answerRows()).every((row) => row.heard === true)).toBe(true));
+    });
+    When('he comes back to the Talk line', comesBack);
+    Then('the answer is no longer marked {string}', async (_c, mark: string) => {
+      await screen.findByTestId('talk-answer');
+      await waitFor(() => expect(within(screen.getByTestId('talk-answer')).queryByText(mark)).not.toBeInTheDocument());
+    });
+    And('the phone has not spoken since', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(speak.mock.calls.length).toBe(spokenBefore);
+    });
+  });
+
+  Scenario('mw-q6n8m0.10 AC2: a new question over an answer paused by leaving ends it and says it was cut', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('sending a turn keeps a sent copy, as the real deliver does', keepsSentCopy);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the stored answer is unheard, as the real inbox stores it', storedUnheard);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    And('he leaves the Talk line and comes back', async () => {
+      await leavesTheLine();
+      await comesBack();
+    });
+    And('the answer is marked {string}', async (_c, mark: string) => {
+      expect(await within(await screen.findByTestId('talk-answer')).findByText(mark)).toBeInTheDocument();
+    });
+    And('he holds the talk button and says {string} and lets go', holdsAndSays);
+    Then('the last turn sent is turn 2 saying {string} with a cut', (_c, words: string) => {
+      expect(lastSent()).toMatchObject({ text: words, talk: { turn: 2 }, cut: true });
+    });
+    And('the speaking bar is gone', barGone);
+  });
+
+  Scenario('mw-q6n8m0.10 AC1: leaving the Talk line pauses an answer read from its speaker button, and the bar on the next screen offers Resume', ({ Given, When, Then, And }) => {
+    Given('two earlier talks and an open talk are stored', () => storesTalks(2));
+    When('the Talk line is opened', lineOpen);
+    And('he taps the speaker button of the earlier answer {string}', tapsSpeaker);
+    And('he leaves the Talk line', leavesTheLine);
+    Then('the speech is paused, not stopped', () => {
+      expect(getSpeech()).toMatchObject({ status: 'paused' });
+      expect(getSpeech().key).toMatch(/^talk-read:/);
+    });
+    And('the speaking bar offers {string}, {string} and {string}', barOffers);
   });
 });

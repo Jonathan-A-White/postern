@@ -16,18 +16,25 @@ import { fetchBeadDetail } from '../services/beads';
 import { threadKey } from '../services/threads';
 import { getLiveState } from '../services/live';
 import { useEvents } from '../services/events';
+import { recallRead, rememberRead } from './lastKnown';
 
-export function useLiveQuery<T>(query: () => Promise<T>, deps: unknown[], initial: T): T {
+/** A live query over Dexie. With `remember` (a name for what is read, unique to its deps) the result is also kept
+ * in memory (lastKnown.ts), and a screen that mounts, or a name that changes, shows it until its own first read arrives. */
+export function useLiveQuery<T>(query: () => Promise<T>, deps: unknown[], initial: T, remember?: string): T {
   const [value, setValue] = useState<T>(initial);
   useEffect(() => {
     const subscription = liveQuery(query).subscribe({
-      next: (next) => setValue(next),
+      next: (next) => {
+        if (remember !== undefined) rememberRead(remember, next);
+        setValue(next);
+      },
       error: () => undefined,
     });
     return () => subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  return value;
+  const known = remember !== undefined ? recallRead<T>(remember) : undefined;
+  return known?.known ? (known.value as T) : value;
 }
 
 /** The unlocked key, re-rendering when it is set, dropped or lapses. */
@@ -43,7 +50,7 @@ export interface ViewState {
 
 /** The stored view as a walkable tree; undefined until the first one arrives. */
 export function useViewIndex(): ViewState | undefined | null {
-  const row = useLiveQuery<ViewRow | null | undefined>(() => viewRepo.get().then((r) => r ?? null), [], undefined);
+  const row = useLiveQuery<ViewRow | null | undefined>(() => viewRepo.get().then((r) => r ?? null), [], undefined, 'view');
   return useMemo(() => {
     if (row === undefined) return undefined;
     if (row === null) return null;
@@ -65,7 +72,7 @@ export function useBeadTitles(): ReadonlyMap<string, string> {
  * An information emergency leaves by itself ten minutes after its time (mw-gq6.277), so the query runs again then. */
 export function useEmergency(): EventRow | undefined {
   const [again, setAgain] = useState(0);
-  const emergency = useLiveQuery(() => eventsRepo.latestEmergency(), [again], undefined);
+  const emergency = useLiveQuery(() => eventsRepo.latestEmergency(), [again], undefined, 'emergency');
   useEffect(() => {
     const left = emergency ? bannerMsLeft(emergency) : undefined;
     if (left === undefined) return;
@@ -77,7 +84,7 @@ export function useEmergency(): EventRow | undefined {
 
 /** The emergency events held, newest first, for the Emergency screen. */
 export function useRecentEmergencies(limit = 20): EventRow[] | undefined {
-  return useLiveQuery(() => eventsRepo.recentEmergencies(limit), [limit], undefined as EventRow[] | undefined);
+  return useLiveQuery(() => eventsRepo.recentEmergencies(limit), [limit], undefined as EventRow[] | undefined, `emergencies:${limit}`);
 }
 
 /** How many emergency events the phone holds; 0 until they have been read. */
@@ -87,7 +94,7 @@ export function useEmergencyCount(): number {
 
 /** Every stored message, oldest first. */
 export function useMessages(): MessageRow[] {
-  return useLiveQuery(() => messagesRepo.getAllOldestFirst(), [], [] as MessageRow[]);
+  return useLiveQuery(() => messagesRepo.getAllOldestFirst(), [], [] as MessageRow[], 'messages');
 }
 
 /** The Talk line's turns, oldest first (class `talk`, docs/protocol.md §20); undefined until they have been read. */
@@ -116,7 +123,7 @@ export function useThreadMessages(threadKey: string | undefined, held?: readonly
 
 /** Every live card (§24) as it now reads, newest first. */
 export function useCards(): LiveCard[] {
-  const rows = useLiveQuery(() => cardsRepo.getAll(), [], [] as CardRow[]);
+  const rows = useLiveQuery(() => cardsRepo.getAll(), [], [] as CardRow[], 'cards');
   return useMemo(() => rows.map(liveCard).filter((card): card is LiveCard => card !== undefined).sort((a, b) => b.sentAt - a.sentAt), [rows]);
 }
 
@@ -131,12 +138,12 @@ export function useCardArchive(): { fresh: LiveCard[]; archived: LiveCard[] } {
 
 /** What he archived or brought back by hand in Talk, on this device. */
 export function useThreadArchive(): ArchiveChoices {
-  return useLiveQuery(() => settingsRepo.getThreadArchive(), [], {} as ArchiveChoices);
+  return useLiveQuery(() => settingsRepo.getThreadArchive(), [], {} as ArchiveChoices, 'threadArchive');
 }
 
 /** Every answer and action he has sent, for settling the Needs-you queue at once. */
 export function useAnswers(): AnswerRow[] {
-  return useLiveQuery(() => answersRepo.getAll(), [], [] as AnswerRow[]);
+  return useLiveQuery(() => answersRepo.getAll(), [], [] as AnswerRow[], 'answers');
 }
 
 /** Everything he did that has not yet been seen coming back (mw-jrx0s.10): pending and sent rows, oldest first. */
@@ -149,7 +156,7 @@ export type DetailStatus = 'idle' | 'loading' | 'ok' | 'missing' | 'unsupported'
 /** One bead's full detail: the stored copy at once, then a fresh fetch. */
 export function useBeadDetail(id: string | undefined): { detail?: BeadDetail; status: DetailStatus; error?: string; refresh: () => void } {
   const key = useUnlockedKey();
-  const stored = useLiveQuery<BeadDetailRow | null>(() => (id ? beadDetailsRepo.get(id).then((r) => r ?? null) : Promise.resolve(null)), [id], null);
+  const stored = useLiveQuery<BeadDetailRow | null>(() => (id ? beadDetailsRepo.get(id).then((r) => r ?? null) : Promise.resolve(null)), [id], null, `beadDetail:${id ?? ''}`);
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{ token: string; status: DetailStatus; error?: string }>();
   const token = `${id ?? ''}|${attempt}`;
@@ -187,7 +194,7 @@ export function useBeadDetail(id: string | undefined): { detail?: BeadDetail; st
 
 /** The stored comments of one bead (its detail, whenever this phone last fetched it): none until it has been. */
 export function useStoredComments(id: string): BeadComment[] {
-  const row = useLiveQuery<BeadDetailRow | null>(() => (id ? beadDetailsRepo.get(id).then((r) => r ?? null) : Promise.resolve(null)), [id], null);
+  const row = useLiveQuery<BeadDetailRow | null>(() => (id ? beadDetailsRepo.get(id).then((r) => r ?? null) : Promise.resolve(null)), [id], null, `beadDetail:${id ?? ''}`);
   return useMemo(() => {
     if (!row) return [];
     try {
@@ -201,7 +208,7 @@ export function useStoredComments(id: string): BeadComment[] {
 /** The stored comments of every bead whose detail this phone holds, by its thread key
  * ('bead:<id>'): the same comments useBeadDetail hands a thread screen. */
 export function useBeadComments(): ReadonlyMap<string, BeadComment[]> {
-  const rows = useLiveQuery(() => beadDetailsRepo.getAll(), [], [] as BeadDetailRow[]);
+  const rows = useLiveQuery(() => beadDetailsRepo.getAll(), [], [] as BeadDetailRow[], 'beadDetails');
   return useMemo(() => {
     const byThread = new Map<string, BeadComment[]>();
     for (const row of rows) {

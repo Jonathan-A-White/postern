@@ -280,7 +280,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "Tell me everything" and lets go
     And the Mayor answers "A very long answer indeed." on model "sonnet"
-    And he taps "Cut the answer"
+    And he taps "Stop"
     Then the speech is cancelled
     When he then holds the talk button and says "Skip that" and lets go
     Then the last turn sent is turn 2 saying "Skip that" with a cut
@@ -289,7 +289,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "Tell me everything" and lets go
     And the Mayor answers "A very long answer indeed." on model "sonnet"
-    And he taps "Cut the answer"
+    And he taps "Stop"
     And he then holds the talk button and says "Skip that" and lets go
     Then the turn "Skip that" shows the tag "cut the last answer"
     When the Mayor answers "Skipped." on model "sonnet"
@@ -669,7 +669,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And most of the quiet limit passes
     And the Mayor answers "Hi there." on model "sonnet"
     And most of the quiet limit passes again
-    And he taps "Cut the answer"
+    And he taps "Stop"
     And most of the quiet limit passes once more
     Then the screen is still held awake and the silent loop still plays
 
@@ -684,3 +684,71 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When the Talk line is open with a believable speech recogniser
     Then the screen shows the stored turn
     And the screen is held awake and a silent loop plays
+
+  Scenario: mw-q6n8m0.9 AC-2: Pause stops the answer where it is and Resume speaks on from that sentence
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    And he taps "Pause"
+    Then the speech is cancelled
+    And the speaking bar offers "Resume", "Restart" and "Stop"
+    And the answer is marked not heard yet
+    When he taps "Resume" to carry on
+    Then the phone is told to speak "Second part." and then "Third part."
+    And the bar now offers "Pause", "Restart" and "Stop"
+
+  Scenario: mw-q6n8m0.9 AC-2: holding the button over an answer pauses it, and Resume speaks on afterwards
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    And he holds the talk button and says nothing and lets go
+    Then the speaking bar offers "Resume", "Restart" and "Stop"
+    And the answer is marked not heard yet
+    When he taps "Resume"
+    Then the phone is told to speak "Second part." and then "Third part."
+    When the phone finishes the last sentence
+    Then the speaking bar is gone
+    And the answer is marked heard
+
+  Scenario: mw-q6n8m0.9 AC-2: Restart after a hold replays the answer from its first sentence
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    And he holds the talk button and says nothing and lets go
+    And he taps "Restart"
+    Then the phone is told to speak "First part." and then "Second part." and then "Third part."
+    And the speaking bar offers "Pause", "Restart" and "Stop"
+
+  Scenario: mw-q6n8m0.9 AC-2: Stop ends the answer, marks it heard and leaves nothing to resume
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    And he holds the talk button and says nothing and lets go
+    And he taps "Stop"
+    Then the speaking bar is gone
+    And the answer is marked heard
+    When he then holds the talk button and says "Skip that" and lets go
+    Then the last turn sent is turn 2 saying "Skip that" with a cut
+
+  Scenario: mw-q6n8m0.9 AC-2: a new question over a paused answer ends it and says it was cut
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    And he holds the talk button and says "Never mind" and lets go
+    Then the last turn sent is turn 2 saying "Never mind" with a cut
+    And the speaking bar is gone
+
+  Scenario: mw-q6n8m0.9 AC-2: the page going hidden pauses the answer, and coming back offers Resume at the same place
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    And the page goes hidden and shows again
+    Then the speaking bar offers "Resume", "Restart" and "Stop"
+    When he taps "Resume"
+    Then the phone is told to speak "Second part." and then "Third part."

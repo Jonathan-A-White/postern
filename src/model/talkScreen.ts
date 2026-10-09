@@ -81,6 +81,9 @@ export const tookLong = (entry: Pick<TalkLogEntry, 'tookMs'>): boolean => entry.
 /** True while the line is speaking a real answer (a holding one is followed by the real one). */
 const speakingAnswer = (line: TalkLineState): boolean => line.phase === 'speaking' && line.speaking?.holding === false;
 
+/** An answer he is hearing: being spoken now, or paused by a hold with Resume still to come (mw-q6n8m0.9). */
+const answerOpen = (line: TalkLineState): boolean => (speakingAnswer(line) && !line.speaking?.unspoken) || line.paused !== undefined;
+
 /** What the screen's reducer takes: an event of the line, or the open talk to start from. */
 export function talkScreenReducer(state: TalkScreenState, action: TalkScreenAction | TalkSeed): TalkScreenState {
   if (!('seed' in action)) return talkScreen(state, action);
@@ -102,14 +105,16 @@ export function talkScreen(state: TalkScreenState, { event, at }: TalkScreenActi
   }
   let log = state.log;
   // The answer being spoken is heard once the line moves off it: it finished, or he stopped it.
-  const turn = state.line.speaking?.turn ?? state.line.talk?.turn;
-  const played = speakingAnswer(state.line) && !state.line.speaking?.unspoken && !(speakingAnswer(line) && !line.speaking?.unspoken);
+  const turn = state.line.speaking?.turn ?? state.line.paused?.turn ?? state.line.talk?.turn;
+  const played = answerOpen(state.line) && !answerOpen(line);
   if (played && turn !== undefined) log = log.map((entry) => (entry.turn === turn && entry.heard === false ? { ...entry, heard: true } : entry));
   switch (event.type) {
     case 'hold':
       // A new talk starts with a clean page; speaking over a turn that failed to send gives that turn up.
       if (!state.line.talk) log = [];
       else if (state.line.unsent) log = log.slice(0, -1);
+      // An answer a hold paused is not heard yet: the log says so until it finishes or he stops it.
+      if (line.paused && !state.line.paused) log = log.map((entry) => (entry.turn === turn && entry.answered === true ? { ...entry, heard: false } : entry));
       break;
     case 'release':
       if (line.outgoing) {

@@ -11,12 +11,14 @@ import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
 import { micName } from './useHold';
 import { HoldToTalkBar } from './HoldToTalkBar';
+import { SpeakingBar } from './SpeakingBar';
+import { useSpeech } from './useSpeaking';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
 import { sendCallRequest } from './send';
 import { useRoute } from '../router';
 import { settingsRepo } from '../data/repositories';
 import { now } from '../services/clock';
-import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
+import { getSpeech, isSupported as canSpeak, speak, stop as stopSpeaking, TALK_ANSWER_KEY } from '../services/speech';
 import { callSent as waitingCall, clockHHMM, ringNote } from '../model/call';
 import { beadHref, formatRoute } from '../nav/route';
 import { formatSeconds, showsCutTag, tookLong } from '../model/talkScreen';
@@ -169,6 +171,9 @@ const STATUS: Partial<Record<TalkPhase, string>> = {
 /** Said once a wait has gone on past TALK_THINKING_MS. */
 const THINKING = 'The Mayor is thinking…';
 
+/** Said while the Mayor's answer waits paused (by Pause, a hold or the page going hidden) for Resume. */
+const PAUSED = 'The answer is paused.';
+
 /** What the big button says a hold will do (or why it cannot be held now). */
 function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean): string {
   if (!supported) return 'Hold to talk';
@@ -261,34 +266,23 @@ function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
-/** Reads an answer aloud, and stops it when tapped again: one answer at a time, so starting another replaces the first. */
+const READ_PREFIX = 'talk-read:';
+
+/** Reads an answer aloud, and stops it when tapped again: one answer at a time, so starting another replaces the first. The Shell's speaking bar steers it. */
 function useReadAloud() {
   const titles = useBeadTitles();
-  const [playing, setPlaying] = useState<string | undefined>();
-  const current = useRef<string | undefined>(undefined);
+  const speech = useSpeech();
+  const playing = speech.key?.startsWith(READ_PREFIX) ? speech.key.slice(READ_PREFIX.length) : undefined;
   useEffect(
     () => () => {
-      if (current.current !== undefined) stopSpeaking();
+      const key = getSpeech().key;
+      if (key?.startsWith(READ_PREFIX)) stopSpeaking();
     },
     [],
   );
   const toggle = (key: string, text: string) => {
-    if (current.current === key) {
-      current.current = undefined;
-      setPlaying(undefined);
-      stopSpeaking();
-      return;
-    }
-    current.current = key;
-    setPlaying(key);
-    speak(text, {
-      titles,
-      onEnd: () => {
-        if (current.current !== key) return;
-        current.current = undefined;
-        setPlaying(undefined);
-      },
-    });
+    if (playing === key) stopSpeaking();
+    else speak(text, { titles, key: READ_PREFIX + key });
   };
   return { playing, toggle, supported: canSpeak() };
 }
@@ -371,6 +365,8 @@ export function TalkLineScreen() {
   const talk = useTalkLine({ fresh: route.view === 'line' && route.about !== undefined });
   const { line } = talk;
   const reader = useReadAloud();
+  const speech = useSpeech();
+  const answerPaused = speech.key === TALK_ANSWER_KEY && speech.status === 'paused';
   const { scroller, onScroll, onTouch, pill, showNew } = useFollowEnd(talk.log);
   const { shown, hidden, loadEarlier, onScrolled } = useEarlierTalks(talk.earlier, scroller);
   const listening = line.phase === 'listening';
@@ -476,7 +472,7 @@ export function TalkLineScreen() {
             </p>
           ) : (
             <p className={cx(talk.notice ? 'text-danger' : 'text-muted')}>
-              {talk.notice ?? (line.phase === 'waiting' && line.thinking ? THINKING : STATUS[line.phase]) ?? (talk.supported ? 'Hold the button and speak.' : '')}
+              {talk.notice ?? (answerPaused ? PAUSED : undefined) ?? (line.phase === 'waiting' && line.thinking ? THINKING : STATUS[line.phase]) ?? (talk.supported ? 'Hold the button and speak.' : '')}
             </p>
           )}
           {!talk.supported && <p className="text-danger">This browser cannot turn speech into text.</p>}
@@ -531,12 +527,9 @@ export function TalkLineScreen() {
 
         <HoldToTalkBar label={label} listening={listening} disabled={dead} onPress={talk.press} onRelease={() => void talk.release()} onAbort={talk.abort} />
 
+        <SpeakingBar only={TALK_ANSWER_KEY} onPause={talk.pause} onResume={talk.resume} onRestart={talk.restart} onStop={talk.cut} />
+
         <div className="flex h-10 items-center gap-2">
-          {line.phase === 'speaking' && (
-            <Button icon="stop" onClick={talk.cut}>
-              Cut the answer
-            </Button>
-          )}
           {line.phase === 'waiting' && <Button onClick={talk.cut}>Stop waiting</Button>}
           {line.phase === 'idle' && line.unsent && (
             <Button variant="primary" onClick={talk.retry}>

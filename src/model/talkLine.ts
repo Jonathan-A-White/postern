@@ -31,6 +31,15 @@ export interface TalkAbout {
 
 export const ABOUT_KINDS: TalkAbout['kind'][] = ['bead', 'channel', 'prompt'];
 
+/** What the line says aloud. */
+export interface Speaking {
+  text: string;
+  holding: boolean;
+  links?: string[];
+  unspoken?: boolean;
+  turn?: number;
+}
+
 export type TalkPhase = 'idle' | 'listening' | 'sending' | 'waiting' | 'speaking';
 
 export interface TalkLineState {
@@ -54,7 +63,12 @@ export interface TalkLineState {
   /** The Mayor was here (his wait connected) when the turn went out or at any tick since; away it waits only TALK_AWAY_TIMEOUT_MS. */
   mayorHere?: boolean;
   /** What is being spoken; `holding` ones are followed by the real answer. */
-  speaking?: { text: string; holding: boolean; links?: string[]; unspoken?: boolean; turn?: number };
+  speaking?: Speaking;
+  /**
+   * A real answer a hold paused (mw-q6n8m0.9): not heard until it plays to its end or he stops it. The speech keeps the
+   * sentence reached; `resume` speaks on from it. A new question, Stop, End or a newer answer ends it.
+   */
+  paused?: Speaking;
   /** Why the line went back to idle without an answer. */
   error?: string;
   /** The turn that failed to send, kept with his words so `retry` can send it again. */
@@ -72,6 +86,7 @@ export type TalkLineEvent =
   | { type: 'visible' }
   | { type: 'spoken' }
   | { type: 'cut' }
+  | { type: 'resume' }
   | { type: 'tick'; now: number; here?: boolean }
   | { type: 'setModel'; model?: string }
   | { type: 'setAbout'; about?: TalkAbout }
@@ -142,6 +157,7 @@ function idle(state: TalkLineState, patch: Partial<TalkLineState> = {}): TalkLin
     about: state.about,
     answeredBy: state.answeredBy,
     cutPending: state.cutPending,
+    paused: state.paused,
     ...patch,
   };
 }
@@ -172,7 +188,7 @@ function incoming(state: TalkLineState, turn: TalkTurn, hidden: boolean): TalkLi
   // A late answer is played at once when the line is free; while he is holding the button, sending or waiting on a newer turn it is left to the screen's log (marked not heard).
   if (isLateAnswer(state, turn)) {
     if (state.phase !== 'idle') return state;
-    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: false, turn: turn.talk.turn, ...linksOf(turn), ...(hidden ? { unspoken: true } : {}) }, answeredBy: turn.model ?? state.answeredBy, error: undefined, thinking: undefined };
+    return { ...state, phase: 'speaking', speaking: { text: turn.text, holding: false, turn: turn.talk.turn, ...linksOf(turn), ...(hidden ? { unspoken: true } : {}) }, paused: undefined, answeredBy: turn.model ?? state.answeredBy, error: undefined, thinking: undefined };
   }
   if (turn.talk.turn !== state.talk.turn) return state;
   // An answer that comes after the line gave up still replaces the give-up line.
@@ -193,11 +209,13 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
   switch (event.type) {
     case 'hold': {
       if (state.phase === 'waiting' || state.phase === 'sending' || state.phase === 'listening') return state;
-      // Holding the button over a spoken answer cuts it off.
-      const cutPending = state.cutPending || state.phase === 'speaking';
+      // Holding the button over a real answer being spoken pauses it, for Resume; over a holding answer or one
+      // not yet spoken it cuts it off.
+      const pausing = state.phase === 'speaking' && state.speaking !== undefined && !state.speaking.holding && !state.speaking.unspoken;
+      const cutPending = state.cutPending || (state.phase === 'speaking' && !pausing);
       // Speaking again gives up the turn that failed: its number goes back to him.
       const base = state.unsent ? { ...state, talk: state.unsent.talk.turn > 1 ? { id: state.unsent.talk.id, turn: state.unsent.talk.turn - 1 } : undefined, unsent: undefined } : state;
-      return { ...base, phase: 'listening', talk: base.talk ?? { id: event.talkId, turn: 0 }, cutPending, speaking: undefined, error: undefined };
+      return { ...base, phase: 'listening', talk: base.talk ?? { id: event.talkId, turn: 0 }, cutPending, speaking: undefined, paused: pausing ? state.speaking : state.paused, error: undefined };
     }
     case 'release': {
       if (state.phase !== 'listening' || !state.talk) return state;
@@ -205,8 +223,8 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       if (!text) return idle(state, { talk: state.talk.turn > 0 ? state.talk : undefined });
       const talk = { id: state.talk.id, turn: state.talk.turn + 1 };
       const about = talk.turn === 1 ? state.about : undefined;
-      const outgoing: TalkTurn = { talk, text, role: 'turn', ...(state.model ? { model: state.model } : {}), ...(state.cutPending ? { cut: true } : {}), ...(about ? { about } : {}) };
-      return { ...state, phase: 'sending', talk, outgoing };
+      const outgoing: TalkTurn = { talk, text, role: 'turn', ...(state.model ? { model: state.model } : {}), ...(state.cutPending || state.paused ? { cut: true } : {}), ...(about ? { about } : {}) };
+      return { ...state, phase: 'sending', talk, outgoing, paused: undefined };
     }
     case 'cancel':
       if (state.phase !== 'listening') return state;
@@ -233,7 +251,12 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
     case 'cut':
       if (state.phase === 'speaking') return idle(state, { cutPending: true });
       if (state.phase === 'waiting') return idle(state);
+      // Stop over an answer a hold paused ends it, as having cut it.
+      if (state.phase === 'idle' && state.paused) return idle(state, { cutPending: true, paused: undefined });
       return state;
+    case 'resume':
+      if (state.phase !== 'idle' || !state.paused) return state;
+      return { ...state, phase: 'speaking', speaking: state.paused, paused: undefined };
     case 'tick': {
       if (state.phase !== 'waiting' || state.sentAt === undefined) return state;
       const waited = event.now - state.sentAt;

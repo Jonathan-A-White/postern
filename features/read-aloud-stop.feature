@@ -32,3 +32,24 @@ Feature: A read-aloud speaker is a toggle: tap to read, tap again to stop (mw-ym
     When the general thread is opened and he taps the first message's speaker
     And he taps the second message's speaker
     Then only the second message's speaker says "Stop reading"
+
+  Scenario: mw-q6n8m0.9 AC-3: a message's speaker shows the speaking bar with Pause, Resume, Restart and Stop
+    Given the Mayor's message in the general thread is "First thing. Second thing. Third thing."
+    When the general thread is opened in the shell and he taps "Read aloud"
+    Then the speaking bar offers "Pause", "Restart" and "Stop"
+    When the phone has begun the second sentence
+    And he taps "Pause" in the bar
+    Then the speaking bar now offers "Resume", "Restart" and "Stop"
+    And the message's button still says "Stop reading"
+    When he taps "Resume" in the bar to carry on
+    Then the phone speaks "Second thing." and then "Third thing." again
+    When he taps "Restart" in the bar to start over
+    Then the phone speaks "First thing." and then "Second thing." and then "Third thing." again
+    When he taps "Stop" in the bar to end it
+    Then the speaking bar is gone and the message's button says "Read aloud" again
+
+  Scenario: mw-q6n8m0.9 AC-3: leaving the screen stops the speech
+    Given the Mayor's message in the general thread is "First thing. Second thing. Third thing."
+    When the general thread is opened in the shell and he taps "Read aloud"
+    And the screen is left
+    Then nothing is speaking and the speaking bar is gone

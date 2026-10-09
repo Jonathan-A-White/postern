@@ -1,14 +1,16 @@
 // features/steps/read-aloud-stop.steps.tsx — runs features/read-aloud-stop.feature (mw-ym1qi9.1):
 // every read-aloud speaker toggles between reading and stopping.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
 import { NeedCard } from '../../src/cockpit/NeedCard';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
-import { stop } from '../../src/services/speech';
+import { Shell } from '../../src/cockpit/Shell';
+import { useRoute } from '../../src/router';
+import { getSpeech, stop } from '../../src/services/speech';
 import { db } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import type { MessageRow } from '../../src/data/repositories';
@@ -16,6 +18,7 @@ import type { Need } from '../../src/model/view';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 
 class FakeUtterance {
+  onstart: (() => void) | null = null;
   onend: (() => void) | null = null;
   onerror: (() => void) | null = null;
   text: string;
@@ -63,10 +66,20 @@ const need: Need = {
   steps: [],
 } as Need;
 
-async function openGeneral(): Promise<void> {
+// eslint-disable-next-line react-refresh/only-export-components
+function GeneralInShell() {
+  const route = useRoute();
+  return (
+    <Shell route={route}>
+      <TalkScreen thread="general" />
+    </Shell>
+  );
+}
+
+async function openGeneral(inShell = false): Promise<void> {
   await viewRepo.save({ plaintext: JSON.stringify(fixtureView(now)), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
   for (const row of seeded) await messagesRepo.put(row);
-  render(<TalkScreen thread="general" />);
+  render(inShell ? <GeneralInShell /> : <TalkScreen thread="general" />);
   await screen.findByTestId('conversation');
 }
 
@@ -100,7 +113,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   });
 
   const starts = async (_c: unknown, label: string) => {
-    expect(speakFn).toHaveBeenCalledTimes(1);
+    // a text of several sentences is queued as one utterance each (mw-q6n8m0.9)
+    expect(speakFn).toHaveBeenCalled();
     expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
   };
   const stops = async (_c: unknown, label: string) => {
@@ -153,7 +167,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('he taps {string}', async (_c, label: string) => tap(label));
     And('the phone finishes reading', async () => {
       await screen.findByRole('button', { name: 'Stop reading' });
-      act(() => utterances[0].onend?.());
+      act(() => {
+        for (const utterance of utterances) utterance.onend?.();
+      });
     });
     Then('the button says {string} again', async (_c, label: string) => {
       expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
@@ -177,6 +193,71 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       const all = screen.getAllByRole('button', { name: /^(Read aloud|Stop reading)$/ });
       expect(all.map((b) => b.getAttribute('aria-label'))).toEqual(['Read aloud', 'Stop reading']); // thread order: first, second
       expect(speakFn).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // mw-q6n8m0.9: the speaking bar. The message's sentences are queued on the (fake) synthesiser at once, one utterance each.
+  let mark = 0;
+  const spokenSince = () => speakFn.mock.calls.slice(mark).map((call) => (call[0] as FakeUtterance).text);
+  const barButtons = () => within(screen.getByRole('region', { name: 'Speaking' })).getAllByRole('button');
+  const bar = async (_c: unknown, a: string, b: string, c: string) => {
+    await screen.findByRole('region', { name: 'Speaking' });
+    expect(barButtons().map((button) => button.textContent)).toEqual([a, b, c]);
+    for (const button of barButtons()) expect(button.className).toContain('min-h-11');
+  };
+  const tapsInBar = async (_c: unknown, label: string) => {
+    mark = speakFn.mock.calls.length;
+    await userEvent.click(within(await screen.findByRole('region', { name: 'Speaking' })).getByRole('button', { name: label }));
+  };
+  const opensInShell = async (_c: unknown, label: string) => {
+    await openGeneral(true);
+    await tap(label);
+  };
+  const speaksAgain = async (_c: unknown, ...texts: string[]) => {
+    await waitFor(() => expect(spokenSince()).toEqual(texts));
+  };
+
+  Scenario('mw-q6n8m0.9 AC-3: a message\'s speaker shows the speaking bar with Pause, Resume, Restart and Stop', ({ Given, When, Then, And }) => {
+    Given("the Mayor's message in the general thread is {string}", (_c, text: string) => {
+      seeded.push(generalMessage(1, text));
+    });
+    When('the general thread is opened in the shell and he taps {string}', opensInShell);
+    Then('the speaking bar offers {string}, {string} and {string}', bar);
+    When('the phone has begun the second sentence', () => {
+      act(() => {
+        utterances[0].onstart?.();
+        utterances[0].onend?.();
+        utterances[1].onstart?.();
+      });
+    });
+    And('he taps {string} in the bar', tapsInBar);
+    Then('the speaking bar now offers {string}, {string} and {string}', bar);
+    And("the message's button still says {string}", async (_c, label: string) => {
+      expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
+    });
+    When('he taps {string} in the bar to carry on', tapsInBar);
+    Then('the phone speaks {string} and then {string} again', speaksAgain);
+    When('he taps {string} in the bar to start over', tapsInBar);
+    Then('the phone speaks {string} and then {string} and then {string} again', speaksAgain);
+    When('he taps {string} in the bar to end it', tapsInBar);
+    Then("the speaking bar is gone and the message's button says {string} again", async (_c, label: string) => {
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'Speaking' })).not.toBeInTheDocument());
+      expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-q6n8m0.9 AC-3: leaving the screen stops the speech', ({ Given, When, Then, And }) => {
+    Given("the Mayor's message in the general thread is {string}", (_c, text: string) => {
+      seeded.push(generalMessage(1, text));
+    });
+    When('the general thread is opened in the shell and he taps {string}', opensInShell);
+    And('the screen is left', () => {
+      cleanup();
+    });
+    Then('nothing is speaking and the speaking bar is gone', () => {
+      expect(getSpeech().status).toBe('idle');
+      expect(cancelFn).toHaveBeenCalled();
+      expect(screen.queryByRole('region', { name: 'Speaking' })).not.toBeInTheDocument();
     });
   });
 });

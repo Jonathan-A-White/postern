@@ -92,22 +92,53 @@ export interface SpeakOptions {
   titles?: TitleLookup;
   /** Who started this speech, so that speaker's button can show Stop while it reads (mw-ym1qi9.1). */
   key?: string;
+  /** Carry on from the kept sentence when this same key and text were paused, handing the speech this `onEnd`; otherwise start at the top. */
+  resumeIfPaused?: boolean;
 }
 
-// Who is speaking now, as a tiny store a component reads with useSpeaking(key). A cancelled
-// utterance reports its end late, after the next one began, so only the current utterance may clear it.
-let speakingKey: string | null = null;
-let current: SpeechSynthesisUtterance | null = null;
+/** The key the Talk line speaks the Mayor's answer under: the Talk line draws that speech's bar itself, since its buttons also steer the line. */
+export const TALK_ANSWER_KEY = 'talk-answer';
+
+export type SpeechStatus = 'idle' | 'playing' | 'paused';
+
+/** What is speaking now: whose it is, whether it plays or waits paused, and the sentence reached of the sentences it has. */
+export interface SpeechState {
+  status: SpeechStatus;
+  key: string | null;
+  index: number;
+  count: number;
+}
+
+const IDLE: SpeechState = { status: 'idle', key: null, index: 0, count: 0 };
+
+// What is spoken is split into sentences, queued on the synthesiser at once (so every speak() still
+// runs inside the tap) and tracked by each one's start and end: the sentence reached is the position a
+// pause keeps. Pausing cancels the queue and Resume queues the sentences from the kept one, because
+// Android Chrome does not honour speechSynthesis.pause()/resume() (mw-q6n8m0.9). A cancelled utterance
+// reports its end late, after the next speech began, so every utterance belongs to an epoch and only the
+// current epoch may move the position or end the speech.
+interface Reading {
+  key: string | null;
+  source: string;
+  sentences: string[];
+  index: number;
+  status: 'playing' | 'paused';
+  onEnd?: () => void;
+}
+
+let reading: Reading | null = null;
+let epoch = 0;
+let snapshot: SpeechState = IDLE;
 const listeners = new Set<() => void>();
 
-function setSpeaking(key: string | null, utterance: SpeechSynthesisUtterance | null): void {
-  if (key === speakingKey && utterance === current) return;
-  speakingKey = key;
-  current = utterance;
+function publish(): void {
+  const next: SpeechState = reading ? { status: reading.status, key: reading.key, index: reading.index, count: reading.sentences.length } : IDLE;
+  if (next.status === snapshot.status && next.key === snapshot.key && next.index === snapshot.index && next.count === snapshot.count) return;
+  snapshot = next;
   for (const listener of [...listeners]) listener();
 }
 
-/** Calls `listener` whenever who is speaking changes; returns the unsubscribe. */
+/** Calls `listener` whenever what is speaking changes; returns the unsubscribe. */
 export function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -115,9 +146,22 @@ export function subscribe(listener: () => void): () => void {
   };
 }
 
-/** True while the speech started under `key` is reading. */
+/** What is speaking now; the same object until it changes, so a component may read it with useSyncExternalStore. */
+export function getSpeech(): SpeechState {
+  return snapshot;
+}
+
+/** True while the speech started under `key` is reading or paused (a paused one is still his to Resume or Stop). */
 export function isSpeaking(key: string): boolean {
-  return speakingKey === key;
+  return reading?.key === key;
+}
+
+/** `text` as sentences: cut after . ! ? or an ellipsis followed by a space, and at line ends. */
+export function sentencesOf(text: string): string[] {
+  return text
+    .split(/(?<=[.!?\u2026])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
 }
 
 // The speak still waiting for the voice list, so a stop or a newer speak can drop it.
@@ -155,33 +199,109 @@ function whenVoicesListed(synth: SpeechSynthesis, ready: () => void): void {
   }, VOICES_WAIT_MS);
 }
 
+/** Queues `reading`'s sentences from its position, once the phone's voices are listed. */
+function play(synth: SpeechSynthesis, current: Reading): void {
+  const mine = epoch;
+  const lang = readingLang();
+  whenVoicesListed(synth, () => {
+    if (mine !== epoch) return;
+    const voice = preferredVoice(synth.getVoices(), lang);
+    for (let i = current.index; i < current.sentences.length; i += 1) {
+      const utterance = new SpeechSynthesisUtterance(current.sentences[i]);
+      utterance.lang = lang;
+      if (voice) utterance.voice = voice;
+      const reached = (index: number) => {
+        if (mine !== epoch || index <= current.index) return;
+        current.index = index;
+        publish();
+      };
+      utterance.onstart = () => reached(i);
+      utterance.onend = () => {
+        if (mine !== epoch) return;
+        if (i < current.sentences.length - 1) {
+          reached(i + 1);
+          return;
+        }
+        reading = null;
+        publish();
+        current.onEnd?.();
+      };
+      utterance.onerror = () => {
+        if (mine !== epoch) return;
+        reading = null;
+        publish();
+      };
+      synth.speak(utterance);
+    }
+  });
+}
+
 /** Cancels any utterance already speaking, then speaks `text` in the phone's language. */
 export function speak(text: string, options: SpeakOptions = {}): void {
   const synth = window.speechSynthesis;
+  const key = options.key ?? null;
+  const spoken = speechText(text, options.titles);
   dropWaiting();
+  epoch += 1;
+  if (options.resumeIfPaused && reading?.status === 'paused' && reading.key === key && reading.source === spoken) {
+    reading.status = 'playing';
+    reading.onEnd = options.onEnd;
+    publish();
+    synth.cancel();
+    play(synth, reading);
+    return;
+  }
   synth.cancel();
-  const utterance = new SpeechSynthesisUtterance(speechText(text, options.titles));
-  const lang = readingLang();
-  utterance.lang = lang;
-  const finished = () => {
-    if (current === utterance) setSpeaking(null, null);
-  };
-  utterance.onend = () => {
-    finished();
-    options.onEnd?.();
-  };
-  utterance.onerror = finished;
-  setSpeaking(options.key ?? null, utterance);
-  whenVoicesListed(synth, () => {
-    const voice = preferredVoice(synth.getVoices(), lang);
-    if (voice) utterance.voice = voice;
-    synth.speak(utterance);
-  });
+  const sentences = sentencesOf(spoken);
+  reading = { key, source: spoken, sentences: sentences.length > 0 ? sentences : [spoken], index: 0, status: 'playing', onEnd: options.onEnd };
+  publish();
+  play(synth, reading);
+}
+
+/** Pauses what is speaking where it is: the sentence reached is kept for resume(). */
+export function pause(): void {
+  if (reading?.status !== 'playing') return;
+  dropWaiting();
+  epoch += 1;
+  reading.status = 'paused';
+  publish();
+  if (isSupported()) window.speechSynthesis.cancel();
+}
+
+/** Speaks on from the sentence a pause kept. */
+export function resume(): void {
+  if (reading?.status !== 'paused' || !isSupported()) return;
+  epoch += 1;
+  reading.status = 'playing';
+  publish();
+  play(window.speechSynthesis, reading);
+}
+
+/** Speaks the same text again from its first sentence, whether it plays or is paused. */
+export function restart(): void {
+  if (!reading || !isSupported()) return;
+  dropWaiting();
+  epoch += 1;
+  reading.index = 0;
+  reading.status = 'playing';
+  publish();
+  window.speechSynthesis.cancel();
+  play(window.speechSynthesis, reading);
 }
 
 export function stop(): void {
   dropWaiting();
-  setSpeaking(null, null);
+  epoch += 1;
+  reading = null;
+  publish();
   if (!isSupported()) return;
   window.speechSynthesis.cancel();
+}
+
+// A page that goes hidden pauses what it is saying (Android suspends its voice anyway); coming back
+// leaves it paused, for him to Resume where it stopped.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') pause();
+  });
 }

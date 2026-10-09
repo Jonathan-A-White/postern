@@ -278,6 +278,18 @@ export function MeScreen() {
         </section>
 
         <Notifications />
+
+        <section className="flex flex-col gap-2" aria-label="About">
+          <SectionTitle>About</SectionTitle>
+          <Card>
+            <a href={formatRoute({ view: 'about' })} className="flex items-center gap-3 px-4 py-3 text-[14px] hover:bg-raised/60">
+              <Icon name="quote" size={16} className="text-muted" />
+              <span className="flex-1">About and credits</span>
+              <span className="text-[13px] text-muted">What Postern is built on</span>
+              <Icon name="forward" size={15} className="text-faint" />
+            </a>
+          </Card>
+        </section>
       </div>
     </Screen>
   );

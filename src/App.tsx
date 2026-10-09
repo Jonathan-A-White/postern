@@ -22,6 +22,7 @@ import { TalkLineScreen } from './cockpit/TalkLineScreen';
 import { SearchScreen } from './cockpit/SearchScreen';
 import { MeScreen } from './cockpit/MeScreen';
 import { PromptsScreen } from './cockpit/PromptsScreen';
+import { AboutScreen } from './cockpit/AboutScreen';
 import { ShareScreen } from './cockpit/ShareScreen';
 import { NoticeScreen } from './cockpit/NoticeScreen';
 import { AlarmScreen } from './cockpit/AlarmScreen';
@@ -50,6 +51,8 @@ function Place({ route }: { route: Route }) {
       return <MeScreen />;
     case 'prompts':
       return <PromptsScreen />;
+    case 'about':
+      return <AboutScreen />;
     case 'share':
       return <ShareScreen id={route.id} />;
     case 'notice':

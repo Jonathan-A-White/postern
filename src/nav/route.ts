@@ -23,6 +23,8 @@ export type Route =
   | { view: 'me' }
   /** The saved prompts, each with Run and Edit (src/cockpit/PromptsScreen.tsx). */
   | { view: 'prompts' }
+  /** About and credits: what Postern is built on (src/cockpit/AboutScreen.tsx). */
+  | { view: 'about' }
   | { view: 'key' }
   | { view: 'share'; id?: string }
   /** Where a push about a record lands before the app knows its thread: it waits
@@ -112,6 +114,8 @@ export function parseRoute(search: string): Route {
       return { view: 'me' };
     case 'prompts':
       return { view: 'prompts' };
+    case 'about':
+      return { view: 'about' };
     case 'key':
       return { view: 'key' };
     case 'share':
@@ -198,6 +202,7 @@ export function topViewOf(route: Route): TopView {
       return 'search';
     case 'me':
     case 'prompts':
+    case 'about':
     case 'key':
       return 'me';
     default:
@@ -216,6 +221,7 @@ export function isDeep(route: Route): boolean {
     route.view === 'emergency' ||
     route.view === 'key' ||
     route.view === 'prompts' ||
+    route.view === 'about' ||
     route.view === 'line' ||
     (route.view === 'talk' && route.thread !== undefined) ||
     (route.view === 'map' && route.focus !== undefined)

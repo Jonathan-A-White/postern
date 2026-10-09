@@ -25,3 +25,10 @@ Feature: A picture in the draft does not take the voice note away (mw-q6n8m0.1; 
     Then one message is delivered with two attachments
     And attachment 1 has mime "image/png"
     And attachment 2 has mime "audio/webm"
+
+  Scenario: AC-5: tapping Type a message with a picture attached focuses the message box and keeps the picture (mw-q6n8m0.8)
+    Given the composer is open
+    When he attaches the picture "photo.png"
+    And he taps the mic
+    And he taps Type a message
+    Then the message box is focused and the picture "photo.png" is still attached

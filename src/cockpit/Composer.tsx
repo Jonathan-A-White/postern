@@ -7,6 +7,7 @@
 // stream on screen, let go and the words, the voice note and whatever is attached go as one message;
 // slide off the bar first and nothing goes.
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { focusQuietly } from '../ui/focus';
 import { useWide } from './hooks';
@@ -161,6 +162,15 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
       if (voiceNote) setFiles((current) => [...current, voiceNote]);
       setVoice(false);
     }
+  }
+
+  // Android Chrome raises the keyboard only for a focus inside the tap itself: draw the box now, then focus it.
+  function typeInstead() {
+    flushSync(() => setVoice(false));
+    const area = textarea.current;
+    if (!area) return;
+    focusQuietly(area);
+    area.setSelectionRange(area.value.length, area.value.length);
   }
 
   function drop() {
@@ -364,7 +374,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           <div className="flex w-full max-w-xl items-center gap-1">
             <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />
             <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} className="lg:hidden" />
-            <Button variant="ghost" size="sm" className="ml-auto" disabled={holding} onClick={() => setVoice(false)}>
+            <Button variant="ghost" size="sm" className="ml-auto" disabled={holding} onClick={typeInstead}>
               Type a message
             </Button>
           </div>

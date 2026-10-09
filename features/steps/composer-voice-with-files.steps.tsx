@@ -195,4 +195,20 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(attachments()[1]).toMatchObject({ mime });
     });
   });
+
+  Scenario('AC-5: tapping Type a message with a picture attached focuses the message box and keeps the picture (mw-q6n8m0.8)', ({ Given, When, And, Then }) => {
+    Given('the composer is open', open);
+    When('he attaches the picture {string}', attachPicture);
+    And('he taps the mic', tapMic);
+    And('he taps Type a message', () => {
+      // one tap: the box has to be focused inside this very click, or Android Chrome raises no keyboard
+      fireEvent.click(screen.getByRole('button', { name: 'Type a message' }));
+    });
+    Then('the message box is focused and the picture {string} is still attached', (_c, name: string) => {
+      // asserted at once, with no waiting: a focus that lands after the click's own turn does not count
+      const box = screen.getByLabelText('Message');
+      expect(document.activeElement).toBe(box);
+      expect(screen.getByLabelText(`Remove ${name}`)).toBeInTheDocument();
+    });
+  });
 });

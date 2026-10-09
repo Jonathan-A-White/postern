@@ -12,6 +12,7 @@ import { ArchivedCardsLink } from './ArchiveScreen';
 import { HOMES, useStandby } from '../services/standby';
 import { lock, sessionExpiresAt } from '../services/keySession';
 import { describeBuild } from '../services/buildLine';
+import { VersionLink } from './WhatsNew';
 import { refreshNow, stopLive, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
 import { isPushSubscribed, pushSupported, rememberPushSubscribed, subscribeToPush } from '../services/push';
@@ -164,7 +165,11 @@ export function MeScreen() {
       <div className="flex flex-col gap-6">
         <p aria-label="Build" className="flex flex-col gap-0.5">
           <span className="text-[14px] text-fg">{build.build}</span>
-          {build.version && <span className="text-[11.5px] text-faint">{build.version}</span>}
+          {build.version && (
+            <span className="text-[11.5px] text-faint">
+              <VersionLink className="underline underline-offset-2" />
+            </span>
+          )}
         </p>
 
         <section className="flex flex-col gap-2" aria-label="Key">

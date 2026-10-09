@@ -3,6 +3,7 @@
 // name as the link, what it is used for, its licence as a link and what we changed.
 import { Card, SectionTitle } from '../ui';
 import { Screen } from './Shell';
+import { AboutWhatsNew } from './WhatsNew';
 import { CREDIT_GROUPS, FONTS_AND_ICONS, NEWTON, WHY_WE_CREDIT, type Credit } from '../credits';
 
 const LINK = 'text-accent underline underline-offset-2';
@@ -38,6 +39,8 @@ export function AboutScreen() {
         <p data-testid="why-we-credit" className="text-[14px] text-fg">
           {WHY_WE_CREDIT}
         </p>
+
+        <AboutWhatsNew />
 
         {CREDIT_GROUPS.map((group) => (
           <section key={group.id} className="flex flex-col gap-2" aria-label={group.title}>

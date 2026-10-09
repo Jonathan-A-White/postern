@@ -251,3 +251,23 @@ html {
 .markdown :not(pre) > code {
   @apply rounded bg-sunken px-1 py-0.5;
 }
+
+/* bsv-kit's What's new (the sheet, the list, the banner's summary, Check for updates) wears Postern's tokens. */
+:root {
+  --bk-whats-new-surface: var(--pc-surface);
+  --bk-whats-new-fg: var(--pc-fg);
+  --bk-whats-new-muted: var(--pc-muted);
+  --bk-whats-new-line: var(--pc-line);
+  --bk-whats-new-accent: var(--pc-accent);
+  --bk-whats-new-accent-fg: var(--pc-accent-fg);
+  --bk-whats-new-new: var(--pc-working);
+  --bk-whats-new-fixed: var(--pc-needs);
+  --bk-whats-new-radius: 0.75rem;
+  --bk-whats-new-font-size: 14px;
+  --bk-whats-new-small-font-size: 12px;
+}
+
+/* In the Update ready banner the What's new link is a line under the button, not a second banner: 36 px tall, not 44. */
+.bk-whats-new__summary .bk-whats-new__link {
+  min-height: 36px;
+}

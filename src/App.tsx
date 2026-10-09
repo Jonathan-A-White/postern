@@ -14,6 +14,7 @@ import { useUnlockedKey } from './cockpit/hooks';
 import { Shell, Screen } from './cockpit/Shell';
 import { Loading, Unlock, Welcome } from './cockpit/Gate';
 import { UpdateBanner } from './cockpit/UpdateBanner';
+import { WhatsNewOnUpdate } from './cockpit/WhatsNew';
 import { NeedsScreen } from './cockpit/NeedsScreen';
 import { MapScreen } from './cockpit/MapScreen';
 import { BeadScreen } from './cockpit/BeadScreen';
@@ -180,6 +181,7 @@ export function App() {
     <>
       {door && <UpdateBanner />}
       {content}
+      {!door && <WhatsNewOnUpdate />}
       <ToastHost />
     </>
   );

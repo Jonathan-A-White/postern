@@ -15,6 +15,8 @@ import { MoveHomeButtons } from './MoveHome';
 import { EmergencyBanner } from './EmergencyBanner';
 import { RingBanner } from './RingBanner';
 import { AnswerBar } from './AnswerBar';
+import { SpeakingBar } from './SpeakingBar';
+import { TALK_ANSWER_KEY } from '../services/speech';
 import { OutboxNote } from './OutboxNote';
 import { UpdateBanner } from './UpdateBanner';
 import { liveLabel } from './liveLabel';
@@ -210,6 +212,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         <AnswerBar />
         <OutboxNote />
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+        <SpeakingBar except={TALK_ANSWER_KEY} />
         {!wide && <TabBar current={top} />}
       </div>
     </div>

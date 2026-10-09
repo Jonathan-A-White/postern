@@ -97,7 +97,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       fireEvent.click(await within(conversation).findByRole('button', { name: 'Read aloud' }));
     });
     Then('the phone speaks aloud {string}', (_c, text: string) => {
-      expect(spoken).toEqual([text]);
+      // one utterance per sentence (mw-q6n8m0.9)
+      expect(spoken.join(' ')).toBe(text);
     });
     And('the message still shows links {string}, {string} and {string}', async (_c, a: string, b: string, c: string) => {
       const conversation = screen.getByTestId('conversation');

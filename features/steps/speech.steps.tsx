@@ -83,7 +83,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('a Needs card is shown and he has tapped {string}', async (_c, label: string) => {
       unmount = render(<NeedCard need={need()} />).unmount;
       await userEvent.click(await screen.findByRole('button', { name: label }));
-      expect(speakFn).toHaveBeenCalledTimes(1);
+      expect(speakFn).toHaveBeenCalled();
       cancelFn.mockClear();
     });
     When('the screen is left', () => unmount());
@@ -102,8 +102,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await userEvent.click(await screen.findByRole('button', { name: label }));
     });
     Then('the phone says the question, then {string}, then {string}', (_c, recommends: string, options: string) => {
-      expect(utterances).toHaveLength(1);
-      const said = utterances[0].text;
+      // one utterance per sentence (mw-q6n8m0.9)
+      const said = utterances.map((utterance) => utterance.text).join(' ');
       expect(said).toContain('Release the held story?');
       expect(said.indexOf('Release the held story?')).toBeLessThan(said.indexOf(recommends));
       expect(said.indexOf(recommends)).toBeLessThan(said.indexOf(options));

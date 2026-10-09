@@ -139,6 +139,40 @@ async function unlocked(page: Page, history: StoredTalk[] = []): Promise<{ poste
   };
 }
 
+test('talk line: the speaking bar over the answer is 44 px high, fits 412 px and covers no text (mw-q6n8m0.9)', async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 844 });
+  const { answerAfterTurn } = await unlocked(page);
+  answerAfterTurn('Three things landed. Two are live. One waits for you.');
+
+  await page.goto('/?v=line');
+  const button = page.getByRole('button', { name: 'Hold to talk' });
+  await expect(button).toBeEnabled();
+  const box = (await button.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(page.getByRole('button', { name: 'Release to send' })).toBeVisible();
+  await page.evaluate(() => window.__hear('What landed today?'));
+  await page.mouse.up();
+  const answer = page.getByTestId('talk-answer');
+  await expect(answer).toContainText('One waits for you.', { timeout: 15_000 });
+
+  const bar = page.getByRole('region', { name: 'Speaking' });
+  await expect(bar).toBeVisible();
+  await expect(bar.getByRole('button')).toHaveText(['Pause', 'Restart', 'Stop']);
+  for (const control of await bar.getByRole('button').all()) expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const barBox = (await bar.boundingBox())!;
+  const answerBox = (await answer.boundingBox())!;
+  expect(barBox.x).toBeGreaterThanOrEqual(0);
+  expect(barBox.x + barBox.width).toBeLessThanOrEqual(412);
+  expect(barBox.y >= answerBox.y + answerBox.height || barBox.y + barBox.height <= answerBox.y).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(412);
+
+  await bar.getByRole('button', { name: 'Pause' }).click();
+  await expect(bar.getByRole('button')).toHaveText(['Resume', 'Restart', 'Stop']);
+  await expect(page.getByText('The answer is paused.')).toBeVisible();
+  await shot(page, 'talk-line-speaking-bar-412');
+});
+
 test('talk line: hold to talk, a spoken answer with its timing, and a tap that cuts it', async ({ page }) => {
   const { posted, answerAfterTurn } = await unlocked(page);
   answerAfterTurn('Three things landed.');
@@ -168,8 +202,8 @@ test('talk line: hold to talk, a spoken answer with its timing, and a tap that c
   await shot(page, 'talk-line-answer');
 
   const cancelsBefore = await page.evaluate(() => window.__cancels);
-  await page.getByRole('button', { name: 'Cut the answer' }).click();
-  await expect(page.getByRole('button', { name: 'Cut the answer' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__cancels)).toBeGreaterThan(cancelsBefore);
 
   await page.getByRole('button', { name: 'End talk' }).click();
@@ -382,7 +416,7 @@ test('talk line: the talk is still on the screen after Channels and back, and af
   await expect.poll(() => posted.length).toBe(1);
   await expect(page.getByTestId('talk-answer')).toContainText('Three things landed.', { timeout: 15_000 });
   // he stops it: an answer he has stopped counts as heard and is not played again
-  await page.getByRole('button', { name: 'Cut the answer' }).click();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(1);
 
   const talkIsThere = async () => {

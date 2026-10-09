@@ -121,7 +121,7 @@ describe.each(SCREENS)('$name', ({ show, ready }) => {
     const { unmount } = show();
     await ready();
     await userEvent.click((await screen.findAllByRole('button', { name: /^Read (aloud|the description aloud)$/ }))[0]);
-    expect(speakFn).toHaveBeenCalledTimes(1);
+    expect(speakFn).toHaveBeenCalled();
     cancelFn.mockClear();
     unmount();
     expect(cancelFn).toHaveBeenCalledTimes(1);
@@ -141,8 +141,8 @@ describe('what a need reads aloud', () => {
     canSpeak();
     render(<NeedCard need={question} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Read aloud' }));
-    expect(utterances).toHaveLength(1);
-    const said = utterances[0].text;
+    // one utterance per sentence (mw-q6n8m0.9)
+    const said = utterances.map((utterance) => utterance.text).join(' ');
     expect(said).toContain('Release the held story?');
     expect(said).toContain('The Mayor recommends Release it.');
     expect(said).not.toContain('recommends A');
@@ -155,6 +155,6 @@ describe('what a need reads aloud', () => {
     canSpeak();
     render(<NeedCard need={{ ...question, kind: 'alarm', recommended: '', options: [] } as Need} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Read aloud' }));
-    expect(utterances[0].text).not.toContain('recommends');
+    expect(utterances.map((utterance) => utterance.text).join(' ')).not.toContain('recommends');
   });
 });

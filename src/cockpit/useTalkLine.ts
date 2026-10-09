@@ -9,7 +9,7 @@ import { initialTalkScreen, talkScreenReducer } from '../model/talkScreen';
 import { earlierTalks, openTalk } from '../model/talkLog';
 import { messagesRepo } from '../data/repositories';
 import { writeBehind } from '../services/deliver';
-import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
+import { isSpeaking, isSupported as canSpeak, pause as pauseSpeaking, restart as restartSpeaking, resume as resumeSpeaking, speak, stop as stopSpeaking, TALK_ANSWER_KEY } from '../services/speech';
 import { decodeTurn, newTalkId } from '../services/talk';
 import { chime } from '../services/chime';
 import { now } from '../services/clock';
@@ -119,22 +119,43 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   // An answer that came while he was away is not spoken until he returns (see below).
   const unspoken = line.phase === 'speaking' && line.speaking?.unspoken === true;
   const spoken = line.phase === 'speaking' && !unspoken ? line.speaking?.text : undefined;
+  // A hold over the answer pauses it instead of stopping it, so its speech keeps the sentence reached (mw-q6n8m0.9);
+  // Restart is a Resume that speaks from the top.
+  const keepForResume = useRef(false);
+  const fromTheTop = useRef(false);
   useEffect(() => {
     if (spoken === undefined) return;
     let current = true;
     let fallback: ReturnType<typeof setTimeout> | undefined;
-    if (canSpeak()) speak(spoken, { titles: titles.current, onEnd: () => current && feed({ type: 'spoken' }) });
+    const again = fromTheTop.current;
+    fromTheTop.current = false;
+    if (canSpeak()) speak(spoken, { titles: titles.current, key: TALK_ANSWER_KEY, resumeIfPaused: !again, onEnd: () => current && feed({ type: 'spoken' }) });
     else fallback = setTimeout(() => feed({ type: 'spoken' }), 0);
     return () => {
       current = false;
       clearTimeout(fallback);
-      stopSpeaking();
+      if (keepForResume.current) {
+        keepForResume.current = false;
+        pauseSpeaking();
+      } else stopSpeaking();
     };
   }, [spoken, feed]);
+  // The speech under the Talk line's key does not outlive what the line holds: nothing playing or paused for Resume means it is stopped
+  // (a new question, Stop, End), and leaving the screen stops it (the answer stays unheard, to play when he comes back).
+  const answerKept = line.phase === 'speaking' || line.paused !== undefined;
+  useEffect(() => {
+    if (!answerKept && isSpeaking(TALK_ANSWER_KEY)) stopSpeaking();
+  }, [answerKept]);
+  useEffect(
+    () => () => {
+      if (isSpeaking(TALK_ANSWER_KEY)) stopSpeaking();
+    },
+    [],
+  );
 
   // An answer is heard once it has been played to its end or he has stopped it: that is written on its row,
   // so it never plays by itself again. One he left the screen on while it played is not heard.
-  const playingNow = line.phase === 'speaking' && line.speaking?.holding === false && line.speaking.unspoken !== true;
+  const playingNow = (line.phase === 'speaking' && line.speaking?.holding === false && line.speaking.unspoken !== true) || line.paused !== undefined;
   const wasPlaying = useRef<string | undefined>(undefined);
   useEffect(() => {
     const playing = playingNow ? speakingRow.current : undefined;
@@ -206,6 +227,11 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   function press(): void {
     if (!hold.supported || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
     if (!hold.begin()) return;
+    // The speech is paused at once, so its sound is not in the way of the microphone; the line keeps the answer for Resume.
+    if (line.phase === 'speaking' && line.speaking?.holding === false && !line.speaking.unspoken) {
+      keepForResume.current = true;
+      pauseSpeaking();
+    }
     feed({ type: 'hold', talkId: line.talk?.id ?? newTalkId() });
   }
 
@@ -233,6 +259,20 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     feed({ type: 'cut' });
   }
 
+  // The speaking bar over the Mayor's answer (mw-q6n8m0.9). A pause by the bar leaves the line speaking; a pause by a hold
+  // left the answer paused in the line, so Resume and Restart bring the line back to speaking.
+  function resume(): void {
+    if (line.paused) feed({ type: 'resume' });
+    else resumeSpeaking();
+  }
+
+  function restart(): void {
+    if (line.paused) {
+      fromTheTop.current = true;
+      feed({ type: 'resume' });
+    } else restartSpeaking();
+  }
+
   function end(): void {
     hold.setNotice(undefined);
     const turn = endTurn(line);
@@ -258,6 +298,9 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     release,
     abort,
     cut,
+    pause: pauseSpeaking,
+    resume,
+    restart,
     retry,
     end,
     setModel: (model?: string) => feed({ type: 'setModel', model }),

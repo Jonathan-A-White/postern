@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { canChooseInput, chooseInput, forgetSilentInputs, openBluetoothInput, openHoldInput, type InputDevice } from '../../src/services/micInput';
+import { canChooseInput, chooseInput, forgetSilentInputs, openBluetoothInput, openHoldInput, type InputDevice } from 'bsv-kit/composer';
 
 const input = (deviceId: string, label: string, kind = 'audioinput'): InputDevice => ({ deviceId, label, kind });
 

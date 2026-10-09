@@ -14,7 +14,7 @@ import { messagesRepo } from '../../src/data/repositories';
 import { formatRoute, parseRoute, topViewOf } from '../../src/nav/route';
 import { navigate, useRoute } from '../../src/router';
 import { lock, setKey } from '../../src/services/keySession';
-import { forgetSilentInputs } from '../../src/services/micInput';
+import { forgetSilentInputs } from 'bsv-kit/composer';
 import { encodeTurn } from '../../src/services/talk';
 import { deliverCallRequest, encodeCall, type CallRecord } from '../../src/services/call';
 import { PrivateKey, Utils } from '@bsv/sdk';

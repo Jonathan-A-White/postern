@@ -16,7 +16,7 @@ import { setKey, lock } from '../../src/services/keySession';
 import { db } from '../../src/data/db';
 import { formatRoute, parseRoute, type Route } from '../../src/nav/route';
 import { decodeTurn, encodeTurn } from '../../src/services/talk';
-import { forgetSilentInputs } from '../../src/services/micInput';
+import { forgetSilentInputs } from 'bsv-kit/composer';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { handsStep } from '../../tests/support/cockpit-fixture';
 import type { Need } from '../../src/model/view';

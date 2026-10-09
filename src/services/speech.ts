@@ -3,7 +3,7 @@
 // the network — the text is only ever spoken locally.
 
 import { BEAD_ID, WORD_CHAR } from '../markdown/beadLinks';
-import { recognizerLang } from './listen';
+import { recognizerLang } from 'bsv-kit/composer';
 
 export function isSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;

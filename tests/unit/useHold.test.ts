@@ -4,9 +4,7 @@
 // are doubles; the hold, listen.ts, micInput.ts and recorder.ts are the real ones.
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { useHold } from '../../src/cockpit/useHold';
-import { INPUT_SILENT_MS } from '../../src/services/listen';
-import { forgetSilentInputs } from '../../src/services/micInput';
+import { INPUT_SILENT_MS, forgetSilentInputs, useHold } from 'bsv-kit/composer';
 
 interface FakeTrack {
   label: string;

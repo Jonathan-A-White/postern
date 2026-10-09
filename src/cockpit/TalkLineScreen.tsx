@@ -9,8 +9,8 @@ import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
-import { micName } from './useHold';
-import { HoldToTalkBar } from './HoldToTalkBar';
+import { HoldToTalkBar, micName } from 'bsv-kit/composer';
+import { HOLD_BAR_CLASS } from './holdBar';
 import { SpeakingBar } from './SpeakingBar';
 import { useSpeech } from './useSpeaking';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
@@ -525,7 +525,7 @@ export function TalkLineScreen() {
 
         <CallMe open={calling} onClose={() => setCalling(false)} />
 
-        <HoldToTalkBar label={label} listening={listening} disabled={dead} onPress={talk.press} onRelease={() => void talk.release()} onAbort={talk.abort} />
+        <HoldToTalkBar label={label} listening={listening} disabled={dead} onPress={talk.press} onRelease={() => void talk.release()} onAbort={talk.abort} className={HOLD_BAR_CLASS} />
 
         <SpeakingBar only={TALK_ANSWER_KEY} onPause={talk.pause} onResume={talk.resume} onRestart={talk.restart} onStop={talk.cut} />
 

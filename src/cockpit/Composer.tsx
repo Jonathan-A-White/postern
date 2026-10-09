@@ -13,16 +13,14 @@ import { flushSync } from 'react-dom';
 import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import { focusQuietly } from '../ui/focus';
 import { useWide } from './hooks';
-import { formatDuration, type Recording } from '../services/recorder';
-import { isListenSupported } from '../services/listen';
+import { HoldToTalkBar, formatDuration, isListenSupported, micName, useHold, type Recording } from 'bsv-kit/composer';
 import { refuseFile, sendToThread, useSend, type OutgoingFile } from './send';
 import { toast } from '../ui/toastStore';
 import type { ThreadRef } from '../services/threads';
 import { takePendingShare } from './shareInbox';
 import { quoteBlock } from './quote';
 import { usePrompts } from './usePrompts';
-import { HoldToTalkBar } from './HoldToTalkBar';
-import { micName, useHold } from './useHold';
+import { APP_NAME, HOLD_BAR_CLASS } from './holdBar';
 import { useDraft } from './useDraft';
 import { draftsRepo } from '../data/repositories';
 import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext } from '../model/prompts';
@@ -98,6 +96,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const camera = useRef<HTMLInputElement>(null);
   const { busy, run } = useSend();
   const hold = useHold({
+    appName: APP_NAME,
     record: true,
     onFailed: (said) => {
       setHolding(false);
@@ -401,6 +400,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
             onRelease={() => void release()}
             onAbort={drop}
             dropOnSlideOff
+            className={HOLD_BAR_CLASS}
           />
           <div className="flex w-full max-w-xl items-center gap-1">
             <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />

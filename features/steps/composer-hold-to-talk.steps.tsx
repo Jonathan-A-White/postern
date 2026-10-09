@@ -13,7 +13,7 @@ import { ToastHost } from '../../src/ui/toast';
 import { dismissAllToasts } from '../../src/ui/toastStore';
 import { db } from '../../src/data/db';
 import { lock, setKey } from '../../src/services/keySession';
-import { forgetSilentInputs } from '../../src/services/micInput';
+import { forgetSilentInputs } from 'bsv-kit/composer';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import type { Attachment } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
@@ -52,8 +52,9 @@ vi.mock('../../src/services/deliver', async (importOriginal) => ({
     return { txid: 'ef'.repeat(32), channel: 'direct' };
   },
 }));
-vi.mock('../../src/services/recorder', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/services/recorder')>()),
+// the recorder the package's hold uses (bsv-kit/composer's own module; vitest.config.ts runs the package through vite)
+vi.mock('../../node_modules/bsv-kit/packages/composer/dist/recorder.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../node_modules/bsv-kit/packages/composer/dist/recorder.js')>()),
   canRecord: () => true,
   VoiceRecorder: class {
     private ownMic = false;

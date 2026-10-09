@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Jonathan-A-White/postern/server/internal/chain"
 )
 
 // TxCache is a Reader that keeps every transaction hex it fetches on disk,
@@ -45,6 +47,15 @@ func (c *TxCache) GetTransactionHex(txid string) (string, error) {
 		log.Printf("keeping transaction %s on disk failed, it will be fetched again: %v", txid, err)
 	}
 	return txHex, nil
+}
+
+// GetSpender asks the wrapped reader who spent an output, which never
+// changes the transactions kept; chain.ErrNoSpendLookup when it cannot say.
+func (c *TxCache) GetSpender(txid string, vout int) (string, bool, error) {
+	if spends, ok := c.Reader.(chain.SpendReader); ok {
+		return spends.GetSpender(txid, vout)
+	}
+	return "", false, chain.ErrNoSpendLookup
 }
 
 // path is the file for txid, and false for anything but a 64-digit hex txid:

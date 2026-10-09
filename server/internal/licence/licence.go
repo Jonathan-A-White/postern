@@ -107,6 +107,12 @@ func Held(reader Reader, address string, rule Rule) (bool, error) {
 // like that stays invisible here until something (the holder's own coin, a
 // payment, its change) puts it in one of those histories.
 func HeldCollections(reader Reader, address string, rule Rule) ([]string, error) {
+	result, err := walkHistories(reader, address, rule)
+	return result.Collections, err
+}
+
+// walkHistories is HeldCollections naming the mints too.
+func walkHistories(reader Reader, address string, rule Rule) (Result, error) {
 	addresses := []string{address}
 	issuerKey := strings.ToLower(rule.IssuerKey)
 	issuerAddress := ""
@@ -114,7 +120,7 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 		var err error
 		issuerAddress, err = AddressForPublicKey(issuerKey)
 		if err != nil {
-			return nil, fmt.Errorf("issuer key: %w", err)
+			return Result{}, fmt.Errorf("issuer key: %w", err)
 		}
 		if issuerAddress != address {
 			addresses = append(addresses, issuerAddress)
@@ -127,29 +133,15 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 	for _, addr := range addresses {
 		history, err := reader.GetHistory(addr)
 		if err != nil {
-			return nil, fmt.Errorf("getting history for %s: %w", addr, err)
+			return Result{}, fmt.Errorf("getting history for %s: %w", addr, err)
 		}
 		for _, entry := range history {
 			if addr == issuerAddress {
 				inIssuerHistory[entry.TxHash] = true
 			}
-			if _, seen := txs[entry.TxHash]; seen {
-				continue
+			if err := loadTransaction(reader, entry, txs, &order); err != nil {
+				return Result{}, err
 			}
-			txHex, err := reader.GetTransactionHex(entry.TxHash)
-			if err != nil {
-				if notServedYet(entry, err) {
-					continue // not recorded: the next walk reads it once the provider serves it
-				}
-				return nil, fmt.Errorf("getting transaction %s: %w", entry.TxHash, err)
-			}
-			tx, err := record.ParseTransaction(txHex)
-			if err != nil {
-				txs[entry.TxHash] = nil // an unparseable transaction just yields no records
-				continue
-			}
-			txs[entry.TxHash] = tx
-			order = append(order, entry.TxHash)
 		}
 	}
 
@@ -174,31 +166,188 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 	if len(collections) == 0 {
 		collections = DefaultCollections
 	}
-	var held []string
+	var result Result
 	for _, txid := range order {
 		collection, ok := mintFor(txs[txid], address, collections)
-		if !ok || contains(held, collection) || holderNow(txid, address, txs, spentBy) != address {
+		if !ok || contains(result.Collections, collection) || holderNow(txid, address, txs, spentBy) != address {
 			continue
 		}
 		if issuer != nil {
 			signed, err := issuer.signed(txs[txid])
 			if err != nil {
-				return nil, err
+				return Result{}, err
 			}
 			if !signed {
 				continue
 			}
 			revoked, err := issuer.revoked(txid+":0", revokes)
 			if err != nil {
-				return nil, err
+				return Result{}, err
 			}
 			if revoked {
 				continue
 			}
 		}
-		held = append(held, collection)
+		result.Collections = append(result.Collections, collection)
+		result.Mints = append(result.Mints, Mint{Txid: txid, Collection: collection})
 	}
-	return held, nil
+	return result, nil
+}
+
+// Mint names a licence's mint transaction, whose output 0 is its token.
+type Mint struct {
+	Txid       string `json:"txid"`
+	Collection string `json:"collection"`
+}
+
+// Result is what a check found: the collections the key holds licences in,
+// each once, and the mint of each, for the caller to remember and hand back
+// to the next Find.
+type Result struct {
+	Collections []string
+	Mints       []Mint
+}
+
+// loadTransaction reads the transaction entry names into txs (nil when it
+// does not parse) and appends it to order when it does, unless txs has it.
+func loadTransaction(reader Reader, entry chain.HistoryEntry, txs map[string]*record.Transaction, order *[]string) error {
+	if _, seen := txs[entry.TxHash]; seen {
+		return nil
+	}
+	txHex, err := reader.GetTransactionHex(entry.TxHash)
+	if err != nil {
+		if notServedYet(entry, err) {
+			return nil // not recorded: the next walk reads it once the provider serves it
+		}
+		return fmt.Errorf("getting transaction %s: %w", entry.TxHash, err)
+	}
+	tx, err := record.ParseTransaction(txHex)
+	if err != nil {
+		txs[entry.TxHash] = nil // an unparseable transaction just yields no records
+		return nil
+	}
+	txs[entry.TxHash] = tx
+	*order = append(*order, entry.TxHash)
+	return nil
+}
+
+// maxTokenSpends bounds how many spends of one token Find follows.
+const maxTokenSpends = 1000
+
+// Find is HeldCollections for a long-lived key. A holder who sends a message
+// per transaction soon has a history no walk can read, and reading it is only
+// to see whether the licence's token moved or the issuer revoked it, so when
+// rule names an issuer and reader can say who spent an output
+// (chain.SpendReader), Find reads the issuer's history alone: every mint the
+// issuer signed naming address is in it (a mint the issuer signed spends the
+// issuer's coin), and so is every revoke. The holder's history is not read at
+// all; the token is followed from its mint through the spends the provider
+// names. remembered are mints an earlier Find returned; they are candidates
+// even if the issuer's history does not list them yet. Without an issuer, or
+// a reader that can look spends up, Find is the walk of HeldCollections.
+func Find(reader Reader, address string, rule Rule, remembered []Mint) (Result, error) {
+	spends, ok := reader.(chain.SpendReader)
+	if !ok || rule.IssuerKey == "" {
+		return walkHistories(reader, address, rule)
+	}
+	result, err := findByIssuer(reader, spends, address, rule, remembered)
+	if errors.Is(err, chain.ErrNoSpendLookup) {
+		return walkHistories(reader, address, rule)
+	}
+	return result, err
+}
+
+func findByIssuer(reader Reader, spends chain.SpendReader, address string, rule Rule, remembered []Mint) (Result, error) {
+	issuerKey := strings.ToLower(rule.IssuerKey)
+	issuerAddress, err := AddressForPublicKey(issuerKey)
+	if err != nil {
+		return Result{}, fmt.Errorf("issuer key: %w", err)
+	}
+	history, err := reader.GetHistory(issuerAddress)
+	if err != nil {
+		return Result{}, fmt.Errorf("getting history for %s: %w", issuerAddress, err)
+	}
+
+	txs := make(map[string]*record.Transaction)
+	var order []string
+	inIssuerHistory := make(map[string]bool)
+	for _, entry := range history {
+		inIssuerHistory[entry.TxHash] = true
+		if err := loadTransaction(reader, entry, txs, &order); err != nil {
+			return Result{}, err
+		}
+	}
+	for _, mint := range remembered {
+		if err := loadTransaction(reader, chain.HistoryEntry{TxHash: mint.Txid, Height: 1}, txs, &order); err != nil {
+			return Result{}, err
+		}
+	}
+
+	issuer := newIssuerCheck(reader, issuerKey, txs)
+	revokes := revokeCandidates(txs, order, inIssuerHistory, issuerKey)
+	collections := rule.Collections
+	if len(collections) == 0 {
+		collections = DefaultCollections
+	}
+	var result Result
+	for _, txid := range order {
+		collection, ok := mintFor(txs[txid], address, collections)
+		if !ok || contains(result.Collections, collection) {
+			continue
+		}
+		holder, err := holderBySpends(reader, spends, txid, address)
+		if err != nil {
+			return Result{}, err
+		}
+		if holder != address {
+			continue
+		}
+		signed, err := issuer.signed(txs[txid])
+		if err != nil {
+			return Result{}, err
+		}
+		if !signed {
+			continue
+		}
+		revoked, err := issuer.revoked(txid+":0", revokes)
+		if err != nil {
+			return Result{}, err
+		}
+		if revoked {
+			continue
+		}
+		result.Collections = append(result.Collections, collection)
+		result.Mints = append(result.Mints, Mint{Txid: txid, Collection: collection})
+	}
+	return result, nil
+}
+
+// holderBySpends is holderNow with the spends of the token asked of the
+// provider instead of read from histories: who holds the licence minted at
+// mintTxid:0 after every spend of its token, the minted holder or the address
+// the last TR spending it named.
+func holderBySpends(reader Reader, spends chain.SpendReader, mintTxid, holder string) (string, error) {
+	current := mintTxid
+	for steps := 0; steps < maxTokenSpends; steps++ {
+		spender, spent, err := spends.GetSpender(current, 0)
+		if err != nil {
+			return "", fmt.Errorf("asking who spent %s:0: %w", current, err)
+		}
+		if !spent {
+			return holder, nil
+		}
+		txHex, err := reader.GetTransactionHex(spender)
+		if err != nil {
+			return "", fmt.Errorf("getting transaction %s: %w", spender, err)
+		}
+		if tx, err := record.ParseTransaction(txHex); err == nil {
+			if to, isTransfer := transferTo(tx); isTransfer {
+				holder = to
+			}
+		}
+		current = spender
+	}
+	return "", fmt.Errorf("the token of %s was spent more than %d times", mintTxid, maxTokenSpends)
 }
 
 // notServedYet reports whether err is the provider's 404 for an unconfirmed

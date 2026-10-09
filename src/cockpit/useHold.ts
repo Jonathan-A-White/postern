@@ -10,6 +10,9 @@
 // recogniser opens the microphone itself (Android's speech service, outside the page), and a capture the
 // page holds beside it takes the microphone, so the recogniser hears silence and the hold ends with
 // 'No speech was heard.' (mw-f7gmps.2). Only a browser that cannot list its inputs records the default microphone.
+// Whatever ends a hold, the words that were on the screen are handed back, never thrown away (mw-f7gmps.3):
+// a drop, a recogniser that fails or a page that is hidden while he holds gives them to the caller, and a
+// release the recogniser settles with no words gives back the words it showed as 'kept', not as heard.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isListenSupported, startListening, type ListenMode, type ListenSession } from '../services/listen';
 import { canChooseInput, openBluetoothInput } from '../services/micInput';
@@ -24,8 +27,16 @@ export function micName(input: string | undefined): string {
   return input ? `Listening on the Bluetooth microphone: ${input}.` : "Listening on the phone's own microphone.";
 }
 
-/** What a release came to: nothing was held, a hold heard no words, or the words (and the voice, when it could be recorded). */
-export type Released = { status: 'idle' } | { status: 'empty' } | { status: 'heard'; text: string; recording?: Recording };
+/**
+ * What a release came to: nothing was held, a hold heard no words, or the words (and the voice, when it could be
+ * recorded). 'kept': the recogniser settled with no words, but words were on the screen while he held; they are
+ * the words heard so far, to keep rather than to send as if settled.
+ */
+export type Released =
+  | { status: 'idle' }
+  | { status: 'empty' }
+  | { status: 'heard'; text: string; recording?: Recording }
+  | { status: 'kept'; text: string; recording?: Recording };
 
 interface HeldRecording {
   recorder: VoiceRecorder;
@@ -35,11 +46,13 @@ interface HeldRecording {
 export interface HoldOptions {
   /** Record the voice along with the words. A recording that cannot be made leaves the words alone. */
   record?: boolean;
-  /** The recogniser failed while he is still holding: the hold is over (the notice says why). */
-  onFailed?: () => void;
+  /** The recogniser failed while he is still holding: the hold is over (the notice says why). `said` is the words heard so far. */
+  onFailed?: (said: string) => void;
+  /** Given, a page hidden while he holds (he left the app) ends the hold, and this gets the words heard so far. */
+  onHidden?: (said: string) => void;
 }
 
-export function useHold({ record = false, onFailed }: HoldOptions = {}) {
+export function useHold({ record = false, onFailed, onHidden }: HoldOptions = {}) {
   const [transcript, setTranscript] = useState('');
   const [notice, setNotice] = useState<string | undefined>();
   const [mode, setMode] = useState<ListenMode | undefined>();
@@ -52,10 +65,14 @@ export function useHold({ record = false, onFailed }: HoldOptions = {}) {
   const recording = useRef<HeldRecording | null>(null);
   // Names the hold the recogniser's callbacks belong to; cleared when the hold ends, so a late event is ignored.
   const hold = useRef<object | null>(null);
+  // The words on the screen in this hold: a blank update from the recogniser never takes them back.
+  const said = useRef('');
   const failed = useRef(onFailed);
+  const hidden = useRef(onHidden);
   useEffect(() => {
     failed.current = onFailed;
-  }, [onFailed]);
+    hidden.current = onHidden;
+  }, [onFailed, onHidden]);
 
   const dropRecording = useCallback(() => {
     const taken = recording.current;
@@ -79,6 +96,7 @@ export function useHold({ record = false, onFailed }: HoldOptions = {}) {
     buzz(30);
     const thisHold = {};
     hold.current = thisHold;
+    said.current = '';
     const recordHold = record && canRecord();
     const startRecording = (track?: MediaStreamTrack) => {
       const recorder = new VoiceRecorder();
@@ -93,7 +111,11 @@ export function useHold({ record = false, onFailed }: HoldOptions = {}) {
     const choosing = canChooseInput();
     const started = startListening({
       lang: typeof document === 'undefined' ? undefined : document.documentElement.lang,
-      onInterim: setTranscript,
+      onInterim: (text) => {
+        if (hold.current !== thisHold || !text.trim()) return;
+        said.current = text;
+        setTranscript(text);
+      },
       onStart: () => hold.current === thisHold && setMic('ready'),
       openInput: choosing
         ? async () => {
@@ -122,7 +144,7 @@ export function useHold({ record = false, onFailed }: HoldOptions = {}) {
         listening.current = null;
         dropRecording();
         setNotice(error.message);
-        failed.current?.();
+        failed.current?.(said.current.trim());
       },
     });
     if (!started.ok) {
@@ -151,22 +173,33 @@ export function useHold({ record = false, onFailed }: HoldOptions = {}) {
     recording.current = null;
     const voice = held ? stopRecording(held) : Promise.resolve(undefined);
     const result = await session.stop();
-    if (!result.text.trim()) {
-      setNotice(result.ok ? 'No speech was heard.' : result.error.message);
-      return { status: 'empty' };
-    }
-    return { status: 'heard', text: result.text, recording: await voice };
+    if (result.text.trim()) return { status: 'heard', text: result.text, recording: await voice };
+    // the recogniser settled with no words (a blank final), but the words it showed are his
+    if (said.current.trim()) return { status: 'kept', text: said.current.trim(), recording: await voice };
+    setNotice(result.ok ? 'No speech was heard.' : result.error.message);
+    return { status: 'empty' };
   }, []);
 
-  /** Drops the hold without a result. True when there was a hold to drop. */
-  const drop = useCallback((): boolean => {
+  /** Ends the hold without sending: undefined when there was no hold, else the words heard so far (blank when none). */
+  const drop = useCallback((): string | undefined => {
     hold.current = null;
     dropRecording();
-    if (!listening.current) return false;
+    if (!listening.current) return undefined;
     listening.current.abort();
     listening.current = null;
-    return true;
+    return said.current.trim();
   }, [dropRecording]);
+
+  // He left the app while holding: Android suspends the page, so the hold ends here and his words are handed back.
+  useEffect(() => {
+    const onChange = () => {
+      if (document.visibilityState !== 'hidden' || !hidden.current) return;
+      const words = drop();
+      if (words !== undefined) hidden.current(words);
+    };
+    document.addEventListener('visibilitychange', onChange);
+    return () => document.removeEventListener('visibilitychange', onChange);
+  }, [drop]);
 
   return {
     transcript,

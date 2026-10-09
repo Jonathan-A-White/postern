@@ -216,11 +216,12 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
       feed({ type: 'cancel' });
       return;
     }
+    // words the recogniser showed but did not settle ('kept') still go: the line has no box to keep them in
     feed({ type: 'release', text: released.text });
   }
 
   function abort(): void {
-    if (hold.drop()) feed({ type: 'cancel' });
+    if (hold.drop() !== undefined) feed({ type: 'cancel' });
   }
 
   function retry(): void {

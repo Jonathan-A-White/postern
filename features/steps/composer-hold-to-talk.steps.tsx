@@ -17,6 +17,7 @@ import { forgetSilentInputs } from '../../src/services/micInput';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import type { Attachment } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
+import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 
 configure({ asyncUtilTimeout: 5000 });
 
@@ -30,6 +31,8 @@ const doubles = vi.hoisted(() => ({
   recorderOpenedMic: false,
   // Android hands the microphone to the page's capture: the recogniser on the default microphone hears silence.
   recorderStarvesRecogniser: false,
+  // On letting go the recogniser's last result is blank, after words were shown (mw-f7gmps.3).
+  blankFinal: false,
 }));
 
 doubles.mayorKey = PrivateKey.fromRandom().toPublicKey().toString();
@@ -94,10 +97,21 @@ class FakeRecognizer {
     recognizers.push(this);
     queueMicrotask(() => this.onaudiostart?.());
   }
+  aborted = false;
   stop() {
-    queueMicrotask(() => this.onend?.());
+    queueMicrotask(() => {
+      if (doubles.blankFinal) this.onresult?.({ results: [[{ transcript: '' }]] });
+      this.onend?.();
+    });
   }
-  abort() {}
+  abort() {
+    this.aborted = true;
+  }
+}
+
+/** The page shown or hidden, as Android does when he leaves the app. */
+function setVisibility(state: DocumentVisibilityState): void {
+  Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
 }
 
 function installBrowser(): void {
@@ -139,7 +153,7 @@ const hear = (text: string) =>
     recognizer?.onresult?.({ results: [[{ transcript: text }]] });
   });
 
-const bar = () => screen.getByRole('button', { name: /^(Hold to talk|Release to send|Let go to drop|Starting the mic…)$/ });
+const bar = () => screen.getByRole('button', { name: /^(Hold to talk|Release to send|Let go to keep it unsent|Starting the mic…)$/ });
 
 /** jsdom has no layout: the bar is 300 x 96 at the origin, so (10, 10) is on it and (600, 10) is off it. */
 const ON = { clientX: 10, clientY: 10 };
@@ -150,9 +164,13 @@ function giveTheBarAShape() {
 
 const feature = await loadFeature('features/composer-hold-to-talk.feature');
 
-describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
+describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) => {
+  AfterEachScenario(() => {
+    thawClock();
+  });
   BeforeEachScenario(async () => {
     cleanup();
+    setVisibility('visible');
     dismissAllToasts();
     vi.restoreAllMocks();
     // jsdom has no object URLs; the previews only need a string
@@ -166,6 +184,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     doubles.recorderMics = 0;
     doubles.recorderOpenedMic = false;
     doubles.recorderStarvesRecogniser = false;
+    doubles.blankFinal = false;
     forgetOutboxState();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.outbox.clear()]);
     vi.stubGlobal(
@@ -278,7 +297,18 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('AC-5: sliding off the bar says Let go to drop and nothing is sent', ({ Given, When, And, Then }) => {
+  const textBoxHolds = async (_c: unknown, words: string) => {
+    await waitFor(() => expect(screen.getByLabelText('Message')).toHaveValue(words));
+  };
+  const screenSays = async (_c: unknown, words: string) => {
+    expect(await screen.findByText(words)).toBeInTheDocument();
+  };
+  const letGoOnTheBar = async () => {
+    fireEvent.pointerUp(bar(), ON);
+    await act(async () => settledOutbox());
+  };
+
+  Scenario('AC-5: sliding off the bar says Let go to keep it unsent, and nothing is sent (the words wait in the box since mw-f7gmps.3)', ({ Given, When, And, Then }) => {
     Given('the composer is open', open);
     When('he taps the mic beside Send', tapMic);
     And('he presses and holds the bar', press);
@@ -296,7 +326,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await act(async () => settledOutbox());
     });
     Then('nothing is delivered', nothingDelivered);
-    And('the Hold to talk bar is there', barIsThere);
+    And('the text box holds {string}', textBoxHolds);
   });
 
   Scenario('AC-6: sliding back onto the bar before letting go still sends', ({ Given, When, And, Then }) => {
@@ -471,5 +501,122 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(doubles.recorderOpenedMic).toBe(false);
       expect(recognizers.every((recognizer) => recognizer.startedWith === undefined)).toBe(true);
     });
+  });
+
+  Scenario('AC-13: a hold dropped mid-speech leaves the words heard so far in the composer, unsent, and one tap sends them (mw-f7gmps.3)', ({ Given, When, And, Then }) => {
+    Given('the composer is open', open);
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    And('the recogniser shows {string} while he is still speaking', async (_c, words: string) => {
+      await hear(words);
+      await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
+    });
+    And('the phone takes the touch away from the bar', async () => {
+      fireEvent.pointerCancel(bar());
+      await act(async () => settledOutbox());
+    });
+    Then('nothing is delivered', nothingDelivered);
+    And('the text box holds {string}', textBoxHolds);
+    And('the screen says {string}', screenSays);
+    When('he taps Send', async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await act(async () => settledOutbox());
+    });
+    Then('one message is delivered with the words {string}', oneMessageWith);
+  });
+
+  Scenario('AC-14: the app going to the background mid-hold keeps the words heard so far in the composer, unsent (mw-f7gmps.3)', ({ Given, When, And, Then }) => {
+    Given('the composer is open', open);
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    And('the recogniser hears {string}', async (_c, words: string) => {
+      await hear(words);
+    });
+    And('the page is hidden while he holds', async () => {
+      setVisibility('hidden');
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    });
+    Then('the recogniser was stopped', async () => {
+      await waitFor(() => expect(recognizers.at(-1)?.aborted).toBe(true));
+    });
+    And('nothing is delivered', nothingDelivered);
+    And('the text box holds {string}', textBoxHolds);
+    And('the screen says {string}', screenSays);
+  });
+
+  Scenario('AC-15: the recogniser failing mid-hold keeps the words heard so far in the composer, unsent (mw-f7gmps.3)', ({ Given, When, And, Then }) => {
+    Given('the composer is open', open);
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    And('the recogniser hears {string}', async (_c, words: string) => {
+      await hear(words);
+    });
+    And('the recogniser fails with {string} while he holds', async (_c, code: string) => {
+      await act(async () => recognizers.at(-1)?.onerror?.({ error: code }));
+    });
+    And('he lifts his finger where the bar was', async () => {
+      // the box took the bar's place when the hold ended: a lift on whatever is there sends nothing
+      const there = screen.queryByRole('button', { name: /^(Hold to talk|Release to send|Let go to keep it unsent|Starting the mic…)$/ });
+      if (there) fireEvent.pointerUp(there, ON);
+      await act(async () => settledOutbox());
+    });
+    Then('nothing is delivered', nothingDelivered);
+    And('the text box holds {string}', textBoxHolds);
+    And('the screen says {string}', screenSays);
+    And('the screen says why: {string}', screenSays);
+  });
+
+  Scenario('AC-16: letting go, the recogniser ends with a blank final after words were shown: those words are kept in the composer, unsent (mw-f7gmps.3)', ({ Given, When, And, Then }) => {
+    Given('the composer is open', open);
+    And("the recogniser's last result on letting go is blank", () => {
+      doubles.blankFinal = true;
+    });
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    And('the recogniser shows {string} while he is still speaking', async (_c, words: string) => {
+      await hear(words);
+      await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
+    });
+    And('he lets go on the bar', letGoOnTheBar);
+    Then('nothing is delivered', nothingDelivered);
+    And('the text box holds {string}', textBoxHolds);
+    And('the screen says {string}', screenSays);
+  });
+
+  /** The recogniser ends by itself (Android does, about once a minute) after `ms` of listening, his finger still on the bar. */
+  const endsByItselfAfter = async (ms: number) => {
+    const before = recognizers.length;
+    vi.setSystemTime(Date.now() + ms);
+    await act(async () => recognizers.at(-1)?.onend?.());
+    await waitFor(() => expect(recognizers.length).toBe(before + 1));
+    expect(bar()).toHaveTextContent(/Release to send|Starting the mic…/);
+  };
+
+  Scenario('AC-17: a 3-minute hold the recogniser ends twice by itself keeps every word, and letting go sends them all (mw-f7gmps.3)', ({ Given, When, And, Then }) => {
+    Given('the composer is open', () => {
+      freezeClock(new Date().toISOString());
+      open();
+    });
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    And('the recogniser hears {string}', async (_c, words: string) => {
+      await hear(words);
+    });
+    And('a minute and a half passes and the recogniser ends by itself', () => endsByItselfAfter(90_000));
+    And('the recogniser hears {string} after it starts again', async (_c, words: string) => {
+      await hear(words);
+    });
+    And('another minute and a half passes and the recogniser ends by itself again', () => endsByItselfAfter(90_000));
+    And('the recogniser hears {string} after it starts once more', async (_c, words: string) => {
+      await hear(words);
+      await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
+    });
+    And('he lets go on the bar', letGoOnTheBar);
+    Then('the recogniser was started {int} times in the one hold', (_c, times: number) => {
+      expect(recognizers).toHaveLength(times);
+    });
+    And('one message is delivered with the words {string}', oneMessageWith);
   });
 });

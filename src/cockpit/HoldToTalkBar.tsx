@@ -2,7 +2,7 @@
 // label. The Talk line (?v=line) and the composer both draw it, so a hold feels the same in both.
 // The caller says what a hold does (press, release, abort) and what the bar says; with
 // `dropOnSlideOff` a finger that slides off the bar before letting go drops the hold (the bar says
-// 'Let go to drop') instead of sending it.
+// 'Let go to keep it unsent': the composer keeps the words in its box, mw-f7gmps.3) instead of sending it.
 import { useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { Icon, cx } from '../ui';
@@ -10,7 +10,7 @@ import { Icon, cx } from '../ui';
 /** How far outside the bar the finger has to go before the hold counts as slid off, so a wobble at the edge does not drop it. */
 export const SLIDE_OFF_MARGIN_PX = 24;
 
-export const DROP_LABEL = 'Let go to drop';
+export const DROP_LABEL = 'Let go to keep it unsent';
 
 export interface HoldToTalkBarProps {
   /** What a hold will do (or why it cannot be held now). */

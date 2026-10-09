@@ -5,7 +5,9 @@
 // top of what he sends. All the files go as one message, the words its caption.
 // The mic beside Send opens the Talk line's hold-to-talk bar (mw-q6n8m0.3): hold it and the words
 // stream on screen, let go and the words, the voice note and whatever is attached go as one message;
-// slide off the bar first and nothing goes.
+// slide off the bar first and nothing goes. Whatever ends a hold without sending it (a slide off, the phone
+// taking the touch, the app hidden, the recogniser failing, a release it settles with no words) leaves the
+// words heard so far in the box, unsent, saying 'Kept what you said: tap Send.' (mw-f7gmps.3).
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Button, Chip, Icon, IconButton, cx } from '../ui';
@@ -33,6 +35,9 @@ interface Pending extends OutgoingFile {
 }
 
 let nextId = 1;
+
+/** What the composer says when a hold ended without sending and its words wait in the box. */
+const KEPT = 'Kept what you said: tap Send.';
 
 /** How long Send is held, while grey from a failed check, before it sends anyway. */
 const FORCE_SEND_MS = 600;
@@ -84,13 +89,25 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   // The hold-to-talk bar is out in place of the text box: the mic opened it, or a shared file arrived with no words.
   const [voice, setVoice] = useState(false);
   const [holding, setHolding] = useState(false);
+  // A hold ended without sending and its words wait in the box (until they are sent).
+  const [kept, setKept] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
   // What he has typed and not sent waits on the phone, per channel (and per post for a reply), through a lock-out or a reload.
   const draft = useDraft(draftsRepo.keyFor(thread, re), text, (saved) => setText((current) => current || saved), prefill);
   const picker = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const { busy, run } = useSend();
-  const hold = useHold({ record: true, onFailed: () => setHolding(false) });
+  const hold = useHold({
+    record: true,
+    onFailed: (said) => {
+      setHolding(false);
+      keep(said);
+    },
+    onHidden: (said) => {
+      setHolding(false);
+      keep(said);
+    },
+  });
   // On a phone the tab bar sits below the composer and keeps the bottom safe-area inset.
   const wide = useWide();
 
@@ -145,9 +162,22 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     setHolding(hold.begin());
   }
 
+  /** The words of a hold that ended without sending go in the box, unsent; the box shows in place of the bar. */
+  function keep(said: string, voiceNote?: Pending) {
+    if (voiceNote) setFiles((current) => [...current, voiceNote]);
+    if (!said) return;
+    setText((current) => (current.trim() ? `${current.trim()} ${said}` : said));
+    setVoice(false);
+    setKept(true);
+  }
+
   async function release() {
     setHolding(false);
     const released = await hold.finish();
+    if (released.status === 'kept') {
+      keep(released.text, released.recording ? await voiceFile(released.recording) : undefined);
+      return;
+    }
     if (released.status !== 'heard') return;
     const body = `${quote ? quoteBlock(quote) : ''}${released.text.trim()}`;
     const voiceNote = released.recording ? await voiceFile(released.recording) : undefined;
@@ -175,7 +205,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
 
   function drop() {
     setHolding(false);
-    hold.drop();
+    keep(hold.drop() ?? '');
   }
 
   // A text beginning '/' is a call to a saved prompt: it is checked against the signature before it can go.
@@ -236,6 +266,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
       files.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
       draft.discard();
       setText('');
+      setKept(false);
       setFiles([]);
       onClearQuote?.();
     }
@@ -359,7 +390,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
                 )}
               </>
             ) : (
-              <p className={hold.notice ? 'text-danger' : 'text-muted'}>{hold.notice ?? 'Hold the bar and speak. Slide off it to drop.'}</p>
+              <p className={hold.notice ? 'text-danger' : 'text-muted'}>{hold.notice ?? 'Hold the bar and speak. Slide off it to keep the words unsent.'}</p>
             )}
           </div>
           <HoldToTalkBar
@@ -433,6 +464,12 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
             mic
           )}
         </div>
+      )}
+      {kept && text.trim().length > 0 && (
+        <p role="status" className="px-4 pb-2 text-[12.5px] text-muted">
+          {hold.notice && <span className="text-danger">{hold.notice} </span>}
+          <span>{KEPT}</span>
+        </p>
       )}
       {callError && (
         <p role="alert" className="px-4 pb-2 text-[12.5px] text-danger">

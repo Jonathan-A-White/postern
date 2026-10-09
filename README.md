@@ -47,6 +47,8 @@ kept on the VPS.
 
 We credit everyone we build on, whether or not a licence asks us to, because what Postern can do it can do on their work. The same list is on the About screen (Me, then About and credits); its source is [src/credits.ts](src/credits.ts), and a test fails when a dependency in `package.json` or `server/go.mod` is missing from it.
 
+A source added or removed changes its credit in the same commit, and the test says so: it fails for a dependency with no credit, for a credit naming a package that is no longer a dependency, and for a bundled font or data file (`public/`, or font and data files in `src/`) that no credit names.
+
 ### Ideas and the people who had them
 
 - [Beads](https://github.com/steveyegge/beads): Steve Yegge's issue tracker for AI agents: its beads are the stories, epics and decisions Postern's map, cards and bead pages show. Licence: [MIT](https://github.com/steveyegge/beads/blob/main/LICENSE). Changes: None to Beads itself; Postern only reads and shows the factory's beads.
@@ -72,6 +74,7 @@ We credit everyone we build on, whether or not a licence asks us to, because wha
 - [spell-forge-bsv](https://github.com/Jonathan-A-White/spell-forge): The chain package from SpellForge: the licence check and the chain provider behind Postern's gate. Licence: [MIT](https://github.com/Jonathan-A-White/spell-forge/blob/main/LICENSE). Changes: None; used as published.
 - [scure-bip39](https://paulmillr.com/noble/#scure): Paul Miller's audited BIP-39 library: makes and checks the recovery phrase. Licence: [MIT](https://spdx.org/licenses/MIT.html). Changes: None; used as published.
 - [Dexie](https://dexie.org): The database in your phone's browser where messages, the view and the outbox are kept. Licence: [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html). Changes: None; used as published.
+- [Postern's icon](https://github.com/Jonathan-A-White/postern/blob/main/public/icon.svg): The picture on the home-screen icon and in the browser tab (public/icon.svg), drawn for Postern. Licence: [MIT](https://github.com/Jonathan-A-White/postern/blob/main/LICENSE). Changes: None; it is our own drawing.
 - [Mermaid](https://github.com/mermaid-js/mermaid): Draws the diagrams that appear in messages. Licence: [MIT](https://spdx.org/licenses/MIT.html). Changes: None; used as published.
 - [node-qrcode](https://github.com/soldair/node-qrcode): Draws the QR code for your public key. Licence: [MIT](https://spdx.org/licenses/MIT.html). Changes: None; used as published.
 - [react-markdown](https://github.com/remarkjs/react-markdown): Shows the Markdown in messages and bead pages as formatted text. Licence: [MIT](https://spdx.org/licenses/MIT.html). Changes: None; used as published.

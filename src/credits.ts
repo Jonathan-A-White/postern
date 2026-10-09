@@ -1,8 +1,9 @@
 // src/credits.ts — everything Postern is built on, by name, with a link, what it is used
 // for, its licence (with a link) and what we changed (mw-vtjxh4.3). The About screen shows
 // this list and the README's Credits section repeats it; tests/unit/credits.test.ts fails
-// when a dependency in package.json or server/go.mod is covered by no credit, so adding a
-// library means crediting it in the same commit.
+// when a dependency in package.json or server/go.mod is covered by no credit, when a credit
+// covers a package that is no longer a dependency, and when a bundled font or data file is
+// named by no credit, so adding or removing a source changes its credit in the same commit.
 
 export interface Credit {
   /** The name, which is the link text: never an address (a long address breaks mid-word on a phone). */
@@ -14,8 +15,14 @@ export interface Credit {
   licenceUrl: string;
   /** What we changed in it ('None' when we use it as published). */
   changes: string;
-  /** The package.json packages and server/go.mod modules this credit stands for. */
+  /**
+   * The package.json packages and server/go.mod modules this credit stands for. A credit
+   * with no `covers` is not a package credit (an idea, a service, a standard), and the
+   * stale-package check leaves it alone.
+   */
   covers?: string[];
+  /** The font and data files Postern bundles (repo-relative, e.g. 'public/icon.svg') that this credit stands for. */
+  files?: string[];
 }
 
 export interface CreditGroup {
@@ -181,6 +188,15 @@ export const CREDIT_GROUPS: CreditGroup[] = [
         covers: ['@scure/bip39'],
       },
       { name: 'Dexie', url: 'https://dexie.org', use: "The database in your phone's browser where messages, the view and the outbox are kept.", ...APACHE, changes: AS_PUBLISHED, covers: ['dexie'] },
+      {
+        name: "Postern's icon",
+        url: 'https://github.com/Jonathan-A-White/postern/blob/main/public/icon.svg',
+        use: 'The picture on the home-screen icon and in the browser tab (public/icon.svg), drawn for Postern.',
+        ...MIT,
+        licenceUrl: 'https://github.com/Jonathan-A-White/postern/blob/main/LICENSE',
+        changes: 'None; it is our own drawing.',
+        files: ['public/icon.svg'],
+      },
       { name: 'Mermaid', url: 'https://github.com/mermaid-js/mermaid', use: 'Draws the diagrams that appear in messages.', ...MIT, changes: AS_PUBLISHED, covers: ['mermaid'] },
       { name: 'node-qrcode', url: 'https://github.com/soldair/node-qrcode', use: 'Draws the QR code for your public key.', ...MIT, changes: AS_PUBLISHED, covers: ['qrcode'] },
       { name: 'react-markdown', url: 'https://github.com/remarkjs/react-markdown', use: 'Shows the Markdown in messages and bead pages as formatted text.', ...MIT, changes: AS_PUBLISHED, covers: ['react-markdown'] },
@@ -312,4 +328,18 @@ export function goModules(goMod: string): string[] {
 export function uncredited(dependencies: string[]): string[] {
   const covered = new Set(allCredits().flatMap((credit) => credit.covers ?? []));
   return dependencies.filter((dependency) => !covered.has(dependency));
+}
+
+/** The packages or modules a credit covers that are not in `declared`: the credit outlived the dependency. */
+export function staleCovers(declared: string[]): string[] {
+  const present = new Set(declared);
+  return allCredits()
+    .flatMap((credit) => credit.covers ?? [])
+    .filter((covered) => !present.has(covered));
+}
+
+/** The bundled files (repo-relative) that no credit names. */
+export function unnamedFiles(files: string[]): string[] {
+  const named = new Set(allCredits().flatMap((credit) => credit.files ?? []));
+  return files.filter((file) => !named.has(file));
 }

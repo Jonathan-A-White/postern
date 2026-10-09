@@ -353,3 +353,31 @@ export function liveCardRecords(governorKey: PrivateKey, now: number, firstSeq: 
   const events = seal('events', { from: 1, to: 1, lane: 'normal', events: [verified] }, firstSeq + 3, 1);
   return [card, update, events];
 }
+
+/** A live card (§24, mw-v1uyku.1) sent three days ago and not touched since, with two items on the fixture's beads
+ * and no event that ticks either: past 48 h, so Needs you lists it under 'Archived cards'. */
+export function archivedCardRecords(governorKey: PrivateKey, now: number, firstSeq: number): FixtureRecord[] {
+  const beads = ['mw-f758y.31.3', 'mw-f758y.31.4'];
+  const card: FixtureRecord = {
+    seq: firstSeq + 1,
+    txid: `direct:${hex64(firstSeq + 1)}`,
+    vout: 0,
+    payload: {
+      ...encryptMessage({
+        text: JSON.stringify({
+          title: 'Done but still open: one tap each, any order, no rush',
+          items: [
+            { n: 1, text: 'VERIFIED on the stream story', links: [beads[0]], expect: { bead: beads[0], state: 'verified' } },
+            { n: 2, text: 'Release the bead route', links: [beads[1]], expect: { bead: beads[1], state: 'open' } },
+          ],
+          subscribe: { kinds: ['bead_changed'], beads },
+        }),
+        class: 'card',
+        senderPrivateKeyHex: MAYOR.toHex(),
+        recipientPublicKeyHex: governorKey.toPublicKey().toString(),
+      }),
+      ts: Math.floor((now - 72 * 3_600_000) / 1000),
+    },
+  };
+  return [card];
+}

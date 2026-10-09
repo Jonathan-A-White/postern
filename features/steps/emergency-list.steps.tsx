@@ -17,9 +17,8 @@ import { fixtureView } from '../../tests/support/cockpit-fixture';
 
 configure({ asyncUtilTimeout: 5000 });
 
-// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
+// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4).
 let speech: HonestSpeech | null = null;
-let cancelFn = vi.fn();
 const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];
 
 /** The two places this scenario walks between, chosen by the URL as App does. */
@@ -50,7 +49,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     cleanup();
     speech?.uninstall();
     speech = installHonestSpeech();
-    cancelFn = vi.spyOn(speech.synth, 'cancel');
     stop();
     await Promise.all([db.settings.clear(), db.view.clear(), db.events.clear(), db.beadDetails.clear()]);
     const now = Date.now();

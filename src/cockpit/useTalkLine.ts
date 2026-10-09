@@ -9,7 +9,7 @@ import { initialTalkScreen, talkScreenReducer } from '../model/talkScreen';
 import { earlierTalks, openTalk } from '../model/talkLog';
 import { messagesRepo } from '../data/repositories';
 import { writeBehind } from '../services/deliver';
-import { isSpeaking, isSupported as canSpeak, pause as pauseSpeaking, restart as restartSpeaking, resume as resumeSpeaking, speak, stop as stopSpeaking, TALK_ANSWER_KEY } from '../services/speech';
+import { isPausedOn, isSpeaking, isSupported as canSpeak, pause as pauseSpeaking, restart as restartSpeaking, resume as resumeSpeaking, speak, stop as stopSpeaking, TALK_ANSWER_KEY, whenDone } from '../services/speech';
 import { decodeTurn, newTalkId } from '../services/talk';
 import { chime } from '../services/chime';
 import { now } from '../services/clock';
@@ -71,7 +71,10 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     if (!open) return;
     for (const id of open.rows) handled.current.add(id);
     speakingRow.current = open.unheardRow;
-    dispatch({ seed: open });
+    // An answer he left while it was speaking waits paused in the speech: the line shows it paused, for him to Resume.
+    const speaking = open.line.speaking;
+    const waitsPaused = open.unheardRow !== undefined && speaking !== undefined && isPausedOn(TALK_ANSWER_KEY, speaking.text);
+    dispatch({ seed: waitsPaused ? { ...open, line: { ...open.line, phase: 'idle', speaking: undefined, paused: speaking } } : open });
   }, [stored]);
 
   // The talks before this one are listed above it. The talk the screen shows as its own (its id is kept after
@@ -124,6 +127,23 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   // Restart is a Resume that speaks from the top.
   const keepForResume = useRef(false);
   const fromTheTop = useRef(false);
+  // Leaving the screen pauses the answer instead of stopping it (his words, mw-q6n8m0.10). This cleanup is declared before
+  // the speech effect's, so on unmount it has already run when that one does.
+  const leaving = useRef(false);
+  const holdingSpeech = line.phase === 'speaking' && line.speaking?.holding === true;
+  const holdingRef = useRef(holdingSpeech);
+  useEffect(() => {
+    holdingRef.current = holdingSpeech;
+  }, [holdingSpeech]);
+  useEffect(() => {
+    leaving.current = false;
+    return () => {
+      leaving.current = true;
+      // Whatever ends the answer on another screen (played out, or Stop in the bar) is written on its row, which this screen can no longer do.
+      const row = speakingRow.current;
+      if (row !== undefined && !holdingRef.current) whenDone(TALK_ANSWER_KEY, () => writeBehind(messagesRepo.markHeard(row), 'that the answer was heard'));
+    };
+  }, []);
   useEffect(() => {
     if (spoken === undefined) return;
     let current = true;
@@ -135,24 +155,23 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     return () => {
       current = false;
       clearTimeout(fallback);
-      if (keepForResume.current) {
+      if (leaving.current && !holdingSpeech) pauseSpeaking();
+      else if (keepForResume.current) {
         keepForResume.current = false;
         pauseSpeaking();
       } else stopSpeaking();
     };
-  }, [spoken, feed]);
+  }, [spoken, holdingSpeech, feed]);
   // The speech under the Talk line's key does not outlive what the line holds: nothing playing or paused for Resume means it is stopped
-  // (a new question, Stop, End), and leaving the screen stops it (the answer stays unheard, to play when he comes back).
+  // (a new question, Stop, End). Leaving the screen only pauses it, so it can be Resumed from the next screen or when he comes back.
+  // A screen that has just opened holds nothing yet but may find an answer paused from the last visit, so only a line that let go of one stops it.
   const answerKept = line.phase === 'speaking' || line.paused !== undefined;
+  const wasKept = useRef(false);
   useEffect(() => {
-    if (!answerKept && isSpeaking(TALK_ANSWER_KEY)) stopSpeaking();
+    const letGo = wasKept.current && !answerKept;
+    wasKept.current = answerKept;
+    if (letGo && isSpeaking(TALK_ANSWER_KEY)) stopSpeaking();
   }, [answerKept]);
-  useEffect(
-    () => () => {
-      if (isSpeaking(TALK_ANSWER_KEY)) stopSpeaking();
-    },
-    [],
-  );
 
   // An answer is heard once it has been played to its end or he has stopped it: that is written on its row,
   // so it never plays by itself again. One he left the screen on while it played is not heard.

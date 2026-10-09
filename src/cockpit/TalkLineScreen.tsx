@@ -18,7 +18,7 @@ import { sendCallRequest } from './send';
 import { useRoute } from '../router';
 import { settingsRepo } from '../data/repositories';
 import { now } from '../services/clock';
-import { getSpeech, isSupported as canSpeak, speak, stop as stopSpeaking, TALK_ANSWER_KEY } from '../services/speech';
+import { getSpeech, isSupported as canSpeak, pause as pauseSpeaking, speak, stop as stopSpeaking, TALK_ANSWER_KEY } from '../services/speech';
 import { callSent as waitingCall, clockHHMM, ringNote } from '../model/call';
 import { beadHref, formatRoute } from '../nav/route';
 import { formatSeconds, showsCutTag, tookLong } from '../model/talkScreen';
@@ -268,7 +268,7 @@ function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 const READ_PREFIX = 'talk-read:';
 
-/** Reads an answer aloud, and stops it when tapped again: one answer at a time, so starting another replaces the first. The Shell's speaking bar steers it. */
+/** Reads an answer aloud, and stops it when tapped again: one answer at a time, so starting another replaces the first. The Shell's speaking bar steers it, also after the screen is left. */
 function useReadAloud() {
   const titles = useBeadTitles();
   const speech = useSpeech();
@@ -276,7 +276,7 @@ function useReadAloud() {
   useEffect(
     () => () => {
       const key = getSpeech().key;
-      if (key?.startsWith(READ_PREFIX)) stopSpeaking();
+      if (key?.startsWith(READ_PREFIX)) pauseSpeaking(); // leaving pauses it: the Shell's bar offers Resume (mw-q6n8m0.10)
     },
     [],
   );

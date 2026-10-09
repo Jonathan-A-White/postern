@@ -120,10 +120,14 @@ const IDLE: SpeechState = { status: 'idle', key: null, index: 0, count: 0 };
 interface Reading {
   key: string | null;
   source: string;
+  /** The text as given, before ids and links were turned into words: what a screen compares against its own. */
+  raw: string;
   sentences: string[];
   index: number;
   status: 'playing' | 'paused';
   onEnd?: () => void;
+  /** What a screen that has gone wants done when this reading is over for good (it ended, was stopped or was replaced), not when it is only paused. */
+  done: Array<() => void>;
 }
 
 let reading: Reading | null = null;
@@ -154,6 +158,20 @@ export function getSpeech(): SpeechState {
 /** True while the speech started under `key` is reading or paused (a paused one is still his to Resume or Stop). */
 export function isSpeaking(key: string): boolean {
   return reading?.key === key;
+}
+
+/** True while the speech started under `key` waits paused on exactly this `text`, so a screen coming back can offer Resume rather than start over. */
+export function isPausedOn(key: string, text: string): boolean {
+  return reading?.status === 'paused' && reading.key === key && reading.raw === text;
+}
+
+/** Runs `fn` once the speech under `key` is over for good (played out, stopped or replaced); a pause does not count. For a screen that was left while it was paused. */
+export function whenDone(key: string, fn: () => void): void {
+  if (reading?.key === key) reading.done.push(fn);
+}
+
+function over(ended: Reading | null): void {
+  for (const fn of ended?.done.splice(0) ?? []) fn();
 }
 
 /** `text` as sentences: cut after . ! ? or an ellipsis followed by a space, and at line ends. */
@@ -224,6 +242,7 @@ function play(synth: SpeechSynthesis, current: Reading): void {
         }
         reading = null;
         publish();
+        over(current);
         current.onEnd?.();
       };
       utterance.onerror = () => {
@@ -241,20 +260,26 @@ export function speak(text: string, options: SpeakOptions = {}): void {
   const synth = window.speechSynthesis;
   const key = options.key ?? null;
   const spoken = speechText(text, options.titles);
-  dropWaiting();
-  epoch += 1;
-  if (options.resumeIfPaused && reading?.status === 'paused' && reading.key === key && reading.source === spoken) {
-    reading.status = 'playing';
+  if (options.resumeIfPaused && reading && reading.key === key && reading.source === spoken) {
+    // The same speech, kept paused (or still playing) across a screen change: carry on, handing it the new `onEnd`.
     reading.onEnd = options.onEnd;
+    if (reading.status === 'playing') return;
+    dropWaiting();
+    epoch += 1;
+    reading.status = 'playing';
     publish();
     synth.cancel();
     play(synth, reading);
     return;
   }
+  dropWaiting();
+  epoch += 1;
+  const replaced = reading;
   synth.cancel();
   const sentences = sentencesOf(spoken);
-  reading = { key, source: spoken, sentences: sentences.length > 0 ? sentences : [spoken], index: 0, status: 'playing', onEnd: options.onEnd };
+  reading = { key, source: spoken, raw: text, sentences: sentences.length > 0 ? sentences : [spoken], index: 0, status: 'playing', onEnd: options.onEnd, done: [] };
   publish();
+  over(replaced);
   play(synth, reading);
 }
 
@@ -292,8 +317,10 @@ export function restart(): void {
 export function stop(): void {
   dropWaiting();
   epoch += 1;
+  const ended = reading;
   reading = null;
   publish();
+  over(ended);
   if (!isSupported()) return;
   window.speechSynthesis.cancel();
 }

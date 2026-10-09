@@ -19,6 +19,9 @@ import { FailedNote, OutboxMark } from './OutboxMark';
 import { PendingMark } from './PendingMark';
 import { ShareButton } from './ShareButton';
 import { VoicePlayer } from './VoicePlayer';
+import { ImageViewer } from './ImageViewer';
+import { useViewer } from './useViewer';
+import { openFile } from './openFile';
 import { messageShareText } from '../model/shareText';
 import { sendAnswer } from './send';
 import { useOneTap } from './oneTap';
@@ -61,15 +64,6 @@ function AttachmentView({ attachment, direction }: { attachment: Attachment; dir
   );
 }
 
-/** Saves an object URL as a file of this name: the tap on a file the app does not show. */
-function download(url: string, name: string | undefined): void {
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name ?? 'file';
-  link.rel = 'noopener';
-  link.click();
-}
-
 function fileSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
@@ -80,8 +74,7 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
   const [error, setError] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const inline = attachment.mime.startsWith('image/') || attachment.mime.startsWith('audio/');
-  // A type the browser shows (a PDF, plain text) opens in a tab; any other file downloads.
-  const shown = inline || attachment.mime === 'application/pdf' || attachment.mime === 'text/plain';
+  const viewer = useViewer();
   const { reconnects } = useLive();
   // A failed load is tried again by itself once, when the stream reconnects or
   // the app returns to the foreground; after that it waits for a tap on Retry.
@@ -138,8 +131,9 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
     if (!key) return;
     try {
       const opened = url ?? (await openAttachment(attachment, { key, direction }));
-      if (shown) window.open(opened, '_blank', 'noopener');
-      else download(opened, attachment.name);
+      // a picture opens full screen; a PDF or text in a new tab; any other file downloads
+      if (attachment.mime.startsWith('image/')) viewer.open({ src: opened, name: attachment.name });
+      else openFile(opened, attachment.mime, attachment.name);
     } catch (err) {
       failed.current = true;
       setError(err instanceof Error ? err.message : String(err));
@@ -158,9 +152,12 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
   }
   if (attachment.mime.startsWith('image/')) {
     return url ? (
-      <button type="button" onClick={() => void open()} className="block overflow-hidden rounded-xl">
-        <img src={url} alt="Attached image" className="max-h-80 w-auto max-w-full object-contain" />
-      </button>
+      <>
+        <button type="button" aria-label="View picture" onClick={() => void open()} className="block overflow-hidden rounded-xl">
+          <img src={url} alt="Attached image" className="max-h-80 w-auto max-w-full object-contain" />
+        </button>
+        {viewer.shown && <ImageViewer src={viewer.shown.src} name={viewer.shown.name} onClose={viewer.close} />}
+      </>
     ) : (
       <div className="flex h-40 w-56 max-w-full items-center justify-center rounded-xl bg-sunken text-faint">
         <Icon name="image" size={24} />

@@ -23,3 +23,13 @@ import { setChainReadGapMs } from '../src/services/chainPacer';
 beforeAll(() => {
   setChainReadGapMs(0);
 });
+
+// What the cockpit's hooks remember between mounts (src/cockpit/lastKnown.ts) is one test's phone, not
+// the next's. A feature scenario is one phone across its steps, each its own test (vitest-cucumber): it is
+// forgotten at the start of a test and at a scenario's Given, and kept through its When, Then and And.
+import { beforeEach } from 'vitest';
+import { forgetLastKnown } from '../src/cockpit/lastKnown';
+
+beforeEach(({ task }) => {
+  if (!/^(When|Then|And|But) /.test(task.name)) forgetLastKnown();
+});

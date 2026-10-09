@@ -4,39 +4,29 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SpeakAll } from '../../src/cockpit/Conversation';
 import { stop } from '../../src/services/speech';
+import { installHonestSpeech, type HonestSpeech } from '../support/honest-speech';
 import type { ConversationItem } from '../../src/model/conversation';
-
-class FakeUtterance {
-  onend: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  text: string;
-  constructor(text: string) {
-    this.text = text;
-  }
-}
 
 const items = [{ id: 'm1', speaker: 'mayor', text: 'Three things landed.' }] as unknown as ConversationItem[];
 
 describe('the header speaker reads the Mayor\'s last message, then stops it', () => {
-  const utterances: FakeUtterance[] = [];
-  const cancel = vi.fn();
+  let speech: HonestSpeech;
+  let cancel: ReturnType<typeof vi.fn>;
   beforeEach(() => {
-    utterances.length = 0;
-    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
-    vi.stubGlobal('speechSynthesis', { speak: (u: FakeUtterance) => utterances.push(u), cancel, getVoices: () => [] });
+    speech = installHonestSpeech();
     stop();
-    cancel.mockClear();
+    cancel = vi.spyOn(speech.synth, 'cancel');
   });
   afterEach(() => {
     cleanup();
     stop();
-    vi.unstubAllGlobals();
+    speech.uninstall();
   });
 
   it('shows Stop reading while it reads, stops on a second tap', async () => {
     render(<SpeakAll items={items} />);
     await userEvent.click(screen.getByRole('button', { name: "Read the Mayor's last message aloud" }));
-    expect(utterances).toHaveLength(1);
+    expect(speech.log).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Stop reading' }));
     expect(cancel).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('button', { name: "Read the Mayor's last message aloud" })).toBeInTheDocument();
@@ -45,7 +35,7 @@ describe('the header speaker reads the Mayor\'s last message, then stops it', ()
   it('goes back to the speaker when the reading ends by itself', async () => {
     render(<SpeakAll items={items} />);
     await userEvent.click(screen.getByRole('button', { name: "Read the Mayor's last message aloud" }));
-    act(() => utterances[0].onend?.());
+    act(() => speech.finish());
     expect(screen.getByRole('button', { name: "Read the Mayor's last message aloud" })).toBeInTheDocument();
   });
 });

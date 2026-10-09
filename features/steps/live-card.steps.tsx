@@ -134,6 +134,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     await sendCard(title, [a, b, c]);
     render(<NeedsScreen />);
     await screen.findByRole('article', { name: `Card: ${title}` });
+    // The card and the view are two reads: settle on the view too, or a link reads its bead id for a moment (a loaded host showed it).
+    await screen.findByRole('region', { name: 'Waiting on you' });
   };
   const GIVEN_CARD = 'Needs you is open and the Mayor has sent a card titled {string} with three items on beads {string}, {string} and {string}';
 

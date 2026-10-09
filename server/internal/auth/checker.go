@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/chain"
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
 )
 
@@ -32,6 +34,7 @@ type checkerEntry struct {
 	collections []string
 	checkedAt   time.Time
 	restored    bool // read back from disk at start, by an earlier life of the backend
+	kept        bool // its key's history is too long to read: the last good answer stands until a walk reads it
 }
 
 // walkCall is one chain walk in flight for a key; everyone who wants that
@@ -41,6 +44,15 @@ type walkCall struct {
 	done        chan struct{}
 	collections []string
 	err         error
+}
+
+// backoff is a key whose refresh the chain refused (a 429) or could not read
+// (a history past the pages read): nothing is asked of the chain for it until
+// until, and the answer it has stands meanwhile, however old. err is what the
+// caller of a key with no answer is told.
+type backoff struct {
+	until time.Time
+	err   error
 }
 
 // DefaultStaleGrace is how long past its ttl a key's last good answer is
@@ -66,13 +78,15 @@ type CachedChecker struct {
 	ttl    time.Duration
 	grace  time.Duration
 	now    func() time.Time
-	walk   func(address string) ([]string, error)
+	find   func(address string, remembered []licence.Mint) (licence.Result, error)
 
 	persistPath string // where answers are kept across restarts; empty keeps them in memory only
 	persistMu   sync.Mutex
 
 	mu       sync.Mutex
 	cache    map[string]checkerEntry
+	mints    map[string][]licence.Mint // each key's licence mints, remembered so a check need not find them again
+	backoffs map[string]backoff
 	inflight map[string]*walkCall
 
 	background sync.WaitGroup // background refreshes started and not yet finished
@@ -114,7 +128,15 @@ func WithPersistence(path string) CachedCheckerOption {
 
 // withWalk replaces the chain walk itself, so a test can script its answers.
 func withWalk(walk func(address string) ([]string, error)) CachedCheckerOption {
-	return func(c *CachedChecker) { c.walk = walk }
+	return withFind(func(address string, _ []licence.Mint) (licence.Result, error) {
+		collections, err := walk(address)
+		return licence.Result{Collections: collections}, err
+	})
+}
+
+// withFind is withWalk for a test that scripts the mints too.
+func withFind(find func(address string, remembered []licence.Mint) (licence.Result, error)) CachedCheckerOption {
+	return func(c *CachedChecker) { c.find = find }
 }
 
 // NewCachedChecker builds a CachedChecker backed by reader, caching each
@@ -126,10 +148,12 @@ func NewCachedChecker(reader licence.Reader, ttl time.Duration, opts ...CachedCh
 		grace:    DefaultStaleGrace,
 		now:      time.Now,
 		cache:    make(map[string]checkerEntry),
+		mints:    make(map[string][]licence.Mint),
+		backoffs: make(map[string]backoff),
 		inflight: make(map[string]*walkCall),
 	}
-	c.walk = func(address string) ([]string, error) {
-		return licence.HeldCollections(c.reader, address, c.rule)
+	c.find = func(address string, remembered []licence.Mint) (licence.Result, error) {
+		return licence.Find(c.reader, address, c.rule, remembered)
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -167,6 +191,10 @@ func (c *CachedChecker) HeldCollections(pubKeyHex string) ([]string, error) {
 		}
 		return collections, nil
 	}
+	if wait, backed := c.backoffs[pubKeyHex]; backed && c.now().Before(wait.until) {
+		c.mu.Unlock()
+		return nil, wait.err // no retry inside the backoff, to a chain that said not now
+	}
 	call, started := c.startWalkLocked(pubKeyHex, address)
 	c.mu.Unlock()
 	if started {
@@ -187,7 +215,7 @@ func (c *CachedChecker) CachedCollections(pubKeyHex string) ([]string, bool) {
 
 	c.mu.Lock()
 	collections, ok, refresh := c.servedLocked(pubKeyHex, address)
-	if !ok {
+	if wait, backed := c.backoffs[pubKeyHex]; !ok && !(backed && c.now().Before(wait.until)) {
 		if call, started := c.startWalkLocked(pubKeyHex, address); started {
 			refresh = call
 		}
@@ -214,7 +242,12 @@ func (c *CachedChecker) servedLocked(key, address string) (collections []string,
 	if age < c.ttl && !entry.restored {
 		return entry.collections, true, nil
 	}
-	if age < c.ttl+c.grace || (entry.restored && age < RestoredMaxAge) {
+	wait, backed := c.backoffs[key]
+	backed = backed && c.now().Before(wait.until)
+	if backed {
+		return entry.collections, true, nil // the chain said not now: serve what we have, ask nothing
+	}
+	if age < c.ttl+c.grace || (entry.restored && age < RestoredMaxAge) || entry.kept {
 		if call, started := c.startWalkLocked(key, address); started {
 			refresh = call
 		}
@@ -237,20 +270,72 @@ func (c *CachedChecker) startWalkLocked(key, address string) (call *walkCall, st
 }
 
 // run walks the chain for key's address, caches a good answer, and releases
-// everyone waiting on call.
+// everyone waiting on call. A walk the chain refuses (429) or cannot finish
+// (a history too long to read) puts the key in a backoff of the grace: its
+// last good answer is kept and nothing is asked of the chain until the
+// backoff is over; a history too long to read keeps that answer indefinitely,
+// and says so in the log.
 func (c *CachedChecker) run(key, address string, call *walkCall) {
-	collections, err := c.walk(address)
 	c.mu.Lock()
-	if err == nil {
-		c.cache[key] = checkerEntry{collections: collections, checkedAt: c.now()}
+	remembered := append([]licence.Mint(nil), c.mints[key]...)
+	c.mu.Unlock()
+
+	result, err := c.find(address, remembered)
+	if err != nil {
+		err = explain(key, err)
+	}
+
+	c.mu.Lock()
+	switch {
+	case err == nil:
+		c.cache[key] = checkerEntry{collections: result.Collections, checkedAt: c.now()}
+		if len(result.Mints) > 0 {
+			c.mints[key] = result.Mints
+		} else {
+			delete(c.mints, key)
+		}
+		delete(c.backoffs, key)
+	case isRateLimited(err):
+		c.backoffs[key] = backoff{until: c.now().Add(c.grace), err: err}
+	case isHistoryTooLong(err):
+		c.backoffs[key] = backoff{until: c.now().Add(c.grace), err: err}
+		if entry, ok := c.cache[key]; ok && !entry.kept {
+			entry.kept = true
+			c.cache[key] = entry
+			log.Printf("licence of %s: %v; keeping the last answer until its history can be read", key, err)
+		}
 	}
 	delete(c.inflight, key)
 	c.mu.Unlock()
 	if err == nil {
 		c.save()
 	}
-	call.collections, call.err = collections, err
+	call.collections, call.err = result.Collections, err
 	close(call.done)
+}
+
+func isRateLimited(err error) bool {
+	var provider *chain.ProviderError
+	return errors.As(err, &provider) && provider.Status == 429
+}
+
+func isHistoryTooLong(err error) bool {
+	var tooLong *chain.HistoryTooLongError
+	return errors.As(err, &tooLong)
+}
+
+// explain says in err which key's licence could not be checked and what to do
+// about it, for the caller (a 502 body) and the log, wrapping err so its kind
+// stays testable.
+func explain(key string, err error) error {
+	var tooLong *chain.HistoryTooLongError
+	switch {
+	case errors.As(err, &tooLong):
+		return fmt.Errorf("cannot check the licence of key %s: %w; its history is too long to read, so set POSTERN_ISSUER_KEY on the backend and it reads only the issuer's history", key, err)
+	case isRateLimited(err):
+		return fmt.Errorf("cannot check the licence of key %s: %w; WhatsOnChain is rate-limiting this backend, try again in a few minutes", key, err)
+	}
+	return fmt.Errorf("cannot check the licence of key %s: %w", key, err)
 }
 
 // refreshInBackground runs refresh on its own goroutine, counted so Wait can
@@ -295,8 +380,9 @@ type answersFile struct {
 }
 
 type persistedAnswer struct {
-	Collections []string  `json:"collections"`
-	CheckedAt   time.Time `json:"checkedAt"`
+	Collections []string       `json:"collections"`
+	CheckedAt   time.Time      `json:"checkedAt"`
+	Mints       []licence.Mint `json:"mints,omitempty"`
 }
 
 // ruleStamp names the licence rule an answer was computed under, so a
@@ -330,6 +416,9 @@ func (c *CachedChecker) restore() {
 	}
 	for key, answer := range file.Answers {
 		c.cache[key] = checkerEntry{collections: answer.Collections, checkedAt: answer.CheckedAt, restored: true}
+		if len(answer.Mints) > 0 {
+			c.mints[key] = answer.Mints
+		}
 	}
 }
 
@@ -347,7 +436,7 @@ func (c *CachedChecker) save() {
 	c.mu.Lock()
 	for key, entry := range c.cache {
 		if len(entry.collections) > 0 {
-			file.Answers[key] = persistedAnswer{Collections: entry.collections, CheckedAt: entry.checkedAt}
+			file.Answers[key] = persistedAnswer{Collections: entry.collections, CheckedAt: entry.checkedAt, Mints: c.mints[key]}
 		}
 	}
 	c.mu.Unlock()

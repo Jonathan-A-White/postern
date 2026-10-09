@@ -15,21 +15,13 @@ import { db } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import type { MessageRow } from '../../src/data/repositories';
 import type { Need } from '../../src/model/view';
+import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 
-class FakeUtterance {
-  onstart: (() => void) | null = null;
-  onend: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  text: string;
-  constructor(text: string) {
-    this.text = text;
-  }
-}
-
-const utterances: FakeUtterance[] = [];
-const speakFn = vi.fn((u: FakeUtterance) => utterances.push(u));
-const cancelFn = vi.fn();
+// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
+let speech: HonestSpeech | null = null;
+let cancelFn = vi.fn();
+const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];
 
 const BEAD = 'mw-f758y.31';
 let now = Date.now();
@@ -90,6 +82,8 @@ const tap = async (name: string, nth = 0) => {
 
 afterAll(() => {
   cleanup();
+  stop();
+  speech?.uninstall();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
 });
@@ -101,11 +95,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     cleanup();
     now = Date.now();
     seeded = [];
-    utterances.length = 0;
-    speakFn.mockClear();
-    cancelFn.mockClear();
-    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
-    vi.stubGlobal('speechSynthesis', { speak: speakFn, cancel: cancelFn, getVoices: () => [] });
+    speech?.uninstall();
+    speech = installHonestSpeech();
+    cancelFn = vi.spyOn(speech.synth, 'cancel');
     stop();
     cancelFn.mockClear();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
@@ -114,7 +106,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
   const starts = async (_c: unknown, label: string) => {
     // a text of several sentences is queued as one utterance each (mw-q6n8m0.9)
-    expect(speakFn).toHaveBeenCalled();
+    expect(spoken().length).toBeGreaterThan(0);
     expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
   };
   const stops = async (_c: unknown, label: string) => {
@@ -167,9 +159,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('he taps {string}', async (_c, label: string) => tap(label));
     And('the phone finishes reading', async () => {
       await screen.findByRole('button', { name: 'Stop reading' });
-      act(() => {
-        for (const utterance of utterances) utterance.onend?.();
-      });
+      act(() => speech!.finishAll());
     });
     Then('the button says {string} again', async (_c, label: string) => {
       expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
@@ -192,13 +182,13 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await waitFor(() => expect(screen.getAllByRole('button', { name: label })).toHaveLength(1));
       const all = screen.getAllByRole('button', { name: /^(Read aloud|Stop reading)$/ });
       expect(all.map((b) => b.getAttribute('aria-label'))).toEqual(['Read aloud', 'Stop reading']); // thread order: first, second
-      expect(speakFn).toHaveBeenCalledTimes(2);
+      expect(spoken()).toHaveLength(2);
     });
   });
 
   // mw-q6n8m0.9: the speaking bar. The message's sentences are queued on the (fake) synthesiser at once, one utterance each.
   let mark = 0;
-  const spokenSince = () => speakFn.mock.calls.slice(mark).map((call) => (call[0] as FakeUtterance).text);
+  const spokenSince = () => spoken().slice(mark);
   const barButtons = () => within(screen.getByRole('region', { name: 'Speaking' })).getAllByRole('button');
   const bar = async (_c: unknown, a: string, b: string, c: string) => {
     await screen.findByRole('region', { name: 'Speaking' });
@@ -206,7 +196,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     for (const button of barButtons()) expect(button.className).toContain('min-h-11');
   };
   const tapsInBar = async (_c: unknown, label: string) => {
-    mark = speakFn.mock.calls.length;
+    mark = spoken().length;
     await userEvent.click(within(await screen.findByRole('region', { name: 'Speaking' })).getByRole('button', { name: label }));
   };
   const opensInShell = async (_c: unknown, label: string) => {
@@ -225,9 +215,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the speaking bar offers {string}, {string} and {string}', bar);
     When('the phone has begun the second sentence', () => {
       act(() => {
-        utterances[0].onstart?.();
-        utterances[0].onend?.();
-        utterances[1].onstart?.();
+        speech!.advance(0); // the engine begins the first sentence
+        speech!.finish(); // it ends and the engine begins the second
       });
     });
     And('he taps {string} in the bar', tapsInBar);

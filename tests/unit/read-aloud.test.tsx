@@ -12,20 +12,13 @@ import { stop } from '../../src/services/speech';
 import { db } from '../../src/data/db';
 import { eventsRepo, messagesRepo, viewRepo } from '../../src/data/repositories';
 import type { Need } from '../../src/model/view';
+import { installHonestSpeech, type HonestSpeech } from '../support/honest-speech';
 import { fixtureView } from '../support/cockpit-fixture';
 
-class FakeUtterance {
-  onend: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  text: string;
-  constructor(text: string) {
-    this.text = text;
-  }
-}
-
-const utterances: FakeUtterance[] = [];
-const speakFn = vi.fn((u: FakeUtterance) => utterances.push(u));
-const cancelFn = vi.fn();
+// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
+let speech: HonestSpeech | null = null;
+let cancelFn = vi.fn();
+const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];
 const BEAD = 'mw-f758y.31';
 
 const question: Need = {
@@ -42,13 +35,16 @@ const question: Need = {
 } as Need;
 
 function canSpeak(): void {
-  vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
-  vi.stubGlobal('speechSynthesis', { speak: speakFn, cancel: cancelFn, getVoices: () => [] });
+  speech?.uninstall();
+  speech = installHonestSpeech();
+  cancelFn = vi.spyOn(speech.synth, 'cancel');
   stop();
   cancelFn.mockClear();
 }
 
 function cannotSpeak(): void {
+  speech?.uninstall();
+  speech = null;
   vi.unstubAllGlobals();
   Reflect.deleteProperty(window, 'speechSynthesis');
 }
@@ -88,9 +84,6 @@ const speakers = () => screen.queryAllByRole('button', { name: /^(Read aloud|Rea
 
 beforeEach(async () => {
   cleanup();
-  utterances.length = 0;
-  speakFn.mockClear();
-  cancelFn.mockClear();
   await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.events.clear(), db.beadDetails.clear()]);
   await seed();
   window.history.replaceState(null, '', '/?v=talk&t=general');
@@ -98,6 +91,9 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup();
+  stop();
+  speech?.uninstall();
+  speech = null;
   vi.unstubAllGlobals();
 });
 
@@ -121,7 +117,7 @@ describe.each(SCREENS)('$name', ({ show, ready }) => {
     const { unmount } = show();
     await ready();
     await userEvent.click((await screen.findAllByRole('button', { name: /^Read (aloud|the description aloud)$/ }))[0]);
-    expect(speakFn).toHaveBeenCalled();
+    expect(spoken().length).toBeGreaterThan(0);
     cancelFn.mockClear();
     unmount();
     expect(cancelFn).toHaveBeenCalledTimes(1);
@@ -142,7 +138,7 @@ describe('what a need reads aloud', () => {
     render(<NeedCard need={question} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Read aloud' }));
     // one utterance per sentence (mw-q6n8m0.9)
-    const said = utterances.map((utterance) => utterance.text).join(' ');
+    const said = spoken().join(' ');
     expect(said).toContain('Release the held story?');
     expect(said).toContain('The Mayor recommends Release it.');
     expect(said).not.toContain('recommends A');
@@ -155,6 +151,6 @@ describe('what a need reads aloud', () => {
     canSpeak();
     render(<NeedCard need={{ ...question, kind: 'alarm', recommended: '', options: [] } as Need} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Read aloud' }));
-    expect(utterances.map((utterance) => utterance.text).join(' ')).not.toContain('recommends');
+    expect(spoken().join(' ')).not.toContain('recommends');
   });
 });

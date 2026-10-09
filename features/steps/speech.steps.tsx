@@ -8,20 +8,13 @@ import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { NeedCard } from '../../src/cockpit/NeedCard';
 import { stop } from '../../src/services/speech';
 import { db } from '../../src/data/db';
+import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import type { Need } from '../../src/model/view';
 
-class FakeUtterance {
-  onend: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  text: string;
-  constructor(text: string) {
-    this.text = text;
-  }
-}
-
-const utterances: FakeUtterance[] = [];
-const speakFn = vi.fn((u: FakeUtterance) => utterances.push(u));
-const cancelFn = vi.fn();
+// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
+let speech: HonestSpeech | null = null;
+let cancelFn = vi.fn();
+const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];
 
 function need(over: Partial<Need> = {}): Need {
   return {
@@ -43,6 +36,8 @@ let unmount: () => void = () => undefined;
 
 afterAll(() => {
   cleanup();
+  stop();
+  speech?.uninstall();
   vi.unstubAllGlobals();
 });
 
@@ -52,15 +47,14 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   BeforeEachScenario(async () => {
     cleanup();
     vi.unstubAllGlobals();
-    utterances.length = 0;
-    speakFn.mockClear();
-    cancelFn.mockClear();
+    speech?.uninstall();
+    speech = null;
     await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
   });
 
   const supported = () => {
-    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
-    vi.stubGlobal('speechSynthesis', { speak: speakFn, cancel: cancelFn, getVoices: () => [] });
+    speech = installHonestSpeech();
+    cancelFn = vi.spyOn(speech.synth, 'cancel');
     stop();
     cancelFn.mockClear();
   };
@@ -83,7 +77,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('a Needs card is shown and he has tapped {string}', async (_c, label: string) => {
       unmount = render(<NeedCard need={need()} />).unmount;
       await userEvent.click(await screen.findByRole('button', { name: label }));
-      expect(speakFn).toHaveBeenCalled();
+      expect(spoken().length).toBeGreaterThan(0);
       cancelFn.mockClear();
     });
     When('the screen is left', () => unmount());
@@ -103,7 +97,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the phone says the question, then {string}, then {string}', (_c, recommends: string, options: string) => {
       // one utterance per sentence (mw-q6n8m0.9)
-      const said = utterances.map((utterance) => utterance.text).join(' ');
+      const said = spoken().join(' ');
       expect(said).toContain('Release the held story?');
       expect(said.indexOf('Release the held story?')).toBeLessThan(said.indexOf(recommends));
       expect(said.indexOf(recommends)).toBeLessThan(said.indexOf(options));

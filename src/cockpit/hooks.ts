@@ -7,6 +7,8 @@ import { liveQuery } from 'dexie';
 import type { AnswerRow, ArchiveChoices, BeadDetailRow, CardRow, EventRow, MessageRow, OutboxRow, ViewRow } from '../data/db';
 import { answersRepo, bannerMsLeft, beadDetailsRepo, cardsRepo, eventsRepo, messagesRepo, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
 import { liveCard, type LiveCard } from '../model/cards';
+import { splitArchive } from '../model/cardArchive';
+import { useNow } from '../ui/useNow';
 import { decodeBeadDetail, decodeView, type BeadComment, type BeadDetail } from '../model/view';
 import { indexView, type ViewIndex } from '../model/tree';
 import { getKey, onKeyChange } from '../services/keySession';
@@ -116,6 +118,15 @@ export function useThreadMessages(threadKey: string | undefined, held?: readonly
 export function useCards(): LiveCard[] {
   const rows = useLiveQuery(() => cardsRepo.getAll(), [], [] as CardRow[]);
   return useMemo(() => rows.map(liveCard).filter((card): card is LiveCard => card !== undefined).sort((a, b) => b.sentAt - a.sentAt), [rows]);
+}
+
+/** The live cards split at 48 h untouched (mw-v1uyku.1): the fresh ones for Needs you, the archived ones newest touch first.
+ * A message that names one of a card's beads counts as a touch. Nothing is deleted. */
+export function useCardArchive(): { fresh: LiveCard[]; archived: LiveCard[] } {
+  const cards = useCards();
+  const messages = useMessages();
+  const at = useNow(60_000);
+  return useMemo(() => splitArchive(cards, messages, at), [cards, messages, at]);
 }
 
 /** What he archived or brought back by hand in Talk, on this device. */

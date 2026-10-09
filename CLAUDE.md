@@ -50,7 +50,7 @@ src/
 ├── router.ts            # ?v= links as pushState; useRoute, navigate, goBack
 ├── nav/route.ts         # every place as a URL (old ?screen= links still land)
 ├── cockpit/             # the screens: Shell, NeedsScreen, MapScreen (board/graph/list), BeadScreen,
-│                        #   TalkScreen, SearchScreen, MeScreen, ShareScreen, Gate; Composer, Conversation;
+│                        #   TalkScreen, SearchScreen, MeScreen, ShareScreen, ArchiveScreen (cards untouched 48 h), Gate; Composer, Conversation;
 │                        #   hooks.ts (Dexie live queries) and send.ts (what a tap delivers)
 ├── model/               # pure: the live view (§11/§12) and snapshot fallback, the tree and its
 │                        #   columns, graph layout, filters, search, conversations, needs, threads

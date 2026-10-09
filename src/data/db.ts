@@ -179,6 +179,8 @@ export interface CardRow {
   card?: { title: string; prompt?: string; items: StoredCardItem[]; subscribe: { kinds: string[]; beads: string[] }; ts: number };
   updates: StoredCardUpdate[];
   ticks: Record<string, number>;
+  /** When he last tapped a link on the card (ms): a touch that keeps it out of the archive (mw-v1uyku.1). */
+  touchedAt?: number;
 }
 
 /** plans/0021: one bead's full detail (docs/protocol.md §12), decrypted, kept for

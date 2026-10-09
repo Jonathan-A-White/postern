@@ -8,7 +8,7 @@ import { deriveMasterKey, deriveAesKeyFromPhrase, wrapKey, publicKeyHexFromMaste
 import { sealDocument } from '../../src/services/documents';
 import { encryptAttachment } from '../../src/services/messages';
 import type { Need, View, ViewBead } from '../../src/model/view';
-import { MAYOR, fixtureDetail, fixtureRecords, fixtureView, liveCardRecords, longOptionRecords, longThreadRecords, manyChannelRecords } from '../support/cockpit-fixture';
+import { MAYOR, archivedCardRecords, fixtureDetail, fixtureRecords, fixtureView, liveCardRecords, longOptionRecords, longThreadRecords, manyChannelRecords } from '../support/cockpit-fixture';
 
 export async function seedVault(page: Page, mnemonic: string): Promise<string> {
   const key = await deriveMasterKey(mnemonic);
@@ -67,6 +67,8 @@ export interface StubExtras {
   manyChannels?: boolean;
   /** Adds a live card, an update to it and an events record that ticks one of its items (mw-nqur1n.11). */
   liveCard?: boolean;
+  /** Adds a live card sent three days ago, untouched since: archived (mw-v1uyku.1). */
+  archivedCard?: boolean;
 }
 
 export async function stubBackend(
@@ -89,6 +91,7 @@ export async function stubBackend(
   if (extras.longThread) records.push(...longThreadRecords(governor, now, records.length));
   if (extras.manyChannels) records.push(...manyChannelRecords(governor, now, records.length));
   if (extras.liveCard) records.push(...liveCardRecords(governor, now, records.length));
+  if (extras.archivedCard) records.push(...archivedCardRecords(governor, now, records.length));
   const posted: string[] = [];
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 

@@ -103,6 +103,8 @@ export interface LiveCard {
   subscribe: { kinds: string[]; beads: string[] };
   /** Every item is done, so the card has left You for Done. */
   done: boolean;
+  /** The last time anything happened to it (ms): sent, updated, an item ticked, or a link of it tapped (mw-v1uyku.1). */
+  touchedAt: number;
 }
 
 function unique(values: string[]): string[] {
@@ -142,6 +144,7 @@ export function liveCard(row: CardRow): LiveCard | undefined {
     }
   }
   const items = [...byN.values()].sort((a, b) => a.n - b.n);
+  const touchedAt = Math.max(card.ts * 1000, ...updates.map((update) => update.ts * 1000), ...items.map((item) => item.doneAt ?? 0), row.touchedAt ?? 0);
   const kinds = [...card.subscribe.kinds];
   const beads = [...card.subscribe.beads];
   for (const item of items) {
@@ -160,6 +163,7 @@ export function liveCard(row: CardRow): LiveCard | undefined {
     items,
     subscribe: { kinds: unique(kinds), beads: unique(beads) },
     done: items.length > 0 && items.every((item) => item.done),
+    touchedAt,
   };
 }
 

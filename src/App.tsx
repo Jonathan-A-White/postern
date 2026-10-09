@@ -27,6 +27,7 @@ import { ShareScreen } from './cockpit/ShareScreen';
 import { NoticeScreen } from './cockpit/NoticeScreen';
 import { AlarmScreen } from './cockpit/AlarmScreen';
 import { EmergencyScreen } from './cockpit/EmergencyScreen';
+import { ArchiveScreen } from './cockpit/ArchiveScreen';
 import { ToastHost } from './ui/toast';
 import { answerSeen } from './services/seen';
 import { sendCallLater } from './cockpit/send';
@@ -61,6 +62,8 @@ function Place({ route }: { route: Route }) {
       return <AlarmScreen title={route.title} body={route.body} ts={route.ts} />;
     case 'emergency':
       return <EmergencyScreen />;
+    case 'archive':
+      return <ArchiveScreen />;
     default:
       return <NeedsScreen who={route.view === 'needs' ? route.who : undefined} />;
   }

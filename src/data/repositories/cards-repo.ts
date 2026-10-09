@@ -37,4 +37,13 @@ export const cardsRepo = {
       await db.cards.put({ ...row, ticks: { ...row.ticks, ...Object.fromEntries(fresh) } });
     });
   },
+
+  /** He tapped a link on the card: it counts as touched from now (never earlier than a touch held already). */
+  async touch(id: string): Promise<void> {
+    await db.transaction('rw', db.cards, async () => {
+      const row = await db.cards.get(id);
+      if (!row) return;
+      await db.cards.put({ ...row, touchedAt: Math.max(row.touchedAt ?? 0, Date.now()) });
+    });
+  },
 };

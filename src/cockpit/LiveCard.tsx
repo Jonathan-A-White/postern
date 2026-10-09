@@ -2,16 +2,16 @@
 // numbered list, each item with the beads it links to, where he can go to do it. The card
 // listens (useEvents) to the beads and kinds it names and ticks an item off itself, with the
 // event's time, when the state that item expects arrives; a card-update changes this same card.
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Markdown } from '../markdown';
 import { cardShareText, shareTitle as titleOfShare } from '../model/shareText';
 import { ShareButton } from './ShareButton';
 import { Chip, Icon, cx } from '../ui';
 import { clockTime } from '../services/age';
 import { beadHref } from '../nav/route';
-import { tickFromEvents } from '../services/cards';
-import { useEvents } from '../services/events';
+import { cardsRepo } from '../data/repositories';
 import { useCards, useViewIndex } from './hooks';
+import { useCardTicking } from './useCardTicking';
 import type { LiveCard as LiveCardData } from '../model/cards';
 
 export interface LiveCardProps {
@@ -20,21 +20,28 @@ export interface LiveCardProps {
   titleOf?: (bead: string) => string | undefined;
   /** The title Share gives the phone's share sheet (shareTitle() of its channel). */
   shareTitle?: string;
+  /** False where something else already listens for this card's events (the archive's CardTickers). */
+  ticking?: boolean;
 }
 
-export function LiveCard({ card, titleOf, shareTitle = titleOfShare() }: LiveCardProps) {
-  const heard = useEvents({ kinds: card.subscribe.kinds, beads: card.subscribe.beads });
-  // The items still waiting on an event, as a key, so the effect runs when the set changes and not on every render.
-  const waiting = card.items.filter((item) => !item.done && item.expect).map((item) => `${item.n}:${item.since}`).join(',');
-  const beads = card.subscribe.beads.join(',');
-  useEffect(() => {
-    if (waiting !== '') void tickFromEvents(card);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heard, waiting, beads]);
+function Ticking({ card }: { card: LiveCardData }) {
+  useCardTicking(card);
+  return null;
+}
 
+export function LiveCard({ card, titleOf, shareTitle = titleOfShare(), ticking = true }: LiveCardProps) {
   const done = card.items.filter((item) => item.done).length;
   return (
-    <article className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-surface p-4" data-testid="live-card" aria-label={`Card: ${card.title}`}>
+    // A tap on any link in the card (an item's bead links, or a bead id or address in its text) counts as touching it (mw-v1uyku.1).
+    <article
+      className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-surface p-4"
+      data-testid="live-card"
+      aria-label={`Card: ${card.title}`}
+      onClick={(event) => {
+        if (event.target instanceof Element && event.target.closest('a')) void cardsRepo.touch(card.id);
+      }}
+    >
+      {ticking && <Ticking card={card} />}
       <div className="flex items-center gap-2">
         <Chip tone={card.done ? 'done' : 'needs'} icon={card.done ? 'check' : 'list'}>
           Card

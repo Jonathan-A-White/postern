@@ -4,9 +4,9 @@
 // (a hands-free profile, a headset) is among the phone's inputs it is chosen and opened
 // here, so the recogniser can be handed its track; with none, nothing is chosen and the
 // default microphone is used. Everything fails to a value: a refusal means the default.
-// A hold also learns whether the phone has a Bluetooth input at all, a silent one included: on
-// Android, Chrome's default microphone is then the Bluetooth one, so the voice recorder must not
-// open it beside a recogniser that listens on the phone's own microphone (mw-f7gmps.1).
+// openHoldInput also says whether the phone has a Bluetooth input at all, a silent one included: on
+// Android, Chrome's default microphone is then the Bluetooth one (mw-f7gmps.1). The hold's voice
+// recorder no longer asks: it opens no microphone of its own on a phone at all (mw-f7gmps.2).
 import type { MicInput } from './listen';
 
 export interface InputDevice {

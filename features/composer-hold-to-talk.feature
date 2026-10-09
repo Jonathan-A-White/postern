@@ -100,3 +100,12 @@ Feature: The composer's mic is the Talk line's hold-to-talk (mw-q6n8m0.3)
     And he presses and holds the bar again
     Then the recogniser listens on the default input at once
     And the earbuds are not opened again
+
+  Scenario: AC-12: on a phone with only its own microphone the hold hears him as the Talk line's does, with no recorder holding the microphone beside the recogniser (mw-f7gmps.2)
+    Given the phone has only the input "Phone microphone"
+    And the recogniser hears nothing while a voice recorder holds the microphone
+    And the composer is open
+    When he taps the mic beside Send
+    And he holds the bar and says "check the build" and lets go
+    Then one message is delivered with the words "check the build"
+    And no voice recorder opened the microphone beside the recogniser

@@ -25,6 +25,11 @@ const doubles = vi.hoisted(() => ({
   uploads: 0,
   key: new Uint8Array(32).fill(7),
   mayorKey: '',
+  // Voice recorders recording a microphone of their own (no track handed in), now and over the scenario (mw-f7gmps.2).
+  recorderMics: 0,
+  recorderOpenedMic: false,
+  // Android hands the microphone to the page's capture: the recogniser on the default microphone hears silence.
+  recorderStarvesRecogniser: false,
 }));
 
 doubles.mayorKey = PrivateKey.fromRandom().toPublicKey().toString();
@@ -48,11 +53,24 @@ vi.mock('../../src/services/recorder', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/recorder')>()),
   canRecord: () => true,
   VoiceRecorder: class {
-    async start() {}
+    private ownMic = false;
+    async start(track?: unknown) {
+      if (track) return;
+      this.ownMic = true;
+      doubles.recorderMics += 1;
+      doubles.recorderOpenedMic = true;
+    }
+    private release() {
+      if (this.ownMic) doubles.recorderMics -= 1;
+      this.ownMic = false;
+    }
     async stop() {
+      this.release();
       return { blob: new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'audio/webm' }), mime: 'audio/webm', durationMs: 3000 };
     }
-    cancel() {}
+    cancel() {
+      this.release();
+    }
   },
 }));
 
@@ -115,7 +133,10 @@ afterAll(() => {
 
 const hear = (text: string) =>
   act(() => {
-    recognizers.at(-1)?.onresult?.({ results: [[{ transcript: text }]] });
+    const recognizer = recognizers.at(-1);
+    // a recorder on a microphone of its own takes the phone's capture: the recogniser on the default microphone hears silence
+    if (doubles.recorderStarvesRecogniser && doubles.recorderMics > 0 && recognizer?.startedWith === undefined) return;
+    recognizer?.onresult?.({ results: [[{ transcript: text }]] });
   });
 
 const bar = () => screen.getByRole('button', { name: /^(Hold to talk|Release to send|Let go to drop|Starting the mic…)$/ });
@@ -142,6 +163,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     setKey(doubles.key);
     doubles.delivered = [];
     doubles.uploads = 0;
+    doubles.recorderMics = 0;
+    doubles.recorderOpenedMic = false;
+    doubles.recorderStarvesRecogniser = false;
     forgetOutboxState();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.outbox.clear()]);
     vi.stubGlobal(
@@ -430,6 +454,22 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the earbuds are not opened again', () => {
       expect(opened).not.toContain('buds');
+    });
+  });
+  Scenario("AC-12: on a phone with only its own microphone the hold hears him as the Talk line's does, with no recorder holding the microphone beside the recogniser (mw-f7gmps.2)", ({ Given, When, And, Then }) => {
+    Given('the phone has only the input {string}', (_c, label: string) => {
+      setInputs([{ deviceId: 'phone', label }]);
+    });
+    And('the recogniser hears nothing while a voice recorder holds the microphone', () => {
+      doubles.recorderStarvesRecogniser = true;
+    });
+    And('the composer is open', open);
+    When('he taps the mic beside Send', tapMic);
+    And('he holds the bar and says {string} and lets go', holdSayAndLetGo);
+    Then('one message is delivered with the words {string}', oneMessageWith);
+    And('no voice recorder opened the microphone beside the recogniser', () => {
+      expect(doubles.recorderOpenedMic).toBe(false);
+      expect(recognizers.every((recognizer) => recognizer.startedWith === undefined)).toBe(true);
     });
   });
 });

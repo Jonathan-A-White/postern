@@ -5,11 +5,14 @@
 // release hands back the audio beside the words. The recorder takes the recogniser's microphone and
 // never opens another (mw-f7gmps.1): on Android a second capture moves the phone onto the Bluetooth
 // route the recogniser hears nothing on. On a chosen input it records a copy of the input's track;
-// when the hold leaves that input for the default microphone the recording goes with it; on the
-// default microphone it records only when the phone has no Bluetooth input at all.
+// when the hold leaves that input for the default microphone the recording goes with it. On a phone's
+// default microphone it does not record at all, so the hold opens what the Talk line's does: there the
+// recogniser opens the microphone itself (Android's speech service, outside the page), and a capture the
+// page holds beside it takes the microphone, so the recogniser hears silence and the hold ends with
+// 'No speech was heard.' (mw-f7gmps.2). Only a browser that cannot list its inputs records the default microphone.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isListenSupported, startListening, type ListenMode, type ListenSession } from '../services/listen';
-import { canChooseInput, openHoldInput } from '../services/micInput';
+import { canChooseInput, openBluetoothInput } from '../services/micInput';
 import { canRecord, VoiceRecorder, type Recording } from '../services/recorder';
 
 function buzz(ms: number): void {
@@ -94,12 +97,10 @@ export function useHold({ record = false, onFailed }: HoldOptions = {}) {
       onStart: () => hold.current === thisHold && setMic('ready'),
       openInput: choosing
         ? async () => {
-            const opened = await openHoldInput();
-            if (recordHold && hold.current === thisHold) {
-              if (opened.input) startRecording(opened.input.track);
-              else if (!opened.bluetooth) startRecording();
-            }
-            return opened.input;
+            const opened = await openBluetoothInput();
+            // a copy of the chosen input's track, never a microphone of its own beside the recogniser's
+            if (recordHold && opened && hold.current === thisHold) startRecording(opened.track);
+            return opened;
           }
         : undefined,
       onInput: (label) => {

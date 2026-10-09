@@ -207,7 +207,7 @@ describe('the voice recorder in a hold with a chosen input (mw-f7gmps.1)', () =>
     expect(recorders).toHaveLength(1);
   });
 
-  it('records the default microphone, as before, when the phone has no Bluetooth input', async () => {
+  it("opens no microphone beside the recogniser when the phone has no Bluetooth input, as the Talk line's hold does (mw-f7gmps.2)", async () => {
     phoneHas([
       { deviceId: 'e', label: 'Headset earpiece' },
       { deviceId: 'phone', label: 'Phone microphone' },
@@ -218,9 +218,16 @@ describe('the voice recorder in a hold with a chosen input (mw-f7gmps.1)', () =>
     });
     await pass();
     expect(recognizers.at(-1)?.startedWith).toBeUndefined();
-    expect(devicesOpened()).toEqual(['default']);
-    expect(recorders).toHaveLength(1);
-    expect(recorders[0].stream.getTracks()[0]).toMatchObject({ device: 'default', copy: false });
+    expect(devicesOpened()).toEqual([]);
+    expect(recorders).toHaveLength(0);
+    act(() => recognizers.at(-1)?.hear('check the build'));
+    let released: Awaited<ReturnType<typeof result.current.finish>> | undefined;
+    await act(async () => {
+      const finishing = result.current.finish();
+      await vi.advanceTimersByTimeAsync(0);
+      released = await finishing;
+    });
+    expect(released).toEqual({ status: 'heard', text: 'check the build', recording: undefined });
   });
 
   it('records a copy of the car input it keeps, and hands back that recording', async () => {

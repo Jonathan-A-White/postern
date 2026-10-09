@@ -140,6 +140,22 @@ something (a payment, change, the holder's own coin) puts it in one of them. The
 answer is cached a bounded time (5 minutes) per key so a proved request doesn't
 re-walk the chain every time.
 
+A key that sends a message per transaction soon has a history no walk can read
+(WhatsOnChain serves 100 a page and the client reads up to 200 pages). With
+`POSTERN_ISSUER_KEY` set and a provider that can say who spent an output
+(WhatsOnChain's `GET /tx/{txid}/{vout}/spent`), the check reads **only the issuer's
+history**, never the holder's: every counting mint and every revoke is in it, and the
+token is followed from its mint through the spends the provider names. The mints a
+check finds are remembered per key (in `licence-answers.json`, so across a restart)
+and are candidates again at the next refresh. Without an issuer, or a provider that
+cannot look spends up, the walk reads both histories as above.
+
+When the chain refuses a refresh (`429`) or a history is too long to read, the key's
+last good answer stands and nothing is asked of the chain for it for the stale grace
+(an hour); an unreadable history keeps the answer until a later refresh can read it,
+and the log says so. A key with no answer meanwhile gets `502` whose `error` names the
+key and what to do (try again, or set `POSTERN_ISSUER_KEY`).
+
 ### Who may do what (`docs/protocol.md` §19)
 
 A proved key is one of three kinds, and each endpoint below admits only some:
@@ -750,7 +766,7 @@ With `POSTERN_HOME_CMD` unset, nothing changes.
 | `POSTERN_NETWORK` | Network label (informational; doesn't affect request URLs) | `testnet` |
 | `POSTERN_ANCHOR` | The anchor address the poller watches | *(required, no default)* |
 | `POSTERN_WOC_BASE` | WhatsOnChain API base URL | `https://api.whatsonchain.com/v1/bsv/test` |
-| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`), push state, the challenge key (`postern-nonce.key`), attachment blobs (`blobs/`), and what the licence walk keeps across a restart: each key's last answer (`licence-answers.json`) and every transaction it fetched (`licence-txs/`), so a backend swap serves from the last answer while a background walk refreshes it | `./data` |
+| `POSTERN_DATA` | Directory holding the index (`postern-index.jsonl`), push state, the challenge key (`postern-nonce.key`), attachment blobs (`blobs/`), and what the licence walk keeps across a restart: each key's last answer and the mints it was found by (`licence-answers.json`) and every transaction it fetched (`licence-txs/`), so a backend swap serves from the last answer while a background walk refreshes it | `./data` |
 | `POSTERN_VAPID_PUBLIC_KEY` | VAPID public key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
 | `POSTERN_VAPID_PRIVATE_KEY` | VAPID private key (skips generation if both keys are set) | *(generated into `POSTERN_DATA`)* |
 | `POSTERN_PUSH_SUBSCRIBER` | The VAPID contact (an https URL or `mailto:` email) sent to push services | `https://postern.allmymind.org` |

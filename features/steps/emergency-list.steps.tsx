@@ -12,22 +12,15 @@ import { useRoute } from '../../src/router';
 import { stop } from '../../src/services/speech';
 import { db } from '../../src/data/db';
 import { eventsRepo, viewRepo } from '../../src/data/repositories';
+import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 
 configure({ asyncUtilTimeout: 5000 });
 
-class FakeUtterance {
-  onend: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  text: string;
-  constructor(text: string) {
-    this.text = text;
-  }
-}
-
-const utterances: FakeUtterance[] = [];
-const speakFn = vi.fn((u: FakeUtterance) => utterances.push(u));
-const cancelFn = vi.fn();
+// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
+let speech: HonestSpeech | null = null;
+let cancelFn = vi.fn();
+const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];
 
 /** The two places this scenario walks between, chosen by the URL as App does. */
 // eslint-disable-next-line react-refresh/only-export-components
@@ -44,6 +37,8 @@ async function hold(words: string[]): Promise<void> {
 
 afterAll(() => {
   cleanup();
+  stop();
+  speech?.uninstall();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
 });
@@ -53,11 +48,9 @@ const feature = await loadFeature('features/emergency-list.feature');
 describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   BeforeEachScenario(async () => {
     cleanup();
-    utterances.length = 0;
-    speakFn.mockClear();
-    cancelFn.mockClear();
-    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
-    vi.stubGlobal('speechSynthesis', { speak: speakFn, cancel: cancelFn, getVoices: () => [] });
+    speech?.uninstall();
+    speech = installHonestSpeech();
+    cancelFn = vi.spyOn(speech.synth, 'cancel');
     stop();
     await Promise.all([db.settings.clear(), db.view.clear(), db.events.clear(), db.beadDetails.clear()]);
     const now = Date.now();
@@ -106,8 +99,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await userEvent.click(await screen.findByRole('button', { name: label }));
     });
     Then('the phone reads {string} and the button now says {string}', async (_c, words: string, label: string) => {
-      expect(speakFn).toHaveBeenCalledTimes(1);
-      expect(utterances[0].text).toContain(words);
+      expect(spoken()).toHaveLength(1);
+      expect(spoken()[0]).toContain(words);
       expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
     });
     When('he taps {string} on the emergency', async (_c, label: string) => {

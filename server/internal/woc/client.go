@@ -49,8 +49,11 @@ type (
 	Balance      = chain.Balance
 )
 
-// Client implements chain.Chain.
-var _ chain.Chain = (*Client)(nil)
+// Client implements chain.Chain, and chain.SpendReader.
+var (
+	_ chain.Chain       = (*Client)(nil)
+	_ chain.SpendReader = (*Client)(nil)
+)
 
 // providerName is how a *chain.ProviderError from Client names its source.
 const providerName = "WhatsOnChain"
@@ -126,8 +129,11 @@ func NewClient(baseURL string, opts ...Option) *Client {
 }
 
 // maxHistoryPages caps how many pages of confirmed history GetHistory reads
-// for one address (WhatsOnChain serves 100 transactions a page).
-const maxHistoryPages = 50
+// for one address (WhatsOnChain serves 100 transactions a page). A key that
+// sends a message per transaction passes 5000 of them in weeks, so the cap is
+// 20000; the licence walk reads a long-lived key's history only when it has
+// no issuer to ask instead (licence.Find).
+const maxHistoryPages = 200
 
 // historyPage is one reply of WhatsOnChain's /confirmed/history or
 // /unconfirmed/history.
@@ -145,7 +151,7 @@ type historyPage struct {
 // 0). WhatsOnChain's /history holds only the newest 100, so it reads every
 // page of /confirmed/history (the newest page first, older ones by
 // nextPageToken) and /unconfirmed/history. Past maxHistoryPages it returns
-// an error, never a short list: a list missing its oldest pages would read
+// a *chain.HistoryTooLongError, never a short list: a list missing its oldest pages would read
 // as a key that holds no licence.
 //
 // WhatsOnChain answers a plain-text 404 on /confirmed/history for an address
@@ -164,7 +170,7 @@ func (c *Client) GetHistory(address string) ([]HistoryEntry, error) {
 	token := ""
 	for {
 		if len(pages) == maxHistoryPages {
-			return nil, fmt.Errorf("history of %s runs past %d pages (%d transactions): not read", address, maxHistoryPages, maxHistoryPages*100)
+			return nil, &chain.HistoryTooLongError{Address: address, Pages: maxHistoryPages}
 		}
 		path := fmt.Sprintf("/address/%s/confirmed/history", address)
 		if token != "" {
@@ -223,6 +229,27 @@ func (c *Client) getHistoryPage(path string) (historyPage, error) {
 		return historyPage{}, fmt.Errorf("WhatsOnChain history error for %s: %s", path, page.Error)
 	}
 	return page, nil
+}
+
+// GetSpender names the transaction that spent output vout of txid.
+// WhatsOnChain answers a 404 for an output nobody has spent, which is
+// spent=false, not an error.
+func (c *Client) GetSpender(txid string, vout int) (string, bool, error) {
+	body, err := c.get(fmt.Sprintf("/tx/%s/%d/spent", txid, vout))
+	if err != nil {
+		var apiErr *chain.ProviderError
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	var spend struct {
+		Txid string `json:"txid"`
+	}
+	if err := json.Unmarshal(body, &spend); err != nil || spend.Txid == "" {
+		return "", false, fmt.Errorf("parsing spent response for %s:%d: %q", txid, vout, strings.TrimSpace(string(body)))
+	}
+	return spend.Txid, true, nil
 }
 
 // GetTransactionHex returns a transaction's raw hex.

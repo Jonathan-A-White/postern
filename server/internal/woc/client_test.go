@@ -2,6 +2,7 @@ package woc
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Jonathan-A-White/postern/server/internal/chain"
 )
 
 func newTestClient(t *testing.T, handler http.HandlerFunc) (*Client, *int32) {
@@ -147,10 +150,14 @@ func TestGetHistoryFailsPastThePageCapRatherThanReturningAShortList(t *testing.T
 	if history != nil {
 		t.Fatalf("history = %d entries, want none alongside the error", len(history))
 	}
-	if !strings.Contains(err.Error(), "mEndless") || !strings.Contains(err.Error(), "50 pages") {
-		t.Fatalf("error = %q, want it to name the address and the cap of 50 pages", err)
+	var tooLong *chain.HistoryTooLongError
+	if !errors.As(err, &tooLong) || tooLong.Address != "mEndless" || tooLong.Pages != maxHistoryPages {
+		t.Fatalf("error = %v, want a *chain.HistoryTooLongError naming mEndless and the cap of %d pages", err, maxHistoryPages)
 	}
-	if *calls > 52 {
+	if !strings.Contains(err.Error(), "mEndless") || !strings.Contains(err.Error(), fmt.Sprintf("%d pages", maxHistoryPages)) {
+		t.Fatalf("error = %q, want it to name the address and the cap of %d pages", err, maxHistoryPages)
+	}
+	if int(*calls) > maxHistoryPages+2 {
 		t.Fatalf("calls = %d, want the reads to stop at the cap", *calls)
 	}
 }
@@ -442,5 +449,47 @@ func TestRequestToAServerThatNeverAnswersFailsWithinTheTimeout(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Fatalf("a timed-out request was sent %d times, want 1: retrying a hung server multiplies the wait", got)
+	}
+}
+
+func TestHistoryCapIsPastSixtyPages(t *testing.T) {
+	if maxHistoryPages <= 60 {
+		t.Fatalf("maxHistoryPages = %d, want past 60: a key that sends a message per transaction passes 5000 of them", maxHistoryPages)
+	}
+}
+
+func TestGetSpenderNamesTheTransactionThatSpentAnOutput(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/tx/aa11/0/spent" {
+			t.Errorf("path = %q, want /tx/aa11/0/spent", r.URL.Path)
+		}
+		w.Write([]byte(`{"txid":"bb22","vin":1}`))
+	})
+
+	spender, spent, err := client.GetSpender("aa11", 0)
+	if err != nil || !spent || spender != "bb22" {
+		t.Fatalf("GetSpender = %q, %v, %v; want bb22, true, nil", spender, spent, err)
+	}
+}
+
+func TestGetSpenderTakesAn404ForAnUnspentOutput(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("not found"))
+	})
+
+	spender, spent, err := client.GetSpender("aa11", 0)
+	if err != nil || spent || spender != "" {
+		t.Fatalf("GetSpender = %q, %v, %v; want unspent without an error", spender, spent, err)
+	}
+}
+
+func TestGetSpenderFailsOnAnyOtherAnswer(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	if _, _, err := client.GetSpender("aa11", 0); err == nil {
+		t.Fatal("GetSpender succeeded on a 500, want an error")
 	}
 }

@@ -81,6 +81,7 @@ describe('cardShareText', () => {
     ],
     subscribe: { kinds: [], beads: ['mw-hidden.2'] },
     done: false,
+    touchedAt: 1,
   };
 
   it('is the title and each item as a numbered line, marking the done ones', () => {

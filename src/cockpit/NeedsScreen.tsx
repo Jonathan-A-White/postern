@@ -9,7 +9,8 @@ import { FactoryPulse } from './FactoryPulse';
 import { OpenLists } from './OpenLists';
 import { NeedCard } from './NeedCard';
 import { LiveCard } from './LiveCard';
-import { useAnswers, useCards, useEmergencyCount, useMessages, useUnlockedKey, useViewIndex } from './hooks';
+import { ArchivedCardsLink } from './ArchiveScreen';
+import { useAnswers, useCardArchive, useEmergencyCount, useMessages, useUnlockedKey, useViewIndex } from './hooks';
 import type { MessageRow } from '../data/db';
 import { refreshNow, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
@@ -162,7 +163,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
   const index = view?.index;
   const split = useMemo(() => needsByWaiter(index ? unsettledNeeds(index.view.needs, answers) : []), [index, answers]);
   const needs = split[who];
-  const cards = useCards();
+  const { fresh: cards } = useCardArchive();
   const openCards = useMemo(() => cards.filter((card) => !card.done), [cards]);
   const doneCards = useMemo(() => cards.filter((card) => card.done), [cards]);
   const youCount = split.you.length + openCards.length;
@@ -251,6 +252,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
         )}
 
         <UnreadThreads index={index} />
+        {who === 'you' && <ArchivedCardsLink />}
       </div>
     </Screen>
   );

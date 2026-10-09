@@ -8,6 +8,7 @@ import { Screen } from './Shell';
 import { liveLabel } from './liveLabel';
 import { useUnlockedKey, useViewIndex } from './hooks';
 import { MoveHomeButtons } from './MoveHome';
+import { ArchivedCardsLink } from './ArchiveScreen';
 import { HOMES, useStandby } from '../services/standby';
 import { lock, sessionExpiresAt } from '../services/keySession';
 import { describeBuild } from '../services/buildLine';
@@ -224,6 +225,8 @@ export function MeScreen() {
             )}
           </Card>
         </section>
+
+        <ArchivedCardsLink />
 
         <section className="flex flex-col gap-2" aria-label="Prompts">
           <SectionTitle>Prompts</SectionTitle>

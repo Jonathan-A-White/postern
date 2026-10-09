@@ -10,7 +10,7 @@ function item(n: number, text: string, extra: Partial<LiveCardItem> = {}): LiveC
 }
 
 function card(items: LiveCardItem[]): LiveCardData {
-  return { id: 'c1', title: 'Top 5', sentAt: 0, items, subscribe: { kinds: [], beads: [] }, done: false };
+  return { id: 'c1', title: 'Top 5', sentAt: 0, items, subscribe: { kinds: [], beads: [] }, done: false, touchedAt: 0 };
 }
 
 const rows = () => screen.getAllByTestId('live-card-item');

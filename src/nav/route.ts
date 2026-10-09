@@ -33,7 +33,9 @@ export type Route =
   /** A push with no record behind it (the watchdog's alarm), carrying what it said. */
   | { view: 'alarm'; title?: string; body?: string; ts?: number }
   /** Where a tap on an emergency notification lands: the emergency events held, newest first, with their words (src/cockpit/EmergencyScreen.tsx). */
-  | { view: 'emergency' };
+  | { view: 'emergency' }
+  /** The live cards untouched for 48 h, newest first, each still updating (src/cockpit/ArchiveScreen.tsx). */
+  | { view: 'archive' };
 
 export type TopView = 'needs' | 'map' | 'talk' | 'search' | 'me';
 
@@ -132,6 +134,8 @@ export function parseRoute(search: string): Route {
     }
     case 'emergency':
       return { view: 'emergency' };
+    case 'archive':
+      return { view: 'archive' };
     case 'needs': {
       const who = params.get('who');
       return who === 'mayor' || who === 'factory' ? { view: 'needs', who } : { view: 'needs' };
@@ -219,6 +223,7 @@ export function isDeep(route: Route): boolean {
     route.view === 'notice' ||
     route.view === 'alarm' ||
     route.view === 'emergency' ||
+    route.view === 'archive' ||
     route.view === 'key' ||
     route.view === 'prompts' ||
     route.view === 'about' ||

@@ -758,6 +758,26 @@ a standby that receives one serves it itself. The home ignores `POSTERN_PEERS`.
 
 With `POSTERN_HOME_CMD` unset, nothing changes.
 
+### Relay-only
+
+`POSTERN_RELAY_ONLY=1` makes a backend that only relays (for a host with no
+index of its own). It needs `POSTERN_PEERS` and refuses to start without it.
+It is always in standby and never serves a request itself: no index, chain
+poll, push or on-message hook starts, nothing is written under `POSTERN_DATA`
+(which may be empty or missing), and `POSTERN_HOME_CMD` is not run (one line
+is logged if it is set). At start and every 30 seconds it asks each peer's
+`GET /healthz` (3-second limit). The **home** is the first peer, in
+`POSTERN_PEERS` order, answering `200` with `"standby": false`; with none, the
+**fallback** is the first peer answering `200` at all (a boost, whose standby
+serves a send itself); with neither there is no target. Each change of target
+is logged. The five send routes are relayed unchanged to the target as above
+(`X-Postern-Relayed: 1`, `502` once the target has any of the request). With no
+target, or one that cannot be connected to, a send route answers `503
+{"standby": true}` like every other `/api` route, and a request that already
+carries `X-Postern-Relayed` is answered `503` and never relayed again.
+`GET /healthz` answers `200 {"ok": true, "standby": true, "relay_only": true,
+"target": "<peer name, empty when none>", "commit": …}`.
+
 ## Configuration (environment)
 
 | Variable | Meaning | Default |
@@ -775,6 +795,7 @@ With `POSTERN_HOME_CMD` unset, nothing changes.
 | `POSTERN_ON_MESSAGE` | Shell command (`sh -c`) run after records are indexed (e.g. `mw postern inbox --apply`) | *(unset: no hook)* |
 | `POSTERN_HOME_CMD` | Shell command (`sh -c`), exit 0 = this host is home (e.g. `mw home --check`); checked at start and every 30 s; see Standby | *(unset: never standby)* |
 | `POSTERN_PEERS` | Comma-separated `host=url` pairs (each url `http(s)://host[:port]`, no path): each host's backend, looked up by the home's name so a standby relays its send routes to the home; see Standby | *(unset: a standby serves the send routes itself)* |
+| `POSTERN_RELAY_ONLY` | `1` makes a relay-only standby that finds the home from `POSTERN_PEERS`' `/healthz` and stores, polls and pushes nothing; requires `POSTERN_PEERS`; see Standby | *(unset: as before)* |
 | `POSTERN_MAYOR_KEY` | The Mayor's compressed public key, hex (66 characters, `02`/`03` first), answered by `GET /api/me`; it may read `GET /api/events` without a licence | *(unset: `""`)* |
 | `POSTERN_ISSUER_KEY` | The licence issuer's compressed public key, hex (66 characters, `02`/`03` first); a mint counts only if this key unlocked one of its inputs | *(unset: any mint counts, with a warning)* |
 | `POSTERN_COLLECTIONS` | Comma-separated collections a licence mint may name | `postern,spellforge-leaderboard-testnet` |

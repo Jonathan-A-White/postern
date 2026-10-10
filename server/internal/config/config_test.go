@@ -314,3 +314,35 @@ func TestLoadRejectsBadPeers(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadRelayOnlyIsOffByDefaultAndOnForOne(t *testing.T) {
+	cfg, err := Load(gristEnv(nil))
+	if err != nil || cfg.RelayOnly {
+		t.Fatalf("unset: RelayOnly = %v, err = %v, want off", cfg.RelayOnly, err)
+	}
+	cfg, err = Load(gristEnv(map[string]string{"POSTERN_RELAY_ONLY": ""}))
+	if err != nil || cfg.RelayOnly {
+		t.Fatalf("empty: RelayOnly = %v, err = %v, want off", cfg.RelayOnly, err)
+	}
+	cfg, err = Load(gristEnv(map[string]string{"POSTERN_RELAY_ONLY": "1", "POSTERN_PEERS": "b=http://b:1,a=http://a:1,b=http://b:2"}))
+	if err != nil || !cfg.RelayOnly {
+		t.Fatalf("1: RelayOnly = %v, err = %v, want on", cfg.RelayOnly, err)
+	}
+	if got := strings.Join(cfg.PeerOrder, ","); got != "b,a" {
+		t.Fatalf("PeerOrder = %q, want b,a (the order POSTERN_PEERS lists them)", got)
+	}
+}
+
+func TestLoadRelayOnlyWithoutPeersNamesPostern_Peers(t *testing.T) {
+	_, err := Load(gristEnv(map[string]string{"POSTERN_RELAY_ONLY": "1"}))
+	if err == nil || !strings.Contains(err.Error(), "POSTERN_PEERS") {
+		t.Fatalf("err = %v, want one naming POSTERN_PEERS", err)
+	}
+}
+
+func TestLoadRejectsAnOddRelayOnly(t *testing.T) {
+	_, err := Load(gristEnv(map[string]string{"POSTERN_RELAY_ONLY": "yes", "POSTERN_PEERS": "a=http://a:1"}))
+	if err == nil || !strings.Contains(err.Error(), "POSTERN_RELAY_ONLY") {
+		t.Fatalf("err = %v, want one naming POSTERN_RELAY_ONLY", err)
+	}
+}

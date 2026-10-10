@@ -45,6 +45,11 @@ type Config struct {
 	// backend (scheme://host[:port]), host names lower-cased. A standby relays
 	// its send routes to the home's entry.
 	Peers map[string]string
+	// PeerOrder is the keys of Peers in the order POSTERN_PEERS lists them.
+	PeerOrder []string
+	// RelayOnly is POSTERN_RELAY_ONLY=1: a standby that only relays the send
+	// routes to whichever peer is home, and stores, polls and pushes nothing.
+	RelayOnly bool
 	// MayorKey is POSTERN_MAYOR_KEY: the Mayor's compressed public key, hex,
 	// lower-cased, answered by GET /api/me. Empty if unset.
 	MayorKey string
@@ -128,8 +133,18 @@ func Load(getenv func(string) string) (Config, error) {
 	} else if len(cfg.Apps) == 0 {
 		return Config{}, fmt.Errorf("POSTERN_MILL_KEY is set but POSTERN_APPS names no app; set POSTERN_APPS (docs/protocol.md §19)")
 	}
-	if cfg.Peers, err = peerPairs(getenv("POSTERN_PEERS")); err != nil {
+	if cfg.Peers, cfg.PeerOrder, err = peerPairs(getenv("POSTERN_PEERS")); err != nil {
 		return Config{}, err
+	}
+	switch v := strings.TrimSpace(getenv("POSTERN_RELAY_ONLY")); v {
+	case "", "0":
+	case "1":
+		cfg.RelayOnly = true
+		if len(cfg.Peers) == 0 {
+			return Config{}, fmt.Errorf("POSTERN_RELAY_ONLY=1 needs POSTERN_PEERS: a relay-only backend finds the home from its peers")
+		}
+	default:
+		return Config{}, fmt.Errorf("POSTERN_RELAY_ONLY must be 1 or unset, not %q", v)
 	}
 	for i, origin := range cfg.CORSOrigins {
 		if err := checkOrigin(origin); err != nil {
@@ -168,22 +183,27 @@ func appPairs(value string, cockpit []string) (map[string]string, []string, erro
 
 // peerPairs parses POSTERN_PEERS: "host=url" pairs, comma-separated, each url
 // a backend's base (http or https, a host, no path). Host names are
-// lower-cased and a trailing slash on the url dropped.
-func peerPairs(value string) (map[string]string, error) {
+// lower-cased and a trailing slash on the url dropped. It also answers the
+// hosts in the order they were listed.
+func peerPairs(value string) (map[string]string, []string, error) {
 	peers := map[string]string{}
+	var order []string
 	for _, pair := range splitList(value) {
 		host, raw, ok := strings.Cut(pair, "=")
 		host, raw = strings.ToLower(strings.TrimSpace(host)), strings.TrimSpace(raw)
 		if !ok || host == "" || raw == "" {
-			return nil, fmt.Errorf("POSTERN_PEERS: %q is not host=url", pair)
+			return nil, nil, fmt.Errorf("POSTERN_PEERS: %q is not host=url", pair)
 		}
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
-			return nil, fmt.Errorf("POSTERN_PEERS: %q is not a backend URL like http://10.88.0.2:8787", raw)
+			return nil, nil, fmt.Errorf("POSTERN_PEERS: %q is not a backend URL like http://10.88.0.2:8787", raw)
+		}
+		if _, seen := peers[host]; !seen {
+			order = append(order, host)
 		}
 		peers[host] = strings.TrimSuffix(raw, "/")
 	}
-	return peers, nil
+	return peers, order, nil
 }
 
 // checkOrigin accepts a browser origin: scheme://host[:port], nothing else.

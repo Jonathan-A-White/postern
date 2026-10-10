@@ -45,7 +45,7 @@ export function EmergencyBanner() {
         <Icon name="alarm" size={18} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="font-semibold">Emergency</span>
-          {emergency.detail && <span className="break-words">{emergency.detail}</span>}
+          {emergency.detail && <span className="wrap-anywhere">{emergency.detail}</span>}
           <span className="text-[12px] opacity-80">{target.view === 'bead' ? `Tap to clear and open ${emergency.bead}` : 'Tap to clear and open the Talk line'}</span>
         </span>
       </button>

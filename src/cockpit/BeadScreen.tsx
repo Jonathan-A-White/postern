@@ -435,7 +435,7 @@ export function BeadScreen({ id }: { id: string }) {
               Conversation
               <span className="text-faint">{items.length}</span>
             </div>
-            <div ref={rememberConversation} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">{conversation}</div>
+            <div ref={rememberConversation} className="scroll-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4">{conversation}</div>
             {composer}
           </div>
         </div>
@@ -445,7 +445,7 @@ export function BeadScreen({ id }: { id: string }) {
 
   return (
     <Screen title={title} subtitle={id} back={back} actions={actions} bare footer={composer}>
-      <div ref={rememberPage} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div ref={rememberPage} className="scroll-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4">
         {detailsPane}
         <div className="mt-6 flex flex-col gap-3">
           <SectionTitle>Conversation · {items.length}</SectionTitle>

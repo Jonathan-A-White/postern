@@ -45,7 +45,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, busy, wrap, c
       type="button"
       className={cx(
         'inline-flex items-center transition-[filter,background-color,border-color,color] duration-150 select-none',
-        wrap ? 'w-full min-w-0 justify-start text-left break-words whitespace-normal' : 'shrink-0 justify-center whitespace-nowrap',
+        wrap ? 'w-full min-w-0 justify-start text-left wrap-anywhere whitespace-normal' : 'shrink-0 justify-center whitespace-nowrap',
         'disabled:cursor-not-allowed disabled:opacity-45',
         VARIANTS[variant],
         wrap ? WRAP_SIZES[size] : SIZES[size],
@@ -133,7 +133,7 @@ export function Chip({ tone = 'neutral', icon, mono, wrap, className, children, 
       {...props}
     >
       {icon && <Icon name={icon} size={12} strokeWidth={2.2} className="shrink-0" />}
-      <span className={wrap ? 'min-w-0 break-words' : 'min-w-0 truncate'}>{children}</span>
+      <span className={wrap ? 'min-w-0 wrap-anywhere' : 'min-w-0 truncate'}>{children}</span>
     </span>
   );
 }

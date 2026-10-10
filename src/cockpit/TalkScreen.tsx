@@ -175,7 +175,7 @@ function ChannelPane({ threadKey, prefill, held }: { threadKey: string; prefill?
 
   return (
     <>
-      <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-3xl">
           <ThreadCards threadKey={storeKey} shareTitle={sharedAs} />
           <Conversation
@@ -233,7 +233,7 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
 
   return (
     <>
-      <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-3xl">
           <Conversation
             items={items}

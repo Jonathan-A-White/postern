@@ -51,7 +51,7 @@ export function LiveCard({ card, titleOf, shareTitle = titleOfShare(), ticking =
         </span>
         <ShareButton title={shareTitle} text={cardShareText(card)} className="shrink-0 text-[12px]" />
       </div>
-      <h3 className="min-w-0 text-[15.5px] leading-snug font-semibold break-words">{card.title}</h3>
+      <h3 className="min-w-0 text-[15.5px] leading-snug font-semibold wrap-anywhere">{card.title}</h3>
       <ol className="flex flex-col gap-3">
         {card.items.map((item) => (
           <li key={item.n} className="flex gap-3" data-testid="live-card-item" data-done={item.done ? 'true' : 'false'}>
@@ -62,7 +62,7 @@ export function LiveCard({ card, titleOf, shareTitle = titleOfShare(), ticking =
               {item.done ? <Icon name="check" size={14} /> : item.n}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className={cx('text-[14.5px] leading-snug break-words', item.done && 'text-muted')} data-testid="live-card-item-text">
+              <div className={cx('text-[14.5px] leading-snug wrap-anywhere', item.done && 'text-muted')} data-testid="live-card-item-text">
                 <span className="sr-only">{item.n}. </span>
                 <Markdown text={item.text} inline />
               </div>

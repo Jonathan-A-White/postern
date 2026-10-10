@@ -443,7 +443,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
               className="max-h-[200px] min-h-11 w-full resize-none rounded-2xl py-2.5 leading-snug"
             />
             {suggestion && (
-              <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border border-transparent px-3 py-2.5 text-base leading-snug break-words whitespace-pre-wrap">
+              <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border border-transparent px-3 py-2.5 text-base leading-snug wrap-anywhere whitespace-pre-wrap">
                 <span className="invisible">{text}</span>
                 <button
                   type="button"

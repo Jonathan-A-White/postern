@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import 'bsv-kit/whats-new/styles.css';
+import 'bsv-kit/speech/styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import { startAppUpdates } from './services/appUpdate';

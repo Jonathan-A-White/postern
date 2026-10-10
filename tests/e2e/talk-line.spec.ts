@@ -187,6 +187,14 @@ test("talk line: the answer's own buttons sit beside its speaker, 44 px, in 390 
   await expect(page.getByText('The answer is paused.')).toBeVisible();
   await expect(answer).toContainText('Not heard yet');
   await shot(page, 'talk-line-answer-paused-390');
+
+  // mw-m7v5kc.2: leaving the line, the Shell's bar (bsv-kit's, in Postern's colours) offers Resume, Restart and Stop, each 44 px high.
+  await page.getByRole('navigation', { name: 'Places' }).getByRole('link', { name: /Channels$/ }).click();
+  const bar = page.getByRole('region', { name: 'Speaking' });
+  await expect(bar.getByRole('button')).toHaveText(['Resume', 'Restart', 'Stop']);
+  for (const control of await bar.getByRole('button').all()) expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await shot(page, 'speaking-bar-paused-390');
 });
 
 test('talk line: hold to talk, a spoken answer with its timing, and a tap that cuts it', async ({ page }) => {

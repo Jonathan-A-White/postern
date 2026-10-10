@@ -267,6 +267,22 @@ html {
   --bk-whats-new-small-font-size: 12px;
 }
 
+/* bsv-kit's speaking bar (Pause/Resume, Restart, Stop) wears Postern's tokens, as the buttons did before it moved to the package. */
+:root {
+  --bk-speech-surface: var(--pc-surface);
+  --bk-speech-fg: var(--pc-fg);
+  --bk-speech-line: var(--pc-line);
+  --bk-speech-button-bg: var(--pc-raised);
+  --bk-speech-accent: var(--pc-accent);
+  --bk-speech-accent-fg: var(--pc-accent-fg);
+  --bk-speech-button-radius: 0.75rem;
+  --bk-speech-font-size: 15px;
+}
+
+.bk-speech__button[data-primary='true'] {
+  font-weight: 600;
+}
+
 /* In the Update ready banner the What's new link is a line under the button, not a second banner: 36 px tall, not 44. */
 .bk-whats-new__summary .bk-whats-new__link {
   min-height: 36px;

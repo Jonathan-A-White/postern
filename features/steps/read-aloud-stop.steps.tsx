@@ -190,7 +190,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   const bar = async (_c: unknown, a: string, b: string, c: string) => {
     await screen.findByRole('region', { name: 'Speaking' });
     expect(barButtons().map((button) => button.textContent)).toEqual([a, b, c]);
-    for (const button of barButtons()) expect(button.className).toContain('min-h-11');
+    for (const button of barButtons()) expect(button.className).toContain('bk-speech__button'); // 44 px: bsv-kit's rule for that class, measured in tests/e2e/talk-line.spec.ts (jsdom has no layout)
   };
   const tapsInBar = async (_c: unknown, label: string) => {
     mark = spoken().length;

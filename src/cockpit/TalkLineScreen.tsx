@@ -5,13 +5,13 @@
 // What the screen does is in useTalkLine; this only draws it.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Button, Chip, Icon, IconButton, cx } from '../ui';
+import { Button, Chip, Icon, cx } from '../ui';
+import type { IconName } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
 import { HoldToTalkBar, micName } from 'bsv-kit/composer';
 import { HOLD_BAR_CLASS } from './holdBar';
-import { SpeakingBar } from './SpeakingBar';
 import { useSpeech } from './useSpeaking';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
 import { sendCallRequest } from './send';
@@ -288,6 +288,32 @@ function useReadAloud() {
 }
 type ReadAloud = ReturnType<typeof useReadAloud>;
 
+/** What the Talk line's own answer is doing under TALK_ANSWER_KEY, and what its buttons steer (mw-q6n8m0.11). */
+interface AnswerSpeech {
+  /** The turn whose answer the line speaks, or waits paused on. */
+  turn: number | undefined;
+  status: 'idle' | 'playing' | 'paused';
+  onStop: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onRestart: () => void;
+}
+
+/** A 44 px icon-only button beside an answer's speaker. */
+function AnswerButton({ icon, label, onClick }: { icon: IconName; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="inline-flex h-11 min-w-11 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-fg"
+    >
+      <Icon name={icon} size={18} />
+    </button>
+  );
+}
+
 /** The line between talks, saying the day and time the talk below it began. */
 function TalkDivider({ at }: { at: number }) {
   return (
@@ -300,10 +326,13 @@ function TalkDivider({ at }: { at: number }) {
 }
 
 /** One turn of a talk: his words, and the Mayor's answer with its speaker button. `earlier` turns belong to a talk before the open one. */
-function TalkTurnItem({ entry, talkId, marks, earlier, reader }: { entry: TalkLogEntry; talkId: string; marks?: ReactNode; earlier?: boolean; reader: ReadAloud }) {
+function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: { entry: TalkLogEntry; talkId: string; marks?: ReactNode; earlier?: boolean; reader: ReadAloud; answerSpeech?: AnswerSpeech }) {
   const id = (name: string) => (earlier ? `talk-earlier-${name}` : `talk-${name}`);
   const key = `${talkId}:${entry.turn}`;
   const reading = reader.playing === key;
+  // The answer the line speaks (or holds paused) steers its own speech from here, and its speaker button says what a tap will do.
+  const own = !earlier && answerSpeech !== undefined && answerSpeech.status !== 'idle' && answerSpeech.turn === entry.turn ? answerSpeech : undefined;
+  const speaking = own?.status === 'playing';
   return (
     <li className="flex flex-col gap-2" data-testid={id('turn')}>
       <div className="ml-auto flex max-w-[88%] flex-col items-end gap-1">
@@ -319,10 +348,17 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader }: { entry: TalkLo
       {entry.answer !== undefined && (
         <div data-testid={id('answer')} className="mr-auto flex max-w-[88%] flex-col gap-1">
           <p className="rounded-2xl border border-line bg-surface px-3.5 py-2 text-[15px] break-words">{entry.answer}</p>
-          {entry.heard === false && !earlier && (
-            <span data-testid="talk-unheard" className="text-[11.5px] text-needs">
-              Not heard yet
+          {speaking ? (
+            <span data-testid="talk-speaking" className="text-[11.5px] text-muted">
+              Speaking…
             </span>
+          ) : (
+            (entry.heard === false || own?.status === 'paused') &&
+            !earlier && (
+              <span data-testid="talk-unheard" className="text-[11.5px] text-needs">
+                Not heard yet
+              </span>
+            )
           )}
           {entry.links && entry.links.length > 0 && (
             <span className="flex flex-wrap gap-1.5" data-testid="talk-links">
@@ -338,13 +374,20 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader }: { entry: TalkLo
             </span>
           )}
           <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
-            {reader.supported && (
-              <IconButton
-                icon={reading ? 'stop' : 'speaker'}
-                label={reading ? 'Stop reading' : 'Read the answer aloud'}
-                size="sm"
-                onClick={() => reader.toggle(key, entry.answer ?? '')}
-              />
+            {own ? (
+              <>
+                {speaking ? (
+                  <AnswerButton icon="stop" label="Stop reading" onClick={own.onStop} />
+                ) : (
+                  <AnswerButton icon="play" label="Resume reading" onClick={own.onResume} />
+                )}
+                {speaking ? <AnswerButton icon="pause" label="Pause" onClick={own.onPause} /> : <AnswerButton icon="play" label="Resume" onClick={own.onResume} />}
+                {!speaking && <AnswerButton icon="refresh" label="Restart" onClick={own.onRestart} />}
+              </>
+            ) : (
+              reader.supported && (
+                <AnswerButton icon={reading ? 'stop' : 'speaker'} label={reading ? 'Stop reading' : 'Read the answer aloud'} onClick={() => reader.toggle(key, entry.answer ?? '')} />
+              )
             )}
             {entry.answeredBy && <Chip tone="working">{entry.answeredBy}</Chip>}
             {tookLong(entry) ? (
@@ -367,6 +410,14 @@ export function TalkLineScreen() {
   const reader = useReadAloud();
   const speech = useSpeech();
   const answerPaused = speech.key === TALK_ANSWER_KEY && speech.status === 'paused';
+  const answerSpeech: AnswerSpeech = {
+    turn: line.speaking?.turn ?? line.paused?.turn ?? line.talk?.turn,
+    status: speech.key === TALK_ANSWER_KEY ? speech.status : 'idle',
+    onStop: talk.cut,
+    onPause: talk.pause,
+    onResume: talk.resume,
+    onRestart: talk.restart,
+  };
   const { scroller, onScroll, onTouch, pill, showNew } = useFollowEnd(talk.log);
   const { shown, hidden, loadEarlier, onScrolled } = useEarlierTalks(talk.earlier, scroller);
   const listening = line.phase === 'listening';
@@ -450,6 +501,7 @@ export function TalkLineScreen() {
                   talkId={line.talk?.id ?? ''}
                   marks={line.talk && <TurnMark row={pendingTurn(outbox, line.talk.id, entry.turn)} />}
                   reader={reader}
+                  answerSpeech={answerSpeech}
                 />
               ))}
             </ol>
@@ -526,8 +578,6 @@ export function TalkLineScreen() {
         <CallMe open={calling} onClose={() => setCalling(false)} />
 
         <HoldToTalkBar label={label} listening={listening} disabled={dead} onPress={talk.press} onRelease={() => void talk.release()} onAbort={talk.abort} className={HOLD_BAR_CLASS} />
-
-        <SpeakingBar only={TALK_ANSWER_KEY} onPause={talk.pause} onResume={talk.resume} onRestart={talk.restart} onStop={talk.cut} />
 
         <div className="flex h-10 items-center gap-2">
           {line.phase === 'waiting' && <Button onClick={talk.cut}>Stop waiting</Button>}

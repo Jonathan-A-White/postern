@@ -280,7 +280,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "Tell me everything" and lets go
     And the Mayor answers "A very long answer indeed." on model "sonnet"
-    And he taps "Stop"
+    And he taps "Stop reading"
     Then the speech is cancelled
     When he then holds the talk button and says "Skip that" and lets go
     Then the last turn sent is turn 2 saying "Skip that" with a cut
@@ -289,7 +289,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "Tell me everything" and lets go
     And the Mayor answers "A very long answer indeed." on model "sonnet"
-    And he taps "Stop"
+    And he taps "Stop reading"
     And he then holds the talk button and says "Skip that" and lets go
     Then the turn "Skip that" shows the tag "cut the last answer"
     When the Mayor answers "Skipped." on model "sonnet"
@@ -528,7 +528,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And a sync pages the Mayor's answer "Three things landed." and the event for that talk turn
     And he comes back to the Talk line
     Then the screen shows his turn "What landed today?" and the answer "Three things landed."
-    And the answer is marked "Not heard yet"
+    And the answer is marked "Speaking…"
     And the phone has spoken "Three things landed." once
     When the voice finishes speaking
     Then the answer is no longer marked "Not heard yet"
@@ -669,7 +669,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And most of the quiet limit passes
     And the Mayor answers "Hi there." on model "sonnet"
     And most of the quiet limit passes again
-    And he taps "Stop"
+    And he taps "Stop reading"
     And most of the quiet limit passes once more
     Then the screen is still held awake and the silent loop still plays
 
@@ -692,11 +692,11 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the phone has begun the second sentence
     And he taps "Pause"
     Then the speech is cancelled
-    And the speaking bar offers "Resume", "Restart" and "Stop"
+    And the answer's buttons are "Resume reading, Resume, Restart"
     And the answer is marked not heard yet
     When he taps "Resume" to carry on
     Then the phone is told to speak "Second part." and then "Third part."
-    And the bar now offers "Pause", "Restart" and "Stop"
+    And the answer's buttons are now "Stop reading, Pause"
 
   Scenario: mw-q6n8m0.9 AC-2: holding the button over an answer pauses it, and Resume speaks on afterwards
     Given the Talk line is open with a believable speech recogniser
@@ -704,12 +704,12 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the Mayor answers "First part. Second part. Third part." on model "sonnet"
     And the phone has begun the second sentence
     And he holds the talk button and says nothing and lets go
-    Then the speaking bar offers "Resume", "Restart" and "Stop"
+    Then the answer's buttons are "Resume reading, Resume, Restart"
     And the answer is marked not heard yet
     When he taps "Resume"
     Then the phone is told to speak "Second part." and then "Third part."
     When the phone finishes the last sentence
-    Then the speaking bar is gone
+    Then the answer's buttons are down to "Read the answer aloud"
     And the answer is marked heard
 
   Scenario: mw-q6n8m0.9 AC-2: Restart after a hold replays the answer from its first sentence
@@ -720,16 +720,15 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And he holds the talk button and says nothing and lets go
     And he taps "Restart"
     Then the phone is told to speak "First part." and then "Second part." and then "Third part."
-    And the speaking bar offers "Pause", "Restart" and "Stop"
+    And the answer's buttons are "Stop reading, Pause"
 
   Scenario: mw-q6n8m0.9 AC-2: Stop ends the answer, marks it heard and leaves nothing to resume
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says "Tell me everything" and lets go
     And the Mayor answers "First part. Second part. Third part." on model "sonnet"
     And the phone has begun the second sentence
-    And he holds the talk button and says nothing and lets go
-    And he taps "Stop"
-    Then the speaking bar is gone
+    And he taps "Stop reading"
+    Then the answer's buttons are down to "Read the answer aloud"
     And the answer is marked heard
     When he then holds the talk button and says "Skip that" and lets go
     Then the last turn sent is turn 2 saying "Skip that" with a cut
@@ -741,7 +740,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the phone has begun the second sentence
     And he holds the talk button and says "Never mind" and lets go
     Then the last turn sent is turn 2 saying "Never mind" with a cut
-    And the speaking bar is gone
+    And the answer's buttons are down to "Read the answer aloud"
 
   Scenario: mw-q6n8m0.9 AC-2: the page going hidden pauses the answer, and coming back offers Resume at the same place
     Given the Talk line is open with a believable speech recogniser
@@ -749,7 +748,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the Mayor answers "First part. Second part. Third part." on model "sonnet"
     And the phone has begun the second sentence
     And the page goes hidden and shows again
-    Then the speaking bar offers "Resume", "Restart" and "Stop"
+    Then the answer's buttons are "Resume reading, Resume, Restart"
     When he taps "Resume"
     Then the phone is told to speak "Second part." and then "Third part."
 
@@ -777,12 +776,12 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the phone has begun the second sentence
     And he leaves the Talk line and comes back
     Then the answer is marked "Not heard yet"
-    And the speaking bar offers "Resume", "Restart" and "Stop"
+    And the answer's buttons are "Resume reading, Resume, Restart"
     And the phone has not spoken since
     When he taps "Resume"
     Then the phone is told to speak "Second part." and then "Third part."
     When the phone finishes the last sentence
-    Then the speaking bar is gone
+    Then the answer's buttons are down to "Read the answer aloud"
     And the answer is marked heard
 
   Scenario: mw-q6n8m0.10 AC1: a paused answer resumed on another screen and played to its end is heard
@@ -826,7 +825,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the answer is marked "Not heard yet"
     And he holds the talk button and says "Never mind" and lets go
     Then the last turn sent is turn 2 saying "Never mind" with a cut
-    And the speaking bar is gone
+    And the answer's buttons are down to "Read the answer aloud"
 
   Scenario: mw-q6n8m0.10 AC1: leaving the Talk line pauses an answer read from its speaker button, and the bar on the next screen offers Resume
     Given two earlier talks and an open talk are stored
@@ -835,3 +834,63 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And he leaves the Talk line
     Then the speech is paused, not stopped
     And the speaking bar offers "Resume", "Restart" and "Stop"
+
+
+  # mw-q6n8m0.11: the answer's own speaker button knows it is playing; Pause/Resume and Restart sit beside it, not in a bar.
+  Scenario: mw-q6n8m0.11 AC1: while the answer speaks its speaker button is a Stop, and tapping it stops without restarting
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    Then the answer's buttons are "Stop reading, Pause"
+    When he taps "Stop reading"
+    Then the phone is not told to speak again
+    And the speech is cancelled
+    And the answer's buttons are now "Read the answer aloud"
+    When he plays the answer again from its speaker button
+    Then the phone is told to speak "First part." and then "Second part." and then "Third part."
+    And the answer's buttons then are "Stop reading"
+
+  Scenario: mw-q6n8m0.11 AC1: Pause turns the speaker into a Play that resumes from the same sentence
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    And he taps "Pause"
+    Then the answer's buttons are "Resume reading, Resume, Restart"
+    When he taps "Resume reading" to carry on
+    Then the phone is told to speak "Second part." and then "Third part."
+    And the answer's buttons are now "Stop reading, Pause"
+
+  Scenario: mw-q6n8m0.11 AC1: an answer paused by a hold is resumed by its speaker button from the same sentence
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    And he holds the talk button and says nothing and lets go
+    Then the answer's buttons are "Resume reading, Resume, Restart"
+    When he taps "Resume reading"
+    Then the phone is told to speak "Second part." and then "Third part."
+
+  Scenario: mw-q6n8m0.11 AC2: the label says Speaking while the answer speaks, and Not heard yet while it waits paused
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the stored answer is unheard, as the real inbox stores it
+    And the phone has begun the second sentence
+    Then the answer is marked "Speaking…" and not "Not heard yet"
+    When he taps "Pause"
+    Then the answer now is marked "Not heard yet" and not "Speaking…"
+    When he taps "Resume" to carry on
+    Then the answer once more is marked "Speaking…" and not "Not heard yet"
+    When he taps "Stop reading" to end it
+    Then the answer ends up marked neither "Speaking…" nor "Not heard yet"
+
+  Scenario: mw-q6n8m0.11 AC3: the Talk line has no separate speaking bar, and the answer's buttons are 44 px targets
+    Given the Talk line is open with a believable speech recogniser
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the phone has begun the second sentence
+    Then the Talk line shows no speaking bar
+    And the answer's buttons are "Stop reading, Pause"
+    And each of the answer's buttons is at least 44 px

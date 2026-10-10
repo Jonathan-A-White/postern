@@ -2231,6 +2231,11 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     await waitFor(() => expect(within(bar).getAllByRole('button').map((button) => button.textContent)).toEqual([a, b, c]));
     for (const button of within(bar).getAllByRole('button')) expect(button.className).toContain('min-h-11');
   };
+  // mw-q6n8m0.11: the Talk line's answer carries its own buttons (no bar): the speaker, Pause or Resume, and Restart while paused.
+  const answerButtons = () => within(screen.getByTestId('talk-answer')).getAllByRole('button').map((button) => button.getAttribute('aria-label'));
+  const answerButtonsAre = async (_c: unknown, list: string) => {
+    await waitFor(() => expect(answerButtons().join(', ')).toBe(list));
+  };
   const barGone = async () => {
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Speaking' })).not.toBeInTheDocument());
   };
@@ -2252,13 +2257,13 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the speech is cancelled', async () => {
       await waitFor(() => expect(cancel.mock.calls.length).toBeGreaterThan(cancelledBefore));
     });
-    And('the speaking bar offers {string}, {string} and {string}', barOffers);
+    And("the answer's buttons are {string}", answerButtonsAre);
     And('the answer is marked not heard yet', async () => {
       expect((await answerRows()).every((row) => row.heard !== true)).toBe(true);
     });
     When('he taps {string} to carry on', tapsBar);
     Then('the phone is told to speak {string} and then {string}', toldToSpeak);
-    And('the bar now offers {string}, {string} and {string}', barOffers);
+    And("the answer's buttons are now {string}", answerButtonsAre);
   });
 
   Scenario('mw-q6n8m0.9 AC-2: holding the button over an answer pauses it, and Resume speaks on afterwards', ({ Given, When, Then, And }) => {
@@ -2267,7 +2272,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the Mayor answers {string} on model {string}', mayorAnswers);
     And('the phone has begun the second sentence', begunSecondSentence);
     And('he holds the talk button and says nothing and lets go', holdsAndSaysNothing);
-    Then('the speaking bar offers {string}, {string} and {string}', barOffers);
+    Then("the answer's buttons are {string}", answerButtonsAre);
     And('the answer is marked not heard yet', async () => {
       expect(await screen.findByTestId('talk-unheard')).toBeInTheDocument();
       expect((await answerRows()).every((row) => row.heard !== true)).toBe(true);
@@ -2277,7 +2282,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('the phone finishes the last sentence', () => {
       act(() => speech!.finishAll());
     });
-    Then('the speaking bar is gone', barGone);
+    Then("the answer's buttons are down to {string}", answerButtonsAre);
     And('the answer is marked heard', async () => {
       await waitFor(async () => expect((await answerRows()).every((row) => row.heard === true)).toBe(true));
       expect(screen.queryByTestId('talk-unheard')).not.toBeInTheDocument();
@@ -2292,9 +2297,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('he holds the talk button and says nothing and lets go', holdsAndSaysNothing);
     And('he taps {string}', tapsBar);
     Then('the phone is told to speak {string} and then {string} and then {string}', toldToSpeak);
-    And('the speaking bar offers {string}, {string} and {string}', async (_c, a: string, b: string, c: string) => {
-      await barOffers(_c, a, b, c);
-    });
+    And("the answer's buttons are {string}", answerButtonsAre);
   });
 
   Scenario('mw-q6n8m0.9 AC-2: Stop ends the answer, marks it heard and leaves nothing to resume', ({ Given, When, Then, And }) => {
@@ -2302,9 +2305,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('he holds the talk button and says {string} and lets go', holdsAndSays);
     And('the Mayor answers {string} on model {string}', mayorAnswers);
     And('the phone has begun the second sentence', begunSecondSentence);
-    And('he holds the talk button and says nothing and lets go', holdsAndSaysNothing);
     And('he taps {string}', tapsBar);
-    Then('the speaking bar is gone', barGone);
+    Then("the answer's buttons are down to {string}", answerButtonsAre);
     And('the answer is marked heard', async () => {
       await waitFor(async () => expect((await answerRows()).every((row) => row.heard === true)).toBe(true));
     });
@@ -2323,7 +2325,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the last turn sent is turn 2 saying {string} with a cut', (_c, words: string) => {
       expect(lastSent()).toMatchObject({ text: words, talk: { turn: 2 }, cut: true });
     });
-    And('the speaking bar is gone', barGone);
+    And("the answer's buttons are down to {string}", answerButtonsAre);
   });
 
   Scenario('mw-q6n8m0.9 AC-2: the page going hidden pauses the answer, and coming back offers Resume at the same place', ({ Given, When, Then, And }) => {
@@ -2341,7 +2343,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
         document.dispatchEvent(new Event('visibilitychange'));
       });
     });
-    Then('the speaking bar offers {string}, {string} and {string}', barOffers);
+    Then("the answer's buttons are {string}", answerButtonsAre);
     When('he taps {string}', tapsBar);
     Then('the phone is told to speak {string} and then {string}', toldToSpeak);
   });
@@ -2389,7 +2391,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the answer is marked {string}', async (_c, mark: string) => {
       expect(await within(await screen.findByTestId('talk-answer')).findByText(mark)).toBeInTheDocument();
     });
-    And('the speaking bar offers {string}, {string} and {string}', barOffers);
+    And("the answer's buttons are {string}", answerButtonsAre);
     And('the phone has not spoken since', async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(speak.mock.calls.length).toBe(spokenBefore);
@@ -2401,7 +2403,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
         (speak.mock.calls.at(-1)?.[0] as Utterance).onend?.();
       });
     });
-    Then('the speaking bar is gone', barGone);
+    Then("the answer's buttons are down to {string}", answerButtonsAre);
     And('the answer is marked heard', async () => {
       await waitFor(async () => expect((await answerRows()).every((row) => row.heard === true)).toBe(true));
       expect(screen.queryByTestId('talk-unheard')).not.toBeInTheDocument();
@@ -2480,7 +2482,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the last turn sent is turn 2 saying {string} with a cut', (_c, words: string) => {
       expect(lastSent()).toMatchObject({ text: words, talk: { turn: 2 }, cut: true });
     });
-    And('the speaking bar is gone', barGone);
+    And("the answer's buttons are down to {string}", answerButtonsAre);
   });
 
   Scenario('mw-q6n8m0.10 AC1: leaving the Talk line pauses an answer read from its speaker button, and the bar on the next screen offers Resume', ({ Given, When, Then, And }) => {
@@ -2493,5 +2495,104 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(getSpeech().key).toMatch(/^talk-read:/);
     });
     And('the speaking bar offers {string}, {string} and {string}', barOffers);
+  });
+
+  // mw-q6n8m0.11: the answer's own speaker button knows it is playing.
+  const label = (name: string) => within(screen.getByTestId('talk-answer')).queryByText(name);
+  const markedAnd = async (_c: unknown, shown: string, hidden: string) => {
+    await waitFor(() => {
+      expect(label(shown)).toBeInTheDocument();
+      expect(label(hidden)).not.toBeInTheDocument();
+    });
+  };
+
+  Scenario('mw-q6n8m0.11 AC1: while the answer speaks its speaker button is a Stop, and tapping it stops without restarting', ({ Given, When, Then, And }) => {
+    let spokenBefore = 0;
+    let cancelledBefore = 0;
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    Then("the answer's buttons are {string}", answerButtonsAre);
+    When('he taps {string}', async (_c, name: string) => {
+      spokenBefore = speak.mock.calls.length;
+      cancelledBefore = cancel.mock.calls.length;
+      await tapsBar(_c, name);
+    });
+    Then('the phone is not told to speak again', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(speak.mock.calls.length).toBe(spokenBefore);
+    });
+    And('the speech is cancelled', async () => {
+      await waitFor(() => expect(cancel.mock.calls.length).toBeGreaterThan(cancelledBefore));
+    });
+    And("the answer's buttons are now {string}", answerButtonsAre);
+    When('he plays the answer again from its speaker button', async () => {
+      spokenMark = speak.mock.calls.length;
+      fireEvent.click(await screen.findByRole('button', { name: 'Read the answer aloud' }));
+    });
+    Then('the phone is told to speak {string} and then {string} and then {string}', toldToSpeak);
+    And("the answer's buttons then are {string}", answerButtonsAre);
+  });
+
+  Scenario('mw-q6n8m0.11 AC1: Pause turns the speaker into a Play that resumes from the same sentence', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    And('he taps {string}', tapsBar);
+    Then("the answer's buttons are {string}", answerButtonsAre);
+    When('he taps {string} to carry on', tapsBar);
+    Then('the phone is told to speak {string} and then {string}', toldToSpeak);
+    And("the answer's buttons are now {string}", answerButtonsAre);
+  });
+
+  Scenario('mw-q6n8m0.11 AC1: an answer paused by a hold is resumed by its speaker button from the same sentence', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    And('he holds the talk button and says nothing and lets go', holdsAndSaysNothing);
+    Then("the answer's buttons are {string}", answerButtonsAre);
+    When('he taps {string}', tapsBar);
+    Then('the phone is told to speak {string} and then {string}', toldToSpeak);
+  });
+
+  Scenario('mw-q6n8m0.11 AC2: the label says Speaking while the answer speaks, and Not heard yet while it waits paused', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the stored answer is unheard, as the real inbox stores it', storedUnheard);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    Then('the answer is marked {string} and not {string}', markedAnd);
+    When('he taps {string}', tapsBar);
+    Then('the answer now is marked {string} and not {string}', markedAnd);
+    When('he taps {string} to carry on', tapsBar);
+    Then('the answer once more is marked {string} and not {string}', markedAnd);
+    When('he taps {string} to end it', tapsBar);
+    Then('the answer ends up marked neither {string} nor {string}', async (_c, a: string, b: string) => {
+      await waitFor(() => {
+        expect(label(a)).not.toBeInTheDocument();
+        expect(label(b)).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  Scenario("mw-q6n8m0.11 AC3: the Talk line has no separate speaking bar, and the answer's buttons are 44 px targets", ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('the phone has begun the second sentence', begunSecondSentence);
+    Then('the Talk line shows no speaking bar', async () => {
+      await waitFor(() => expect(answerButtons().length).toBeGreaterThan(0));
+      expect(screen.queryByRole('region', { name: 'Speaking' })).not.toBeInTheDocument();
+    });
+    And("the answer's buttons are {string}", answerButtonsAre);
+    And("each of the answer's buttons is at least 44 px", () => {
+      for (const button of within(screen.getByTestId('talk-answer')).getAllByRole('button')) {
+        expect(button.className).toMatch(/\bh-11\b/);
+        expect(button.className).toMatch(/\bmin-w-11\b/);
+      }
+    });
   });
 });

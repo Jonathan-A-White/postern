@@ -16,6 +16,13 @@ describe('busyOf', () => {
     expect(busyOf(new Error('Could not reach WhatsOnChain after 3 tries (offline, or rate-limited)'))).toMatchObject({ kind: 'unreachable' });
   });
 
+  it("knows the backend's short 429 reply (mw-nxj49n): no body after the status, and not a 500", () => {
+    expect(busyOf(new Error('WhatsOnChain said 429'))).toMatchObject({ kind: 'rate-limited', status: 429, body: '' });
+    expect(busyOf(new Error('WhatsOnChain said 500'))).toBeNull();
+    expect(busyOf(new Error('WhatsOnChain said 500: node rejected the transaction'))).toBeNull();
+    expect(busyOf(new Error('WhatsOnChain said 504'))).toMatchObject({ kind: 'trouble', status: 504 });
+  });
+
   it('does not take a 4xx refusal or any other error for busy', () => {
     expect(busyOf(new Error('WhatsOnChain said 400: bad tx'))).toBeNull();
     expect(busyOf(new Error('the network rejected it'))).toBeNull();
@@ -54,7 +61,8 @@ describe('plainMessage', () => {
     expect(warn).not.toHaveBeenCalled();
     expect(plainMessage(new Error('WhatsOnChain said 429: <html>nginx</html>'))).toBe('WhatsOnChain is rate-limiting us. Try again in a minute.');
     expect(plainMessage(new Error('WhatsOnChain said 502: <html>Bad Gateway</html>'))).toBe('WhatsOnChain answered 502. Try again in a minute.');
-    expect(warn).toHaveBeenCalledTimes(2);
+    expect(plainMessage(new Error('WhatsOnChain said 429'))).toBe('WhatsOnChain is rate-limiting us. Try again in a minute.');
+    expect(warn).toHaveBeenCalledTimes(3);
     expect(providerRefusal('nothing here')).toBeNull();
   });
 });

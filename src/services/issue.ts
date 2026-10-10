@@ -128,6 +128,10 @@ function plainRefusal(error: unknown, broadcasting: boolean): unknown {
   if (!busy && !refusal) return error;
   console.warn('WhatsOnChain refused a request while issuing a licence:', message);
   if (busy) return new IssueError('network', busyMessage(busy, broadcasting));
+  // A plain 500 at the broadcast is not "busy", but it may still have come after the transaction went out.
+  if (broadcasting && refusal && refusal.status >= 500) {
+    return new IssueError('network', `WhatsOnChain had trouble taking the licence (it answered ${refusal.status}), so it may have gone out. Check Issued licences below in a minute, before you issue it again.`);
+  }
   return new IssueError('network', `WhatsOnChain refused it (it answered ${refusal?.status}). Nothing was spent.`);
 }
 

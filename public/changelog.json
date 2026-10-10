@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.32",
+    "date": "2026-10-10",
+    "story": "mw-2f65hu",
+    "kind": "fixed",
+    "text": "Revoking a licence now waits and tries again when WhatsOnChain is busy, and says plainly whether anything was spent."
+  },
+  {
     "version": "0.5.31",
     "date": "2026-10-10",
     "story": "mw-nxj49n",

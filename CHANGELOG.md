@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.32
+_2026-10-10_
+- Fixed: Revoking a licence now waits and tries again when WhatsOnChain is busy, and says plainly whether anything was spent.
+
 ## 0.5.31
 _2026-10-10_
 - Fixed: When WhatsOnChain turns the backend away, the phone now gets one short line instead of a page of web-server text.

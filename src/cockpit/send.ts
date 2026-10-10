@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { deliverAction, deliverMoveHome, type Delivered } from '../services/deliver';
 import { ApiTimeoutError } from '../services/apiAuth';
+import { plainMessage } from '../services/chainBusy';
 import { deliverOptions } from '../services/live';
 import { getKey } from '../services/keySession';
 import { MAX_ATTACHMENT_BYTES } from '../services/attachments';
@@ -110,7 +111,7 @@ export const NOT_SENT = 'Not sent: try again';
 /** The words a failed send shows: a timeout says whether the message could have gone. */
 export function describeSendError(err: unknown): string {
   if (err instanceof ApiTimeoutError) return err.sent ? MAY_HAVE_GONE : NOT_SENT;
-  return err instanceof Error ? err.message : String(err);
+  return err instanceof Error ? plainMessage(err) : String(err);
 }
 
 /** A success toast that also offers to open somewhere (a Needs card's message: its thread). */

@@ -3,6 +3,7 @@ import { PrivateKey, Transaction, Utils } from '@bsv/sdk';
 import { chainConfig, decodeTypedRecordScript, type ChainProvider } from 'spell-forge-bsv';
 import { db } from '../../src/data/db';
 import { addressForPublicKey } from '../../src/services/licence';
+import { setBusyRetryDelaysMs } from '../../src/services/chainBusy';
 import {
   IssueError,
   fetchIssuerBalance,
@@ -268,6 +269,45 @@ describe('revokeLicence', () => {
       provider,
     });
     await expect(attempt).rejects.toMatchObject({ code: 'insufficient-funds' });
+  });
+
+  describe('when WhatsOnChain is busy on the read of my mints (mw-2f65hu)', () => {
+    const RATE_LIMITED = 'WhatsOnChain rate-limited the request (429)';
+
+    beforeEach(() => setBusyRetryDelaysMs([1, 1, 1]));
+    afterEach(() => setBusyRetryDelaysMs(undefined));
+
+    it('reads again, says so each time, and then revokes', async () => {
+      const { provider, origin } = await chainWithMyMint();
+      const read = provider.getAddressHistory.bind(provider);
+      let reads = 0;
+      provider.getAddressHistory = async (address) => {
+        if (++reads <= 2) throw new Error(RATE_LIMITED);
+        return read(address);
+      };
+      const onBusy = vi.fn();
+      const fetchImpl = backend(10_000);
+      await revokeLicence({ origin, issuerKey: ISSUER_MASTER, fetchImpl: fetchImpl as unknown as typeof fetch, provider, onBusy });
+      expect(onBusy).toHaveBeenCalledTimes(2);
+      expect(broadcastTransactions(fetchImpl)).toHaveLength(1);
+    });
+
+    it('that stays busy ends in one plain line that says nothing was spent, and broadcasts nothing', async () => {
+      const { provider, origin } = await chainWithMyMint();
+      provider.getAddressHistory = async () => {
+        throw new Error(RATE_LIMITED);
+      };
+      const fetchImpl = backend(10_000);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const attempt = revokeLicence({ origin, issuerKey: ISSUER_MASTER, fetchImpl: fetchImpl as unknown as typeof fetch, provider });
+      await expect(attempt).rejects.toMatchObject({
+        code: 'network',
+        message: 'WhatsOnChain is rate-limiting us. Nothing was spent. Try again in a minute.',
+      });
+      warn.mockRestore();
+      expect(broadcastTransactions(fetchImpl)).toHaveLength(0);
+      expect(await db.pendingSpends.count()).toBe(0);
+    });
   });
 });
 

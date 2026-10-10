@@ -76,6 +76,8 @@ export interface RevokeLicenceParams extends IssueContext {
   origin: string;
   /** Reads this key's mints to check the origin is one of them; never asked to broadcast. */
   provider?: ChainProvider;
+  /** Called each time WhatsOnChain is busy and the step is about to be tried again, so the screen can say so. */
+  onBusy?: () => void;
 }
 
 export interface IssueCost {
@@ -105,33 +107,38 @@ function networkError(error: unknown): IssueError {
   return new IssueError('network', message);
 }
 
+/** What a refusal is about, for its words: a mint to issue, or a revoke record to write. */
+type Act = 'issue' | 'revoke';
+
+/** Where the Governor looks to learn whether a broadcast that may have gone out did. */
+function mayHaveGoneOut(act: Act, answered: string): string {
+  return act === 'issue'
+    ? `WhatsOnChain had trouble taking the licence${answered}, so it may have gone out. Check Issued licences below in a minute, before you issue it again.`
+    : `WhatsOnChain had trouble taking the revoke${answered}, so it may have gone out. Check this licence's status in a minute, before you revoke it again.`;
+}
+
 /**
  * The words for WhatsOnChain being busy or refusing, in place of its own page: what the Governor needs is whether anything
  * was spent. Before the broadcast nothing was; at it, a 429 was turned away before the transaction was looked at, but a 5xx
  * (or a lost connection) may have come after it went out. The provider's body goes to the console only (mw-rch8bu).
  */
-function busyMessage(busy: Busy, broadcasting: boolean): string {
-  if (broadcasting && busy.kind !== 'rate-limited') {
-    const answered = busy.status ? ` (it answered ${busy.status})` : '';
-    return `WhatsOnChain had trouble taking the licence${answered}, so it may have gone out. Check Issued licences below in a minute, before you issue it again.`;
-  }
+function busyMessage(busy: Busy, broadcasting: boolean, act: Act): string {
+  if (broadcasting && busy.kind !== 'rate-limited') return mayHaveGoneOut(act, busy.status ? ` (it answered ${busy.status})` : '');
   if (busy.kind === 'rate-limited') return 'WhatsOnChain is rate-limiting us. Nothing was spent. Try again in a minute.';
   if (busy.kind === 'unreachable') return 'WhatsOnChain could not be reached. Nothing was spent. Try again in a minute.';
   return `WhatsOnChain is having trouble (it answered ${busy.status}). Nothing was spent. Try again in a minute.`;
 }
 
 /** `error` as it came, unless it carries WhatsOnChain's own refusal: then a plain IssueError, and the refusal's body to the console. */
-function plainRefusal(error: unknown, broadcasting: boolean): unknown {
+function plainRefusal(error: unknown, broadcasting: boolean, act: Act = 'issue'): unknown {
   const message = error instanceof Error ? error.message : '';
   const busy = busyOf(error);
   const refusal = providerRefusal(message);
   if (!busy && !refusal) return error;
-  console.warn('WhatsOnChain refused a request while issuing a licence:', message);
-  if (busy) return new IssueError('network', busyMessage(busy, broadcasting));
+  console.warn(`WhatsOnChain refused a request while ${act === 'issue' ? 'issuing a licence' : 'revoking one'}:`, message);
+  if (busy) return new IssueError('network', busyMessage(busy, broadcasting, act));
   // A plain 500 at the broadcast is not "busy", but it may still have come after the transaction went out.
-  if (broadcasting && refusal && refusal.status >= 500) {
-    return new IssueError('network', `WhatsOnChain had trouble taking the licence (it answered ${refusal.status}), so it may have gone out. Check Issued licences below in a minute, before you issue it again.`);
-  }
+  if (broadcasting && refusal && refusal.status >= 500) return new IssueError('network', mayHaveGoneOut(act, ` (it answered ${refusal.status})`));
   return new IssueError('network', `WhatsOnChain refused it (it answered ${refusal?.status}). Nothing was spent.`);
 }
 
@@ -275,19 +282,24 @@ export async function revokeLicence(params: RevokeLicenceParams): Promise<{ txid
   const privateKey = privateKeyOf(params.issuerKey);
   const address = privateKey.toAddress(chainConfig.network);
 
-  const mine = await issuedLicences({
-    issuerPublicKeyHex: privateKey.toPublicKey().toString(),
-    provider: params.provider,
-  });
+  let mine: IssuedLicenceEntry[];
+  try {
+    mine = await retryWhenBusy(
+      () => issuedLicences({ issuerPublicKeyHex: privateKey.toPublicKey().toString(), provider: params.provider }),
+      params.onBusy,
+    );
+  } catch (error) {
+    throw networkError(plainRefusal(error, false, 'revoke'));
+  }
   if (!mine.some((mint) => mint.origin === origin)) {
     throw new IssueError('not-issued', 'That licence is not one you issued.');
   }
 
   let utxos: Utxo[];
   try {
-    utxos = await loadSpendableUtxos(address, apiOptions);
+    utxos = await retryWhenBusy(() => loadSpendableUtxos(address, apiOptions), params.onBusy);
   } catch (error) {
-    throw networkError(error);
+    throw networkError(plainRefusal(error, false, 'revoke'));
   }
   const eligible = selectFeeUtxos(utxos, { exclude: [] });
   const held = eligible.reduce((sum, utxo) => sum + utxo.satoshis, 0);
@@ -319,9 +331,10 @@ export async function revokeLicence(params: RevokeLicenceParams): Promise<{ txid
   const now = new Date();
   let txid: string;
   try {
-    txid = await broadcastThroughBackend(transaction.toHex(), apiOptions);
+    // Only a 429 is sent again: the provider turned it away unread. After a 5xx the transaction may be out already.
+    txid = await retryWhenBusy(() => broadcastThroughBackend(transaction.toHex(), apiOptions), params.onBusy, (busy) => busy.kind === 'rate-limited');
   } catch (error) {
-    throw networkError(error);
+    throw networkError(plainRefusal(error, true, 'revoke'));
   }
   await pendingSpendsRepo.add({
     txid,

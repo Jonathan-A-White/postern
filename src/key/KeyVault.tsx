@@ -16,6 +16,7 @@ import {
 } from '../services/vault';
 import { chain, type LicenceStatus } from '../chain';
 import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../services/collections';
+import { plainMessage } from '../services/chainBusy';
 import { MyPublicKey } from './KeyQr';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
@@ -197,7 +198,7 @@ export function KeyVault() {
     chain
       .balance(publicKeyHex)
       .then((satoshis) => setBalanceState({ name: 'loaded', satoshis }))
-      .catch((err) => setBalanceState({ name: 'error', message: (err as Error).message }));
+      .catch((err) => setBalanceState({ name: 'error', message: plainMessage(err) }));
   }, [screen, balanceRefreshToken]);
 
   useEffect(() => {
@@ -223,7 +224,7 @@ export function KeyVault() {
       setMintOutcome({ name: 'success', txid: result.txid });
       setLicenceState({ name: 'mint-pending', txid: result.txid });
     } catch (err) {
-      setMintOutcome({ name: 'error', message: (err as Error).message });
+      setMintOutcome({ name: 'error', message: plainMessage(err) });
     }
   }
 
@@ -352,7 +353,7 @@ export function KeyVault() {
       <h1 className="text-2xl font-semibold">The key vault</h1>
 
       {error && (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="text-danger [overflow-wrap:anywhere]">
           {error}
         </p>
       )}
@@ -504,7 +505,7 @@ export function KeyVault() {
 
           {balanceState.name === 'error' && (
             <>
-              <p>Balance unavailable (WhatsOnChain): {balanceState.message}</p>
+              <p className="[overflow-wrap:anywhere]">Balance unavailable (WhatsOnChain): {balanceState.message}</p>
               <button className="inline-flex h-11 items-center justify-center rounded-xl border border-line bg-raised px-4 text-[15px] hover:border-line-strong" onClick={handleRefreshBalance}>
                 Retry
               </button>
@@ -556,7 +557,7 @@ export function KeyVault() {
             </>
           )}
 
-          {mintOutcome.name === 'error' && <p>{mintOutcome.message}</p>}
+          {mintOutcome.name === 'error' && <p className="[overflow-wrap:anywhere]">{mintOutcome.message}</p>}
 
           {chain.screens.IssueLicences && <chain.screens.IssueLicences issuerKey={screen.key} />}
         </div>

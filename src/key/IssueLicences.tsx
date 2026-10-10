@@ -3,6 +3,7 @@
 // the balance) and Issued licences per collection with Revoke. Shown only for a cockpit key: an
 // app key's /api/me names no collections, and then this renders nothing.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { plainMessage } from '../services/chainBusy';
 import { fetchMe, type MeCollection } from '../services/me';
 import { chain, type IssuedLicence, type IssuedLicenceEntry } from '../chain';
 import { publicKeyHexFromMasterKey } from '../services/vault';
@@ -17,6 +18,8 @@ const BUTTON =
 const PRIMARY_BUTTON =
   'inline-flex h-11 items-center justify-center rounded-xl bg-accent px-4 font-semibold text-accent-fg disabled:opacity-45';
 const SMALL_BUTTON = 'inline-flex h-8 items-center rounded-lg border border-line bg-raised px-3 text-sm disabled:opacity-45';
+/** Every error text wraps anywhere: a transaction id or a provider's words are one long word and would run off the edge. */
+const WRAP = '[overflow-wrap:anywhere]';
 const FIELD = 'h-11 rounded-xl border border-line bg-sunken px-3 text-[15px]';
 
 type RowStatus = 'pending' | 'held' | 'revoked';
@@ -36,9 +39,8 @@ type Listing =
 const LISTING_RETRY_MS = 2000;
 const LISTING_RETRIES = 5;
 
-type IssueOutcome = { name: 'idle' } | { name: 'issuing' } | { name: 'issued'; txid: string } | { name: 'error'; message: string };
+type IssueOutcome = { name: 'idle' } | { name: 'issuing'; busy?: boolean } | { name: 'issued'; txid: string } | { name: 'error'; message: string };
 
-const errorText = (error: unknown) => (error instanceof Error && error.message ? error.message : 'Something went wrong.');
 
 const shorten = (text: string, head: number, tail: number) => (text.length > head + tail + 1 ? `${text.slice(0, head)}…${text.slice(-tail)}` : text);
 
@@ -60,7 +62,7 @@ const loadBalance = (key: Uint8Array): Promise<number | null> => chain.issuerBal
 const loadListing = (issuerPublicKeyHex: string): Promise<Listing> =>
   chain.issuedLicences({ issuerPublicKeyHex }).then(
     (entries): Listing => ({ name: 'loaded', entries }),
-    (error): Listing => ({ name: 'error', message: errorText(error) }),
+    (error): Listing => ({ name: 'error', message: plainMessage(error) }),
   );
 
 function dateOf(row: Row, times: Record<string, number>): string {
@@ -119,7 +121,7 @@ function IssuedRow({
             </button>
           </div>
           {error && (
-            <p role="alert" className="text-danger">
+            <p role="alert" className={`text-danger ${WRAP}`}>
               {error}
             </p>
           )}
@@ -201,7 +203,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   if (collectionsState.name === 'error') {
     return (
       <section className="flex flex-col gap-2 border-t border-line pt-4">
-        <p role="alert" className="text-danger">
+        <p role="alert" className={`text-danger ${WRAP}`}>
           Could not read the collections.
         </p>
         <button
@@ -240,7 +242,12 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
     issueInFlight.current = true;
     setOutcome({ name: 'issuing' });
     try {
-      const issued = await chain.issueLicence({ issuerKey, holderPublicKeyHex: holder, collection });
+      const issued = await chain.issueLicence({
+        issuerKey,
+        holderPublicKeyHex: holder,
+        collection,
+        onBusy: () => setOutcome({ name: 'issuing', busy: true }),
+      });
       await rememberIssuedAt(issued.txid);
       issuedHere.current += 1;
       setJustIssued((previous) => [...previous, issued]);
@@ -248,7 +255,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       setHolder('');
       setRefreshToken((token) => token + 1);
     } catch (error) {
-      setOutcome({ name: 'error', message: errorText(error) });
+      setOutcome({ name: 'error', message: plainMessage(error) });
     } finally {
       issueInFlight.current = false;
       setConfirmingIssue(false);
@@ -264,7 +271,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       setConfirming(null);
       setRefreshToken((token) => token + 1);
     } catch (error) {
-      setRevokeError({ origin, message: errorText(error) });
+      setRevokeError({ origin, message: plainMessage(error) });
     } finally {
       setRevoking(null);
     }
@@ -320,7 +327,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
         </p>
         {short && (
           <div className="flex flex-col gap-2">
-            <p role="alert" className="text-danger">
+            <p role="alert" className={`text-danger ${WRAP}`}>
               Not enough sats: this needs {cost.totalSatoshis.toLocaleString('en-US')}, you have {balance.toLocaleString('en-US')}.
             </p>
             <p className="text-sm text-muted">
@@ -355,6 +362,11 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
             </div>
           </div>
         )}
+        {outcome.name === 'issuing' && outcome.busy && (
+          <p role="status" className="text-sm text-muted">
+            WhatsOnChain is busy, trying again…
+          </p>
+        )}
         {outcome.name === 'issued' && (
           <p>
             Issued:{' '}
@@ -364,7 +376,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
           </p>
         )}
         {outcome.name === 'error' && (
-          <p role="alert" className="text-danger">
+          <p role="alert" className={`text-danger ${WRAP}`}>
             {outcome.message}
           </p>
         )}
@@ -376,10 +388,10 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
         {listing.name === 'retrying' && <p className="text-sm text-muted">Could not reach the chain just now. Reading again…</p>}
         {listing.name === 'error' && (
           <div className="flex flex-col gap-2">
-            <p role="alert" className="text-danger">
+            <p role="alert" className={`text-danger ${WRAP}`}>
               The issued licences could not be read. Check the connection and try again.
             </p>
-            <p className="text-sm text-muted">{listing.message}</p>
+            <p className={`text-sm text-muted ${WRAP}`}>{listing.message}</p>
             <button
               className={`${BUTTON} self-start`}
               onClick={() => {

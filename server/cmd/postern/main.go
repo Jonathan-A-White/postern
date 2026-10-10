@@ -93,6 +93,9 @@ func newChain(cfg config.Config) chain.Chain {
 // newly indexed record. A grist for the mill wakes the on-grist hook, and no
 // grist wakes the on-message hook (docs/protocol.md §19).
 func newApp(cfg config.Config) (*app, error) {
+	if cfg.RelayOnly {
+		return newRelayOnlyApp(cfg), nil
+	}
 	store, err := index.Open(cfg.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("opening index: %w", err)
@@ -187,6 +190,24 @@ func newApp(cfg config.Config) (*app, error) {
 	}
 
 	return &app{handler: standby.Middleware(home, handler, standby.WithPeers(cfg.Peers)), start: start, close: func() { store.Close() }}, nil
+}
+
+// newRelayOnlyApp is the backend under POSTERN_RELAY_ONLY=1: it opens no
+// store, reads and writes nothing under POSTERN_DATA, and starts no chain
+// poll, indexer, push, hook or sweep. It only finds the home among
+// POSTERN_PEERS and relays the send routes to it (standby.RelayOnly).
+func newRelayOnlyApp(cfg config.Config) *app {
+	if cfg.HomeCmd != "" {
+		log.Printf("relay-only: POSTERN_HOME_CMD is set and is not run (%s)", cfg.HomeCmd)
+	}
+	finder := standby.NewFinder(cfg.Peers, cfg.PeerOrder)
+	finder.Check()
+	log.Printf("relay-only: peers %s", strings.Join(cfg.PeerOrder, ", "))
+	return &app{
+		handler: standby.RelayOnly(finder, standby.WithPeers(cfg.Peers)),
+		start:   func(stop <-chan struct{}) { go finder.Run(stop, standby.DefaultInterval) },
+		close:   func() {},
+	}
 }
 
 // buildFanout is the one fan-out for "a record was indexed": web push (silent

@@ -821,3 +821,146 @@ func TestATalkAnswerIsNotPushedWhenNoMayorKeyIsConfigured(t *testing.T) {
 		t.Fatalf("push was told about %d talk records with no Mayor key, want 0", push.n.Load())
 	}
 }
+
+// relayOnlyApp builds the app with POSTERN_RELAY_ONLY=1 over peers, and the
+// fresh, empty data directory it was given.
+func relayOnlyApp(t *testing.T, peers string, more map[string]string) (*httptest.Server, string) {
+	t.Helper()
+	env := map[string]string{"POSTERN_RELAY_ONLY": "1", "POSTERN_PEERS": peers}
+	for k, v := range more {
+		env[k] = v
+	}
+	return standbyAppWith(t, "", env)
+}
+
+// peerBackend is a peer: /healthz says health, anything else is kept and
+// answered 418.
+func peerBackend(t *testing.T, health string) (*httptest.Server, func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			io.WriteString(w, health)
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.RequestURI()+" relayed="+r.Header.Get("X-Postern-Relayed")+" "+r.Header.Get("X-Test")+" "+string(b))
+		mu.Unlock()
+		w.WriteHeader(http.StatusTeapot)
+		io.WriteString(w, "the peer's answer")
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), seen...)
+	}
+}
+
+func dirEntries(t *testing.T, dir string) int {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(entries)
+}
+
+func TestRelayOnlyRelaysSendsToTheHomePeerAndStoresNothing(t *testing.T) {
+	home, seen := peerBackend(t, `{"ok":true,"standby":false}`)
+	other, otherSeen := peerBackend(t, `{"ok":true,"standby":true}`)
+	server, dataDir := relayOnlyApp(t, "b="+other.URL+",a="+home.URL, nil)
+
+	code, body := post(t, server.URL+"/api/messages?a=b", `{"m":1}`)
+	if code != http.StatusTeapot || body != "the peer's answer" {
+		t.Fatalf("POST /api/messages = %d %q, want the home's 418 answer", code, body)
+	}
+	if code, _ = get(t, server.URL+"/api/challenge"); code != http.StatusTeapot {
+		t.Fatalf("GET /api/challenge = %d, want the home's 418", code)
+	}
+	got := seen()
+	if len(got) != 2 || got[0] != `POST /api/messages?a=b relayed=1 hdr {"m":1}` || got[1] != "GET /api/challenge relayed=1  " {
+		t.Fatalf("the home saw %q", got)
+	}
+	if len(otherSeen()) != 0 {
+		t.Fatal("the standby peer saw a send while the home was up")
+	}
+	if code, body := get(t, server.URL+"/healthz"); code != http.StatusOK || !strings.Contains(body, `"relay_only":true`) || !strings.Contains(body, `"target":"a"`) {
+		t.Fatalf("GET /healthz = %d %q, want relay_only and target a", code, body)
+	}
+	if n := dirEntries(t, dataDir); n != 0 {
+		t.Fatalf("POSTERN_DATA holds %d entries, want it empty", n)
+	}
+}
+
+func TestRelayOnlyWithNoPeerAnsweringIs503StandbyAndStoresNothing(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := l.Addr().String()
+	l.Close()
+	server, dataDir := relayOnlyApp(t, "a=http://"+dead, nil)
+
+	if code, body := post(t, server.URL+"/api/messages", `{"m":1}`); code != http.StatusServiceUnavailable || !strings.Contains(body, `"standby":true`) {
+		t.Fatalf("POST /api/messages = %d %q, want 503 standby", code, body)
+	}
+	for _, path := range []string{"/api/challenge", "/api/messages"} {
+		if code, body := get(t, server.URL+path); code != http.StatusServiceUnavailable || !strings.Contains(body, `"standby":true`) {
+			t.Fatalf("GET %s = %d %q, want 503 standby", path, code, body)
+		}
+	}
+	if code, body := get(t, server.URL+"/healthz"); code != http.StatusOK || !strings.Contains(body, `"relay_only":true`) || !strings.Contains(body, `"target":""`) {
+		t.Fatalf("GET /healthz = %d %q, want relay_only and an empty target", code, body)
+	}
+	if n := dirEntries(t, dataDir); n != 0 {
+		t.Fatalf("POSTERN_DATA holds %d entries, want it empty", n)
+	}
+}
+
+func TestRelayOnlyNeverRelaysARelayedRequestAndRunsNoHomeCommand(t *testing.T) {
+	home, seen := peerBackend(t, `{"ok":true,"standby":false}`)
+	logged := captureLog(t)
+	marker := filepath.Join(t.TempDir(), "ran")
+	server, _ := relayOnlyApp(t, "a="+home.URL, map[string]string{"POSTERN_HOME_CMD": "touch " + marker})
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/messages", strings.NewReader("{}"))
+	req.Header.Set("X-Postern-Relayed", "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable || len(seen()) != 0 {
+		t.Fatalf("relayed request = %d, peer saw %q, want 503 and nothing", resp.StatusCode, seen())
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("POSTERN_HOME_CMD ran in relay-only")
+	}
+	if !strings.Contains(logged(), "POSTERN_HOME_CMD") {
+		t.Fatalf("no log line about POSTERN_HOME_CMD: %q", logged())
+	}
+}
+
+func TestRelayOnlyWithoutPeersRefusesToStart(t *testing.T) {
+	_, err := config.Load(func(key string) string {
+		return map[string]string{"POSTERN_ANCHOR": "mt6vaAWeFxu2qC6pPs7bsqTNvv87dCwMW5", "POSTERN_RELAY_ONLY": "1"}[key]
+	})
+	if err == nil || !strings.Contains(err.Error(), "POSTERN_PEERS") {
+		t.Fatalf("err = %v, want one naming POSTERN_PEERS", err)
+	}
+}
+
+func TestRelayOnlyNeedsNoDataDirectory(t *testing.T) {
+	home, _ := peerBackend(t, `{"ok":true,"standby":false}`)
+	missing := filepath.Join(t.TempDir(), "nope", "data")
+	server, _ := relayOnlyApp(t, "a="+home.URL, map[string]string{"POSTERN_DATA": missing})
+	if code, _ := post(t, server.URL+"/api/messages", "{}"); code != http.StatusTeapot {
+		t.Fatalf("POST = %d, want 418", code)
+	}
+	if _, err := os.Stat(missing); err == nil {
+		t.Fatal("POSTERN_DATA was created")
+	}
+}

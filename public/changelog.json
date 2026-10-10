@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.29",
+    "date": "2026-10-10",
+    "story": "mw-xpy2ds",
+    "kind": "new",
+    "text": "Needs you now lists what you are waiting on others for, with who and since when, and after three working days it asks you to Chase, mark it Done or Keep waiting."
+  },
+  {
     "version": "0.5.28",
     "date": "2026-10-10",
     "story": "mw-42919u",

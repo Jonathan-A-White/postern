@@ -61,6 +61,14 @@ export function plainMessage(error: unknown): string {
     : `WhatsOnChain answered ${refusal.status}. Try again in a minute.`;
 }
 
+/** The line a busy WhatsOnChain gets on the screen while the work is tried again. */
+export const BUSY_LINE = 'WhatsOnChain is busy, trying again…';
+
+/** The one plain line under something that waits to be sent again after `error`: the busy line, or the error's own plain words. */
+export function waitingLine(error: unknown): string {
+  return busyOf(error) ? BUSY_LINE : plainMessage(error);
+}
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**

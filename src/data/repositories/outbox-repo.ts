@@ -48,7 +48,7 @@ export const outboxRepo = {
 
   /** Retry: puts a refused row back in the queue, in its old place, as if it had never been tried. */
   async requeue(id: number): Promise<void> {
-    await db.outbox.update(id, { state: 'pending', attempts: 0, nextAt: undefined, failure: undefined });
+    await db.outbox.update(id, { state: 'pending', attempts: 0, nextAt: undefined, failure: undefined, note: undefined });
   },
 
   /** Forgets acked rows that were acked before `before` (ms since the epoch of their creation). */

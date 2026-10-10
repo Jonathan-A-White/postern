@@ -80,6 +80,7 @@ export function pendingMessageItems(rows: OutboxRow[], have: MessageRow[], inThr
       source: 'message' as const,
       outboxId: row.id as number,
       ...(row.state === 'failed' ? { failure: row.failure ?? 'The backend refused it.' } : {}),
+      ...(row.state === 'pending' && row.note ? { note: row.note } : {}),
       ...(row.txid ? { txid: row.txid } : {}),
       ...(row.txid && !row.txid.startsWith('direct:') ? { onChain: true } : {}),
       ...(typeof row.payload.re === 'string' ? { re: row.payload.re } : {}),

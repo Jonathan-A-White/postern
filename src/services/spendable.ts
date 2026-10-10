@@ -4,7 +4,7 @@
 // broadcast through the backend's /api/broadcast. Lifted out of send.ts unchanged so a
 // mint or a revoke funds and broadcasts exactly as a message does (mw-yjxcw.3).
 import { outpointKey, filterUtxosExcludingPending, reconcilePendingSpends, type Utxo } from 'spell-forge-bsv';
-import { apiFetch, type ApiFetchOptions } from './apiAuth';
+import { apiFetch, RefusedError, type ApiFetchOptions } from './apiAuth';
 import { readErrorMessage } from './errorMessage';
 import { fetchUtxosFromWhatsOnChain } from './whatsonchain';
 import { pendingSpendsRepo } from '../data/repositories';
@@ -15,7 +15,7 @@ export type ChainVia = 'backend' | 'whatsonchain';
 async function listUtxosThroughBackend(address: string, apiOptions: ApiFetchOptions): Promise<Utxo[]> {
   const utxosResponse = await apiFetch(`/utxos/${address}`, undefined, apiOptions);
   if (!utxosResponse.ok) {
-    throw new Error(await readErrorMessage(utxosResponse, 'Could not fetch spendable coins.'));
+    throw new RefusedError(await readErrorMessage(utxosResponse, 'Could not fetch spendable coins.'), utxosResponse.status);
   }
   return ((await utxosResponse.json()) as { utxos: Utxo[] }).utxos;
 }
@@ -90,7 +90,7 @@ export async function broadcastThroughBackend(rawtx: string, apiOptions: ApiFetc
     apiOptions,
   );
   if (!broadcastResponse.ok) {
-    throw new Error(await readErrorMessage(broadcastResponse, 'The backend rejected the broadcast.'));
+    throw new RefusedError(await readErrorMessage(broadcastResponse, 'The backend rejected the broadcast.'), broadcastResponse.status);
   }
   const broadcastBody = (await broadcastResponse.json()) as { txid?: unknown };
   if (typeof broadcastBody.txid !== 'string') {

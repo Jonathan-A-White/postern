@@ -6,14 +6,15 @@
 // connection comes back. A sent row waits until its own record or event is seen coming back
 // (since-paging, or the `card_answered` event naming its txid) and is then acked.
 // A 4xx the backend gives (other than 408 and 429) is final: the row is marked failed with the
-// backend's words and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
+// backend's words (a provider's page made plain) and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
 // Talk turns are a lane of their own, so no upload or failing message holds one back.
 import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo, viewRepo } from '../data/repositories';
 import type { OutboxKind, OutboxRow } from '../data/db';
 import type { GovernorAction } from '../model/conversation';
 import { retryDelay } from '../model/outbox';
 import { decodeView } from '../model/view';
-import { isPermanentRefusal } from './apiAuth';
+import { isPermanentRefusal, RefusedError } from './apiAuth';
+import { busyOf, plainMessage, waitingLine } from './chainBusy';
 import type { TalkTurn } from '../model/talkLine';
 import { attachmentMime, uploadAttachment } from './attachments';
 import { deliverAction, deliverAnswer, deliverThreaded, writeBehind, type Delivered, type DeliverOptions } from './deliver';
@@ -181,17 +182,19 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
       if (mine !== generation) return;
       if (isPermanentRefusal(err)) {
         // Refused for good (a 4xx): it is marked failed with the backend's words, waits for Retry or Discard, and the rows behind it go on.
-        await outboxRepo.update(row.id as number, { state: 'failed', failure: err.message, attempts: row.attempts + 1, nextAt: undefined });
+        await outboxRepo.update(row.id as number, { state: 'failed', failure: plainMessage(err), attempts: row.attempts + 1, nextAt: undefined });
         continue;
       }
       // Out of reach or a passing trouble: the row keeps its place, and nothing behind it in its lane goes ahead of it.
       const attempts = row.attempts + 1;
       const nextAt = Date.now() + retryDelay(attempts);
-      await outboxRepo.update(row.id as number, { attempts, nextAt });
+      // When the backend answered with trouble (a busy WhatsOnChain, a provider refusal) the row says so in one plain line; a lost connection says nothing more than pending.
+      const note = err instanceof RefusedError || busyOf(err) ? waitingLine(err) : undefined;
+      await outboxRepo.update(row.id as number, { attempts, nextAt, note });
       return wakeAt(lane, nextAt);
     }
     if (mine !== generation) return;
-    await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, attempts: row.attempts + 1, nextAt: undefined });
+    await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, attempts: row.attempts + 1, nextAt: undefined, note: undefined });
     rememberDelivered(row, delivered);
   }
 }

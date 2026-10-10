@@ -20,8 +20,22 @@ export function FailedNote({ id, failure, className }: { id: number; failure: st
   );
 }
 
-/** The pending mark for a row that waits to go, or the refusal with Retry and Discard for one the backend refused. */
-export function OutboxMark({ row, className }: { row: Pick<OutboxRow, 'id' | 'state' | 'failure'>; className?: string }) {
+/** The one plain line under something that waits to be sent again (OutboxRow.note); it wraps inside the screen. */
+export function WaitLine({ note, className }: { note: string; className?: string }) {
+  return (
+    <span data-testid="outbox-note" className={className ?? 'block min-w-0 wrap-anywhere text-[12.5px] text-muted'}>
+      {note}
+    </span>
+  );
+}
+
+/** The pending mark for a row that waits to go (with its plain line, when it has one), or the refusal with Retry and Discard for one the backend refused. */
+export function OutboxMark({ row, className }: { row: Pick<OutboxRow, 'id' | 'state' | 'failure' | 'note'>; className?: string }) {
   if (row.state === 'failed') return <FailedNote id={row.id as number} failure={row.failure ?? 'The backend refused it.'} />;
-  return <PendingMark className={className} />;
+  return (
+    <>
+      <PendingMark className={className} />
+      {row.note && <WaitLine note={row.note} />}
+    </>
+  );
 }

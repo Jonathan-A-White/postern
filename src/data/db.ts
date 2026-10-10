@@ -241,6 +241,8 @@ export interface OutboxRow {
   state: OutboxState;
   /** What the backend said, when it refused the row for good (`state` is `failed`). */
   failure?: string;
+  /** One plain line for a row still waiting after a try the backend answered with trouble (WhatsOnChain busy, a provider refusal); gone once the row has gone. */
+  note?: string;
 }
 
 export interface VaultRow {

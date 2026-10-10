@@ -15,7 +15,7 @@ import { isSupported as canSpeak, speak, stop as stopSpeaking, useSpeechFailure 
 import { useSpeaking } from './useSpeaking';
 import { useAnswers, useBeadTitles, useOutbox, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { pendingAnswer } from '../model/outbox';
-import { FailedNote, OutboxMark } from './OutboxMark';
+import { FailedNote, OutboxMark, WaitLine } from './OutboxMark';
 import { PendingMark } from './PendingMark';
 import { ShareButton } from './ShareButton';
 import { VoicePlayer } from './VoicePlayer';
@@ -411,6 +411,7 @@ const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, on
           </button>
         )}
       </div>
+      {item.pending && item.failure === undefined && item.note && <WaitLine note={item.note} className="block max-w-[88%] min-w-0 px-1 text-right text-[11.5px] wrap-anywhere text-muted lg:max-w-[75%]" />}
       {voiceFailure !== null && (
         <p role="status" className="px-1 text-[11px] text-danger">
           Voice failed: {voiceFailure}

@@ -10,7 +10,6 @@ import { P2PKH, PrivateKey, PublicKey, SatoshisPerKilobyte, Transaction, Utils }
 import {
   buildContractMintTransaction,
   chainConfig,
-  createChainProvider,
   encodeTypedRecordScript,
   findTypedRecordsInTransaction,
   isValidCompressedPublicKeyHex,
@@ -188,7 +187,9 @@ export async function issueLicence(params: IssueLicenceParams): Promise<IssuedLi
       holderPubKey: holderPublicKeyHex,
       mintFuelSatoshis: chainConfig.mintFuelSatoshis,
       config: { ...chainConfig, collectionId: collection },
-      provider: withNetworkErrors(params.provider ?? createChainProvider()),
+      // Read through the one paced queue: the builder's reads of the coins' source transactions ran on a
+      // provider of their own, beside the list the last issue had started, at twice WhatsOnChain's limit.
+      provider: withNetworkErrors(params.provider ?? sharedChainReads()),
     });
   } catch (error) {
     if (error instanceof IssueError) throw error;

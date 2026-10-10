@@ -27,8 +27,10 @@ export function resetChainPacer(): void {
 /** Runs `call` once the gap since the previous request has passed; calls leave in the order they ask. */
 export function paced<T>(call: () => Promise<T>): Promise<T> {
   const turn = queue.then(async () => {
-    const wait = lastStart + gapMs - performance.now();
-    if (wait > 0) await new Promise<void>((resolve) => setTimeout(resolve, wait));
+    // A timer can fire a hair early: wait again until the whole gap has really passed.
+    for (let wait = lastStart + gapMs - performance.now(); wait > 0; wait = lastStart + gapMs - performance.now()) {
+      await new Promise<void>((resolve) => setTimeout(resolve, wait));
+    }
     lastStart = performance.now();
   });
   queue = turn;

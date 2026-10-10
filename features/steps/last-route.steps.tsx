@@ -2,7 +2,7 @@
 // and opened again" is src/main.tsx's start-up (restoreLastRoute, restoreScrolls) run on a bare
 // address; the screens it lands on are rendered through the app's own router.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, configure, getConfig } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
@@ -10,7 +10,7 @@ import { db } from '../../src/data/db';
 import { forgetRestoredBead, restoreLastRoute, saveLastRoute } from '../../src/nav/lastRoute';
 import { forgetScrolls, restoreScrolls, useScrollMemory } from '../../src/nav/scrollMemory';
 import { formatRoute, parseRoute } from '../../src/nav/route';
-import { waitForRoute } from '../../tests/support/wait-for-route';
+import { SLOW_HOST_MS, waitForRoute } from '../../tests/support/wait-for-route';
 import { setKey, lock } from '../../src/services/keySession';
 import { fetchBeadDetail } from '../../src/services/beads';
 
@@ -28,6 +28,17 @@ const threadAt = (thread: string) => formatRoute({ view: 'talk', thread });
 function moveTo(search: string): void {
   window.history.pushState({ app: true }, '', search);
   saveLastRoute(window.location.search);
+}
+
+/**
+ * Shows a bead on a host so loaded that the unlocked key reaches the screen 1.2 s late (past waitFor's default 1 s), so
+ * the screen's fetch starts that much later: a step that waits on the fetch with the default timeout fails on it (mw-ezzapm).
+ */
+const SLOW_HOST_KEY_MS = 1200;
+function renderBeadOnSlowHost(id: string): void {
+  lock();
+  render(<BeadScreen id={id} />);
+  setTimeout(() => act(() => setKey(new Uint8Array(32))), SLOW_HOST_KEY_MS);
 }
 
 /** The phone closes the app and opens it at the home-screen icon's address. */
@@ -70,6 +81,11 @@ function Box() {
 }
 
 describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) => {
+  // tests/setup.ts raises waitFor's default to 5 s; this file puts back Testing Library's own 1 s, so a step that
+  // waits without an explicit timeout fails on a slow host here as it can on a loaded one (mw-ezzapm).
+  const suiteTimeout = getConfig().asyncUtilTimeout;
+  configure({ asyncUtilTimeout: 1000 });
+  afterAll(() => configure({ asyncUtilTimeout: suiteTimeout }));
   BeforeEachScenario(() => {
     localStorage.clear();
     forgetScrolls();
@@ -134,11 +150,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       reopenBare();
       await db.view.clear();
       await db.beadDetails.clear();
-      setKey(new Uint8Array(32));
-      render(<BeadScreen id="mw-gone.1" />);
+      renderBeadOnSlowHost('mw-gone.1');
     });
     When('the backend says there is no such bead', async () => {
-      await waitFor(() => expect(fetchBeadDetail).toHaveBeenCalled());
+      await waitFor(() => expect(fetchBeadDetail).toHaveBeenCalled(), { timeout: SLOW_HOST_MS });
     });
     Then('the app moves to the Map', async () => {
       await waitForRoute({ view: 'map' });
@@ -150,14 +165,13 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       moveTo(beadAt('mw-gone.2'));
       await db.view.clear();
       await db.beadDetails.clear();
-      setKey(new Uint8Array(32));
-      render(<BeadScreen id="mw-gone.2" />);
+      renderBeadOnSlowHost('mw-gone.2');
     });
     When('the backend says there is no such bead', async () => {
-      await waitFor(() => expect(fetchBeadDetail).toHaveBeenCalled());
+      await waitFor(() => expect(fetchBeadDetail).toHaveBeenCalled(), { timeout: SLOW_HOST_MS });
     });
     Then('the screen says "No such bead"', async () => {
-      expect(await screen.findByText('No such bead')).toBeInTheDocument();
+      expect(await screen.findByText('No such bead', undefined, { timeout: SLOW_HOST_MS })).toBeInTheDocument();
       expect(parseRoute(window.location.search)).toEqual({ view: 'bead', id: 'mw-gone.2' });
     });
   });
@@ -179,7 +193,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     Then('the bead "mw-x.1" is scrolled to 300', async () => {
       atBead('mw-x.1');
       render(<Box />);
-      await waitFor(() => expect(screen.getByTestId('box').scrollTop).toBe(300));
+      await waitFor(() => expect(screen.getByTestId('box').scrollTop).toBe(300), { timeout: SLOW_HOST_MS });
     });
   });
 });

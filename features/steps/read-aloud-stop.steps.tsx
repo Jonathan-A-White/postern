@@ -243,9 +243,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   };
   const begunSecond = () => {
     act(() => {
-      utterances[0].onstart?.();
-      utterances[0].onend?.();
-      utterances[1].onstart?.();
+      speech!.advance(0); // the engine begins the first sentence
+      speech!.finish(); // it ends and the engine begins the second
     });
   };
 

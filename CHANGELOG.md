@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.34
+_2026-10-10_
+- Fixed: The About screen no longer has a Check for updates button or a list of versions; a What's new on GitHub link takes you to the release notes instead.
+
 ## 0.5.33
 _2026-10-10_
 - Fixed: A message that waits because the chain service is busy now says so in one plain line instead of silently waiting or showing the service's own page.

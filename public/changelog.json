@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.34",
+    "date": "2026-10-10",
+    "story": "mw-s061bg.10",
+    "kind": "fixed",
+    "text": "The About screen no longer has a Check for updates button or a list of versions; a What's new on GitHub link takes you to the release notes instead."
+  },
+  {
     "version": "0.5.33",
     "date": "2026-10-10",
     "story": "mw-qkb7yp",

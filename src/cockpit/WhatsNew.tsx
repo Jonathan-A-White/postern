@@ -1,12 +1,11 @@
 // src/cockpit/WhatsNew.tsx — Postern's What's new (mw-s061bg.3), on bsv-kit's packages/whats-new:
-// the sheet shown once after an update, and the About section with the version's link, Check for
-// updates and every version. The banner's summary is in UpdateBanner.tsx.
-import { CheckForUpdates, WhatsNewList, WhatsNewSheet, useChangelog } from 'bsv-kit/whats-new';
-import { Button, Card, SectionTitle } from '../ui';
-import { applyUpdate } from '../services/appUpdate';
-import { APP_VERSION, WHATS_NEW_STORAGE_KEY, changelogLink } from '../services/whatsNew';
+// the sheet shown once after an update, and the link to CHANGELOG.md on GitHub beside the version.
+// There is no Check for updates button and no list of versions in the app: the check runs by itself
+// (appUpdate.ts). The banner's summary is in UpdateBanner.tsx.
+import { WhatsNewSheet, useChangelog } from 'bsv-kit/whats-new';
+import { Card, SectionTitle } from '../ui';
+import { APP_VERSION, CHANGELOG_URL, WHATS_NEW_STORAGE_KEY } from '../services/whatsNew';
 import { describeBuild } from '../services/buildLine';
-import { formatRoute } from '../nav/route';
 
 /** The sheet that tells him what an update brought, once; nothing until the changelog is read, and nothing on a first install. */
 export function WhatsNewOnUpdate() {
@@ -14,43 +13,27 @@ export function WhatsNewOnUpdate() {
   return <WhatsNewSheet entries={entries} version={APP_VERSION} storageKey={WHATS_NEW_STORAGE_KEY} />;
 }
 
-/** The running version as a link to its place in CHANGELOG.md (a private repo: to About, which lists the versions). */
-export function VersionLink({ className }: { className?: string }) {
-  const href = changelogLink();
-  return href ? (
-    <a href={href} target="_blank" rel="noreferrer" className={className}>
-      {APP_VERSION}
-    </a>
-  ) : (
-    <a href={formatRoute({ view: 'about' })} className={className}>
-      {APP_VERSION}
+/** The one place Postern's release notes live: a link to CHANGELOG.md on GitHub, shown beside the version. */
+export function WhatsNewOnGitHub({ className }: { className?: string }) {
+  return (
+    <a href={CHANGELOG_URL} target="_blank" rel="noreferrer" className={className}>
+      What's new on GitHub
     </a>
   );
 }
 
 const LINK = 'text-accent underline underline-offset-2';
 
-/** About's What's new: this build, Check for updates, and every version with its lines. */
-export function AboutWhatsNew() {
-  const entries = useChangelog(import.meta.env.BASE_URL);
+/** About's Version: this build and the link to what changed; the update check runs by itself (appUpdate.ts). */
+export function AboutVersion() {
   const build = describeBuild(__APP_VERSION__);
   return (
-    <section className="flex flex-col gap-2" aria-label="What's new">
-      <SectionTitle>What's new</SectionTitle>
-      <Card className="flex flex-col gap-3 p-4">
-        <p className="flex flex-wrap items-baseline gap-x-2 text-[14px]">
-          <span className="text-muted">Version</span>
-          <VersionLink className={`${LINK} font-semibold`} />
-          <span className="text-[12px] text-faint">{build.build}</span>
-        </p>
-        <CheckForUpdates
-          updateReady={
-            <Button size="sm" icon="refresh" onClick={applyUpdate}>
-              Update ready, tap to reload
-            </Button>
-          }
-        />
-        <WhatsNewList entries={entries} />
+    <section className="flex flex-col gap-2" aria-label="Version">
+      <SectionTitle>Version</SectionTitle>
+      <Card className="flex flex-wrap items-baseline gap-x-2 gap-y-1 p-4 text-[14px]">
+        <span className="font-semibold">{APP_VERSION}</span>
+        <span className="text-[12px] text-faint">{build.build}</span>
+        <WhatsNewOnGitHub className={LINK} />
       </Card>
     </section>
   );

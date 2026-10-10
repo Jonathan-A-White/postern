@@ -182,7 +182,7 @@ export const CREDIT_GROUPS: CreditGroup[] = [
       {
         name: 'bsv-kit',
         url: 'https://github.com/Jonathan-A-White/bsv-kit',
-        use: "The Governor's shared library: the hold-to-talk composer (the bar, the recogniser and its fallbacks, the voice recorder) that Postern's composer and Talk line are built on, What's new (the Update ready summary, the sheet after an update, the list of versions and the Check for updates button), and the honest speech and microphone fakes its tests run against.",
+        use: "The Governor's shared library: the hold-to-talk composer (the bar, the recogniser and its fallbacks, the voice recorder) that Postern's composer and Talk line are built on, What's new (the Update ready summary, the sheet after an update), and the honest speech and microphone fakes its tests run against.",
         ...MIT,
         licenceUrl: 'https://github.com/Jonathan-A-White/bsv-kit/blob/main/LICENSE',
         changes: AS_PUBLISHED,
@@ -209,7 +209,7 @@ export const CREDIT_GROUPS: CreditGroup[] = [
       {
         name: "Postern's changelog",
         url: 'https://github.com/Jonathan-A-White/postern/blob/main/public/changelog.json',
-        use: "The list of what changed in each version (public/changelog.json, the same lines as CHANGELOG.md) that What's new shows.",
+        use: "The list of what changed in each version (public/changelog.json, the same lines as CHANGELOG.md) that What's new shows in the banner and the sheet, and that What's new on GitHub links to.",
         ...MIT,
         licenceUrl: 'https://github.com/Jonathan-A-White/postern/blob/main/LICENSE',
         changes: 'None; it is our own writing.',

@@ -34,15 +34,16 @@ Feature: Postern says what changed with each release (mw-s061bg.3)
     Then there is no What's new sheet
     And the running version is remembered
 
-  Scenario: AC-1: About lists every version, and the version links to CHANGELOG.md on GitHub
+  Scenario: AC-1: About has no list of versions and no Check for updates button, and links to CHANGELOG.md on GitHub beside the version
     When the About screen is opened
-    Then About lists every version with its lines
-    And the version is a link to "https://github.com/Jonathan-A-White/postern/blob/main/CHANGELOG.md" at its heading
+    Then About shows the running version and the build
+    And there is no Check for updates control and no list of versions
+    And a "What's new on GitHub" link beside the version opens "https://github.com/Jonathan-A-White/postern/blob/main/CHANGELOG.md"
 
-  Scenario: AC-1: Check for updates says Up to date when nothing is waiting
-    When the About screen is opened
-    And he taps Check for updates
-    Then it says "Up to date"
+  Scenario: AC-1: Me shows the version with a What's new on GitHub link to CHANGELOG.md
+    When the Me screen is opened
+    Then Me shows the running version as plain text
+    And a "What's new on GitHub" link beside the version opens "https://github.com/Jonathan-A-White/postern/blob/main/CHANGELOG.md"
 
   Scenario: AC-1: the shipped changelog tells the first release's story
     Then public/changelog.json has "What's new in the app" as a New line for the version after 0.5.10

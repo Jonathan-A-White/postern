@@ -1,5 +1,5 @@
 // features/steps/whats-new.steps.tsx — runs features/whats-new.feature (mw-s061bg.3): the real banner, the
-// one-time sheet and the About screen on bsv-kit's whats-new package, reading a fixture changelog.json.
+// one-time sheet, the About and Me screens on bsv-kit's whats-new package, reading a fixture changelog.json.
 import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
@@ -9,6 +9,7 @@ import { startAppUpdates } from '../../src/services/appUpdate';
 import { UpdateBanner } from '../../src/cockpit/UpdateBanner';
 import { WhatsNewOnUpdate } from '../../src/cockpit/WhatsNew';
 import { AboutScreen } from '../../src/cockpit/AboutScreen';
+import { MeScreen } from '../../src/cockpit/MeScreen';
 import { APP_VERSION, WHATS_NEW_STORAGE_KEY } from '../../src/services/whatsNew';
 import { fakeSetup, fakeWorker } from '../../tests/support/fake-registration';
 import { changelogFixture, WAITING_VERSION, stubChangelog } from '../../tests/support/changelog-fixture';
@@ -137,34 +138,47 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
   });
 
-  Scenario('AC-1: About lists every version, and the version links to CHANGELOG.md on GitHub', ({ When, Then, And }) => {
+
+  Scenario('AC-1: About has no list of versions and no Check for updates button, and links to CHANGELOG.md on GitHub beside the version', ({ When, Then, And }) => {
     When('the About screen is opened', () => {
       cleanup();
       render(<AboutScreen />);
     });
-    Then('About lists every version with its lines', async () => {
-      const section = await screen.findByRole('region', { name: "What's new" });
-      await waitFor(() => expect(within(section).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([WAITING_VERSION, APP_VERSION, '0.0.5']));
-      expect(within(section).getByText('The list no longer jumps.')).toBeInTheDocument();
+    Then('About shows the running version and the build', () => {
+      const section = screen.getByRole('region', { name: 'Version' });
+      expect(within(section).getByText(APP_VERSION)).toBeInTheDocument();
     });
-    And('the version is a link to {string} at its heading', (_c, file: string) => {
-      const section = screen.getByRole('region', { name: "What's new" });
-      const link = within(section).getByRole('link', { name: new RegExp(APP_VERSION.replace(/\./g, '\\.')) });
-      expect(link.getAttribute('href')).toBe(`${file}#${APP_VERSION.replace(/\./g, '')}`);
+    And('there is no Check for updates control and no list of versions', async () => {
+      await waitFor(() => expect(vi.mocked(fetch)).not.toHaveBeenCalled());
+      expect(screen.queryByRole('button', { name: /check for updates/i })).toBeNull();
+      expect(screen.queryByText(/check for updates/i)).toBeNull();
+      expect(screen.queryByRole('region', { name: "What's new" })).toBeNull();
+      expect(screen.queryByRole('heading', { level: 3, name: WAITING_VERSION })).toBeNull();
+      expect(screen.queryByText('The list no longer jumps.')).toBeNull();
+    });
+    And('a {string} link beside the version opens {string}', (_c, label: string, href: string) => {
+      const section = screen.getByRole('region', { name: 'Version' });
+      const link = within(section).getByRole('link', { name: label });
+      expect(link.getAttribute('href')).toBe(href);
+      expect(link).toHaveAttribute('target', '_blank');
     });
   });
 
-  Scenario('AC-1: Check for updates says Up to date when nothing is waiting', ({ When, And, Then }) => {
-    When('the About screen is opened', () => {
+  Scenario("AC-1: Me shows the version with a What's new on GitHub link to CHANGELOG.md", ({ When, Then, And }) => {
+    When('the Me screen is opened', async () => {
       cleanup();
-      vi.stubGlobal('navigator', Object.assign(Object.create(navigator), { serviceWorker: { getRegistration: async () => ({ update: async () => undefined, waiting: null }) } }));
-      render(<AboutScreen />);
+      render(<MeScreen />);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeInTheDocument());
     });
-    And('he taps Check for updates', async () => {
-      fireEvent.click(await screen.findByRole('button', { name: 'Check for updates' }));
+    Then('Me shows the running version as plain text', () => {
+      const build = screen.getByLabelText('Build');
+      expect(within(build).getByText(APP_VERSION)).toBeInTheDocument();
+      expect(within(build).queryByRole('link', { name: APP_VERSION })).toBeNull();
     });
-    Then('it says {string}', async (_c, text: string) => {
-      expect(await screen.findByText(text)).toBeInTheDocument();
+    And('a {string} link beside the version opens {string}', (_c, label: string, href: string) => {
+      const link = within(screen.getByLabelText('Build')).getByRole('link', { name: label });
+      expect(link.getAttribute('href')).toBe(href);
+      expect(link).toHaveAttribute('target', '_blank');
     });
   });
 

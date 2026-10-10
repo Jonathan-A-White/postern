@@ -252,7 +252,7 @@ html {
   @apply rounded bg-sunken px-1 py-0.5;
 }
 
-/* bsv-kit's What's new (the sheet, the list, the banner's summary, Check for updates) wears Postern's tokens. */
+/* bsv-kit's What's new (the sheet and the banner's summary) wears Postern's tokens. */
 :root {
   --bk-whats-new-surface: var(--pc-surface);
   --bk-whats-new-fg: var(--pc-fg);

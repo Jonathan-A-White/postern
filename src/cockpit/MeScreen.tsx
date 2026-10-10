@@ -14,7 +14,7 @@ import { lock, sessionExpiresAt } from '../services/keySession';
 import { isSupported as canSpeak, speak, useSpeechFailure } from '../services/speech';
 import { useSpeaking } from './useSpeaking';
 import { describeBuild } from '../services/buildLine';
-import { VersionLink } from './WhatsNew';
+import { WhatsNewOnGitHub } from './WhatsNew';
 import { refreshNow, stopLive, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
 import { isPushSubscribed, pushSupported, rememberPushSubscribed, subscribeToPush } from '../services/push';
@@ -211,8 +211,9 @@ export function MeScreen() {
         <p aria-label="Build" className="flex flex-col gap-0.5">
           <span className="text-[14px] text-fg">{build.build}</span>
           {build.version && (
-            <span className="text-[11.5px] text-faint">
-              <VersionLink className="underline underline-offset-2" />
+            <span className="flex flex-wrap items-baseline gap-x-2 text-[11.5px] text-faint">
+              <span>{build.version}</span>
+              <WhatsNewOnGitHub className="underline underline-offset-2" />
             </span>
           )}
         </p>

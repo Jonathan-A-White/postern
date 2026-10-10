@@ -37,7 +37,7 @@ describeFeature(feature, ({ Scenario }) => {
     And('the package version follows it, smaller', () => {
       const line = screen.getByLabelText('Build');
       const version = line.lastElementChild as HTMLElement;
-      expect(version.textContent).toBe(__APP_VERSION__.split(' · ')[0]);
+      expect(version.firstElementChild?.textContent).toBe(__APP_VERSION__.split(' · ')[0]);
       expect(version.className).toMatch(/text-\[1[01](\.\d)?px\]/);
     });
   });

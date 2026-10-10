@@ -1,6 +1,6 @@
 // tests/e2e/whats-new.spec.ts — mw-s061bg.3: What's new in a real 390 px browser: the Update ready banner names the
 // waiting version and what is in it, What's new on it opens the lines, the sheet shows once after an update, and
-// About lists every version with Check for updates and the version as a link. Three screenshots, written by the
+// About shows the version with a What's new on GitHub link and no list of versions. Three screenshots, written by the
 // spec (test-results/shots) and not committed. changelog.json is a fixture, routed in; the shipped one is a unit test's.
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -86,19 +86,17 @@ test('the sheet shows once after an update', async ({ page }) => {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('About lists every version, Check for updates, and the version links to CHANGELOG.md', async ({ page }) => {
+test('About has no list of versions and no Check for updates, and the version has a What\'s new on GitHub link', async ({ page }) => {
   await routeChangelog(page);
   await page.addInitScript((v) => localStorage.setItem('postern.lastSeenVersion', v), RUNNING);
   await openUnlocked(page, '/?v=about');
-  const section = page.getByRole('region', { name: "What's new" });
-  await expect(section.getByRole('heading', { name: WAITING })).toBeVisible();
-  await expect(section.getByRole('heading', { name: RUNNING })).toBeVisible();
-  await expect(section.getByRole('heading', { name: '0.0.5' })).toBeVisible();
-  await expect(section.getByRole('button', { name: 'Check for updates' })).toBeVisible();
-  const link = section.getByRole('link', { name: RUNNING, exact: true });
-  await expect(link).toHaveAttribute('href', `https://github.com/Jonathan-A-White/postern/blob/main/CHANGELOG.md#${RUNNING.replace(/\./g, '')}`);
-  await section.getByRole('button', { name: 'Check for updates' }).click();
-  await expect(section.getByText('Up to date')).toBeVisible({ timeout: 20_000 });
+  const section = page.getByRole('region', { name: 'Version' });
+  await expect(section.getByText(RUNNING, { exact: true })).toBeVisible();
+  const link = section.getByRole('link', { name: "What's new on GitHub" });
+  await expect(link).toHaveAttribute('href', 'https://github.com/Jonathan-A-White/postern/blob/main/CHANGELOG.md');
+  await expect(page.getByText(/check for updates/i)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: WAITING })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '0.0.5' })).toHaveCount(0);
   expect(await noSideways(page)).toBe(true);
   await section.scrollIntoViewIfNeeded();
   await shot(page, 'whats-new-about');

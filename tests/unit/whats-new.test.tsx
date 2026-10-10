@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { summarise } from 'bsv-kit/whats-new';
 import { MeScreen } from '../../src/cockpit/MeScreen';
-import { APP_VERSION, REPO, changelogLink } from '../../src/services/whatsNew';
+import { APP_VERSION, CHANGELOG_URL, REPO } from '../../src/services/whatsNew';
 import { changelogFixture, stubChangelog, WAITING_VERSION } from '../support/changelog-fixture';
 
 afterEach(() => {
@@ -18,9 +18,9 @@ describe('the version What\'s new is given', () => {
     expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('links to the version\'s heading in CHANGELOG.md on GitHub while the repo is public', () => {
+  it('links What\'s new on GitHub to CHANGELOG.md', () => {
     expect(REPO).toBe('Jonathan-A-White/postern');
-    expect(changelogLink('0.5.11')).toBe('https://github.com/Jonathan-A-White/postern/blob/main/CHANGELOG.md#0511');
+    expect(CHANGELOG_URL).toBe('https://github.com/Jonathan-A-White/postern/blob/main/CHANGELOG.md');
   });
 });
 
@@ -35,12 +35,19 @@ describe('the summary of a waiting build', () => {
 });
 
 describe('Me', () => {
-  it('shows the version as a link to its heading in CHANGELOG.md', async () => {
+  it('shows the version as plain text with a What\'s new on GitHub link to CHANGELOG.md', async () => {
     stubChangelog(changelogFixture());
     render(<MeScreen />);
-    const link = await screen.findByRole('link', { name: APP_VERSION });
-    expect(link).toHaveAttribute('href', changelogLink(APP_VERSION));
+    const link = await screen.findByRole('link', { name: "What's new on GitHub" });
+    expect(link).toHaveAttribute('href', CHANGELOG_URL);
     expect(link).toHaveAttribute('target', '_blank');
+    expect(screen.queryByRole('link', { name: APP_VERSION })).toBeNull();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeInTheDocument());
+  });
+
+  it('has no Check for updates control', async () => {
+    render(<MeScreen />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeInTheDocument());
+    expect(screen.queryByText(/check for updates/i)).toBeNull();
   });
 });

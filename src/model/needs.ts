@@ -12,7 +12,8 @@ export function unsettledNeeds(needs: Need[], answers: AnswerRow[]): Need[] {
   const answered = new Map(answers.map((row) => [row.bead, row.ts * 1000]));
   return needs.filter((need) => {
     const at = answered.get(need.bead);
-    if (at === undefined || !need.bead) return true;
+    // A bead waiting on others keeps its line whatever he tapped on it since (it is not a card he answers); the view drops it.
+    if (at === undefined || !need.bead || need.kind === 'waiting') return true;
     const since = Date.parse(need.since);
     return !Number.isNaN(since) && since > at;
   });
@@ -25,7 +26,7 @@ export function waitsFor(need: Need): WaitsFor {
 
 /** The unsettled needs split by whose turn they are. */
 export function needsByWaiter(needs: Need[]): Record<WaitsFor, Need[]> {
-  const split: Record<WaitsFor, Need[]> = { you: [], mayor: [], factory: [] };
+  const split: Record<WaitsFor, Need[]> = { you: [], mayor: [], factory: [], others: [] };
   for (const need of needs) split[waitsFor(need)].push(need);
   return split;
 }
@@ -33,9 +34,15 @@ export function needsByWaiter(needs: Need[]): Record<WaitsFor, Need[]> {
 /** A stale need (docs/protocol.md §11) always offers Keep then Close. */
 export const STALE_OPTIONS = ['Keep', 'Close'];
 
+/** A chase need (docs/protocol.md §11) always offers Chase, Done and Keep waiting, as the three actions of §13. */
+export const CHASE_OPTIONS = ['Chase', 'Done', 'Keep waiting'];
+
+/** The §13 action each of the chase need's answers sends. */
+export const CHASE_ACTIONS: Record<string, string> = { Chase: 'chase', Done: 'ask_done', 'Keep waiting': 'keep_waiting' };
+
 /** The recommended answer first, then the rest in the Mayor's order. */
 export function orderedOptions(need: Need): string[] {
-  const options = need.kind === 'hands' ? ['Done'] : need.kind === 'demo' ? ['Looks good'] : need.kind === 'stale' ? [...STALE_OPTIONS] : [...need.options];
+  const options = need.kind === 'hands' ? ['Done'] : need.kind === 'demo' ? ['Looks good'] : need.kind === 'stale' ? [...STALE_OPTIONS] : need.kind === 'chase' ? [...CHASE_OPTIONS] : [...need.options];
   if (!need.recommended || !options.includes(need.recommended)) return options;
   return [need.recommended, ...options.filter((option) => option !== need.recommended)];
 }

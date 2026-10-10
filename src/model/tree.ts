@@ -162,7 +162,7 @@ export function epicStats(epicId: string, index: ViewIndex): EpicStats {
   }
   const epic = index.byId.get(epicId);
   if (epic?.path?.rig) rigs.add(epic.path.rig);
-  const needs = index.view.needs.filter((need) => need.bead === epicId || all.some((bead) => bead.id === need.bead)).length;
+  const needs = index.view.needs.filter((need) => need.waits_for !== 'others' && (need.bead === epicId || all.some((bead) => bead.id === need.bead))).length;
   const done = counts.done + doneEarlier;
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0) + doneEarlier;
   return { total, done, counts, needs, lastActivity, rigs: [...rigs].sort() };
@@ -196,7 +196,7 @@ export interface FactoryStats {
 }
 
 export function factoryStats(index: ViewIndex, now: Date = new Date()): FactoryStats {
-  const stats: FactoryStats = { working: 0, ready: 0, blocked: 0, held: 0, needs: index.view.needs.length, landedToday: 0, liveEpics: 0 };
+  const stats: FactoryStats = { working: 0, ready: 0, blocked: 0, held: 0, needs: index.view.needs.filter((need) => need.waits_for !== 'others').length, landedToday: 0, liveEpics: 0 };
   for (const bead of index.view.beads) {
     if (isEpic(bead, index)) {
       if (!isClosed(bead)) stats.liveEpics += 1;

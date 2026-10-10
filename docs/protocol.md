@@ -680,6 +680,8 @@ parent chain up to the root, so the app can draw any level of the tree:
 | `hands` | an open bead labelled `hitl` (a bare `hitl`, or `hitl` with `hitl:hands`): a step only his hands can do; its `steps` (§17) can be approved and run from the app | `[]` |
 | `review` | an open bead labelled `hitl` and `hitl:review`: something waiting on his approval, such as a pull request, that someone else raised. `text` is the bead's body run together (Do this / Done when); no `steps` | `[]` |
 | `decision` | an open bead labelled `hitl` and `hitl:decision`: a choice only he can make, outside a question asked over the postern. `text` is the bead's body run together (Do this / Done when); no `steps` | `[]` |
+| `waiting` | an open bead the factory asked somebody outside it about (`waiting:others`, set by `mw ask waiting`): `since` is when it was asked; `text` says who and since when (`Waiting on sam (tl) since 27 Sep 12:00 UTC`, or `Waiting on others since …` when no one is named). It is the app's **Waiting on others** part, apart from the cards waiting on him: `waits_for` is `others`, it has no buttons, and it is never counted among the needs that wait on him | `[]` |
+| `chase` | a `waiting` bead with no change for 3 working days (Monday to Friday): `since` is when the chase fell due; `text` is `Chase <login> on <title>` (`Chase others on <title>` when no one is named). It **replaces** the `waiting` need for the same bead until the bead moves or closes. `waits_for` is `you`. The app answers it with Chase, Done or Keep waiting (§13) | `[]`: the three answers are the app's own, as for `stale` |
 | `alarm` | a story that used up its attempts, or a host whose last sync is over 20 minutes old (`bead` empty) | `[]` |
 
 A bead labelled `hitl` plus exactly one `hitl:<kind>` (`hands`, `decision`, `review` or
@@ -699,7 +701,7 @@ Every need also says who it waits on, and a card that cannot be acted on yet say
 
 | field | type | meaning |
 | --- | --- | --- |
-| `waits_for` | `"you"` \| `"mayor"` \| `"factory"` | who has to move next. Only a `you` card can be acted on now; the app lists the three apart and gives `mayor` and `factory` cards no buttons. Always present in `mw`'s output; a reader that finds it missing (an older `mw`) reads `you`, as every card was his then, and reads any other word as `you` too, so a newer word never hides a card |
+| `waits_for` | `"you"` \| `"mayor"` \| `"factory"` \| `"others"` | who has to move next. Only a `you` card can be acted on now; the app lists the first three apart and gives `mayor` and `factory` cards no buttons; `others` (somebody outside the factory, a `waiting` need) it lists apart as Waiting on others, with no buttons, and never counts among the cards waiting on him. Always present in `mw`'s output; a reader that finds it missing (an older `mw`) reads `you`, as every card was his then, and reads any word it does not know as `you` too, so a newer word never hides a card (the word `others` is known, and is not read as `you`) |
 | `not_ready` | bool | `true` on a card that cannot be acted on yet (a `hands` or `demo` card whose blockers are open or whose steps are unwritten, a `verify` card with nothing to check yet): it offers neither Approve, Done nor Verified. Absent when ready |
 | `waiting_on` | string[] | on a `not_ready` card, what it waits on: the titles of its open blockers, or the Mayor's own words (`the Mayor to write the steps`, `the Mayor to check the landing`). Absent when ready |
 
@@ -713,6 +715,8 @@ Every need also says who it waits on, and a card that cannot be acted on yet say
 | `stale` | `you` | he decides Keep or Close |
 | `hands` | `you`, `factory` or `mayor` | `you` when it has steps and none of its bead's blockers is open, or when a comment opening `BY HAND` holds his instructions (no steps, and Done is live). `factory` while any blocker is open (`not_ready`, `waiting_on` their titles). `mayor` when it has no steps and no `BY HAND` comment (`not_ready`, `waiting_on` `the Mayor to write the steps`) |
 | `demo` | `you` or `factory` | `you` when the bead has no open blocker; otherwise `factory`, `not_ready`, `waiting_on` the blockers' titles |
+| `waiting` | `others` | the factory asked somebody outside it and is waiting for them |
+| `chase` | `you` | he chases them, or says it is done, or says to keep waiting |
 | `alarm` | `mayor` or `factory` | `mayor` for a story that used up its attempts; `factory` for a host whose last sync is over 20 minutes old |
 
 The order of `needs` is unchanged: most blocking first, then oldest.
@@ -772,15 +776,24 @@ and the Mayor is told afterwards. An action is an ordinary message (§1, class
 | `run` | `step`, `sha256`, `approved_at`, `sig` | runs a hands step he approved (§17) |
 | `keep` | `"days": n` (default 30) | keeps a stale bead (§11) for `days` more days, so it is not raised as `stale` again until they pass |
 | `close` | — | closes the bead; on an epic or a map it closes the held (`deferred`) children first, then the epic |
+| `chase` | — | the answer **Chase** to a `chase` need (§11): he is chasing the person now; the bead's wait starts again from now, so the next chase falls due 3 working days on |
+| `ask_done` | — | the answer **Done** to a `chase` need: the other side delivered; the host does what `mw ask done` does (clears `waiting:others`) |
+| `keep_waiting` | — | the answer **Keep waiting** to a `chase` need: no chase for another 3 working days |
 
 ```json
 { "action": "keep", "bead": "mw-abc.3", "days": 30 }
 { "action": "close", "bead": "mw-abc" }
+{ "action": "chase", "bead": "mw-abc.3" }
 ```
 
 `close` refuses a bead that has an `in_progress` child: nothing is closed, and the
 host says so as text (a message to the Mayor naming the bead and the child) rather
 than as a comment on the bead.
+
+The three answers to a `chase` need (`chase`, `ask_done`, `keep_waiting`) are sent from the
+chase card in Needs you and from the bead's page, one tap each; once any of the three has gone,
+the card says it is waiting for the factory and offers none of them again until the view has
+passed the host's echo. A host that does not know them yet leaves them for the Mayor to read as text.
 
 An answer to a question stays §6's reply, and a comment on a bead stays §6's
 threaded message with a bead thread; all three kinds are applied the moment they

@@ -12,6 +12,8 @@ export const NEED_META: Record<NeedKind, { label: string; icon: IconName; tone: 
   hands: { label: 'Your hands', icon: 'hand', tone: 'needs', verb: 'Only you can do this' },
   review: { label: 'Review', icon: 'file', tone: 'needs', verb: 'Waiting for your review' },
   decision: { label: 'Decision', icon: 'flag', tone: 'needs', verb: 'Waiting for your decision' },
+  waiting: { label: 'Waiting on others', icon: 'hold', tone: 'neutral', verb: 'Waiting on someone else' },
+  chase: { label: 'Chase', icon: 'bell', tone: 'needs', verb: 'Time to chase' },
   alarm: { label: 'Alarm', icon: 'alarm', tone: 'danger', verb: 'Something is wrong' },
 };
 

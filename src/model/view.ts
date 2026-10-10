@@ -5,14 +5,15 @@
 import type { Snapshot } from '../services/questions';
 import { decodeHandsSteps, type HandsStep } from './hands';
 
-export type NeedKind = 'question' | 'approve' | 'verify' | 'stale' | 'demo' | 'hands' | 'review' | 'decision' | 'alarm';
+export type NeedKind = 'question' | 'approve' | 'verify' | 'stale' | 'demo' | 'hands' | 'review' | 'decision' | 'waiting' | 'chase' | 'alarm';
 
-export const NEED_KINDS: NeedKind[] = ['question', 'approve', 'verify', 'stale', 'demo', 'hands', 'review', 'decision', 'alarm'];
+export const NEED_KINDS: NeedKind[] = ['question', 'approve', 'verify', 'stale', 'demo', 'hands', 'review', 'decision', 'waiting', 'chase', 'alarm'];
 
-/** docs/protocol.md §11: who a card waits on. Only `you` cards can be acted on now. */
-export type WaitsFor = 'you' | 'mayor' | 'factory';
+/** docs/protocol.md §11: who a card waits on. Only `you` cards can be acted on now; `others` is somebody outside the factory
+ * (a `waiting` need), listed apart as Waiting on others and never counted among the cards waiting on him. */
+export type WaitsFor = 'you' | 'mayor' | 'factory' | 'others';
 
-export const WAITS_FOR: WaitsFor[] = ['you', 'mayor', 'factory'];
+export const WAITS_FOR: WaitsFor[] = ['you', 'mayor', 'factory', 'others'];
 
 export interface BeadPath {
   rig: string;

@@ -25,7 +25,16 @@ interface Row extends IssuedLicenceEntry {
   status: RowStatus;
 }
 
-type Listing = { name: 'loading' } | { name: 'loaded'; entries: IssuedLicenceEntry[] } | { name: 'error'; message: string };
+/** A listing that failed while the rows are known (read before, or issued here) is 'retrying': the rows stay and it reads again by itself. */
+type Listing =
+  | { name: 'loading' }
+  | { name: 'loaded'; entries: IssuedLicenceEntry[] }
+  | { name: 'retrying'; entries: IssuedLicenceEntry[] }
+  | { name: 'error'; message: string };
+
+/** The wait before the first automatic re-read of a list that failed; it doubles each time. */
+const LISTING_RETRY_MS = 2000;
+const LISTING_RETRIES = 5;
 
 type IssueOutcome = { name: 'idle' } | { name: 'issuing' } | { name: 'issued'; txid: string } | { name: 'error'; message: string };
 
@@ -128,6 +137,10 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const [listing, setListing] = useState<Listing>({ name: 'loading' });
   const [times, setTimes] = useState<Record<string, number>>({});
   const [refreshToken, setRefreshToken] = useState(0);
+  // What the list last read, and how many reads in a row failed since: a failed re-read keeps the rows.
+  const knownEntries = useRef<IssuedLicenceEntry[]>([]);
+  const issuedHere = useRef(0);
+  const failedReads = useRef(0);
 
   const [holder, setHolder] = useState('');
   const [chosen, setChosen] = useState('');
@@ -152,10 +165,32 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
 
   useEffect(() => {
     if (!enabled) return;
+    let current = true;
     void loadBalance(issuerKey).then(setBalance);
-    void loadListing(issuerPublicKeyHex).then(setListing);
+    void loadListing(issuerPublicKeyHex).then((next) => {
+      // A read that a newer one has replaced says nothing more.
+      if (!current) return;
+      if (next.name === 'loaded') {
+        knownEntries.current = next.entries;
+        failedReads.current = 0;
+        setListing(next);
+        return;
+      }
+      failedReads.current += 1;
+      const rowsKnown = knownEntries.current.length > 0 || issuedHere.current > 0;
+      setListing(rowsKnown && failedReads.current <= LISTING_RETRIES ? { name: 'retrying', entries: knownEntries.current } : next);
+    });
     void issuedTimes().then(setTimes);
+    return () => {
+      current = false;
+    };
   }, [enabled, issuerKey, issuerPublicKeyHex, refreshToken]);
+
+  useEffect(() => {
+    if (listing.name !== 'retrying') return;
+    const timer = setTimeout(() => setRefreshToken((token) => token + 1), LISTING_RETRY_MS * 2 ** (failedReads.current - 1));
+    return () => clearTimeout(timer);
+  }, [listing]);
 
   const handleRead = useCallback((text: string) => {
     setHolder(text.trim());
@@ -207,6 +242,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
     try {
       const issued = await chain.issueLicence({ issuerKey, holderPublicKeyHex: holder, collection });
       await rememberIssuedAt(issued.txid);
+      issuedHere.current += 1;
       setJustIssued((previous) => [...previous, issued]);
       setOutcome({ name: 'issued', txid: issued.txid });
       setHolder('');
@@ -234,7 +270,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
     }
   }
 
-  const entries = listing.name === 'loaded' ? listing.entries : [];
+  const entries = listing.name === 'loaded' || listing.name === 'retrying' ? listing.entries : [];
   const listed = new Set(entries.map((entry) => entry.origin));
   const pendingRows: IssuedLicenceEntry[] = justIssued
     .filter((issued) => !listed.has(issued.origin))
@@ -337,6 +373,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       <section aria-label="Issued licences" className="flex flex-col gap-2 border-t border-line pt-4">
         <h2 className="text-lg font-semibold">Issued licences</h2>
         {listing.name === 'loading' && <p className="text-sm text-muted">Reading the chain…</p>}
+        {listing.name === 'retrying' && <p className="text-sm text-muted">Could not reach the chain just now. Reading again…</p>}
         {listing.name === 'error' && (
           <div className="flex flex-col gap-2">
             <p role="alert" className="text-danger">
@@ -346,6 +383,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
             <button
               className={`${BUTTON} self-start`}
               onClick={() => {
+                failedReads.current = 0;
                 setListing({ name: 'loading' });
                 setRefreshToken((token) => token + 1);
               }}

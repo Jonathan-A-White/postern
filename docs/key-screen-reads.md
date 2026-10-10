@@ -55,7 +55,28 @@ What this does not do: a key with a long history still makes T requests the firs
 (a new endpoint) would take the phone off WhatsOnChain altogether; that is a feature held for the
 Governor.
 
+## Issuing a burst (mw-i7cwnn)
+
+Issuing licences back to back still tripped the limit on 2026-10-09: three issued in a row, then
+"The issued licences could not be read". Two causes, both fixed:
+
+- **The mint builder read through a provider of its own.** `issueLicence` (issue.ts) handed
+  spell-forge-bsv's builder a fresh `createChainProvider()`, which reads the source transaction of
+  every coin it is given outside the queue, beside the list the previous issue had just started.
+  It now reads through `sharedChainReads()` like everything else. The queue also waits again when a
+  timer fires a hair early, so two starts are never closer than the gap.
+- **A failed re-read threw away the rows.** After an issue the list is read again; if that failed the
+  red error replaced rows the phone already knew (the licences just issued, or the list read
+  before). Now the rows stay, a quiet "Reading again…" line shows, and the list is read again by
+  itself after 2, 4, 8, 16 and 32 s; only when nothing is known, or five reads in a row fail, does the
+  red error and Retry show.
+
 ## Pinned by
+
+- `tests/unit/issue-burst.test.tsx` and `features/issue-burst.feature`: three licences issued in a
+  row against a `fetch` that refuses two requests under 350 ms apart or more than 3 in a second
+  (`tests/support/woc-stub.ts` `rateLimit`) end as three held rows with no error; and a list that
+  cannot be read for three seconds keeps the new row and recovers by itself.
 
 - `tests/unit/key-screen-reads.test.ts` and `features/key-screen-reads.feature`: the three reads
   made together over a `fetch` that records every request (`tests/support/woc-stub.ts`) count

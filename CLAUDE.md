@@ -36,6 +36,10 @@ npm run test:e2e     # playwright, against `npm run preview`
   alongside the unit tests; `npm run test:bdd` runs only the features. Tags don't
   reach vitest's reported test names, so put the AC id in the Scenario title text too.
 - Unit tests live in `tests/unit/`.
+- Speech and the microphone in tests are bsv-kit's honest fakes (`bsv-kit/testing/speech` and
+  `bsv-kit/testing/mic`), never a hand-made one: `tests/support/honest-speech.ts` puts the synthesiser
+  on a clock the test moves (`advance`, `finish`); Playwright adds `speechInitScript()`/`micInitScript()`.
+  They end an utterance, open a recogniser and play a clip in time, as Android Chrome does.
 - End-to-end tests live in `tests/e2e/`, outside the gate command (run by hand with
   `npm run test:e2e`).
 

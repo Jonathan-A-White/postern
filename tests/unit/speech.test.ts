@@ -1,121 +1,97 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { isSpeaking, isSupported, speak, speechText, stop, subscribe } from '../../src/services/speech';
+import { installHonestSpeech, voiceOf, type HonestSpeech } from '../support/honest-speech';
 
-class FakeUtterance {
-  text: string;
-  voice: unknown = null;
-  lang = '';
-  onend: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  constructor(text: string) {
-    this.text = text;
-  }
-}
+// The synthesiser is bsv-kit's honest one (mw-it6qk5.4): it queues, starts an utterance after speak(), fires
+// start/boundary/end in time and reports a cancelled one as an error. `installSynthesis` puts it on the window.
+let speech: HonestSpeech | null = null;
 
-function installFakeSynthesis(voices: Array<{ lang: string }> = []) {
-  const speakFn = vi.fn();
-  const cancelFn = vi.fn();
-  vi.stubGlobal('speechSynthesis', { speak: speakFn, cancel: cancelFn, getVoices: () => voices });
-  vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
-  return { speakFn, cancelFn };
+function installSynthesis(langs?: string[]): HonestSpeech {
+  speech = installHonestSpeech(langs ? { voices: langs.map(voiceOf) } : {});
+  return speech;
 }
 
 /** A synthesis whose voice list is empty until `load` is called, which fires voiceschanged (as Android Chrome does). */
-function installLateVoices() {
-  const voices: Array<{ lang: string }> = [];
-  const listeners = new Set<() => void>();
-  const speakFn = vi.fn();
-  const cancelFn = vi.fn();
-  vi.stubGlobal('speechSynthesis', {
-    speak: speakFn,
-    cancel: cancelFn,
-    getVoices: () => voices,
-    addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
-    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
-  });
-  vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
-  const load = (list: Array<{ lang: string }>) => {
-    voices.push(...list);
-    for (const listener of [...listeners]) listener();
-  };
-  return { speakFn, cancelFn, load };
+function installLateVoices(langs: string[] = ['en-US']) {
+  speech = installHonestSpeech({ voices: langs.map(voiceOf), voicesLate: true });
+  return { speech, load: () => speech!.advance(speech!.options.voicesDelayMs) };
 }
 
-describe('speech', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+afterEach(() => {
+  speech?.uninstall();
+  speech = null;
+  vi.unstubAllGlobals();
+});
 
+describe('speech', () => {
   it('reports unsupported when the phone has no speechSynthesis', () => {
     expect(isSupported()).toBe(false);
   });
 
   it('reports supported once speechSynthesis is present', () => {
-    installFakeSynthesis();
+    installSynthesis();
     expect(isSupported()).toBe(true);
   });
 
   it('cancels any current utterance before speaking the new one', () => {
-    const { speakFn, cancelFn } = installFakeSynthesis();
+    const { synth, log } = installSynthesis();
+    const cancel = vi.spyOn(synth, 'cancel');
     speak('read this aloud');
-    expect(cancelFn).toHaveBeenCalledTimes(1);
-    expect(speakFn).toHaveBeenCalledTimes(1);
-    const utterance = speakFn.mock.calls[0][0] as FakeUtterance;
-    expect(utterance.text).toBe('read this aloud');
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(log).toHaveLength(1);
+    expect(log[0].text).toBe('read this aloud');
   });
 
   it('prefers a voice matching the device language', () => {
     vi.stubGlobal('navigator', { language: 'en-GB' });
-    const { speakFn } = installFakeSynthesis([{ lang: 'fr-FR' }, { lang: 'en-GB' }, { lang: 'en-US' }]);
+    const { log } = installSynthesis(['fr-FR', 'en-GB', 'en-US']);
     speak('hello');
-    const utterance = speakFn.mock.calls[0][0] as FakeUtterance;
-    expect(utterance.voice).toEqual({ lang: 'en-GB' });
+    expect(log[0].voice).toBe('en-GB');
   });
 
   it('names en-US on every utterance when the phone language is a bare en (mw-44omaq.7)', () => {
     vi.stubGlobal('navigator', { language: 'en' });
-    const { speakFn } = installFakeSynthesis();
+    const { log } = installSynthesis();
     speak('one');
     speak('two');
-    expect(speakFn).toHaveBeenCalledTimes(2);
-    for (const call of speakFn.mock.calls) expect((call[0] as FakeUtterance).lang).toBe('en-US');
+    expect(log).toHaveLength(2);
+    for (const entry of log) expect(entry.lang).toBe('en-US');
   });
 
   it('names en-US when the phone names no language at all', () => {
     vi.stubGlobal('navigator', {});
-    const { speakFn } = installFakeSynthesis();
+    const { log } = installSynthesis();
     speak('hello');
-    expect((speakFn.mock.calls[0][0] as FakeUtterance).lang).toBe('en-US');
+    expect(log[0].lang).toBe('en-US');
   });
 
   it('keeps a full phone tag as the utterance language', () => {
     vi.stubGlobal('navigator', { language: 'en-GB' });
-    const { speakFn } = installFakeSynthesis();
+    const { log } = installSynthesis();
     speak('hello');
-    expect((speakFn.mock.calls[0][0] as FakeUtterance).lang).toBe('en-GB');
+    expect(log[0].lang).toBe('en-GB');
   });
 
   it('never gives an English utterance the Greek voice listed first', () => {
     vi.stubGlobal('navigator', { language: 'en' });
-    const { speakFn } = installFakeSynthesis([{ lang: 'el-GR' }, { lang: 'en-US' }]);
+    const { log } = installSynthesis(['el-GR', 'en-US']);
     speak('hello');
-    expect((speakFn.mock.calls[0][0] as FakeUtterance).voice).toEqual({ lang: 'en-US' });
+    expect(log[0].voice).toBe('en-US');
   });
 
   it('gives no voice, only the language, when no listed voice matches', () => {
     vi.stubGlobal('navigator', { language: 'en' });
-    const { speakFn } = installFakeSynthesis([{ lang: 'el-GR' }]);
+    const { log } = installSynthesis(['el-GR']);
     speak('hello');
-    const utterance = speakFn.mock.calls[0][0] as FakeUtterance;
-    expect(utterance.voice).toBeNull();
-    expect(utterance.lang).toBe('en-US');
+    expect(log[0].voice).toBeNull();
+    expect(log[0].lang).toBe('en-US');
   });
 
   it('matches a voice whose tag uses an underscore', () => {
     vi.stubGlobal('navigator', { language: 'en-US' });
-    const { speakFn } = installFakeSynthesis([{ lang: 'el_GR' }, { lang: 'en_US' }]);
+    const { log } = installSynthesis(['el_GR', 'en_US']);
     speak('hello');
-    expect((speakFn.mock.calls[0][0] as FakeUtterance).voice).toEqual({ lang: 'en_US' });
+    expect(log[0].voice).toBe('en_US');
   });
 
   describe('when the voice list is still empty', () => {
@@ -125,60 +101,59 @@ describe('speech', () => {
 
     it('waits for voiceschanged, then gives the utterance the matching voice', () => {
       vi.stubGlobal('navigator', { language: 'en' });
-      const { speakFn, load } = installLateVoices();
+      const { speech: late, load } = installLateVoices(['el-GR', 'en-US']);
       speak('hello');
-      expect(speakFn).not.toHaveBeenCalled();
-      load([{ lang: 'el-GR' }, { lang: 'en-US' }]);
-      expect(speakFn).toHaveBeenCalledTimes(1);
-      const utterance = speakFn.mock.calls[0][0] as FakeUtterance;
-      expect(utterance.voice).toEqual({ lang: 'en-US' });
-      expect(utterance.lang).toBe('en-US');
+      expect(late.log).toHaveLength(0);
+      load();
+      expect(late.log).toHaveLength(1);
+      expect(late.log[0].voice).toBe('en-US');
+      expect(late.log[0].lang).toBe('en-US');
     });
 
     it('still speaks, with the language, when the voices never load', () => {
       vi.useFakeTimers();
       vi.stubGlobal('navigator', { language: 'en' });
-      const { speakFn } = installLateVoices();
+      const { speech: late } = installLateVoices();
       speak('hello');
-      expect(speakFn).not.toHaveBeenCalled();
+      expect(late.log).toHaveLength(0);
       vi.advanceTimersByTime(2000);
-      expect(speakFn).toHaveBeenCalledTimes(1);
-      const utterance = speakFn.mock.calls[0][0] as FakeUtterance;
-      expect(utterance.voice).toBeNull();
-      expect(utterance.lang).toBe('en-US');
+      expect(late.log).toHaveLength(1);
+      expect(late.log[0].voice).toBeNull();
+      expect(late.log[0].lang).toBe('en-US');
     });
 
     it('speaks only once when the voices load after the cap passed', () => {
       vi.useFakeTimers();
-      const { speakFn, load } = installLateVoices();
+      const { speech: late, load } = installLateVoices();
       speak('hello');
       vi.advanceTimersByTime(2000);
-      load([{ lang: 'en-US' }]);
-      expect(speakFn).toHaveBeenCalledTimes(1);
+      load();
+      expect(late.log).toHaveLength(1);
     });
 
     it('stop while waiting means the utterance is never spoken', () => {
-      const { speakFn, load } = installLateVoices();
+      const { speech: late, load } = installLateVoices();
       speak('hello');
       stop();
-      load([{ lang: 'en-US' }]);
-      expect(speakFn).not.toHaveBeenCalled();
+      load();
+      expect(late.log).toHaveLength(0);
     });
 
     it('a second speak while waiting replaces the first', () => {
-      const { speakFn, load } = installLateVoices();
+      const { speech: late, load } = installLateVoices();
       speak('first');
       speak('second');
-      load([{ lang: 'en-US' }]);
-      expect(speakFn).toHaveBeenCalledTimes(1);
-      expect((speakFn.mock.calls[0][0] as FakeUtterance).text).toBe('second');
+      load();
+      expect(late.log).toHaveLength(1);
+      expect(late.log[0].text).toBe('second');
     });
   });
 
   it('stop cancels the current utterance', () => {
-    const { cancelFn } = installFakeSynthesis();
+    const { synth } = installSynthesis();
+    const cancel = vi.spyOn(synth, 'cancel');
     stop();
-    expect(cancelFn).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -214,9 +189,9 @@ describe('speechText: what is spoken is not what is shown', () => {
   });
 
   it('speak() hands the shaped text to the synthesiser', () => {
-    const { speakFn } = installFakeSynthesis();
+    const { log } = installSynthesis();
     speak('Landed mw-nqur1n.4, mw-gq6.222.');
-    expect((speakFn.mock.calls[0][0] as FakeUtterance).text).toBe('Landed.');
+    expect(log[0].text).toBe('Landed.');
   });
 });
 
@@ -255,77 +230,76 @@ describe('speechText with a lookup: a bead id is spoken as its title (mw-gq6.224
   });
 
   it('speak() hands the titled text to the synthesiser', () => {
-    const { speakFn } = installFakeSynthesis();
+    const { log } = installSynthesis();
     speak('Landed mw-nqur1n.4.', { titles });
-    expect((speakFn.mock.calls[0][0] as FakeUtterance).text).toBe('Landed Prompts screen.');
+    expect(log[0].text).toBe('Landed Prompts screen.');
   });
 });
 
 describe('speech tracks who is speaking, by a key', () => {
   afterEach(() => {
     stop();
-    vi.unstubAllGlobals();
   });
 
-  const lastUtterance = (speakFn: ReturnType<typeof vi.fn>) => speakFn.mock.calls.at(-1)![0] as FakeUtterance;
-
   it('says the key that started the speech is speaking, and no other', () => {
-    installFakeSynthesis();
+    installSynthesis();
     speak('one', { key: 'a' });
     expect(isSpeaking('a')).toBe(true);
     expect(isSpeaking('b')).toBe(false);
   });
 
   it('a speak() with no key speaks and names nobody', () => {
-    installFakeSynthesis();
+    installSynthesis();
     speak('one');
     expect(isSpeaking('a')).toBe(false);
   });
 
   it('clears when the utterance ends, and still calls onEnd', () => {
-    const { speakFn } = installFakeSynthesis();
+    const { finish } = installSynthesis();
     const onEnd = vi.fn();
     speak('one', { key: 'a', onEnd });
-    lastUtterance(speakFn).onend!();
+    expect(isSpeaking('a')).toBe(true);
+    finish();
     expect(isSpeaking('a')).toBe(false);
     expect(onEnd).toHaveBeenCalledTimes(1);
   });
 
   it('clears when the utterance errors', () => {
-    const { speakFn } = installFakeSynthesis();
+    const { advance, synth } = installSynthesis();
     speak('one', { key: 'a' });
-    lastUtterance(speakFn).onerror!();
+    advance(0); // the engine has begun it
+    synth.cancel(); // another app takes the speech: the utterance errors 'interrupted'
     expect(isSpeaking('a')).toBe(false);
   });
 
   it('clears on stop(), which cancels', () => {
-    const { cancelFn } = installFakeSynthesis();
+    const { synth } = installSynthesis();
     speak('one', { key: 'a' });
-    cancelFn.mockClear();
+    const cancel = vi.spyOn(synth, 'cancel');
     stop();
-    expect(cancelFn).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
     expect(isSpeaking('a')).toBe(false);
   });
 
   it('starting another key hands the speaking over, and the cancelled one ending late changes nothing', () => {
-    const { speakFn } = installFakeSynthesis();
+    const { advance, finish, log } = installSynthesis();
     speak('one', { key: 'a' });
-    const first = lastUtterance(speakFn);
-    speak('two', { key: 'b' });
+    advance(0);
+    speak('two', { key: 'b' }); // the honest synth reports the cancelled sentence as an error as the new one begins
+    expect(log[0].outcome).toBe('interrupted');
     expect(isSpeaking('a')).toBe(false);
     expect(isSpeaking('b')).toBe(true);
-    first.onerror!(); // a real synth reports the cancelled utterance after the new one began
-    first.onend!();
-    expect(isSpeaking('b')).toBe(true);
+    finish();
+    expect(isSpeaking('b')).toBe(false);
   });
 
   it('tells subscribers on every change and stops when they unsubscribe', () => {
-    const { speakFn } = installFakeSynthesis();
+    const { finish } = installSynthesis();
     const listener = vi.fn();
     const off = subscribe(listener);
     speak('one', { key: 'a' });
     expect(listener).toHaveBeenCalledTimes(1);
-    lastUtterance(speakFn).onend!();
+    finish();
     expect(listener).toHaveBeenCalledTimes(2);
     off();
     speak('two', { key: 'a' });

@@ -9,12 +9,15 @@ import { stop as stopSpeaking } from '../../src/services/speech';
 import { db, type MessageRow } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
+import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 
 configure({ asyncUtilTimeout: 5000 });
 
 let now = Date.now();
 let seeded: MessageRow[] = [];
-const spoken: string[] = [];
+// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4).
+let speech: HonestSpeech | null = null;
+const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];
 let extraBeads: Array<{ id: string; title: string }> = [];
 
 function viewWith(at: number) {
@@ -22,10 +25,6 @@ function viewWith(at: number) {
   const template = view.beads[0];
   for (const { id, title } of extraBeads) view.beads.push({ ...template, id, title, parent: '', waits: [] });
   return view;
-}
-
-class FakeUtterance {
-  constructor(public text: string) {}
 }
 
 function generalMessage(text: string): MessageRow {
@@ -47,6 +46,8 @@ function generalMessage(text: string): MessageRow {
 
 afterAll(() => {
   cleanup();
+  stopSpeaking();
+  speech?.uninstall();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
 });
@@ -58,11 +59,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     cleanup();
     now = Date.now();
     seeded = [];
-    spoken.length = 0;
+    speech?.uninstall();
     extraBeads = [];
-    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
-    vi.stubGlobal('speechSynthesis', { speak: (u: FakeUtterance) => spoken.push(u.text), cancel: () => {}, getVoices: () => [] });
-    stopSpeaking(); // the fake never ends an utterance; a message left 'speaking' by the last scenario would read Stop reading
+    speech = installHonestSpeech();
+    stopSpeaking(); // a message left 'speaking' by the last scenario would read Stop reading
     await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
     window.history.replaceState(null, '', '/?v=talk&t=general');
   });
@@ -98,7 +98,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the phone speaks aloud {string}', (_c, text: string) => {
       // one utterance per sentence (mw-q6n8m0.9)
-      expect(spoken.join(' ')).toBe(text);
+      expect(spoken().join(' ')).toBe(text);
     });
     And('the message still shows links {string}, {string} and {string}', async (_c, a: string, b: string, c: string) => {
       const conversation = screen.getByTestId('conversation');
@@ -126,11 +126,11 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await vi.waitFor(() => {
         const reading = within(conversation).queryByRole('button', { name: 'Stop reading' });
         fireEvent.click(reading ?? within(conversation).getByRole('button', { name: 'Read aloud' }));
-        expect(spoken.at(-1)).toContain('A decision card');
+        expect(spoken().at(-1)).toContain('A decision card');
       });
     });
     Then('the phone speaks aloud {string}', (_c, text: string) => {
-      expect(spoken.at(-1)).toBe(text);
+      expect(spoken().at(-1)).toBe(text);
     });
     And('the message still shows link {string}', async (_c, id: string) => {
       const conversation = screen.getByTestId('conversation');

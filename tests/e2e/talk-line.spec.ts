@@ -1,9 +1,10 @@
 // tests/e2e/talk-line.spec.ts — mw-j0f2d.8: the Talk line in a real browser with the
-// phone's speech recogniser, speech synthesis, vibration and wake lock faked: hold to
+// phone's speech recogniser, vibration and wake lock faked (its voice is bsv-kit's honest synthesiser): hold to
 // talk, a buzz on hold and release, the Mayor's answer shown and spoken, a tap that
 // cuts it, and a long press on the Channels tab that opens the line.
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
+import { speechInitScript, type SpeechScriptOptions } from 'bsv-kit/testing/speech';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { encryptMessage } from '../../src/services/messages';
 import { encodeTurn } from '../../src/services/talk';
@@ -16,15 +17,18 @@ test.use({ serviceWorkers: 'block' });
 declare global {
   interface Window {
     __hear(text: string): void;
-    __spoken: string[];
+    /** What was passed to speak(), in order: read off bsv-kit's honest synthesiser. */
+    readonly __spoken: string[];
     __cancels: number;
+    __bsvKitTesting: { speech: { log: { text: string }[]; synth: { cancel(): void } } };
     __vibrations: number[];
     __locks: { requested: number; released: number };
   }
 }
 
 /** The faked browser speech, vibration and wake lock; `__hear` is what the recogniser hears. */
-async function fakeSpeech(page: Page): Promise<void> {
+async function fakeSpeech(page: Page, voice: SpeechScriptOptions = {}): Promise<void> {
+  await page.addInitScript(speechInitScript(voice));
   await page.addInitScript(() => {
     class Recognizer {
       static active: Recognizer | undefined;
@@ -49,13 +53,15 @@ async function fakeSpeech(page: Page): Promise<void> {
     define(window, 'SpeechRecognition', Recognizer);
     define(window, 'webkitSpeechRecognition', Recognizer);
     window.__hear = (text) => Recognizer.active?.onresult?.({ results: [[{ transcript: text }]] });
-    window.__spoken = [];
+    // The phone's voice is bsv-kit's honest synthesiser (speechInitScript, added first); these read and count its calls.
+    const { speech } = window.__bsvKitTesting;
+    Object.defineProperty(window, '__spoken', { configurable: true, get: () => speech.log.map((entry) => entry.text) });
     window.__cancels = 0;
-    define(window, 'speechSynthesis', {
-      speak: (utterance: { text: string }) => window.__spoken.push(utterance.text),
-      cancel: () => (window.__cancels += 1),
-      getVoices: () => [],
-    });
+    const cancel = speech.synth.cancel.bind(speech.synth);
+    speech.synth.cancel = () => {
+      window.__cancels += 1;
+      cancel();
+    };
     window.__vibrations = [];
     define(navigator, 'vibrate', (ms: number) => window.__vibrations.push(ms) > 0);
     window.__locks = { requested: 0, released: 0 };
@@ -69,6 +75,9 @@ async function fakeSpeech(page: Page): Promise<void> {
   });
 }
 
+/** A voice that takes a minute over a short answer, for a test that taps Stop while it reads: the honest synthesiser ends a sentence in the time a phone takes. */
+const SLOW_VOICE: SpeechScriptOptions = { msPerWord: 20_000 };
+
 /** A talk stored on the phone before the test starts: each turn of his and the Mayor's answer, `daysAgo` days back. */
 interface StoredTalk {
   id: string;
@@ -76,8 +85,8 @@ interface StoredTalk {
   turns: { said: string; answer: string }[];
 }
 
-async function unlocked(page: Page, history: StoredTalk[] = []): Promise<{ posted: string[]; answerAfterTurn: (text: string) => void }> {
-  await fakeSpeech(page);
+async function unlocked(page: Page, history: StoredTalk[] = [], voice: SpeechScriptOptions = {}): Promise<{ posted: string[]; answerAfterTurn: (text: string) => void }> {
+  await fakeSpeech(page, voice);
   const mnemonic = createMnemonic();
   const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
   const { posted } = await stubBackend(page, governor);
@@ -141,7 +150,7 @@ async function unlocked(page: Page, history: StoredTalk[] = []): Promise<{ poste
 
 test('talk line: the speaking bar over the answer is 44 px high, fits 412 px and covers no text (mw-q6n8m0.9)', async ({ page }) => {
   await page.setViewportSize({ width: 412, height: 844 });
-  const { answerAfterTurn } = await unlocked(page);
+  const { answerAfterTurn } = await unlocked(page, [], SLOW_VOICE);
   answerAfterTurn('Three things landed. Two are live. One waits for you.');
 
   await page.goto('/?v=line');
@@ -174,7 +183,7 @@ test('talk line: the speaking bar over the answer is 44 px high, fits 412 px and
 });
 
 test('talk line: hold to talk, a spoken answer with its timing, and a tap that cuts it', async ({ page }) => {
-  const { posted, answerAfterTurn } = await unlocked(page);
+  const { posted, answerAfterTurn } = await unlocked(page, [], SLOW_VOICE);
   answerAfterTurn('Three things landed.');
 
   await page.goto('/?v=line');
@@ -401,7 +410,7 @@ test('talk line: Talk on a card opens the line about it, and Clear drops it', as
 
 // mw-am3yjh.1: the talk is rebuilt from its stored rows, so leaving the screen or reloading keeps it.
 test('talk line: the talk is still on the screen after Channels and back, and after a reload', async ({ page }) => {
-  const { posted, answerAfterTurn } = await unlocked(page);
+  const { posted, answerAfterTurn } = await unlocked(page, [], SLOW_VOICE);
   answerAfterTurn('Three things landed.');
 
   await page.goto('/?v=line');
@@ -450,7 +459,7 @@ test('talk line: earlier talks are above the open one, the screen opens on its n
     ],
   }));
   history.push({ id: 'talk-open', daysAgo: 0, turns: [{ said: 'Any news today?', answer: 'Nothing new since this morning.' }] });
-  await unlocked(page, history);
+  await unlocked(page, history, SLOW_VOICE);
   // the Talk screen reads the open talk back once, as it opens: let the rows reach the phone first
   const rows = history.reduce((sum, talk) => sum + talk.turns.length * 2, 0);
   await expect

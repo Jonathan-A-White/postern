@@ -22,6 +22,9 @@ import { quoteBlock } from './quote';
 import { usePrompts } from './usePrompts';
 import { APP_NAME, HOLD_BAR_CLASS } from './holdBar';
 import { useDraft } from './useDraft';
+import { ImageViewer } from './ImageViewer';
+import { useViewer } from './useViewer';
+import { openFile } from './openFile';
 import { draftsRepo } from '../data/repositories';
 import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext } from '../model/prompts';
 import { optionChip } from '../services/prompts';
@@ -33,6 +36,16 @@ interface Pending extends OutgoingFile {
 }
 
 let nextId = 1;
+
+/** How long a file's object URL lives after a tap opened or downloaded it: the new tab or the save has read it by then. */
+const OPENED_URL_MS = 60_000;
+
+/** A tap on an attached file that is not a picture: the browser's own tab for a PDF or text, a download for any other. */
+function openPending(file: Pending): void {
+  const url = URL.createObjectURL(new Blob([file.bytes as BlobPart], { type: file.type }));
+  openFile(url, file.type, file.name);
+  setTimeout(() => URL.revokeObjectURL(url), OPENED_URL_MS);
+}
 
 /** What the composer says when a hold ended without sending and its words wait in the box. */
 const KEPT = 'Kept what you said: tap Send.';
@@ -95,6 +108,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const picker = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const { busy, run } = useSend();
+  const viewer = useViewer();
   const hold = useHold({
     appName: APP_NAME,
     record: true,
@@ -323,17 +337,19 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           {files.map((file) => (
             <div key={file.id} className="relative flex h-16 shrink-0 items-center gap-2 rounded-xl border border-line bg-sunken px-2">
               {file.type.startsWith('image/') && file.preview ? (
-                <img src={file.preview} alt={file.name} className="h-12 w-12 rounded-lg object-cover" />
+                <button type="button" aria-label={`View ${file.name}`} className="block rounded-lg" onClick={() => viewer.open({ src: file.preview as string, name: file.name })}>
+                  <img src={file.preview} alt={file.name} className="h-12 w-12 rounded-lg object-cover" />
+                </button>
               ) : file.type.startsWith('audio/') ? (
                 <span className="flex items-center gap-1.5 pr-2 text-[12.5px] text-muted">
                   <Icon name="mic" size={16} className="text-accent" />
                   Voice note {file.durationMs !== undefined ? formatDuration(file.durationMs) : ''}
                 </span>
               ) : (
-                <span className="flex max-w-40 items-center gap-1.5 pr-2 text-[12.5px] text-muted">
+                <button type="button" aria-label={`Open ${file.name}`} className="flex max-w-40 items-center gap-1.5 pr-2 text-[12.5px] text-muted" onClick={() => openPending(file)}>
                   <Icon name="file" size={16} />
                   <span className="truncate">{file.name}</span>
-                </span>
+                </button>
               )}
               <button
                 type="button"
@@ -481,6 +497,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           Checking the saved prompts…
         </p>
       )}
+      {viewer.shown && <ImageViewer src={viewer.shown.src} name={viewer.shown.name} onClose={viewer.close} />}
       <input
         ref={picker}
         type="file"

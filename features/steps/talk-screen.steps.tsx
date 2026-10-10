@@ -4,7 +4,8 @@
 // and the Channels tab and button that lead to it.
 import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterAll, expect, vi } from 'vitest';
+import { afterAll, expect, vi, type MockInstance } from 'vitest';
+import type { FakeUtterance as Utterance } from 'bsv-kit/testing/speech';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Shell } from '../../src/cockpit/Shell';
 import { TalkLineScreen } from '../../src/cockpit/TalkLineScreen';
@@ -23,6 +24,7 @@ import { dismissAnswerWaiting } from '../../src/services/answerWaiting';
 import { syncMessagesAndEvents } from '../../src/services/events';
 import { encryptMessage } from '../../src/services/messages';
 import { MAYOR } from '../../tests/support/cockpit-fixture';
+import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-woc';
 import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
@@ -94,15 +96,11 @@ class Recognizer implements FakeRecognizer {
     this.stopped = true;
   }
 }
-class Utterance {
-  voice: unknown = null;
-  lang = '';
-  onstart: (() => void) | null = null;
-  onend: (() => void) | null = null;
-  constructor(public text: string) {}
-}
-const speak = vi.fn();
-const cancel = vi.fn();
+// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4): installBrowser puts it on the window and
+// speak/cancel watch its calls (the real ones still run, so every start, word and end fires in time).
+let speech: HonestSpeech | null = null;
+let speak: MockInstance<(utterance: Utterance) => void> = vi.fn();
+let cancel: MockInstance<() => void> = vi.fn();
 const vibrate = vi.fn(() => true);
 // mw-j0f2d.29: whether the page is showing, and the notifications the service worker was asked to show.
 let pageShowing = true;
@@ -144,8 +142,10 @@ function installBrowser(listens: boolean): void {
   else vi.stubGlobal('webkitSpeechRecognition', undefined);
   Object.defineProperty(window, 'SpeechRecognition', { value: undefined, configurable: true, writable: true });
   (window as unknown as { webkitSpeechRecognition: unknown }).webkitSpeechRecognition = listens ? Recognizer : undefined;
-  vi.stubGlobal('SpeechSynthesisUtterance', Utterance);
-  Object.defineProperty(window, 'speechSynthesis', { value: { speak, cancel, getVoices: () => [] }, configurable: true, writable: true });
+  speech?.uninstall();
+  speech = installHonestSpeech();
+  speak = vi.spyOn(speech.synth, 'speak');
+  cancel = vi.spyOn(speech.synth, 'cancel');
   Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true, writable: true });
   vi.stubGlobal('Notification', { permission: 'granted' });
   Object.defineProperty(navigator, 'serviceWorker', {
@@ -327,6 +327,7 @@ async function fresh(): Promise<void> {
 afterAll(() => {
   nowSpy.mockRestore();
   cleanup();
+  speech?.uninstall();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
 });
@@ -1792,9 +1793,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   };
   const voiceFinishes = async () => {
     await waitFor(() => expect(speak).toHaveBeenCalled());
-    act(() => {
-      (speak.mock.calls.at(-1)?.[0] as Utterance).onend?.();
-    });
+    act(() => speech!.finishAll());
   };
   const leavesTheLine = async () => {
     act(() => navigate('?v=talk'));
@@ -2211,11 +2210,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   const spokenSince = (from: number) => speak.mock.calls.slice(from).map((call) => (call[0] as Utterance).text);
   const begunSecondSentence = async () => {
     await waitFor(() => expect(speak.mock.calls.length).toBeGreaterThanOrEqual(3));
-    const [first, second] = speak.mock.calls.map((call) => call[0] as Utterance);
     act(() => {
-      first.onstart?.();
-      first.onend?.();
-      second.onstart?.();
+      speech!.advance(0); // the engine begins the first sentence
+      speech!.finish(); // it ends and the engine begins the second
     });
   };
   const holdsAndSaysNothing = async () => {
@@ -2278,9 +2275,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('he taps {string}', tapsBar);
     Then('the phone is told to speak {string} and then {string}', toldToSpeak);
     When('the phone finishes the last sentence', () => {
-      act(() => {
-        (speak.mock.calls.at(-1)?.[0] as Utterance).onend?.();
-      });
+      act(() => speech!.finishAll());
     });
     Then('the speaking bar is gone', barGone);
     And('the answer is marked heard', async () => {

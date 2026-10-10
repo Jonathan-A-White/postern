@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.27",
+    "date": "2026-10-10",
+    "story": "mw-rch8bu",
+    "kind": "fixed",
+    "text": "Issuing a licence now waits and tries again when WhatsOnChain is busy, and says in one plain line whether anything was spent instead of printing its error page."
+  },
+  {
     "version": "0.5.26",
     "date": "2026-10-10",
     "story": "mw-jtzpw0.11",

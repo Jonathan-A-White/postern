@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.27
+_2026-10-10_
+- Fixed: Issuing a licence now waits and tries again when WhatsOnChain is busy, and says in one plain line whether anything was spent instead of printing its error page.
+
 ## 0.5.26
 _2026-10-10_
 - Fixed: A long unbroken string such as a transaction id in a bead's channel no longer pushes the thread sideways or runs out of its bubble.

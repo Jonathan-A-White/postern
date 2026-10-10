@@ -22,6 +22,7 @@ import { pendingSpendsRepo } from '../data/repositories';
 import type { ApiFetchOptions } from './apiAuth';
 import { sharedChainReads } from './sharedChainReads';
 import { addressForPublicKey } from './licence';
+import { busyOf, providerRefusal, retryWhenBusy, type Busy } from './chainBusy';
 import { ANCHOR_ADDRESS } from './messages';
 import { mintCostSatoshis } from './mint';
 import { broadcastThroughBackend, loadSpendableUtxos } from './spendable';
@@ -57,6 +58,8 @@ export interface IssueLicenceParams extends IssueContext {
   collection: string;
   /** Reads source transactions for the mint builder; never asked to broadcast. */
   provider?: ChainProvider;
+  /** Called each time WhatsOnChain is busy and the step is about to be tried again, so the screen can say so. */
+  onBusy?: () => void;
 }
 
 export interface IssuedLicence {
@@ -100,6 +103,32 @@ function networkError(error: unknown): IssueError {
   if (error instanceof IssueError) return error;
   const message = error instanceof Error && error.message ? error.message : 'The network could not be reached.';
   return new IssueError('network', message);
+}
+
+/**
+ * The words for WhatsOnChain being busy or refusing, in place of its own page: what the Governor needs is whether anything
+ * was spent. Before the broadcast nothing was; at it, a 429 was turned away before the transaction was looked at, but a 5xx
+ * (or a lost connection) may have come after it went out. The provider's body goes to the console only (mw-rch8bu).
+ */
+function busyMessage(busy: Busy, broadcasting: boolean): string {
+  if (broadcasting && busy.kind !== 'rate-limited') {
+    const answered = busy.status ? ` (it answered ${busy.status})` : '';
+    return `WhatsOnChain had trouble taking the licence${answered}, so it may have gone out. Check Issued licences below in a minute, before you issue it again.`;
+  }
+  if (busy.kind === 'rate-limited') return 'WhatsOnChain is rate-limiting us. Nothing was spent. Try again in a minute.';
+  if (busy.kind === 'unreachable') return 'WhatsOnChain could not be reached. Nothing was spent. Try again in a minute.';
+  return `WhatsOnChain is having trouble (it answered ${busy.status}). Nothing was spent. Try again in a minute.`;
+}
+
+/** `error` as it came, unless it carries WhatsOnChain's own refusal: then a plain IssueError, and the refusal's body to the console. */
+function plainRefusal(error: unknown, broadcasting: boolean): unknown {
+  const message = error instanceof Error ? error.message : '';
+  const busy = busyOf(error);
+  const refusal = providerRefusal(message);
+  if (!busy && !refusal) return error;
+  console.warn('WhatsOnChain refused a request while issuing a licence:', message);
+  if (busy) return new IssueError('network', busyMessage(busy, broadcasting));
+  return new IssueError('network', `WhatsOnChain refused it (it answered ${refusal?.status}). Nothing was spent.`);
 }
 
 function notEnoughSats(needed: number, held: number): IssueError {
@@ -172,26 +201,31 @@ export async function issueLicence(params: IssueLicenceParams): Promise<IssuedLi
 
   let utxos: Utxo[];
   try {
-    utxos = await loadSpendableUtxos(issuerAddress, apiOptions);
+    utxos = await retryWhenBusy(() => loadSpendableUtxos(issuerAddress, apiOptions), params.onBusy);
   } catch (error) {
-    throw networkError(error);
+    throw networkError(plainRefusal(error, false));
   }
   const held = sumSatoshis(utxos);
   if (held < cost.totalSatoshis) throw notEnoughSats(cost.totalSatoshis, held);
 
   let built: Awaited<ReturnType<typeof buildContractMintTransaction>>;
   try {
-    built = await buildContractMintTransaction({
-      issuerKey: issuerPrivateKey.toWif(TESTNET_WIF_PREFIX),
-      utxos,
-      holderPubKey: holderPublicKeyHex,
-      mintFuelSatoshis: chainConfig.mintFuelSatoshis,
-      config: { ...chainConfig, collectionId: collection },
-      // Read through the one paced queue: the builder's reads of the coins' source transactions ran on a
-      // provider of their own, beside the list the last issue had started, at twice WhatsOnChain's limit.
-      provider: withNetworkErrors(params.provider ?? sharedChainReads()),
-    });
-  } catch (error) {
+    built = await retryWhenBusy(
+      () =>
+        buildContractMintTransaction({
+          issuerKey: issuerPrivateKey.toWif(TESTNET_WIF_PREFIX),
+          utxos,
+          holderPubKey: holderPublicKeyHex,
+          mintFuelSatoshis: chainConfig.mintFuelSatoshis,
+          config: { ...chainConfig, collectionId: collection },
+          // Read through the one paced queue: the builder's reads of the coins' source transactions ran on a
+          // provider of their own, beside the list the last issue had started, at twice WhatsOnChain's limit.
+          provider: withNetworkErrors(params.provider ?? sharedChainReads()),
+        }),
+      params.onBusy,
+    );
+  } catch (caught) {
+    const error = plainRefusal(caught, false);
     if (error instanceof IssueError) throw error;
     if (error instanceof Error && /not enough satoshis|no utxos/i.test(error.message)) throw notEnoughSats(cost.totalSatoshis, held);
     throw error;
@@ -200,9 +234,10 @@ export async function issueLicence(params: IssueLicenceParams): Promise<IssuedLi
   const now = new Date();
   let txid: string;
   try {
-    txid = await broadcastThroughBackend(built.hex, apiOptions);
+    // Only a 429 is sent again: the provider turned it away unread. After a 5xx the transaction may be out already.
+    txid = await retryWhenBusy(() => broadcastThroughBackend(built.hex, apiOptions), params.onBusy, (busy) => busy.kind === 'rate-limited');
   } catch (error) {
-    throw networkError(error);
+    throw networkError(plainRefusal(error, true));
   }
   const change = built.transaction.outputs[MINT_CHANGE_VOUT];
   await pendingSpendsRepo.add({

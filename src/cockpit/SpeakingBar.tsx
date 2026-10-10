@@ -1,7 +1,7 @@
 // src/cockpit/SpeakingBar.tsx — mw-q6n8m0.9: the one bar for anything read aloud: Pause (Resume while
 // paused), Restart and Stop, each 44 px high, shown while something speaks or waits paused. In flow, never over text.
-// The Shell shows it for every read-aloud button; the Talk line shows its own over the Mayor's answer, whose
-// buttons also steer the line.
+// The Shell shows it for every read-aloud button, and for the Mayor's answer once the Talk line is left (it waits
+// paused there); on the Talk line itself it shows its own over the answer, whose buttons also steer the line.
 import { Button } from '../ui';
 import { pause, restart, resume, stop } from '../services/speech';
 import { useSpeech } from './useSpeaking';

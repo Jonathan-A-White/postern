@@ -752,3 +752,86 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the speaking bar offers "Resume", "Restart" and "Stop"
     When he taps "Resume"
     Then the phone is told to speak "Second part." and then "Third part."
+
+  # mw-q6n8m0.10: leaving the screen pauses the answer instead of stopping it.
+  Scenario: mw-q6n8m0.10 AC1: leaving the Talk line pauses the answer, and the bar on the next screen offers Resume at the same sentence
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the stored answer is unheard, as the real inbox stores it
+    And the phone has begun the second sentence
+    And he leaves the Talk line
+    Then the speech is paused, not stopped
+    And the speaking bar offers "Resume", "Restart" and "Stop"
+    And the answer is not marked heard in the store
+    When he taps "Resume"
+    Then the phone is told to speak "Second part." and then "Third part."
+
+  Scenario: mw-q6n8m0.10 AC1: back on the Talk line the paused answer is still not heard yet and Resume carries on from the same sentence
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the stored answer is unheard, as the real inbox stores it
+    And the phone has begun the second sentence
+    And he leaves the Talk line and comes back
+    Then the answer is marked "Not heard yet"
+    And the speaking bar offers "Resume", "Restart" and "Stop"
+    And the phone has not spoken since
+    When he taps "Resume"
+    Then the phone is told to speak "Second part." and then "Third part."
+    When the phone finishes the last sentence
+    Then the speaking bar is gone
+    And the answer is marked heard
+
+  Scenario: mw-q6n8m0.10 AC1: a paused answer resumed on another screen and played to its end is heard
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the stored answer is unheard, as the real inbox stores it
+    And the phone has begun the second sentence
+    And he leaves the Talk line
+    And he taps "Resume"
+    And the phone finishes the last sentence
+    Then the speaking bar is gone
+    And the answer is marked heard
+    When he comes back to the Talk line
+    Then the answer is no longer marked "Not heard yet"
+
+  Scenario: mw-q6n8m0.10 AC2: Stop on another screen ends the paused answer, and back on the line it is heard and silent
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the stored answer is unheard, as the real inbox stores it
+    And the phone has begun the second sentence
+    And he leaves the Talk line
+    And he taps "Stop"
+    Then the speaking bar is gone
+    And the answer is marked heard
+    When he comes back to the Talk line
+    Then the answer is no longer marked "Not heard yet"
+    And the phone has not spoken since
+
+  Scenario: mw-q6n8m0.10 AC2: a new question over an answer paused by leaving ends it and says it was cut
+    Given the Talk line is open with a believable speech recogniser
+    And sending a turn keeps a sent copy, as the real deliver does
+    When he holds the talk button and says "Tell me everything" and lets go
+    And the Mayor answers "First part. Second part. Third part." on model "sonnet"
+    And the stored answer is unheard, as the real inbox stores it
+    And the phone has begun the second sentence
+    And he leaves the Talk line and comes back
+    And the answer is marked "Not heard yet"
+    And he holds the talk button and says "Never mind" and lets go
+    Then the last turn sent is turn 2 saying "Never mind" with a cut
+    And the speaking bar is gone
+
+  Scenario: mw-q6n8m0.10 AC1: leaving the Talk line pauses an answer read from its speaker button, and the bar on the next screen offers Resume
+    Given two earlier talks and an open talk are stored
+    When the Talk line is opened
+    And he taps the speaker button of the earlier answer "A cache went stale."
+    And he leaves the Talk line
+    Then the speech is paused, not stopped
+    And the speaking bar offers "Resume", "Restart" and "Stop"

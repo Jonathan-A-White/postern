@@ -212,7 +212,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         <AnswerBar />
         <OutboxNote />
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
-        <SpeakingBar except={TALK_ANSWER_KEY} />
+        <SpeakingBar except={onLine ? TALK_ANSWER_KEY : undefined} />
         {!wide && <TabBar current={top} />}
       </div>
     </div>

@@ -48,8 +48,35 @@ Feature: A read-aloud speaker is a toggle: tap to read, tap again to stop (mw-ym
     When he taps "Stop" in the bar to end it
     Then the speaking bar is gone and the message's button says "Read aloud" again
 
-  Scenario: mw-q6n8m0.9 AC-3: leaving the screen stops the speech
+  Scenario: mw-q6n8m0.10 AC1: leaving the screen pauses the speech, and the bar on the next screen offers Resume at the same sentence
     Given the Mayor's message in the general thread is "First thing. Second thing. Third thing."
     When the general thread is opened in the shell and he taps "Read aloud"
-    And the screen is left
-    Then nothing is speaking and the speaking bar is gone
+    And the phone has begun the second sentence
+    And he leaves for another screen
+    Then the speech is paused, not stopped, and the speaking bar offers "Resume", "Restart" and "Stop"
+    When he taps "Resume" in the bar to carry on
+    Then the phone speaks "Second thing." and then "Third thing." again
+
+  Scenario: mw-q6n8m0.10 AC1: coming back to the screen still offers Resume
+    Given the Mayor's message in the general thread is "First thing. Second thing. Third thing."
+    When the general thread is opened in the shell and he taps "Read aloud"
+    And he leaves for another screen
+    And he comes back to the general thread
+    Then the speaking bar offers "Resume", "Restart" and "Stop"
+    And the message's button still says "Stop reading"
+
+  Scenario: mw-q6n8m0.10 AC2: a new read-aloud while one waits paused ends the paused one
+    Given the Mayor's messages in the general thread are "First thing." and "Second thing."
+    When the general thread is opened in the shell and he taps the first message's speaker
+    And he leaves for another screen
+    And he comes back to the general thread
+    And he taps the second message's speaker
+    Then only the second message's speaker says "Stop reading"
+    And the speaking bar offers "Pause", "Restart" and "Stop"
+
+  Scenario: mw-q6n8m0.10 AC2: Stop on a paused read-aloud ends it and the bar goes
+    Given the Mayor's message in the general thread is "First thing. Second thing."
+    When the general thread is opened in the shell and he taps "Read aloud"
+    And he leaves for another screen
+    And he taps "Stop" in the bar to end it
+    Then the speaking bar is gone and nothing is speaking

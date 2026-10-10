@@ -23,7 +23,7 @@
   "dependencies": {
     "@bsv/sdk": "^2.2.0",
     "@scure/bip39": "^2.4.0",
-    "bsv-kit": "github:Jonathan-A-White/bsv-kit#3016cfb2da4f3026f9af3a31f1dccf97dd03eca6",
+    "bsv-kit": "github:Jonathan-A-White/bsv-kit#6a22cfe448b03d2be6f1ad6bc4bde6aa38f22150",
     "dexie": "^4.3.0",
     "mermaid": "^12.0.0",
     "qrcode": "^1.5.4",
@@ -62,6 +62,6 @@
     "vitest": "^4.0.18"
   },
   "allowScripts": {
-    "github:Jonathan-A-White/bsv-kit#3016cfb2da4f3026f9af3a31f1dccf97dd03eca6": true
+    "github:Jonathan-A-White/bsv-kit#6a22cfe448b03d2be6f1ad6bc4bde6aa38f22150": true
   }
 }

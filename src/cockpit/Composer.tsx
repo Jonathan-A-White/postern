@@ -408,16 +408,31 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
               <p className={hold.notice ? 'text-danger' : 'text-muted'}>{hold.notice ?? 'Hold the bar and speak. Slide off it to keep the words unsent.'}</p>
             )}
           </div>
-          <HoldToTalkBar
-            label={barLabel(holding, hold.mic === 'ready')}
-            listening={holding}
-            disabled={busy}
-            onPress={press}
-            onRelease={() => void release()}
-            onAbort={drop}
-            dropOnSlideOff
-            className={HOLD_BAR_CLASS}
-          />
+          <div className="flex w-full max-w-xl items-center gap-2">
+            <HoldToTalkBar
+              label={barLabel(holding, hold.mic === 'ready')}
+              listening={holding}
+              disabled={busy}
+              onPress={press}
+              onRelease={() => void release()}
+              onAbort={drop}
+              dropOnSlideOff
+              className={cx(HOLD_BAR_CLASS, 'min-w-0 flex-1')}
+            />
+            {files.length > 0 && (
+              // A picture is attached and nothing typed: one tap sends it. The bar stays the big button; the arrow only takes its width.
+              <button
+                type="button"
+                aria-label="Send"
+                title="Send"
+                disabled={busy || holding}
+                onClick={() => void send()}
+                className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition-colors hover:brightness-110 disabled:opacity-40"
+              >
+                <Icon name="send" size={22} />
+              </button>
+            )}
+          </div>
           <div className="flex w-full max-w-xl items-center gap-1">
             <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />
             <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} className="lg:hidden" />

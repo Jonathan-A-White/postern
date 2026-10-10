@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.31",
+    "date": "2026-10-10",
+    "story": "mw-nxj49n",
+    "kind": "fixed",
+    "text": "When WhatsOnChain turns the backend away, the phone now gets one short line instead of a page of web-server text."
+  },
+  {
     "version": "0.5.29",
     "date": "2026-10-10",
     "story": "mw-xpy2ds",

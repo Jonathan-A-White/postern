@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.31
+_2026-10-10_
+- Fixed: When WhatsOnChain turns the backend away, the phone now gets one short line instead of a page of web-server text.
+
 ## 0.5.29
 _2026-10-10_
 - New: Needs you now lists what you are waiting on others for, with who and since when, and after three working days it asks you to Chase, mark it Done or Keep waiting.

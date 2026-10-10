@@ -76,6 +76,7 @@ function IssuedRow({
   times,
   confirming,
   revoking,
+  busy,
   error,
   onAskRevoke,
   onCancel,
@@ -85,6 +86,8 @@ function IssuedRow({
   times: Record<string, number>;
   confirming: boolean;
   revoking: boolean;
+  /** WhatsOnChain was busy and the revoke is being tried again. */
+  busy: boolean;
   error: string | null;
   onAskRevoke: () => void;
   onCancel: () => void;
@@ -120,6 +123,11 @@ function IssuedRow({
               Cancel
             </button>
           </div>
+          {revoking && busy && (
+            <p role="status" className="text-muted">
+              WhatsOnChain is busy, trying again…
+            </p>
+          )}
           {error && (
             <p role="alert" className={`text-danger ${WRAP}`}>
               {error}
@@ -153,6 +161,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const [revokedHere, setRevokedHere] = useState<string[]>([]);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [revokeBusy, setRevokeBusy] = useState(false);
   const [revokeError, setRevokeError] = useState<{ origin: string; message: string } | null>(null);
   const [addressCopied, setAddressCopied] = useState<'idle' | 'copied' | 'unavailable'>('idle');
   // A second tap in the tick before the first one's re-render must not build a second mint.
@@ -264,9 +273,10 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
 
   async function handleRevoke(origin: string) {
     setRevoking(origin);
+    setRevokeBusy(false);
     setRevokeError(null);
     try {
-      await chain.revokeLicence({ issuerKey, origin });
+      await chain.revokeLicence({ issuerKey, origin, onBusy: () => setRevokeBusy(true) });
       setRevokedHere((previous) => [...previous, origin]);
       setConfirming(null);
       setRefreshToken((token) => token + 1);
@@ -416,6 +426,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
                   times={times}
                   confirming={confirming === row.origin}
                   revoking={revoking === row.origin}
+                  busy={revokeBusy}
                   error={revokeError?.origin === row.origin ? revokeError.message : null}
                   onAskRevoke={() => {
                     setRevokeError(null);

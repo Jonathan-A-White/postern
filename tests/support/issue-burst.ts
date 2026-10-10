@@ -31,15 +31,19 @@ export async function serveBackendAndWhatsOnChain(
   options: {
     hexRefusedFor?: (txid: string, woc: WocStub) => void;
     backendRefuses?: (route: 'utxos' | 'broadcast', call: number) => BackendRefusal | undefined;
+    /** The issuer already holds one mint (COIN_TXID, collection x), so the Issued licences list has a row to Revoke. */
+    issuedMint?: boolean;
+    /** False: WhatsOnChain's own reads are not rate-limited, for a test about the backend's 429 only (default true). */
+    wocRateLimit?: boolean;
   } = {},
 ) {
   const hexByTxid: Record<string, string> = { [COIN_TXID]: await signedRecordTxHex(ISSUER, 'M', { collection: 'x', holder: 'y' }, 0) };
   const unconfirmed: Array<{ tx_hash: string; height: number }> = [];
   const woc = wocStub({
-    pages: [[]],
+    pages: [options.issuedMint ? [{ tx_hash: COIN_TXID, height: 100 }] : []],
     unconfirmed,
     hexByTxid,
-    rateLimit: { gapMs: 350, perWindow: 3, windowMs: 1000 },
+    rateLimit: options.wocRateLimit === false ? undefined : { gapMs: 350, perWindow: 3, windowMs: 1000 },
   });
   const broadcast: string[] = [];
   const calls = { utxos: 0, broadcast: 0 };

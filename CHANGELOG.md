@@ -22,6 +22,26 @@ _2026-10-10_
 _2026-10-10_
 - New: A picture can be sent with one tap, no typing.
 
+## 0.5.23
+_2026-10-09_
+- New: No visible change: a written audit of Postern against the PWA checklist, with the fixes ranked.
+
+## 0.5.22
+_2026-10-09_
+- New: The Me page has a Test voice line that speaks one sentence and says Spoken or why it failed, and a message the phone cannot speak now says "Voice failed" and the reason under it.
+
+## 0.5.21
+_2026-10-09_
+- New: No visible change: reading aloud now runs on the shared speech code, with the same buttons and behaviour.
+
+## 0.5.20
+_2026-10-09_
+- New: No visible change: the What's new list was filled in for versions 0.5.12 to 0.5.18.
+
+## 0.5.19
+_2026-10-09_
+- New: No visible change: a stand-by server can now relay what you send to the home server without storing anything.
+
 ## 0.5.18
 
 2026-10-09

@@ -35,6 +35,41 @@
     "text": "A picture can be sent with one tap, no typing."
   },
   {
+    "version": "0.5.23",
+    "date": "2026-10-09",
+    "story": "mw-vtjxh4.29",
+    "kind": "new",
+    "text": "No visible change: a written audit of Postern against the PWA checklist, with the fixes ranked."
+  },
+  {
+    "version": "0.5.22",
+    "date": "2026-10-09",
+    "story": "mw-lcirxg",
+    "kind": "new",
+    "text": "The Me page has a Test voice line that speaks one sentence and says Spoken or why it failed, and a message the phone cannot speak now says \"Voice failed\" and the reason under it."
+  },
+  {
+    "version": "0.5.21",
+    "date": "2026-10-09",
+    "story": "mw-m7v5kc.2",
+    "kind": "new",
+    "text": "No visible change: reading aloud now runs on the shared speech code, with the same buttons and behaviour."
+  },
+  {
+    "version": "0.5.20",
+    "date": "2026-10-09",
+    "story": "mw-jtzpw0.8",
+    "kind": "new",
+    "text": "No visible change: the What's new list was filled in for versions 0.5.12 to 0.5.18."
+  },
+  {
+    "version": "0.5.19",
+    "date": "2026-10-09",
+    "story": "mw-7m3136.1",
+    "kind": "new",
+    "text": "No visible change: a stand-by server can now relay what you send to the home server without storing anything."
+  },
+  {
     "version": "0.5.18",
     "date": "2026-10-09",
     "story": "mw-q6n8m0.11",

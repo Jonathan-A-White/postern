@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.26
+_2026-10-10_
+- Fixed: A long unbroken string such as a transaction id in a bead's channel no longer pushes the thread sideways or runs out of its bubble.
+
 ## 0.5.25
 _2026-10-10_
 - New: A picture can be sent with one tap, no typing.

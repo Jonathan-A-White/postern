@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.26",
+    "date": "2026-10-10",
+    "story": "mw-jtzpw0.11",
+    "kind": "fixed",
+    "text": "A long unbroken string such as a transaction id in a bead's channel no longer pushes the thread sideways or runs out of its bubble."
+  },
+  {
     "version": "0.5.25",
     "date": "2026-10-10",
     "story": "mw-jtzpw0.10",

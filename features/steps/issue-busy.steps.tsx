@@ -157,6 +157,37 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     });
   });
 
+  Scenario("mw-nxj49n AC-3: the backend's short 429 reply, with no page in it, is tried again like any other 429", ({ Given, When, Then, And }) => {
+    Given("the backend answers WhatsOnChain's 429 with only its status when it lists coins", () => {
+      refusal = (route) => (route === 'utxos' ? { status: 502, error: 'WhatsOnChain said 429' } : undefined);
+    });
+    And('the Key screen of an issuer is open', openKeyScreen);
+    When('I issue a licence to one key', issueToOneKey);
+    Then('the screen says WhatsOnChain is rate-limiting us, nothing was spent, try again in a minute', async () => {
+      expect(await within(issueSection()).findByRole('alert', {}, { timeout: 20_000 })).toHaveTextContent(RATE_LIMITED);
+    });
+    And('the coins were asked for four times', () => {
+      expect(issueCalls.utxos).toBe(4);
+    });
+  });
+
+  Scenario('mw-nxj49n AC-3: a plain 500 on the broadcast is not busy, so it is not sent again, and the screen says it may have gone out', ({ Given, When, Then, And }) => {
+    Given("the backend relays WhatsOnChain's 500 when it broadcasts", () => {
+      refusal = (route) => (route === 'broadcast' ? { status: 502, error: 'WhatsOnChain said 500' } : undefined);
+    });
+    And('the Key screen of an issuer is open', openKeyScreen);
+    When('I issue a licence to one key', issueToOneKey);
+    Then('the screen says the licence may have gone out and to check Issued licences before issuing again', async () => {
+      const alert = await within(issueSection()).findByRole('alert', {}, { timeout: 20_000 });
+      expect(alert).toHaveTextContent(/may have gone out/);
+      expect(alert).toHaveTextContent(/Issued licences/);
+      expect(alert).not.toHaveTextContent(/Nothing was spent/);
+    });
+    And('the broadcast was tried once', () => {
+      expect(issueCalls.broadcast).toBe(1);
+    });
+  });
+
   Scenario('mw-rch8bu AC-5: a long unbroken error wraps instead of running off the screen', ({ Given, When, Then, And }) => {
     Given('the backend answers a coin list refusal of 200 unbroken characters', () => {
       refusal = (route) => (route === 'utxos' ? { status: 502, error: UNBROKEN } : undefined);

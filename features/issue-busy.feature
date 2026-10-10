@@ -36,3 +36,17 @@ Feature: Issue retries a busy WhatsOnChain and says plainly whether anything was
     And the Key screen of an issuer is open
     When I issue a licence to one key
     Then the error wraps anywhere
+
+  Scenario: mw-nxj49n AC-3: the backend's short 429 reply, with no page in it, is tried again like any other 429
+    Given the backend answers WhatsOnChain's 429 with only its status when it lists coins
+    And the Key screen of an issuer is open
+    When I issue a licence to one key
+    Then the screen says WhatsOnChain is rate-limiting us, nothing was spent, try again in a minute
+    And the coins were asked for four times
+
+  Scenario: mw-nxj49n AC-3: a plain 500 on the broadcast is not busy, so it is not sent again, and the screen says it may have gone out
+    Given the backend relays WhatsOnChain's 500 when it broadcasts
+    And the Key screen of an issuer is open
+    When I issue a licence to one key
+    Then the screen says the licence may have gone out and to check Issued licences before issuing again
+    And the broadcast was tried once

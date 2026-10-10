@@ -8,7 +8,7 @@ import { deriveMasterKey, deriveAesKeyFromPhrase, wrapKey, publicKeyHexFromMaste
 import { sealDocument } from '../../src/services/documents';
 import { encryptAttachment } from '../../src/services/messages';
 import type { Need, View, ViewBead } from '../../src/model/view';
-import { MAYOR, archivedCardRecords, fixtureDetail, fixtureRecords, fixtureView, liveCardRecords, longOptionRecords, longThreadRecords, manyChannelRecords } from '../support/cockpit-fixture';
+import { MAYOR, archivedCardRecords, fixtureDetail, fixtureRecords, fixtureView, liveCardRecords, longOptionRecords, longThreadRecords, longTokenComments, longTokenRecords, manyChannelRecords } from '../support/cockpit-fixture';
 
 export async function seedVault(page: Page, mnemonic: string): Promise<string> {
   const key = await deriveMasterKey(mnemonic);
@@ -61,6 +61,8 @@ export interface StubExtras {
   beads?: ViewBead[];
   /** Adds the long-option decision cards of mw-gq6.172 to bead mw-2rbm.6's thread. */
   longOptions?: boolean;
+  /** Adds a question card on bead mw-f758y.30.2 answered by a comment that quotes a 64-hex txid, and comments holding a bare txid, a long URL and a long code span (mw-jtzpw0.11). */
+  longTokens?: boolean;
   /** Adds forty numbered posts to the channel 'long thread' (mw-f758y.35). */
   longThread?: boolean;
   /** Adds twenty-five channels with a post each, more than a phone's Channels list shows (mw-q6n8m0.7). */
@@ -88,6 +90,7 @@ export async function stubBackend(
   }
   const records = fixtureRecords(governor, now, voiceAttachment);
   if (extras.longOptions) records.push(...longOptionRecords(governor, now, records.length));
+  if (extras.longTokens) records.push(...longTokenRecords(governor, now, records.length));
   if (extras.longThread) records.push(...longThreadRecords(governor, now, records.length));
   if (extras.manyChannels) records.push(...manyChannelRecords(governor, now, records.length));
   if (extras.liveCard) records.push(...liveCardRecords(governor, now, records.length));
@@ -123,6 +126,7 @@ export async function stubBackend(
     const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() ?? '');
     const detail = fixtureDetail(id, now);
     if (!detail) return json(route, { error: 'no such bead' }, 404);
+    if (extras.longTokens) detail.comments.push(...longTokenComments(id, now));
     return route.fulfill({ status: 200, contentType: 'text/plain', body: await sealDocument(JSON.stringify(detail), MAYOR.toHex(), governorPub) });
   });
   await page.route('**/api/blobs/**', (route) =>

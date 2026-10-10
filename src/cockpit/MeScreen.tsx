@@ -11,6 +11,8 @@ import { MoveHomeButtons } from './MoveHome';
 import { ArchivedCardsLink } from './ArchiveScreen';
 import { HOMES, useStandby } from '../services/standby';
 import { lock, sessionExpiresAt } from '../services/keySession';
+import { isSupported as canSpeak, speak, useSpeechFailure } from '../services/speech';
+import { useSpeaking } from './useSpeaking';
 import { describeBuild } from '../services/buildLine';
 import { VersionLink } from './WhatsNew';
 import { refreshNow, stopLive, useLive } from '../services/live';
@@ -144,6 +146,49 @@ function Notifications() {
             </Button>
           </div>
         )}
+      </Card>
+    </section>
+  );
+}
+
+const TEST_VOICE_KEY = 'test-voice';
+const TEST_VOICE_SENTENCE = "This is Postern testing your phone's voice.";
+
+/** The voice, tried on its own: one fixed sentence by the same speak() a message uses, over whatever the phone is playing to now. */
+function TestVoice() {
+  const speaking = useSpeaking(TEST_VOICE_KEY);
+  const failed = useSpeechFailure(TEST_VOICE_KEY);
+  const [spoken, setSpoken] = useState(false);
+  return (
+    <section className="flex flex-col gap-2" aria-label="Voice">
+      <SectionTitle>Voice</SectionTitle>
+      <Card className="divide-y divide-line">
+        <Row label="Reading aloud">
+          {!canSpeak() ? (
+            <span className="text-faint">Not supported here</span>
+          ) : (
+            <span className="flex flex-col items-end gap-1">
+              <Button
+                size="sm"
+                icon="speaker"
+                disabled={speaking}
+                onClick={() => {
+                  setSpoken(false);
+                  speak(TEST_VOICE_SENTENCE, { key: TEST_VOICE_KEY, onEnd: () => setSpoken(true) });
+                }}
+              >
+                Test voice
+              </Button>
+              {speaking && <span role="status">Speaking…</span>}
+              {!speaking && failed !== null && (
+                <span role="status" className="text-danger">
+                  Voice failed: {failed}
+                </span>
+              )}
+              {!speaking && failed === null && spoken && <span role="status">Spoken</span>}
+            </span>
+          )}
+        </Row>
       </Card>
     </section>
   );
@@ -286,6 +331,8 @@ export function MeScreen() {
         </section>
 
         <Notifications />
+
+        <TestVoice />
 
         <section className="flex flex-col gap-2" aria-label="About">
           <SectionTitle>About</SectionTitle>

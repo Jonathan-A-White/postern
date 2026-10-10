@@ -336,7 +336,7 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: {
   return (
     <li className="flex flex-col gap-2" data-testid={id('turn')}>
       <div className="ml-auto flex max-w-[88%] flex-col items-end gap-1">
-        <p data-testid={id('said')} className="rounded-2xl bg-accent/15 px-3.5 py-2 text-[15px] break-words">
+        <p data-testid={id('said')} className="rounded-2xl bg-accent/15 px-3.5 py-2 text-[15px] wrap-anywhere">
           {entry.said}
         </p>
         <span className="flex gap-1.5">
@@ -347,7 +347,7 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: {
       </div>
       {entry.answer !== undefined && (
         <div data-testid={id('answer')} className="mr-auto flex max-w-[88%] flex-col gap-1">
-          <p className="rounded-2xl border border-line bg-surface px-3.5 py-2 text-[15px] break-words">{entry.answer}</p>
+          <p className="rounded-2xl border border-line bg-surface px-3.5 py-2 text-[15px] wrap-anywhere">{entry.answer}</p>
           {speaking ? (
             <span data-testid="talk-speaking" className="text-[11.5px] text-muted">
               Speaking…
@@ -555,7 +555,7 @@ export function TalkLineScreen() {
         )}
 
         {ring !== undefined && (
-          <p data-testid="ring-note" className="text-center text-[13px] break-words">
+          <p data-testid="ring-note" className="text-center text-[13px] wrap-anywhere">
             {ring.missed ? 'Missed call' : 'The Mayor called'} {clockHHMM(ring.at)}: {ring.text}
           </p>
         )}

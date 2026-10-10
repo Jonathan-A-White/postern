@@ -72,7 +72,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
     And('every option button is as wide as the card, wraps its words and grows taller than one line', () => {
       for (const button of optionButtons()) {
-        expect(button).toHaveClass('w-full', 'min-w-0', 'whitespace-normal', 'text-left', 'break-words');
+        expect(button).toHaveClass('w-full', 'min-w-0', 'whitespace-normal', 'text-left', 'wrap-anywhere');
         // A one-line Button is h-8; a wrapping one has no fixed height to hold it to one line.
         expect(button.className).not.toMatch(/(^|\s)h-8(\s|$)/);
         expect(button).toHaveClass('h-auto');

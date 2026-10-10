@@ -33,7 +33,7 @@ export function RingBanner() {
       >
         <span className="flex flex-col">
           <span className="font-medium">The Mayor is calling</span>
-          {ring.reason && <span className="break-words">{ring.reason}</span>}
+          {ring.reason && <span className="wrap-anywhere">{ring.reason}</span>}
         </span>
       </Banner>
     </section>

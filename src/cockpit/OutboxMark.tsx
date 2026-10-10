@@ -9,7 +9,7 @@ import { PendingMark } from './PendingMark';
 export function FailedNote({ id, failure, className }: { id: number; failure: string; className?: string }) {
   return (
     <span data-testid="failed-note" role="alert" className={className ?? 'inline-flex flex-wrap items-center gap-1.5 text-[12.5px] text-danger'}>
-      <span className="min-w-0 break-words">Not sent: {failure}</span>
+      <span className="min-w-0 wrap-anywhere">Not sent: {failure}</span>
       <Button size="sm" variant="secondary" onClick={() => void retryRow(id)}>
         Retry
       </Button>

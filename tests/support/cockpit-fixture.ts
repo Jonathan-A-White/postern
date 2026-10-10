@@ -10,7 +10,7 @@ import { canonicalStep, type HandsStep } from '../../src/model/hands';
 import { encryptMessage, type MessagePayload } from '../../src/services/messages';
 import { encodeQuestion, encodeReply } from '../../src/services/questions';
 import { encodeThreadedMessage } from '../../src/services/threads';
-import type { BeadDetail, Need, View, ViewBead } from '../../src/model/view';
+import type { BeadComment, BeadDetail, Need, View, ViewBead } from '../../src/model/view';
 
 export const MAYOR = PrivateKey.fromHex('77'.repeat(32));
 
@@ -264,6 +264,38 @@ export function longOptionRecords(governorKey: PrivateKey, now: number, firstSeq
     ask('Q1: Where should the shared core live?', 9),
     record(encodeReply({ bead: 'mw-2rbm.6', answer: LONG_OPTIONS[0] }), governorKey, mayorPub, 8),
     ask('Q2: And when does the extraction happen?', 5),
+  ];
+}
+
+export const LONG_TXID = '0f8d0ed216e90080a4091e62939877879c4f5ac01386cb85cdecb0123456789a'.slice(0, 64);
+export const LONG_URL = `https://whatsonchain.com/tx/${'ab'.repeat(40)}?network=testnet&view=outputs&more=${'x'.repeat(60)}`;
+
+/** A question the Mayor asked on bead mw-f758y.30.2, answered by the factory's ANSWER comment below (mw-jtzpw0.11). */
+export function longTokenRecords(governorKey: PrivateKey, now: number, firstSeq: number): FixtureRecord[] {
+  const seq = firstSeq + 1;
+  const asked = encodeQuestion({ bead: 'mw-f758y.30.2', q: 'Should the ping be 25 seconds?', rec: 'Yes', options: ['Yes', 'No'] });
+  return [
+    {
+      seq,
+      txid: `direct:${hex64(seq)}`,
+      vout: 0,
+      payload: {
+        ...encryptMessage({ text: asked, class: 'decision-needed', senderPrivateKeyHex: MAYOR.toHex(), recipientPublicKeyHex: governorKey.toPublicKey().toString() }),
+        ts: Math.floor((now - 120 * 60_000) / 1000),
+      },
+    },
+  ];
+}
+
+/** Comments whose text holds one long token each, as a Builder's and the Mayor's do: a bare txid, a long link, a long
+ * code span, and an ANSWER whose first line quotes a txid (what 'Answered: …' under a question card reads). */
+export function longTokenComments(bead: string, now: number): BeadComment[] {
+  if (bead !== 'mw-f758y.30.2') return [];
+  const at = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
+  return [
+    { at: at(100), author: 'root', text: `ANSWER in words, the Governor ${at(101)} (General thread, txid direct:${LONG_TXID}), to the question card: yes.` },
+    { at: at(3), author: 'mw@desktop', text: `Landed: ${LONG_TXID}` },
+    { at: at(2), author: 'mw@desktop', text: `See ${LONG_URL} and \`${'cd'.repeat(40)}\`` },
   ];
 }
 

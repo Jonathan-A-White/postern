@@ -29,7 +29,7 @@ function EmergencyCard({ event }: { event: EventRow }) {
           />
         )}
       </div>
-      {event.detail ? <p className="text-[15px] break-words whitespace-pre-wrap">{event.detail}</p> : <p className="text-[15px] text-muted">It carried no words.</p>}
+      {event.detail ? <p className="text-[15px] wrap-anywhere whitespace-pre-wrap">{event.detail}</p> : <p className="text-[15px] text-muted">It carried no words.</p>}
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-faint">
         {event.actor && <span>{event.actor}</span>}
         <span className="flex items-center gap-1">

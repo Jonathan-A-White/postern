@@ -273,9 +273,9 @@ function QuestionBlock({ item, given, until }: { item: ConversationItem; given?:
         ))}
       </div>
       {answered && (
-        <p role="status" className="mt-2 inline-flex min-w-0 items-start gap-1.5 text-[13px] text-muted">
+        <p role="status" className="mt-2 flex min-w-0 items-start gap-1.5 text-[13px] text-muted">
           <Icon name="check" size={15} className="mt-0.5 shrink-0" />
-          <span className="min-w-0 break-words">
+          <span className="min-w-0 wrap-anywhere">
             Answered: {answered.answer} {clockTime(new Date(answered.at))}
           </span>
           {queued && <OutboxMark row={queued} />}
@@ -304,7 +304,7 @@ function Transcript({ text }: { text: string }) {
   );
   return (
     <div className="mt-1.5 border-l-2 border-line-strong pl-2 text-[13px] text-muted" data-testid="transcript">
-      <p ref={measure} data-testid="transcript-text" className={cx('break-words', !open && 'line-clamp-2')}>
+      <p ref={measure} data-testid="transcript-text" className={cx('wrap-anywhere', !open && 'line-clamp-2')}>
         <span className="font-semibold">Heard:</span> {text}
       </p>
       {runsLong && (

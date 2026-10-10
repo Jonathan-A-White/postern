@@ -176,7 +176,7 @@ html {
 }
 
 .markdown {
-  @apply text-[15px] leading-relaxed break-words;
+  @apply text-[15px] leading-relaxed wrap-anywhere;
 }
 
 .markdown h1,

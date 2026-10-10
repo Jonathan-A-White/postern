@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.33",
+    "date": "2026-10-10",
+    "story": "mw-qkb7yp",
+    "kind": "fixed",
+    "text": "A message that waits because the chain service is busy now says so in one plain line instead of silently waiting or showing the service's own page."
+  },
+  {
     "version": "0.5.32",
     "date": "2026-10-10",
     "story": "mw-2f65hu",

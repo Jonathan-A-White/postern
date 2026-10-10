@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.33
+_2026-10-10_
+- Fixed: A message that waits because the chain service is busy now says so in one plain line instead of silently waiting or showing the service's own page.
+
 ## 0.5.32
 _2026-10-10_
 - Fixed: Revoking a licence now waits and tries again when WhatsOnChain is busy, and says plainly whether anything was spent.

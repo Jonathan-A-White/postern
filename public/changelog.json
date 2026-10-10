@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.28",
+    "date": "2026-10-10",
+    "story": "mw-42919u",
+    "kind": "new",
+    "text": "Needs you now shows a pull request waiting for your review, or a decision waiting on you, as its own kind of card with what to do and when it is done."
+  },
+  {
     "version": "0.5.27",
     "date": "2026-10-10",
     "story": "mw-rch8bu",

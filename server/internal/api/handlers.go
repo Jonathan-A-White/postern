@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -722,17 +723,48 @@ func sentGristTo(records *index.Store, sender, millKey string) bool {
 }
 
 // writeProviderError maps a chain.Chain error to an HTTP response: a
-// *chain.ProviderError becomes a 502 naming the provider's own status and body, and
-// anything else (a network failure, an unreachable provider) becomes a
-// generic 502 too — from this backend's caller's perspective both are just
-// "the provider proxy failed."
+// *chain.ProviderError becomes a 502 with a short classified reply (provider,
+// status, busy or not) and anything else (a network failure, an unreachable
+// provider) becomes a generic 502 too — from this backend's caller's
+// perspective both are just "the provider proxy failed." What the provider
+// sent is logged here, never relayed: a 429 from WhatsOnChain is an nginx
+// HTML page (mw-nxj49n).
 func writeProviderError(w http.ResponseWriter, err error) {
 	var apiErr *chain.ProviderError
 	if errors.As(err, &apiErr) {
-		writeError(w, http.StatusBadGateway, apiErr.Error())
+		log.Printf("provider %s said %d: %s", apiErr.Provider, apiErr.Status, apiErr.Body)
+		writeJSON(w, http.StatusBadGateway, struct {
+			Error    string `json:"error"`
+			Provider string `json:"provider"`
+			Status   int    `json:"status"`
+			Busy     bool   `json:"busy"`
+		}{Error: providerErrorText(apiErr), Provider: apiErr.Provider, Status: apiErr.Status, Busy: providerBusy(apiErr.Status)})
 		return
 	}
 	writeError(w, http.StatusBadGateway, err.Error())
+}
+
+// providerBusy says a provider status is a provider that is busy or down (a
+// 429, or the gateway statuses), as against one that refused the request.
+func providerBusy(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusBadGateway ||
+		status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
+}
+
+// maxReplyReason is the longest provider reason worth relaying.
+const maxReplyReason = 120
+
+// providerErrorText is "<provider> said <status>", with the provider's own
+// reason after it when that is one short plain line (a node's "tx rejected")
+// and the provider is not busy; a page, a long body or a busy provider's
+// words stay in the log.
+func providerErrorText(e *chain.ProviderError) string {
+	text := fmt.Sprintf("%s said %d", e.Provider, e.Status)
+	reason := strings.TrimSpace(e.Body)
+	if providerBusy(e.Status) || reason == "" || len(reason) > maxReplyReason || strings.ContainsAny(reason, "<>\r\n") {
+		return text
+	}
+	return text + ": " + reason
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

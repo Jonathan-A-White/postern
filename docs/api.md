@@ -367,9 +367,12 @@ Forwards a raw transaction to WhatsOnChain.
   ```
 
 - `400` — the body isn't valid JSON, or `rawtx` is missing/empty.
-- `502` — WhatsOnChain rejected the transaction or couldn't be reached; `error`
-  carries the provider's own status and message where one was returned (e.g.
-  `"WhatsOnChain said 400: tx rejected: bad-txns-inputs-missingorspent"`).
+- `502` — WhatsOnChain rejected the transaction or couldn't be reached. The reply is
+  short and classified: `{ "error", "provider", "status", "busy" }`. `error` is
+  `"<provider> said <status>"`, with the provider's reason after it when that is one
+  short plain line and the provider is not busy (e.g. `"WhatsOnChain said 400: tx
+  rejected"`); `busy` is true for a 429, 502, 503 or 504. A page or a long body is
+  never relayed: it goes to the server log.
 
 ## GET /api/utxos/{address}
 
@@ -387,7 +390,7 @@ transactions without talking to WhatsOnChain directly.
   ```
 
   `height` is `0` for an unconfirmed output.
-- `502` — the provider proxy failed; `error` carries what's known of why.
+- `502` — the provider proxy failed; same reply as `/api/broadcast`'s `502`.
 
 ## GET /api/balance/{address}
 
@@ -400,7 +403,7 @@ Proxies WhatsOnChain's balance for `address`.
   ```
 
   Both fields are satoshis.
-- `502` — the provider proxy failed; `error` carries what's known of why.
+- `502` — the provider proxy failed; same reply as `/api/broadcast`'s `502`.
 
 ## GET /api/push/vapid-public-key
 

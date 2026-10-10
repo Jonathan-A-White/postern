@@ -79,7 +79,7 @@ const STATUS_OF: Record<string, string> = {
 };
 
 /** The card kinds a bead's closing settles; `verify` is the one a closing raises. */
-const SETTLED_BY_CLOSING = new Set<Need['kind']>(['question', 'approve', 'hands', 'demo', 'stale', 'alarm']);
+const SETTLED_BY_CLOSING = new Set<Need['kind']>(['question', 'approve', 'hands', 'review', 'decision', 'demo', 'stale', 'alarm']);
 
 /** What the projector needs from records this phone already holds: a question's body
  * (card_asked names the question's txid) and an answer's words (card_answered names its). */

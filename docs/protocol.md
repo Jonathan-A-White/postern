@@ -677,8 +677,17 @@ parent chain up to the root, so the app can draw any level of the tree:
 | `verify` | a story closed in the last 24 hours with no `VERIFIED` comment | `["Verified"]`. The app's Verified button asks first, then sends the Verify word as a channel message to the bead (`VERIFIED (tapped Verified <where>)`), naming where it was tapped; it is offered on a `mayor` card too |
 | `stale` | a bead that has gone stale: `since` is when it went stale; `text` is the facts (what it is, its age, what it waits on, the first 200 characters of its newest comment); it **replaces** the `approve` or `hands` need for the same bead, never both | `["Keep", "Close"]` |
 | `demo` | an open bead labelled `demo` | `[]` |
-| `hands` | an open bead labelled `hitl`: a step only his hands can do; its `steps` (§17) can be approved and run from the app | `[]` |
+| `hands` | an open bead labelled `hitl` (a bare `hitl`, or `hitl` with `hitl:hands`): a step only his hands can do; its `steps` (§17) can be approved and run from the app | `[]` |
+| `review` | an open bead labelled `hitl` and `hitl:review`: something waiting on his approval, such as a pull request, that someone else raised. `text` is the bead's body run together (Do this / Done when); no `steps` | `[]` |
+| `decision` | an open bead labelled `hitl` and `hitl:decision`: a choice only he can make, outside a question asked over the postern. `text` is the bead's body run together (Do this / Done when); no `steps` | `[]` |
 | `alarm` | a story that used up its attempts, or a host whose last sync is over 20 minutes old (`bead` empty) | `[]` |
+
+A bead labelled `hitl` plus exactly one `hitl:<kind>` (`hands`, `decision`, `review` or
+`verify`) is a need of that kind; a `hitl:verify` bead is a `verify` need. The filer does every
+part an agent can first, so the human part is one action, written in the bead's body as
+**Do this**, **Verified** and **Done when**. The app draws a `review` or `decision` card with
+its own chip and shows the `text` under those labels, each in full; a `text` without the labels
+is drawn as written. A reader that does not know a kind drops that need rather than guess.
 
 The table is also the kinds' rank among equals: `stale` comes after `verify` and
 before `demo`. A bead is never in `needs` as both `stale` and `approve`, or both

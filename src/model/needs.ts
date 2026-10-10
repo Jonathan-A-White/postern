@@ -206,3 +206,30 @@ export function answeredQuestion(
   const outbox = evidence.outbox.filter((row) => row.created < until);
   return answeredByComment(need, comments) ?? answeredInWords(need, messages, outbox, evidence.soleQuestion);
 }
+
+/** One labelled part of a hitl:<kind> need's body: Do this, Verified or Done when. */
+export interface HitlPart {
+  label: string;
+  text: string;
+}
+
+const HITL_LABEL = /(?:^|\s)(Do this|Verified|Done when)\s*:?\s+/g;
+
+/**
+ * A hitl:<kind> need's text (docs/protocol.md §11, the body run together) split at its Do this / Verified /
+ * Done when labels, in the order written. Words before the first label come first with an empty label.
+ * A text with none of the labels gives [], and the card draws it as it is.
+ */
+export function hitlParts(text: string): HitlPart[] {
+  const marks = [...text.matchAll(HITL_LABEL)];
+  if (marks.length === 0) return [];
+  const parts: HitlPart[] = [];
+  const lead = text.slice(0, marks[0].index).trim();
+  if (lead) parts.push({ label: '', text: lead });
+  marks.forEach((mark, at) => {
+    const from = mark.index + mark[0].length;
+    const to = at + 1 < marks.length ? marks[at + 1].index : text.length;
+    parts.push({ label: mark[1], text: text.slice(from, to).trim() });
+  });
+  return parts;
+}

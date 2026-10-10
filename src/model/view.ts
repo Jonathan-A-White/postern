@@ -5,9 +5,9 @@
 import type { Snapshot } from '../services/questions';
 import { decodeHandsSteps, type HandsStep } from './hands';
 
-export type NeedKind = 'question' | 'approve' | 'verify' | 'stale' | 'demo' | 'hands' | 'alarm';
+export type NeedKind = 'question' | 'approve' | 'verify' | 'stale' | 'demo' | 'hands' | 'review' | 'decision' | 'alarm';
 
-export const NEED_KINDS: NeedKind[] = ['question', 'approve', 'verify', 'stale', 'demo', 'hands', 'alarm'];
+export const NEED_KINDS: NeedKind[] = ['question', 'approve', 'verify', 'stale', 'demo', 'hands', 'review', 'decision', 'alarm'];
 
 /** docs/protocol.md §11: who a card waits on. Only `you` cards can be acted on now. */
 export type WaitsFor = 'you' | 'mayor' | 'factory';

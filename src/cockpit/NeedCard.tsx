@@ -16,7 +16,7 @@ import { threadKey } from '../services/threads';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import type { Need } from '../model/view';
-import { answeredByComment, answeredInWords, orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
+import { answeredByComment, answeredInWords, hitlParts, orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
@@ -168,7 +168,10 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const body = asked ? words.rest : need.text;
   // A verify card's text is its HOW TO CHECK IT steps: shown in full, on the bead's page too, under their own heading.
   const verifySteps = need.kind === 'verify' && body.trim() !== '';
-  const long = body.length > 280 && !stale && !verifySteps;
+  // A review or decision card's text is the bead's body: Do this / Done when, in full, each under its own label.
+  const hitlBody = need.kind === 'review' || need.kind === 'decision';
+  const parts = hitlBody ? hitlParts(body) : [];
+  const long = body.length > 280 && !stale && !verifySteps && !hitlBody;
   return (
     <article
       className={cx('flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-surface p-4', need.kind === 'alarm' && 'border-danger/40')}
@@ -221,7 +224,18 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
           data-testid={verifySteps ? 'verify-steps' : undefined}
         >
           {verifySteps && <h4 className="text-[13px] font-semibold text-fg">How to check it</h4>}
-          <Markdown text={body} />
+          {parts.length > 0 ? (
+            <dl className="flex flex-col gap-1.5" data-testid="hitl-body">
+              {parts.map((part, at) => (
+                <div key={at} className="flex flex-col">
+                  {part.label && <dt className="text-[13px] font-semibold text-fg">{part.label}</dt>}
+                  <dd>{part.text}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <Markdown text={body} />
+          )}
           {!expanded && long && (
             <button
               type="button"

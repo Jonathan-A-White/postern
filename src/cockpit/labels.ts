@@ -10,6 +10,8 @@ export const NEED_META: Record<NeedKind, { label: string; icon: IconName; tone: 
   stale: { label: 'Still wanted?', icon: 'clock', tone: 'held', verb: 'Has this gone stale' },
   demo: { label: 'Demo', icon: 'play', tone: 'ready', verb: 'A demo is ready' },
   hands: { label: 'Your hands', icon: 'hand', tone: 'needs', verb: 'Only you can do this' },
+  review: { label: 'Review', icon: 'file', tone: 'needs', verb: 'Waiting for your review' },
+  decision: { label: 'Decision', icon: 'flag', tone: 'needs', verb: 'Waiting for your decision' },
   alarm: { label: 'Alarm', icon: 'alarm', tone: 'danger', verb: 'Something is wrong' },
 };
 

@@ -2,7 +2,8 @@
 // speechSynthesis. The engine (sentence queue, Pause/Resume/Restart/Stop that keep the place, the language and voice of
 // each utterance) is bsv-kit's packages/speech (mw-m7v5kc.2); this file is what is Postern's own: the Talk line's key and
 // a bead id said as its title. Nothing here reaches the network — the text is only ever spoken locally.
-import { speak as speakAloud, type SpeakOptions as KitSpeakOptions } from 'bsv-kit/speech';
+import { useSyncExternalStore } from 'react';
+import { isSupported, speak as speakAloud, type SpeakOptions as KitSpeakOptions } from 'bsv-kit/speech';
 import { BEAD_ID, WORD_CHAR } from '../markdown/beadLinks';
 
 export {
@@ -82,8 +83,66 @@ export interface SpeakOptions extends Omit<KitSpeakOptions, 'prepare'> {
 /** The key the Talk line speaks the Mayor's answer under: the Talk line draws that speech's bar itself, since its buttons also steer the line. */
 export const TALK_ANSWER_KEY = 'talk-answer';
 
-/** Cancels any speech, then speaks `text` in the phone's language, its bead ids and links changed into what is said. */
+// Why a voice stayed silent (mw-lcirxg). The engine drops the error of an utterance the phone could not speak ('audio-busy',
+// 'not-allowed', 'synthesis-failed'…), so a failed read looked like a spoken one. Each utterance is handed to the synthesiser
+// through its speak(); that is wrapped here to listen for the utterance's error event and keep the name under the key of the
+// speech that was started. 'interrupted' and 'canceled' are our own cancel() (a Stop, a newer speech), never a failure.
+export interface SpeechFailure {
+  key: string | null;
+  error: string;
+}
+
+const NOT_FAILURES = new Set(['interrupted', 'canceled']);
+const failureListeners = new Set<() => void>();
+let failure: SpeechFailure | null = null;
+let startedKey: string | null = null;
+const wrapped = new WeakMap<object, unknown>();
+
+function setFailure(next: SpeechFailure | null): void {
+  if (failure === null && next === null) return;
+  failure = next;
+  for (const listener of [...failureListeners]) listener();
+}
+
+/** Wraps the synthesiser's speak() once (again if something replaced it), so an utterance's error is noticed. */
+function watchErrors(synth: SpeechSynthesis): void {
+  if (wrapped.get(synth) === synth.speak) return;
+  const original = synth.speak;
+  const watching = function (this: SpeechSynthesis, utterance: SpeechSynthesisUtterance): void {
+    const key = startedKey;
+    utterance.addEventListener('error', (event) => {
+      const error = (event as SpeechSynthesisErrorEvent).error ?? 'unknown';
+      if (!NOT_FAILURES.has(error) && key === startedKey) setFailure({ key, error });
+    });
+    original.call(this, utterance);
+  };
+  synth.speak = watching;
+  wrapped.set(synth, watching);
+}
+
+/** The name of the error the phone's voice gave for the speech started under `key` ('audio-busy'), or null while it has not failed. */
+export function speechFailure(key: string): string | null {
+  return failure?.key === key ? failure.error : null;
+}
+
+/** speechFailure(key) for a component: re-reads when a speech fails or a new one starts. */
+export function useSpeechFailure(key: string): string | null {
+  return useSyncExternalStore(
+    (listener) => {
+      failureListeners.add(listener);
+      return () => {
+        failureListeners.delete(listener);
+      };
+    },
+    () => speechFailure(key),
+  );
+}
+
+/** Cancels any speech, then speaks `text` in the phone's language, its bead ids and links changed into what is said. A voice that fails shows under `options.key` (useSpeechFailure). */
 export function speak(text: string, options: SpeakOptions = {}): void {
   const { titles, ...rest } = options;
+  startedKey = rest.key ?? null;
+  setFailure(null);
+  if (isSupported()) watchErrors(window.speechSynthesis);
   speakAloud(text, { ...rest, prepare: (shown) => speechText(shown, titles) });
 }

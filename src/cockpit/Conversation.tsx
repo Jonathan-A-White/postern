@@ -11,7 +11,7 @@ import { answeredQuestion, needOfQuestion } from '../model/needs';
 import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
 import { useLive } from '../services/live';
-import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
+import { isSupported as canSpeak, speak, stop as stopSpeaking, useSpeechFailure } from '../services/speech';
 import { useSpeaking } from './useSpeaking';
 import { useAnswers, useBeadTitles, useOutbox, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { pendingAnswer } from '../model/outbox';
@@ -356,6 +356,7 @@ function sameBubble(a: BubbleProps, b: BubbleProps): boolean {
 const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, onQuote, onReply }: BubbleProps) {
   const speakKey = `message:${item.id}`;
   const reading = useSpeaking(speakKey);
+  const voiceFailure = useSpeechFailure(speakKey);
   const mine = item.speaker === 'you';
   const shared = messageShareText(item);
   const builder = item.speaker === 'builder' || item.speaker === 'factory' || item.speaker === 'other';
@@ -410,6 +411,11 @@ const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, on
           </button>
         )}
       </div>
+      {voiceFailure !== null && (
+        <p role="status" className="px-1 text-[11px] text-danger">
+          Voice failed: {voiceFailure}
+        </p>
+      )}
     </div>
   );
 }, sameBubble);

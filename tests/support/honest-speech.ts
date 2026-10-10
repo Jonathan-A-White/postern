@@ -82,3 +82,15 @@ export function installHonestSpeech(options: HonestSpeechOptions = {}): HonestSp
   });
   return honest;
 }
+
+/**
+ * Makes the phone's voice engine refuse every utterance it is handed (mw-lcirxg): the utterance never starts, and an
+ * `error` event with `error` as its name (SpeechSynthesisErrorEvent: 'audio-busy', 'not-allowed', 'synthesis-failed'…)
+ * reaches it a moment later, as Android Chrome does when a headset or the audio focus is not there. `advance(0)` delivers it.
+ */
+export function failSpeech(speech: HonestSpeech, error: string): void {
+  speech.synth.speak = (utterance) => {
+    speech.log.push({ text: utterance.text, lang: utterance.lang, rate: utterance.rate, voice: null, queuedAt: 0, startedAt: null, endedAt: null, outcome: 'canceled' });
+    speech.clock.setTimeout(() => utterance.dispatchEvent({ type: 'error', error } as { type: string }), 0);
+  };
+}

@@ -16,11 +16,11 @@ import { refreshNow, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
 import { isPushSubscribed, pushSupported, rememberPushSubscribed, subscribeToPush } from '../services/push';
 import { publicKeyHexFromMasterKey } from '../services/vault';
-import { formatRoute, threadHrefFor } from '../nav/route';
+import { beadHref, formatRoute, threadHrefFor } from '../nav/route';
 import { previewText } from '../model/conversation';
 import { needsByWaiter, unsettledNeeds } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
-import type { WaitsFor } from '../model/view';
+import type { Need, WaitsFor } from '../model/view';
 import type { LiveCard as LiveCardData } from '../model/cards';
 import { navigate } from '../router';
 import { toast } from '../ui/toastStore';
@@ -149,10 +149,34 @@ function LiveCards({ open, finished, titleOf }: { open: LiveCardData[]; finished
   );
 }
 
+/** The beads the factory asked somebody else about (docs/protocol.md §11, `waiting`): who and since when, in the host's words. Nothing to tap. */
+function WaitingOnOthers({ needs }: { needs: Need[] }) {
+  if (needs.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-2" aria-label="Waiting on others">
+      <SectionTitle>{`Waiting on others · ${needs.length}`}</SectionTitle>
+      <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+        {needs.map((need) => (
+          <li key={`${need.bead}:${need.since}`} className="flex min-w-0 flex-col gap-0.5 px-4 py-3">
+            <span className="flex items-baseline gap-2">
+              <a href={beadHref(need.bead)} className="min-w-0 truncate text-[14.5px] font-semibold hover:underline">
+                {need.title || need.bead}
+              </a>
+              <TimeAgo at={need.since} className="ml-auto shrink-0 text-[12px] text-faint" />
+            </span>
+            <span className="text-[13.5px] text-muted">{need.text}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 const EMPTY: Record<WaitsFor, { title: string; text: string }> = {
   you: { title: 'Nothing needs you', text: 'The factory is working on its own. You will get a notification when the Mayor needs a decision.' },
   mayor: { title: 'Nothing waits on the Mayor', text: 'Every card he owes you something on has been dealt with.' },
   factory: { title: 'Nothing waits on the factory', text: 'No card is held back by work still to be done.' },
+  others: { title: 'Nothing waits on others', text: 'Nobody outside the factory owes you an answer.' },
 };
 
 export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
@@ -250,6 +274,8 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
             ) : null}
           </section>
         )}
+
+        <WaitingOnOthers needs={split.others} />
 
         <UnreadThreads index={index} />
         {who === 'you' && <ArchivedCardsLink />}

@@ -27,6 +27,7 @@ import { OutboxMark } from './OutboxMark';
 import { clockTime } from '../services/age';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
+import { ChaseChoice } from './ChaseChoice';
 import { VerifiedButton } from './VerifiedButton';
 
 export interface NeedCardProps {
@@ -130,7 +131,11 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   // A stale need has its own Keep and Close (StaleChoice); the bead's page offers them among its actions.
   // A verify card offers VerifiedButton, ready or waiting on the Mayor, in place of the options.
   const verify = need.kind === 'verify' && need.bead !== '';
-  const options = notReady || hasSteps || stale || released || verify ? [] : orderedOptions(need);
+  // A chase need has its own Chase, Done and Keep waiting (ChaseChoice), on the bead's page too.
+  const chase = need.kind === 'chase';
+  // A waiting need (a bead waiting on others) says who and since when, and offers him nothing to tap.
+  const waitingOnOthers = need.kind === 'waiting';
+  const options = notReady || hasSteps || stale || chase || released || verify ? [] : orderedOptions(need);
   const thread = need.bead ? { bead: need.bead } : undefined;
   // Where a message from this card lands, so the toast can name it and open it.
   const threadName = need.bead || titleFor(GENERAL).title;
@@ -184,7 +189,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
         </Chip>
         {waiting && (
           <Chip tone="neutral" icon="clock">
-            {waiter === 'mayor' ? 'Waits on the Mayor' : 'Waits on the factory'}
+            {waiter === 'mayor' ? 'Waits on the Mayor' : waiter === 'others' ? 'Waits on others' : 'Waits on the factory'}
           </Chip>
         )}
         {epicTitle && <span className="min-w-0 truncate text-[12px] text-muted">{epicTitle}</span>}
@@ -218,7 +223,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
         {need.bead && <span className="font-mono text-[11.5px] text-faint">{need.bead}</span>}
       </div>
 
-      {body && (asked || need.text !== need.title) && (!compact || stale || asked || verifySteps) && (
+      {body && (asked || need.text !== need.title) && (!compact || stale || asked || verifySteps || chase || waitingOnOthers) && (
         <div
           className={cx('relative text-muted', !expanded && long && 'max-h-40 overflow-hidden', verifySteps && 'flex flex-col gap-1 [&_img]:h-auto [&_img]:w-full')}
           data-testid={verifySteps ? 'verify-steps' : undefined}
@@ -259,6 +264,8 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
       {hasSteps && <HandsSteps bead={need.bead} title={need.title} steps={need.steps} waitsOn={notReady ? waitsOnLinks(need, index, beadHref) : undefined} />}
 
       {stale && !waiting && !compact && need.bead && <StaleChoice bead={need.bead} />}
+
+      {chase && !waiting && need.bead && <ChaseChoice bead={need.bead} />}
 
       {/* On the bead's page (compact) the Actions row already says there are no stories. */}
       {released && !(releaseNow === 'empty' && compact) && (

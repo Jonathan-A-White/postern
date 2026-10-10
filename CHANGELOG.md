@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.25
+_2026-10-10_
+- New: A picture can be sent with one tap, no typing.
+
 ## 0.5.18
 
 2026-10-09

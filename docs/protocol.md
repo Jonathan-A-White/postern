@@ -1198,6 +1198,48 @@ After answering, the mill deletes the grist's attachments (`DELETE /api/blobs/{h
 `docs/api.md`) rather than leaving them for §8's 30 days. Nothing else keeps the photo:
 the mill opens it in a private directory and removes it when the grind ends.
 
+### Request status
+
+The mill also tells an app what became of a request it sent: filed as a bead, being
+built, landed in a version, declined, or adopted as a setting. Each is a `grist` record
+from the mill key to the key that sent the request (§1's envelope, `"class": "grist"`,
+which the mill key may already send to any key), delivered and stored like an answer.
+Its plaintext, what `ct` seals to the app's key:
+
+```json
+{
+  "kind": "request-status",
+  "request": "direct:<the request's grist txid>",
+  "bead": "mw-x.1",
+  "status": "landed",
+  "version": "0.1.86",
+  "commit": "<sha>",
+  "url": "https://github.com/<owner>/<rig>/commit/<sha>",
+  "reason": "...",
+  "setting": "...",
+  "ts": 1790003600000
+}
+```
+
+- **It has no `re`.** An answer (above) carries `re`, which is how an app's grist
+  reader matches an answer to its grist; a status must never be taken for one, so the
+  plaintext holds `request` instead, and bsv-kit's `answerIn` ignores it.
+- `kind` — always `request-status`.
+- `request` — the `txid` (`direct:…`) of the grist that carried the request.
+- `bead` — the bead the factory filed for it.
+- `status` — one of `filed`, `building`, `landed`, `declined`, `adopted-as-setting`.
+- `version`, `commit`, `url` — present when `landed`: the app's version it shipped in,
+  the commit, and its link on GitHub.
+- `reason` — present when `declined`: one plain sentence, fit to show the person.
+- `setting` — present when `adopted-as-setting`: the name of the setting that answers it.
+- `ts` — when the mill sent it, unix milliseconds.
+
+A request gets one record per change of status, so an app shows the newest by `ts`.
+The backend stores it like any grist record and never reads the plaintext. The app
+pulls it with `GET /api/messages?since=` as it does an answer, and, being addressed to
+its key, only that key's `GET /api/messages` returns it: another app's key never sees
+it (§19, "Who may do what").
+
 ### Waiting
 
 A grist waits at the backend until the mill takes it. The mill runs only on the
@@ -1229,7 +1271,7 @@ other origin gets no CORS headers, so browsers refuse it.
 
 `docs/fixtures/grist-vectors.json` holds a grist plaintext, one whose header asks for a model and an effort
 (`gristAskingModelAndEffort`), its answer in each
-status, and envelopes the backend must accept or refuse for each kind of key. The
+status, a request-status plaintext for each status (`requestStatus`), and envelopes the backend must accept or refuse for each kind of key. The
 backend's tests and the mill's read the same file.
 
 ## 20. Talk

@@ -160,10 +160,14 @@ test('Channels: with more channels than fit, the last row scrolls fully into vie
     await expect(talkButton).toBeVisible();
     await expectTalkBarAtFoot(page);
 
-    await rows.last().scrollIntoViewIfNeeded();
-    const talk = await talkButton.boundingBox();
-    const last = await rows.last().boundingBox();
-    expect(talk && last && last.y + last.height <= talk.y + 1).toBe(true);
+    // The list is still filling as the channels' messages are opened (on a loaded host, past the 20 above):
+    // a row arriving after the scroll pushes the last one down, so scroll and measure again until it settles.
+    await expect(async () => {
+      await rows.last().scrollIntoViewIfNeeded();
+      const talk = await talkButton.boundingBox();
+      const last = await rows.last().boundingBox();
+      expect(talk && last && last.y + last.height <= talk.y + 1).toBe(true);
+    }).toPass({ timeout: 10_000 });
   }
   await shot(page, 'cockpit-talk-many');
 });

@@ -139,7 +139,7 @@ test('a tapped push opens the bead thread it is about, and a watchdog alarm open
 });
 
 test('Channels: with more channels than fit, the last row scrolls fully into view above the Talk to the Mayor bar', async ({ page }) => {
-  test.skip((page.viewportSize()?.width ?? 0) >= 1024, 'the foot bar is the phone layout');
+  const phone = (page.viewportSize()?.width ?? 0) < 1024; // the foot bar is the phone layout; the wide one is only shot
   const mnemonic = createMnemonic();
   const governorKeyBytes = await deriveMasterKey(mnemonic);
   const governor = PrivateKey.fromHex(Buffer.from(governorKeyBytes).toString('hex'));
@@ -155,13 +155,15 @@ test('Channels: with more channels than fit, the last row scrolls fully into vie
   const rows = page.getByTestId('thread-list').locator('li');
   await expect(rows.last()).toBeAttached();
   await expect.poll(() => rows.count()).toBeGreaterThan(20);
-  const talkButton = page.getByRole('button', { name: 'Talk to the Mayor' });
-  await expect(talkButton).toBeVisible();
-  await expectTalkBarAtFoot(page);
+  if (phone) {
+    const talkButton = page.getByRole('button', { name: 'Talk to the Mayor' });
+    await expect(talkButton).toBeVisible();
+    await expectTalkBarAtFoot(page);
 
-  await rows.last().scrollIntoViewIfNeeded();
-  const talk = await talkButton.boundingBox();
-  const last = await rows.last().boundingBox();
-  expect(talk && last && last.y + last.height <= talk.y + 1).toBe(true);
+    await rows.last().scrollIntoViewIfNeeded();
+    const talk = await talkButton.boundingBox();
+    const last = await rows.last().boundingBox();
+    expect(talk && last && last.y + last.height <= talk.y + 1).toBe(true);
+  }
   await shot(page, 'cockpit-talk-many');
 });

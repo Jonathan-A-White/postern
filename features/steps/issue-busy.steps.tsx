@@ -35,6 +35,8 @@ async function openKeyScreen(): Promise<void> {
   issuing = false;
   issueCalls = { utxos: 0, broadcast: 0 };
   server = await serveBackendAndWhatsOnChain({
+    // These scenarios are about the backend's 429 only; WhatsOnChain's own free-tier limit is a race against the clock here (pacing is off).
+    wocRateLimit: false,
     backendRefuses: (route) => {
       if (!issuing) return undefined;
       issueCalls[route]++;
@@ -79,6 +81,8 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
   AfterEachScenario(() => {
+    // Nothing may be fetched that the stub does not serve: a real network call would pass on one host and fail on another.
+    expect(server.unexpected).toEqual([]);
     cleanup();
     clearInterval(watch);
     vi.unstubAllGlobals();
@@ -136,6 +140,9 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     });
     And('the broadcast was tried four times', () => {
       expect(issueCalls.broadcast).toBe(4);
+    });
+    And("WhatsOnChain's own reads were all answered", () => {
+      expect(server.woc.refused.count).toBe(0);
     });
   });
 

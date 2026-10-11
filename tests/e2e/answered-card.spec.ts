@@ -4,9 +4,9 @@ import { test, expect } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
-test.use({ serviceWorkers: 'block', viewport: { width: 360, height: 780 } });
+test.use({ serviceWorkers: 'block', viewport: sized({ width: 360, height: 780 }) });
 
 test('an answered decision card has dead options and says what he answered', async ({ page }) => {
   const mnemonic = createMnemonic();

@@ -14,7 +14,7 @@
     "test:bdd": "vitest run features/steps",
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:live": "playwright test --config=playwright.live.config.ts",
-    "shots": "playwright test --project=shots",
+    "shots": "node scripts/run-shots.mjs",
     "gate:shots": "npm run build && TZ=UTC playwright test --project=shots",
     "shots:publish": "node scripts/publish-shots.mjs",
     "typecheck": "tsc -b --noEmit",

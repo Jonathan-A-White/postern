@@ -1,7 +1,7 @@
 // tests/e2e/cockpit.spec.ts — plans/0021: the cockpit end to end in a real
 // browser against a stubbed v2 backend (docs/protocol.md §9–§15), from unlock to
-// every place, with one screenshot per place at whatever width the project runs
-// (390 px for `npm run shots`). The fixture is tests/support/cockpit-fixture.ts.
+// every place, with one screenshot per place at each size `npm run shots` runs
+// (see tests/e2e/shot.ts). The fixture is tests/support/cockpit-fixture.ts.
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
@@ -57,7 +57,7 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
   const hands = page.locator('article[aria-label^="Your hands:"]');
   await hands.getByRole('listitem', { name: 'Step linger' }).getByRole('button', { name: 'Approve and run' }).click();
   await hands.scrollIntoViewIfNeeded();
-  await hands.screenshot({ path: 'test-results/shots/cockpit-hands.png' });
+  await shot(page, 'cockpit-hands', hands);
   await hands.getByRole('button', { name: 'Cancel' }).click();
 
   await page.getByRole('button', { name: 'New repo bsv-kit (recommended)' }).click();

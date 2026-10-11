@@ -6,9 +6,9 @@ import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { MAYOR } from '../support/cockpit-fixture';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
-test.use({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+test.use({ serviceWorkers: 'block', viewport: sized({ width: 390, height: 844 }) });
 
 async function sendWhenBroadcastAnswers(page: Page, answer: { status: number; error: string }): Promise<void> {
   const mnemonic = createMnemonic();

@@ -10,7 +10,7 @@ import { encryptMessage } from '../../src/services/messages';
 import { encodeTurn } from '../../src/services/talk';
 import { MAYOR } from '../support/cockpit-fixture';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -148,8 +148,11 @@ async function unlocked(page: Page, history: StoredTalk[] = [], voice: SpeechScr
   };
 }
 
+// the width the shots run is at (390 unless `npm run shots` is on another size): nothing may be wider than it
+const PHONE_WIDTH = sized({ width: 390, height: 844 }).width;
+
 test("talk line: the answer's own buttons sit beside its speaker, 44 px, in 390 px, with no separate bar (mw-q6n8m0.11)", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize(sized({ width: 390, height: 844 }));
   const { answerAfterTurn } = await unlocked(page, [], SLOW_VOICE);
   answerAfterTurn('Three things landed. Two are live. One waits for you.');
 
@@ -177,9 +180,9 @@ test("talk line: the answer's own buttons sit beside its speaker, 44 px, in 390 
   const holdBox = (await page.getByRole('button', { name: /Hold to talk|Waiting for the Mayor/ }).boundingBox())!;
   const answerBox = (await answer.boundingBox())!;
   expect(answerBox.x).toBeGreaterThanOrEqual(0);
-  expect(answerBox.x + answerBox.width).toBeLessThanOrEqual(390);
+  expect(answerBox.x + answerBox.width).toBeLessThanOrEqual(PHONE_WIDTH);
   expect(answerBox.y + answerBox.height).toBeLessThanOrEqual(holdBox.y);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(PHONE_WIDTH);
   await shot(page, 'talk-line-answer-speaking-390');
 
   await answer.getByRole('button', { name: 'Pause' }).click();
@@ -193,7 +196,7 @@ test("talk line: the answer's own buttons sit beside its speaker, 44 px, in 390 
   const bar = page.getByRole('region', { name: 'Speaking' });
   await expect(bar.getByRole('button')).toHaveText(['Resume', 'Restart', 'Stop']);
   for (const control of await bar.getByRole('button').all()) expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(PHONE_WIDTH);
   await shot(page, 'speaking-bar-paused-390');
 });
 
@@ -294,7 +297,7 @@ test('talk line: a long answer scrolls into view instead of landing below the fo
 // mw-j0f2d.23: on a phone the newest answer's last line sits fully above the bottom controls,
 // also once the controls change height (the status line wraps, a button appears) after it lands.
 test.describe('phone viewport', () => {
-  test.use({ viewport: { width: 412, height: 915 } });
+  test.use({ viewport: sized({ width: 412, height: 915 }) });
 
   test('talk line: the newest answer is not clipped by the controls', async ({ page }) => {
     const { posted, answerAfterTurn } = await unlocked(page);
@@ -531,7 +534,7 @@ test('talk line: earlier talks are above the open one, the screen opens on its n
 
 // mw-am3yjh.3: the Mayor's answer comes while he is on Channels: a bar says so, and a tap opens the Talk line with it.
 test.describe('phone viewport: the answer bar', () => {
-  test.use({ viewport: { width: 390, height: 844 } });
+  test.use({ viewport: sized({ width: 390, height: 844 }) });
 
   test('talk line: an answer that arrives on Channels shows a bar, and the tap lands on the Talk line with the answer', async ({ page }) => {
     const { posted, answerAfterTurn } = await unlocked(page);

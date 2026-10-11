@@ -7,9 +7,11 @@ import { readFileSync } from 'node:fs';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
-test.use({ serviceWorkers: 'allow', viewport: { width: 390, height: 844 } });
+// the width the shots run is at (390 unless `npm run shots` is on another size): nothing may be wider than it
+const PHONE_WIDTH = sized({ width: 390, height: 844 }).width;
+test.use({ serviceWorkers: 'allow', viewport: sized({ width: 390, height: 844 }) });
 
 const RUNNING = (JSON.parse(readFileSync('package.json', 'utf-8')) as { version: string }).version;
 const WAITING = '99.1.0';
@@ -65,7 +67,7 @@ test('the banner names the waiting version and what is in it, and What\'s new op
   await expect(sheet.getByText('The list no longer jumps.')).toBeVisible();
   await expect(sheet.getByText('Search finds beads.')).toHaveCount(0);
   const box = await sheet.boundingBox();
-  expect(box!.width).toBeLessThanOrEqual(390);
+  expect(box!.width).toBeLessThanOrEqual(PHONE_WIDTH);
   await shot(page, 'whats-new-sheet');
 });
 

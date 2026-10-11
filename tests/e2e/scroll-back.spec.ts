@@ -4,9 +4,9 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
-test.use({ serviceWorkers: 'block', viewport: { width: 360, height: 640 } });
+test.use({ serviceWorkers: 'block', viewport: sized({ width: 360, height: 640 }) });
 
 async function unlocked(page: Page): Promise<void> {
   const mnemonic = createMnemonic();

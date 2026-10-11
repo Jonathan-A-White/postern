@@ -105,7 +105,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     await waitFor(() => expect(sendButton()).toBeDisabled());
   };
   const errorShows = async (_c: unknown, error: string) => {
-    expect(await screen.findByRole('alert')).toHaveTextContent(error);
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(error));
   };
   const greyShows = async (grey: string) => {
     await waitFor(() => expect(screen.getByTestId('grey-suggestion')).toHaveAccessibleName(`Add ${grey}`));
@@ -130,8 +130,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the list offers {string} and {string}', async (_c, first: string, second: string) => {
       const options = await screen.findAllByRole('option');
       expect(options).toHaveLength(2);
-      expect(options[0]).toHaveTextContent(first);
-      expect(options[1]).toHaveTextContent(second);
+      await waitFor(() => {
+        expect(options[0]).toHaveTextContent(first);
+        expect(options[1]).toHaveTextContent(second);
+      });
     });
     And('the list shows {string} and the chip {string}', async (_c, summary: string, chip: string) => {
       const inList = within(await screen.findByRole('listbox', { name: 'Saved prompts' }));

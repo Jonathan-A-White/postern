@@ -50,7 +50,7 @@ describe('an attachment that failed to load can be loaded again', () => {
     expect(screen.queryByText(/aborted/)).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
     const img = await screen.findByAltText('Attached image');
-    expect(img).toHaveAttribute('src', 'blob:image-1');
+    await waitFor(() => expect(img).toHaveAttribute('src', 'blob:image-1'));
     expect(screen.queryByText(/Could not load this file/)).toBeNull();
     expect(openAttachment).toHaveBeenCalledTimes(2);
   });

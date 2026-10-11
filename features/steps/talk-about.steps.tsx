@@ -148,7 +148,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     expect(new URLSearchParams(window.location.search).get('v')).toBe('line');
   };
   const aboutIs = async (_c: unknown, words: string) => {
-    expect(await screen.findByTestId('talk-about')).toHaveTextContent(words);
+    await waitFor(() => expect(screen.getByTestId('talk-about')).toHaveTextContent(words));
   };
   const says = async (_c: unknown, words: string) => holdAndSay(words);
   const aboutOf = (_c: unknown, kind: string, id: string, title: string) => {

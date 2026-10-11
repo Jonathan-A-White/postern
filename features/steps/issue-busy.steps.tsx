@@ -112,7 +112,7 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     And('the Key screen of an issuer is open', openKeyScreen);
     When('I issue a licence to one key', issueToOneKey);
     Then('the screen says WhatsOnChain is rate-limiting us, nothing was spent, try again in a minute', async () => {
-      expect(await within(issueSection()).findByRole('alert', {}, { timeout: 20_000 })).toHaveTextContent(RATE_LIMITED);
+      await waitFor(() => expect(within(issueSection()).getByRole('alert')).toHaveTextContent(RATE_LIMITED), { timeout: 20_000 });
     });
     And('the coins were asked for four times', () => {
       expect(issueCalls.utxos).toBe(4);
@@ -132,7 +132,7 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     And('the Key screen of an issuer is open', openKeyScreen);
     When('I issue a licence to one key', issueToOneKey);
     Then('the screen says WhatsOnChain is rate-limiting us, nothing was spent, try again in a minute', async () => {
-      expect(await within(issueSection()).findByRole('alert', {}, { timeout: 20_000 })).toHaveTextContent(RATE_LIMITED);
+      await waitFor(() => expect(within(issueSection()).getByRole('alert')).toHaveTextContent(RATE_LIMITED), { timeout: 20_000 });
     });
     And('the broadcast was tried four times', () => {
       expect(issueCalls.broadcast).toBe(4);
@@ -147,9 +147,11 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     When('I issue a licence to one key', issueToOneKey);
     Then('the screen says the licence may have gone out and to check Issued licences before issuing again', async () => {
       const alert = await within(issueSection()).findByRole('alert', {}, { timeout: 20_000 });
-      expect(alert).toHaveTextContent(/may have gone out/);
-      expect(alert).toHaveTextContent(/Issued licences/);
-      expect(alert).not.toHaveTextContent(/Nothing was spent/);
+      await waitFor(() => {
+        expect(alert).toHaveTextContent(/may have gone out/);
+        expect(alert).toHaveTextContent(/Issued licences/);
+        expect(alert).not.toHaveTextContent(/Nothing was spent/);
+      });
       expect(document.body.textContent).not.toMatch(/<html/);
     });
     And('the broadcast was tried once', () => {
@@ -164,7 +166,7 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     And('the Key screen of an issuer is open', openKeyScreen);
     When('I issue a licence to one key', issueToOneKey);
     Then('the screen says WhatsOnChain is rate-limiting us, nothing was spent, try again in a minute', async () => {
-      expect(await within(issueSection()).findByRole('alert', {}, { timeout: 20_000 })).toHaveTextContent(RATE_LIMITED);
+      await waitFor(() => expect(within(issueSection()).getByRole('alert')).toHaveTextContent(RATE_LIMITED), { timeout: 20_000 });
     });
     And('the coins were asked for four times', () => {
       expect(issueCalls.utxos).toBe(4);
@@ -179,9 +181,11 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     When('I issue a licence to one key', issueToOneKey);
     Then('the screen says the licence may have gone out and to check Issued licences before issuing again', async () => {
       const alert = await within(issueSection()).findByRole('alert', {}, { timeout: 20_000 });
-      expect(alert).toHaveTextContent(/may have gone out/);
-      expect(alert).toHaveTextContent(/Issued licences/);
-      expect(alert).not.toHaveTextContent(/Nothing was spent/);
+      await waitFor(() => {
+        expect(alert).toHaveTextContent(/may have gone out/);
+        expect(alert).toHaveTextContent(/Issued licences/);
+        expect(alert).not.toHaveTextContent(/Nothing was spent/);
+      });
     });
     And('the broadcast was tried once', () => {
       expect(issueCalls.broadcast).toBe(1);
@@ -196,7 +200,7 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     When('I issue a licence to one key', issueToOneKey);
     Then('the error wraps anywhere', async () => {
       const alert = await within(issueSection()).findByRole('alert', {}, { timeout: 20_000 });
-      expect(alert).toHaveTextContent(UNBROKEN);
+      await waitFor(() => expect(alert).toHaveTextContent(UNBROKEN));
       expect(alert.className).toContain('[overflow-wrap:anywhere]');
     });
   });

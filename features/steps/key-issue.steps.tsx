@@ -240,7 +240,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
     And('I see the txid of the mint as a testnet link', async () => {
       const link = await screen.findByRole('link', { name: ISSUED_TXID });
-      expect(link).toHaveAttribute('href', `https://test.whatsonchain.com/tx/${ISSUED_TXID}`);
+      await waitFor(() => expect(link).toHaveAttribute('href', `https://test.whatsonchain.com/tx/${ISSUED_TXID}`));
     });
     And('the cost is shown against my balance', () => {
       const cost = issueCost();
@@ -516,7 +516,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
     And('I can press Issue and reach Confirm issue', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
-      expect(await screen.findByRole('button', { name: 'Confirm issue' })).toBeEnabled();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm issue' })).toBeEnabled());
     });
   });
   Scenario('AC18: a failed revoke shows its reason inside the row it belongs to, and the row keeps Confirm revoke', ({ Given, And, When, Then }) => {
@@ -539,7 +539,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
     Then('the held row shows the reason as an alert and keeps Confirm revoke under it', async () => {
       const alert = await within(heldRow()).findByRole('alert');
-      expect(alert).toHaveTextContent('broadcast failed: txn-mempool-conflict');
+      await waitFor(() => expect(alert).toHaveTextContent('broadcast failed: txn-mempool-conflict'));
       const confirm = within(heldRow()).getByRole('button', { name: 'Confirm revoke' });
       await waitFor(() => expect(confirm).toBeEnabled());
       expect(confirm.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -1,7 +1,7 @@
 // features/steps/bead-links.steps.tsx — runs features/bead-links.feature (mw-tbx1n.11):
 // the Talk screen over a seeded Dexie, one message whose text names beads.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, configure, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, within, configure, fireEvent, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
@@ -80,7 +80,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the message shows a link {string} to the bead page of {string} and no link for {string}', async (_c, name: string, id: string, plain: string) => {
       const conversation = screen.getByTestId('conversation');
       const link = await within(conversation).findByRole('link', { name });
-      expect(link).toHaveAttribute('href', `?v=bead&id=${id}`);
+      await waitFor(() => expect(link).toHaveAttribute('href', `?v=bead&id=${id}`));
       expect(within(conversation).queryByRole('link', { name: plain })).toBeNull();
       expect(within(conversation).getByText(plain).tagName).toBe('CODE');
     });
@@ -103,7 +103,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the message still shows links {string}, {string} and {string}', async (_c, a: string, b: string, c: string) => {
       const conversation = screen.getByTestId('conversation');
       for (const id of [a, b, c]) {
-        expect(await within(conversation).findByRole('link', { name: id })).toHaveAttribute('href', `?v=bead&id=${id}`);
+        await waitFor(() => expect(within(conversation).getByRole('link', { name: id })).toHaveAttribute('href', `?v=bead&id=${id}`));
       }
     });
   });
@@ -134,7 +134,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the message still shows link {string}', async (_c, id: string) => {
       const conversation = screen.getByTestId('conversation');
-      expect(await within(conversation).findByRole('link', { name: id })).toHaveAttribute('href', `?v=bead&id=${id}`);
+      await waitFor(() => expect(within(conversation).getByRole('link', { name: id })).toHaveAttribute('href', `?v=bead&id=${id}`));
     });
   });
 });

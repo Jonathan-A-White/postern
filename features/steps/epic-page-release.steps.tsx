@@ -51,7 +51,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   });
 
   const offers = async (_c: unknown, label: string) => {
-    expect(await screen.findByRole('button', { name: label })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: label })).toBeEnabled());
   };
 
   Scenario('mw-gq6.157 AC1: an epic page with two held stories offers Release 2 held and sends the release', ({ Given, Then, When }) => {

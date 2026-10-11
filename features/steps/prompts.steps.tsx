@@ -153,8 +153,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the channel {string} is open', channelOpen);
     And('a note headed {string} shows the body {string}', async (_c, heading: string, body: string) => {
       const note = await screen.findByTestId('prompt-current');
-      expect(note).toHaveTextContent(heading);
-      expect(note).toHaveTextContent(body);
+      await waitFor(() => {
+        expect(note).toHaveTextContent(heading);
+        expect(note).toHaveTextContent(body);
+      });
     });
   });
 
@@ -213,7 +215,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       render(<Harness />);
     });
     Then('a {string} link leads to the Prompts screen', async (_c, label: string) => {
-      expect(await screen.findByRole('link', { name: new RegExp(label) })).toHaveAttribute('href', '?v=prompts');
+      await waitFor(() => expect(screen.getByRole('link', { name: new RegExp(label) })).toHaveAttribute('href', '?v=prompts'));
     });
   });
 
@@ -224,7 +226,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       render(<Harness />);
     });
     Then('a {string} link leads to the Prompts screen', async (_c, label: string) => {
-      expect(await screen.findByRole('link', { name: label })).toHaveAttribute('href', '?v=prompts');
+      await waitFor(() => expect(screen.getByRole('link', { name: label })).toHaveAttribute('href', '?v=prompts'));
     });
   });
 });

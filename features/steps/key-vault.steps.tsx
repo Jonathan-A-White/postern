@@ -5,7 +5,7 @@
 // scenarios render the same KeyVault component in this one file and the
 // automatic per-test cleanup is disabled.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -181,7 +181,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
 
     Then('the error names "Aple" as not a word of the recovery list', async () => {
-      expect(await screen.findByRole('alert')).toHaveTextContent("'Aple' is not a word of the recovery list.");
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent("'Aple' is not a word of the recovery list."));
     });
   });
 
@@ -433,7 +433,7 @@ describeFeature(feature, ({ Scenario }) => {
       });
 
       Then('the error says "Unlock cancelled. Tap Unlock to try again."', async () => {
-        expect(await screen.findByRole('alert')).toHaveTextContent('Unlock cancelled. Tap Unlock to try again.');
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Unlock cancelled. Tap Unlock to try again.'));
       });
 
       And('the raw browser sentence and the w3.org link never appear', () => {

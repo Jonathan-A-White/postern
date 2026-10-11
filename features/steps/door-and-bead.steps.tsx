@@ -112,7 +112,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       await userEvent.click(screen.getByRole('button', { name: label }));
     });
     Then('the screen says {string}', async (_c, text: string) => {
-      expect(await screen.findByRole('alert')).toHaveTextContent(text);
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(text));
     });
     And('the key is still locked', () => {
       expect(getKey()).toBeNull();

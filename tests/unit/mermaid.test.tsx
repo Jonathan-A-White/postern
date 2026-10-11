@@ -4,7 +4,7 @@
 // mermaid can't draw SVG under jsdom, so the module itself is mocked; these
 // tests prove the lazy import happens only when a diagram is on screen, and
 // that a render failure shows the source with the error rather than nothing.
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { Markdown } from '../../src/markdown';
 
@@ -54,8 +54,10 @@ describe('Mermaid diagrams in Markdown', () => {
     render(<Markdown text={'```mermaid\n' + source + '\n```'} />);
 
     const errorBlock = await screen.findByTestId('mermaid-error');
-    expect(errorBlock).toHaveTextContent(source.replace(/\s+/g, ' ').trim());
-    expect(errorBlock).toHaveTextContent('Parse error on line 2');
-    expect(errorBlock).not.toHaveTextContent("Expecting 'SEMI'");
+    await waitFor(() => {
+      expect(errorBlock).toHaveTextContent(source.replace(/\s+/g, ' ').trim());
+      expect(errorBlock).toHaveTextContent('Parse error on line 2');
+      expect(errorBlock).not.toHaveTextContent("Expecting 'SEMI'");
+    });
   });
 });

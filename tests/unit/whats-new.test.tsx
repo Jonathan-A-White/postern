@@ -39,8 +39,10 @@ describe('Me', () => {
     stubChangelog(changelogFixture());
     render(<MeScreen />);
     const link = await screen.findByRole('link', { name: "What's new on GitHub" });
-    expect(link).toHaveAttribute('href', CHANGELOG_URL);
-    expect(link).toHaveAttribute('target', '_blank');
+    await waitFor(() => {
+      expect(link).toHaveAttribute('href', CHANGELOG_URL);
+      expect(link).toHaveAttribute('target', '_blank');
+    });
     expect(screen.queryByRole('link', { name: APP_VERSION })).toBeNull();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeInTheDocument());
   });

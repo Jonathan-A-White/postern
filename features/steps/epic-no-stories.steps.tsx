@@ -1,7 +1,7 @@
 // features/steps/epic-no-stories.steps.tsx — runs features/epic-no-stories.feature (mw-gq6.159):
 // a held epic with no stories offers no Release on its bead page, its Needs you card or the Map.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
@@ -57,7 +57,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   });
 
   const offers = async (_c: unknown, label: string) => {
-    expect(await screen.findByRole('button', { name: label })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: label })).toBeEnabled());
   };
 
   Scenario('mw-gq6.159 AC1: a deferred epic with no stories shows no Release and says the Mayor drafts them', ({ Given, Then }) => {

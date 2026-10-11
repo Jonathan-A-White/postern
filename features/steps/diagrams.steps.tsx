@@ -2,7 +2,7 @@
 // vitest via @amiceli/vitest-cucumber. mermaid can't draw SVG under jsdom, so
 // the module is mocked here the same way tests/unit/mermaid.test.tsx does.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Markdown } from '../../src/markdown';
@@ -47,7 +47,7 @@ describeFeature(feature, ({ Scenario }) => {
 
     Then("the block's source text is shown", async () => {
       const errorBlock = await screen.findByTestId('mermaid-error');
-      expect(errorBlock).toHaveTextContent(SOURCE.replace(/\s+/g, ' ').trim());
+      await waitFor(() => expect(errorBlock).toHaveTextContent(SOURCE.replace(/\s+/g, ' ').trim()));
     });
 
     And('the error is shown', () => {

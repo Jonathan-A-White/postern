@@ -3,7 +3,7 @@
 // passkey PRF. Its old guard (tests/unit/gate.test.tsx) went with the screen it tested.
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Unlock } from '../../src/cockpit/Gate';
 import type { VaultRow } from '../../src/data/db';
@@ -60,7 +60,7 @@ describe('the Unlock screen', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Unlock with your fingerprint' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Unlock cancelled. Tap Unlock to try again.');
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Unlock cancelled. Tap Unlock to try again.'));
     expect(screen.getByRole('alert').textContent).not.toMatch(/w3\.org|timed out/);
     expect(getKey()).toBeNull();
     expect(screen.getByRole('button', { name: 'Unlock with your fingerprint' })).toBeEnabled();

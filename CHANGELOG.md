@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.35
+_2026-10-11_
+- New: Save a picture from any message to your phone.
+
 ## 0.5.34
 _2026-10-10_
 - Fixed: The About screen no longer has a Check for updates button or a list of versions; a What's new on GitHub link takes you to the release notes instead.

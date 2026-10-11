@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.39",
+    "date": "2026-10-11",
+    "story": "mw-s6387p.1",
+    "kind": "new",
+    "text": "a gallery of every Postern screen at phone, small phone and desktop sizes, published to the website and to GitHub, so another team can match Postern's look."
+  },
+  {
     "version": "0.5.35",
     "date": "2026-10-11",
     "story": "mw-jtzpw0.7",

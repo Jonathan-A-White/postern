@@ -46,6 +46,8 @@ export async function serveBackendAndWhatsOnChain(
     rateLimit: options.wocRateLimit === false ? undefined : { gapMs: 350, perWindow: 3, windowMs: 1000 },
   });
   const broadcast: string[] = [];
+  /** Every URL fetched that no branch below serves: the chain library swallows the throw as "could not be reached", so a test asserts this stays empty. */
+  const unexpected: string[] = [];
   const calls = { utxos: 0, broadcast: 0 };
   const refusal = (route: 'utxos' | 'broadcast') => {
     calls[route]++;
@@ -78,10 +80,11 @@ export async function serveBackendAndWhatsOnChain(
         unconfirmed.push({ tx_hash: txid, height: 0 });
         return new Response(JSON.stringify({ txid }), { status: 200 });
       }
+      unexpected.push(url);
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
 
-  return { broadcast, woc, calls };
+  return { broadcast, woc, calls, unexpected };
 }
 

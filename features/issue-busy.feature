@@ -23,6 +23,7 @@ Feature: Issue retries a busy WhatsOnChain and says plainly whether anything was
     When I issue a licence to one key
     Then the screen says WhatsOnChain is rate-limiting us, nothing was spent, try again in a minute
     And the broadcast was tried four times
+    And WhatsOnChain's own reads were all answered
 
   Scenario: mw-rch8bu AC-4: a 503 on the broadcast is not sent again, and the screen says it may have gone out and how to check
     Given the backend relays WhatsOnChain's 503 when it broadcasts

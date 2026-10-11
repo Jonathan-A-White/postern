@@ -28,8 +28,9 @@ type gristVectors struct {
 		PublicKeyHex  string   `json:"publicKeyHex"`
 		Collections   []string `json:"collections"`
 	} `json:"keys"`
-	Apps     map[string]string `json:"apps"`
-	Delivery []struct {
+	Apps          map[string]string         `json:"apps"`
+	RequestStatus map[string]map[string]any `json:"requestStatus"`
+	Delivery      []struct {
 		As         string   `json:"as"`
 		Class      string   `json:"class"`
 		To         string   `json:"to"`
@@ -532,5 +533,57 @@ func TestAPageThatFiltersToNothingStillAdvancesNext(t *testing.T) {
 	}
 	if len(out.Records) != 0 || out.Next != 2 || !out.More {
 		t.Fatalf("page = %+v, want 0 records, next 2 (past the two not its own), more true", out)
+	}
+}
+
+// TestARequestStatusFromTheMillIsStoredAndReturnedToItsKeyOnly is §19's
+// "Request status": a grist-class record from the mill key to an app key is
+// stored, GET /api/messages returns it to that key, and a third key (another
+// app's licence holder) never sees it.
+func TestARequestStatusFromTheMillIsStoredAndReturnedToItsKeyOnly(t *testing.T) {
+	v := loadGristVectors(t)
+	if len(v.RequestStatus) == 0 {
+		t.Fatal("docs/fixtures/grist-vectors.json has no requestStatus vectors")
+	}
+	for name, plaintext := range v.RequestStatus {
+		if plaintext["kind"] != "request-status" {
+			t.Fatalf("requestStatus.%s kind = %v, want request-status", name, plaintext["kind"])
+		}
+		if _, has := plaintext["re"]; has {
+			t.Fatalf("requestStatus.%s carries re: bsv-kit would take it for a grist answer", name)
+		}
+	}
+
+	// The third key holds an app licence of its own, so it is an app key, not a cockpit one.
+	s := newGristServerHolding(t, map[string][]string{"stranger": {"cairn"}})
+	if resp := s.deliver(t, "grist", "mill", "cairnPhone"); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("delivering the request status: status %d, want 201", resp.StatusCode)
+	}
+
+	stored, _ := s.store.Since(0)
+	if len(stored) != 1 {
+		t.Fatalf("stored %d records, want 1", len(stored))
+	}
+	_, millHex := s.v.key(t, "mill")
+	_, appHex := s.v.key(t, "cairnPhone")
+
+	records, _ := s.messagesFor(t, "cairnPhone")
+	if len(records) != 1 {
+		t.Fatalf("the addressed app key sees %d records, want the 1 status", len(records))
+	}
+	var envelope struct {
+		Class string `json:"class"`
+		From  string `json:"from"`
+		To    string `json:"to"`
+	}
+	if err := json.Unmarshal(records[0].Payload, &envelope); err != nil {
+		t.Fatalf("decoding the stored envelope: %v", err)
+	}
+	if envelope.Class != "grist" || envelope.From != millHex || envelope.To != appHex {
+		t.Fatalf("stored envelope = %+v, want grist from the mill to the app key", envelope)
+	}
+
+	if records, _ := s.messagesFor(t, "stranger"); len(records) != 0 {
+		t.Fatalf("a third app key sees %d records, want none of another key's status", len(records))
 	}
 }

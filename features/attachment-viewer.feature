@@ -65,3 +65,48 @@ Feature: A tapped attachment opens: a picture full screen, a file in a new tab o
     Then the picture is zoomed in
     When he double-taps the picture again
     Then the picture is back at its own size
+
+  Scenario: AC-2: Save on a picture in his own sent message downloads it under its name, its own bytes and type (mw-jtzpw0.7)
+    Given a sent message with the picture "receipt.jpg" of type "image/jpeg"
+    When the conversation is shown
+    And he opens the picture in the message
+    And he taps Save picture
+    Then a link downloads "receipt.jpg" from the picture's own bytes of type "image/jpeg"
+    And the viewer says the picture was saved
+
+  Scenario: AC-4: Save on a picture in a received message downloads it under its name, its own bytes and type (mw-jtzpw0.7)
+    Given a received message with the picture "wall.png" of type "image/png"
+    When the conversation is shown
+    And he opens the picture in the message
+    And he taps Save picture
+    Then a link downloads "wall.png" from the picture's own bytes of type "image/png"
+
+  Scenario: AC-2: a picture with no name of its own is saved as postern and the date (mw-jtzpw0.7)
+    Given a picture with no name shown full screen on 2026-10-10
+    When he taps Save picture
+    Then a link downloads "postern-2026-10-10.jpg"
+
+  Scenario: AC-3: a phone that can download does not open the share sheet (mw-jtzpw0.7)
+    Given a phone that can download and share
+    And a sent message with the picture "receipt.jpg" of type "image/jpeg"
+    When the conversation is shown
+    And he opens the picture in the message
+    And he taps Save picture
+    Then a link downloads "receipt.jpg" from the picture's own bytes of type "image/jpeg"
+    And the share sheet was not opened
+
+  Scenario: AC-3: a phone that cannot download hands the picture to the share sheet (mw-jtzpw0.7)
+    Given a phone that can share but not download
+    And a received message with the picture "wall.png" of type "image/png"
+    When the conversation is shown
+    And he opens the picture in the message
+    And he taps Save picture
+    Then the share sheet gets "wall.png" with the picture's own bytes of type "image/png"
+    And nothing was downloaded
+    And the viewer says the picture was shared
+
+  Scenario: AC-3: a phone that can neither download nor share says the picture was not saved (mw-jtzpw0.7)
+    Given a phone that can neither download nor share
+    And a picture "shot.png" shown full screen
+    When he taps Save picture
+    Then the viewer says the picture could not be saved

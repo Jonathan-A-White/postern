@@ -2,15 +2,27 @@
 // before it is sent and in a message already sent. Pinch to zoom (one to six times), drag a zoomed
 // picture around, double tap to zoom in and out, the wheel on a computer. Back (the phone's, the
 // browser's) closes it and so do Escape and the Close button; whatever was under it is as he left it.
+// Save puts the picture, its own bytes at full size, on the phone (savePicture.ts, mw-jtzpw0.7).
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../ui';
 import { focusQuietly } from '../ui/focus';
+import { savePicture, type Saved } from './savePicture';
 import type { ShownPicture } from './useViewer';
 import { DOUBLE_TAP_SCALE, MIN_SCALE, clampPan, clampScale, distance, pinchScale, type Point } from './zoom';
 
-export function ImageViewer({ src, name, onClose }: ShownPicture & { onClose: () => void }) {
+/** What the viewer says once Save was tapped; backing out of the share sheet says nothing. */
+function saidAfter(saved: Saved, file: string): string {
+  if (saved === 'downloaded') return `Saved ${file} to Downloads`;
+  if (saved === 'shared') return `Shared ${file}`;
+  if (saved === 'failed') return 'Could not save this picture';
+  return '';
+}
+
+export function ImageViewer({ src, name, type, onClose }: ShownPicture & { onClose: () => void }) {
   const [view, setView] = useState({ scale: MIN_SCALE, x: 0, y: 0 });
+  // Save: not tapped, under way, or what it did (and so dead, unless he backed out of the share sheet)
+  const [save, setSave] = useState<{ state: 'idle' | 'saving' | Saved; said: string }>({ state: 'idle', said: '' });
   const surface = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const fingers = useRef(new Map<number, Point>());
@@ -76,6 +88,13 @@ export function ImageViewer({ src, name, onClose }: ShownPicture & { onClose: ()
     dragged.current = rest;
   }
 
+  function onSave() {
+    setSave({ state: 'saving', said: '' });
+    void savePicture(src, name, type).then(({ saved, file }) => setSave({ state: saved === 'cancelled' ? 'idle' : saved, said: saidAfter(saved, file) }));
+  }
+
+  const saveLabel = save.state === 'saving' ? 'Saving…' : save.state === 'downloaded' || save.state === 'shared' ? 'Saved' : save.state === 'failed' ? 'Not saved' : 'Save';
+
   const viewer = (
     <div role="dialog" aria-modal="true" aria-label="Picture" className="fixed inset-0 z-[60] flex flex-col bg-black text-white">
       <div className="pt-safe flex shrink-0 items-center gap-3 px-3 py-2">
@@ -89,8 +108,21 @@ export function ImageViewer({ src, name, onClose }: ShownPicture & { onClose: ()
           <Icon name="x" size={18} />
           Close
         </button>
-        {name && <span className="min-w-0 flex-1 truncate text-[13.5px] text-white/80">{name}</span>}
+        <span className="min-w-0 flex-1 truncate text-[13.5px] text-white/80">{name}</span>
+        <button
+          type="button"
+          aria-label="Save picture"
+          disabled={save.state !== 'idle'}
+          className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-white/15 px-3 text-[14px] font-medium active:bg-white/25 disabled:opacity-60"
+          onClick={onSave}
+        >
+          <Icon name={save.state === 'downloaded' || save.state === 'shared' ? 'check' : 'save'} size={18} />
+          {saveLabel}
+        </button>
       </div>
+      <p role="status" className="shrink-0 px-3 text-[13px] text-white/80 empty:hidden">
+        {save.said}
+      </p>
       <div
         ref={surface}
         data-testid="viewer-surface"

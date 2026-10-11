@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export interface ShownPicture {
   src: string;
   name?: string;
+  /** The picture's type, for the extension of a nameless picture's saved file. */
+  type?: string;
 }
 
 /** What the history entry the viewer pushed carries (a number of its own), so Back can tell it from any other. */

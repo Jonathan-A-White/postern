@@ -1,6 +1,7 @@
 // tests/e2e/attachment-viewer.spec.ts — mw-jtzpw0.5: a tap on a picture attached in the composer
 // opens it full screen; Close and the browser's Back both return to the channel with the picture
-// still attached; the x still removes it.
+// still attached; the x still removes it. Save downloads the picture, its own bytes, under its name (mw-jtzpw0.7).
+import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
@@ -39,6 +40,15 @@ test('a tapped picture in the composer opens full screen; Close and Back return;
   expect(box?.height).toBe(size?.height);
   await expect(viewer.getByText('screenshot.png')).toBeVisible();
   await shot(page, 'attachment-viewer');
+
+  // Save downloads the picture as it was attached, under its name, and says so
+  const downloading = page.waitForEvent('download');
+  await viewer.getByRole('button', { name: 'Save picture' }).click();
+  const saved = await downloading;
+  expect(saved.suggestedFilename()).toBe('screenshot.png');
+  expect(Buffer.compare(await readFile(await saved.path()), PNG)).toBe(0);
+  await expect(viewer.getByText('Saved screenshot.png to Downloads')).toBeVisible();
+  await expect(viewer.getByRole('button', { name: 'Save picture' })).toBeDisabled();
 
   // Close returns to the channel; the picture is still attached
   await viewer.getByRole('button', { name: 'Close picture' }).click();

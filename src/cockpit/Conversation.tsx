@@ -132,7 +132,7 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
     try {
       const opened = url ?? (await openAttachment(attachment, { key, direction }));
       // a picture opens full screen; a PDF or text in a new tab; any other file downloads
-      if (attachment.mime.startsWith('image/')) viewer.open({ src: opened, name: attachment.name });
+      if (attachment.mime.startsWith('image/')) viewer.open({ src: opened, name: attachment.name, type: attachment.mime });
       else openFile(opened, attachment.mime, attachment.name);
     } catch (err) {
       failed.current = true;
@@ -156,7 +156,7 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
         <button type="button" aria-label="View picture" onClick={() => void open()} className="block overflow-hidden rounded-xl">
           <img src={url} alt="Attached image" className="max-h-80 w-auto max-w-full object-contain" />
         </button>
-        {viewer.shown && <ImageViewer src={viewer.shown.src} name={viewer.shown.name} onClose={viewer.close} />}
+        {viewer.shown && <ImageViewer {...viewer.shown} onClose={viewer.close} />}
       </>
     ) : (
       <div className="flex h-40 w-56 max-w-full items-center justify-center rounded-xl bg-sunken text-faint">

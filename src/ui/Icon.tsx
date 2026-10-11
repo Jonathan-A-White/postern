@@ -50,6 +50,7 @@ const PATHS = {
   bell: 'M12 3a6 6 0 0 0-6 6v3.5L4.5 15.5h15L18 12.5V9a6 6 0 0 0-6-6ZM9.5 18.5a2.5 2.5 0 0 0 5 0',
   archive: 'M4 5h16v4H4V5Zm1 4v10h14V9M10 13h4',
   share: 'M12 15V4m0 0L8 8m4-4 4 4M5 13v7h14v-7',
+  save: 'M12 4v11m0 0-4-4m4 4 4-4M5 17v3h14v-3',
 } as const;
 
 export type IconName = keyof typeof PATHS;

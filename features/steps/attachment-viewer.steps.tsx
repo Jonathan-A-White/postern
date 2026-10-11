@@ -1,5 +1,6 @@
 // features/steps/attachment-viewer.steps.tsx — runs features/attachment-viewer.feature (mw-jtzpw0.5):
 // the real Composer, Conversation and picture viewer; the delivery and the blob download are doubles.
+// Save in the viewer (mw-jtzpw0.7): the phone's download and share sheet are faked, each on or off.
 import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
@@ -12,21 +13,63 @@ import { mergeConversation } from '../../src/model/conversation';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState } from '../../src/services/outbox';
 import { encodeThreadedMessage } from '../../src/services/threads';
+import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 
 configure({ asyncUtilTimeout: 5000 });
 
-const doubles = vi.hoisted(() => ({ key: new Uint8Array(32).fill(7) }));
+const doubles = vi.hoisted(() => ({ key: new Uint8Array(32).fill(7), picture: undefined as Blob | undefined }));
 
 vi.mock('../../src/services/keySession', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/keySession')>()),
   getKey: () => doubles.key,
 }));
-vi.mock('../../src/services/blobs', () => ({ openAttachment: async () => 'blob:attachment' }));
+// a message's picture, when a scenario gives one, is an object URL of its own bytes (as blobs.ts makes it)
+vi.mock('../../src/services/blobs', () => ({
+  openAttachment: async () => (doubles.picture ? URL.createObjectURL(doubles.picture) : 'blob:attachment'),
+}));
 
 const now = Date.now();
 let plaintext = '';
 let opened: unknown[][] = [];
 let downloads: string[] = [];
+// what each object URL was made from, and every link clicked to download
+let made = new Map<string, Blob>();
+let links: { href: string; download: string }[] = [];
+let shared: ShareData[] = [];
+let direction: 'sent' | 'received' = 'sent';
+const anchorDownload = Object.getOwnPropertyDescriptor(HTMLAnchorElement.prototype, 'download') as PropertyDescriptor;
+
+/** The phone as jsdom has it: links download, there is no share sheet, and the real fetch. */
+function ordinaryPhone(): void {
+  Object.defineProperty(HTMLAnchorElement.prototype, 'download', anchorDownload);
+  Reflect.deleteProperty(navigator, 'share');
+  Reflect.deleteProperty(navigator, 'canShare');
+  vi.unstubAllGlobals();
+}
+
+/** A phone whose links do not download (`download` is not on an <a>), as feature detection sees it. */
+function noDownload(): void {
+  Reflect.deleteProperty(HTMLAnchorElement.prototype, 'download');
+}
+
+/** A phone with a share sheet that takes files; reading an object URL back gives the blob it was made from. */
+function shareSheet(): void {
+  Object.defineProperty(navigator, 'canShare', { configurable: true, value: (data: ShareData) => Boolean(data.files?.length) });
+  Object.defineProperty(navigator, 'share', {
+    configurable: true,
+    value: async (data: ShareData) => {
+      shared.push(data);
+    },
+  });
+  vi.stubGlobal('fetch', async (url: string) => ({ blob: async () => made.get(url) }));
+}
+
+/** A message carrying the picture `name` of `type`, its bytes the scenario's own. */
+function pictureMessage(towards: 'sent' | 'received', name: string, type: string): void {
+  direction = towards;
+  doubles.picture = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 7, 7, 7])], { type });
+  plaintext = encodeThreadedMessage({ text: '', attachment: { hash: '02'.repeat(32), size: 6, mime: type, name } });
+}
 
 function fileInput(): HTMLInputElement {
   return document.querySelector('input[type="file"][multiple]') as HTMLInputElement;
@@ -40,6 +83,10 @@ async function attach(file: File): Promise<void> {
 }
 
 function sentRow(text: string): MessageRow {
+  return direction === 'sent' ? row(text, 'sent') : { ...row(text, 'received'), to: '03'.padEnd(66, '0'), from: '02'.padEnd(66, '0') };
+}
+
+function row(text: string, towards: 'sent' | 'received'): MessageRow {
   return {
     id: `${'cd'.repeat(32)}:0`,
     txid: 'cd'.repeat(32),
@@ -51,7 +98,7 @@ function sentRow(text: string): MessageRow {
     ts: Math.floor(now / 1000),
     ciphertext: '',
     plaintext: text,
-    direction: 'sent',
+    direction: towards,
     read: true,
   };
 }
@@ -63,6 +110,8 @@ function touch(surface: HTMLElement, id: number, x: number, type: 'pointerdown' 
 
 afterAll(() => {
   cleanup();
+  thawClock();
+  ordinaryPhone();
   lock();
   vi.restoreAllMocks();
 });
@@ -77,9 +126,21 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     plaintext = '';
     opened = [];
     downloads = [];
+    made = new Map();
+    links = [];
+    shared = [];
+    direction = 'sent';
+    doubles.picture = undefined;
+    thawClock();
+    ordinaryPhone();
     forgetOutboxState();
-    // jsdom has no object URLs; the previews only need a string
-    URL.createObjectURL = () => 'blob:preview';
+    // jsdom has no object URLs; the previews only need a string, a message's picture its own
+    URL.createObjectURL = (blob: Blob | MediaSource) => {
+      if (blob !== doubles.picture) return 'blob:preview';
+      const url = `blob:picture-${made.size + 1}`;
+      made.set(url, blob);
+      return url;
+    };
     URL.revokeObjectURL = () => {};
     vi.spyOn(window, 'open').mockImplementation((...args: unknown[]) => {
       opened.push(args);
@@ -87,6 +148,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       downloads.push(this.download);
+      links.push({ href: this.href, download: this.download });
     });
     await Promise.all([db.settings.clear(), db.messages.clear(), db.outbox.clear()]);
   });
@@ -242,6 +304,106 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the picture is back at its own size', () => {
       expect(Number(screen.getByTestId('viewer-image').dataset.scale)).toBe(1);
+    });
+  });
+
+  const openThePicture = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'View picture' }));
+    await screen.findByRole('dialog', { name: 'Picture' });
+  };
+  const tapSave = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Save picture' }));
+  };
+  const downloadedOwnBytes = async (_c: unknown, name: string, type: string) => {
+    await waitFor(() => expect(links).toHaveLength(1));
+    expect(links[0].download).toBe(name);
+    // the link is the object URL the message's picture was made from: its own blob, bytes and type
+    expect(made.get(links[0].href)).toBe(doubles.picture);
+    expect(made.get(links[0].href)?.type).toBe(type);
+  };
+  const conversationShown = () => {
+    render(<Conversation items={mergeConversation([sentRow(plaintext)])} />);
+  };
+
+  Scenario("AC-2: Save on a picture in his own sent message downloads it under its name, its own bytes and type (mw-jtzpw0.7)", ({ Given, When, And, Then }) => {
+    Given('a sent message with the picture {string} of type {string}', (_c, name: string, type: string) => pictureMessage('sent', name, type));
+    When('the conversation is shown', conversationShown);
+    And('he opens the picture in the message', openThePicture);
+    And('he taps Save picture', tapSave);
+    Then("a link downloads {string} from the picture's own bytes of type {string}", downloadedOwnBytes);
+    And('the viewer says the picture was saved', async () => {
+      expect(await screen.findByText('Saved receipt.jpg to Downloads')).toBeInTheDocument();
+      // used, the button goes dead and says so
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Save picture' })).toBeDisabled());
+      expect(screen.getByRole('button', { name: 'Save picture' })).toHaveTextContent('Saved');
+    });
+  });
+
+  Scenario("AC-4: Save on a picture in a received message downloads it under its name, its own bytes and type (mw-jtzpw0.7)", ({ Given, When, And, Then }) => {
+    Given('a received message with the picture {string} of type {string}', (_c, name: string, type: string) => pictureMessage('received', name, type));
+    When('the conversation is shown', conversationShown);
+    And('he opens the picture in the message', openThePicture);
+    And('he taps Save picture', tapSave);
+    Then("a link downloads {string} from the picture's own bytes of type {string}", downloadedOwnBytes);
+  });
+
+  Scenario('AC-2: a picture with no name of its own is saved as postern and the date (mw-jtzpw0.7)', ({ Given, When, Then }) => {
+    Given('a picture with no name shown full screen on 2026-10-10', () => {
+      freezeClock('2026-10-10T00:25:00Z');
+      render(<ImageViewer src="blob:p" onClose={() => {}} />);
+    });
+    When('he taps Save picture', tapSave);
+    Then('a link downloads {string}', async (_c, name: string) => {
+      await waitFor(() => expect(downloads).toEqual([name]));
+    });
+  });
+
+  Scenario('AC-3: a phone that can download does not open the share sheet (mw-jtzpw0.7)', ({ Given, And, When, Then }) => {
+    Given('a phone that can download and share', shareSheet);
+    And('a sent message with the picture {string} of type {string}', (_c, name: string, type: string) => pictureMessage('sent', name, type));
+    When('the conversation is shown', conversationShown);
+    And('he opens the picture in the message', openThePicture);
+    And('he taps Save picture', tapSave);
+    Then("a link downloads {string} from the picture's own bytes of type {string}", downloadedOwnBytes);
+    And('the share sheet was not opened', () => {
+      expect(shared).toEqual([]);
+    });
+  });
+
+  Scenario('AC-3: a phone that cannot download hands the picture to the share sheet (mw-jtzpw0.7)', ({ Given, And, When, Then }) => {
+    Given('a phone that can share but not download', () => {
+      shareSheet();
+      noDownload();
+    });
+    And('a received message with the picture {string} of type {string}', (_c, name: string, type: string) => pictureMessage('received', name, type));
+    When('the conversation is shown', conversationShown);
+    And('he opens the picture in the message', openThePicture);
+    And('he taps Save picture', tapSave);
+    Then("the share sheet gets {string} with the picture's own bytes of type {string}", async (_c, name: string, type: string) => {
+      await waitFor(() => expect(shared).toHaveLength(1));
+      const [file] = shared[0].files ?? [];
+      expect(file.name).toBe(name);
+      expect(file.type).toBe(type);
+      expect(new Uint8Array(await file.arrayBuffer())).toEqual(new Uint8Array(await (doubles.picture as Blob).arrayBuffer()));
+    });
+    And('nothing was downloaded', () => {
+      expect(links).toEqual([]);
+    });
+    And('the viewer says the picture was shared', async () => {
+      expect(await screen.findByText('Shared wall.png')).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-3: a phone that can neither download nor share says the picture was not saved (mw-jtzpw0.7)', ({ Given, And, When, Then }) => {
+    Given('a phone that can neither download nor share', noDownload);
+    And('a picture {string} shown full screen', (_c, name: string) => {
+      render(<ImageViewer src="blob:p" name={name} type="image/png" onClose={() => {}} />);
+    });
+    When('he taps Save picture', tapSave);
+    Then('the viewer says the picture could not be saved', async () => {
+      // wait for the words, not the status strip: the strip is there, empty, before they land
+      expect(await screen.findByText('Could not save this picture')).toBeInTheDocument();
+      expect(links).toEqual([]);
     });
   });
 });

@@ -337,7 +337,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           {files.map((file) => (
             <div key={file.id} className="relative flex h-16 shrink-0 items-center gap-2 rounded-xl border border-line bg-sunken px-2">
               {file.type.startsWith('image/') && file.preview ? (
-                <button type="button" aria-label={`View ${file.name}`} className="block rounded-lg" onClick={() => viewer.open({ src: file.preview as string, name: file.name })}>
+                <button type="button" aria-label={`View ${file.name}`} className="block rounded-lg" onClick={() => viewer.open({ src: file.preview as string, name: file.name, type: file.type })}>
                   <img src={file.preview} alt={file.name} className="h-12 w-12 rounded-lg object-cover" />
                 </button>
               ) : file.type.startsWith('audio/') ? (
@@ -512,7 +512,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           Checking the saved prompts…
         </p>
       )}
-      {viewer.shown && <ImageViewer src={viewer.shown.src} name={viewer.shown.name} onClose={viewer.close} />}
+      {viewer.shown && <ImageViewer {...viewer.shown} onClose={viewer.close} />}
       <input
         ref={picker}
         type="file"

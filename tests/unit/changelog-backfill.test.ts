@@ -1,4 +1,4 @@
-// tests/unit/changelog-backfill.test.ts — mw-3g87px: 0.5.19 to 0.5.23 landed with no changelog line; each now has
+// tests/unit/changelog-backfill.test.ts — mw-3g87px: 0.5.19 to 0.5.24 landed with no changelog line; each now has
 // exactly one entry in public/changelog.json and in CHANGELOG.md, and the json stays newest first.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -14,6 +14,7 @@ const BACKFILLED: Record<string, string> = {
   '0.5.21': 'mw-m7v5kc.2',
   '0.5.22': 'mw-lcirxg',
   '0.5.23': 'mw-vtjxh4.29',
+  '0.5.24': 'mw-i7cwnn',
 };
 
 const asNumbers = (v: string) => v.split('.').map(Number);
@@ -22,7 +23,7 @@ const newerFirst = (a: string, b: string) => {
   return x.findIndex((n, i) => n !== y[i]) < 0 ? 0 : x[x.findIndex((n, i) => n !== y[i])] > y[x.findIndex((n, i) => n !== y[i])] ? -1 : 1;
 };
 
-describe('the changelog backfill for 0.5.19 to 0.5.23', () => {
+describe('the changelog backfill for 0.5.19 to 0.5.24', () => {
   for (const [version, story] of Object.entries(BACKFILLED)) {
     it(`${version} has one entry in public/changelog.json with its story, a date, a kind and a sentence`, () => {
       const mine = entries.filter((e) => e.version === version);

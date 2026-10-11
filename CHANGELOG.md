@@ -46,6 +46,10 @@ _2026-10-10_
 _2026-10-10_
 - New: A picture can be sent with one tap, no typing.
 
+## 0.5.24
+_2026-10-10_
+- Fixed: The Issued licences list now keeps the rows it already knows when a re-read fails, and reads again by itself.
+
 ## 0.5.23
 _2026-10-09_
 - New: No visible change: a written audit of Postern against the PWA checklist, with the fixes ranked.

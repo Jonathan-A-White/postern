@@ -77,6 +77,13 @@
     "text": "A picture can be sent with one tap, no typing."
   },
   {
+    "version": "0.5.24",
+    "date": "2026-10-10",
+    "story": "mw-i7cwnn",
+    "kind": "fixed",
+    "text": "The Issued licences list now keeps the rows it already knows when a re-read fails, and reads again by itself."
+  },
+  {
     "version": "0.5.23",
     "date": "2026-10-09",
     "story": "mw-vtjxh4.29",

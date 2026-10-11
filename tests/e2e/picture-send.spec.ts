@@ -5,9 +5,11 @@ import { test, expect } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
-test.use({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+// the width the shots run is at (390 unless `npm run shots` is on another size): nothing may be wider than it
+const PHONE_WIDTH = sized({ width: 390, height: 844 }).width;
+test.use({ serviceWorkers: 'block', viewport: sized({ width: 390, height: 844 }) });
 
 // a 2×2 red PNG
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP8z8Dwn4GBgYEBAB8CAgFsrJ/LAAAAAElFTkSuQmCC', 'base64');
@@ -67,7 +69,7 @@ test('a picture with nothing typed sends with one tap on the arrow beside Hold t
   expect(tap.x).toBeGreaterThanOrEqual(after.x + after.width);
   expect(tap.width).toBeGreaterThanOrEqual(44);
   expect(tap.height).toBeGreaterThanOrEqual(44);
-  expect(tap.x + tap.width).toBeLessThanOrEqual(390);
+  expect(tap.x + tap.width).toBeLessThanOrEqual(PHONE_WIDTH);
   expect(Math.abs(tap.y + tap.height / 2 - (after.y + after.height / 2))).toBeLessThan(2);
 
   // one tap sends it: the message goes, the picture and the arrow are gone

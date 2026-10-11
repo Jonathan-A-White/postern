@@ -6,9 +6,9 @@ import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import type { Need } from '../../src/model/view';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
-test.use({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+test.use({ serviceWorkers: 'block', viewport: sized({ width: 390, height: 844 }) });
 
 async function openChannel(page: Page, url: string, needs: Need[] = []) {
   const mnemonic = createMnemonic();

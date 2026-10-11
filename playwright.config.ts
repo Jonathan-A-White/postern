@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { previewPort, reuseExistingPreview } from './tests/support/preview-port';
+import { shotSize } from './tests/support/shot-size';
 
 // One preview server per worktree: see tests/support/preview-port.ts.
 const PREVIEW_PORT = previewPort(process.cwd());
@@ -33,15 +34,14 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'], channel: 'chromium', launchOptions: { env: browserEnv } },
     },
-    // Used only by `npm run shots` (--project=shots): a 390px iPhone width so
-    // every e2e spec's end-of-test screenshot (tests/e2e/shot.ts) is taken at
-    // phone size.
+    // Used only by `npm run shots` (--project=shots): every e2e spec's screenshot
+    // (tests/e2e/shot.ts) at the size scripts/run-shots.mjs is on (SHOT_SIZE), else a 390px iPhone width.
     {
       name: 'shots',
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chromium',
-        viewport: { width: 390, height: 844 },
+        viewport: shotSize() ?? { width: 390, height: 844 },
         launchOptions: { env: browserEnv },
       },
     },

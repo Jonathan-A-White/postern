@@ -6,9 +6,9 @@ import { test, expect } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
-test.use({ serviceWorkers: 'block', viewport: { width: 360, height: 780 } });
+test.use({ serviceWorkers: 'block', viewport: sized({ width: 360, height: 780 }) });
 
 test('long decision options wrap as stacked buttons and nothing is wider than the screen', async ({ page }) => {
   const mnemonic = createMnemonic();
@@ -22,7 +22,7 @@ test('long decision options wrap as stacked buttons and nothing is wider than th
   await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible();
 
   await page.goto('/?v=talk&t=bead%3Amw-2rbm.6');
-  await expect(page.getByText('Q2: And when does the extraction happen?')).toBeVisible();
+  await expect(page.getByText('Q2: And when does the extraction happen?').first()).toBeVisible();
   await expect(page.getByText(/^Answered|answered:/).first()).toBeVisible();
 
   const list = page.getByTestId('conversation');

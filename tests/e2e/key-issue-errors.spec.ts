@@ -7,9 +7,9 @@ import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { addressForPublicKey } from '../../src/services/licence';
 import { signedRecordTxHex } from '../support/nftgate-fixtures';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
-test.use({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+test.use({ serviceWorkers: 'block', viewport: sized({ width: 390, height: 844 }) });
 
 const HOLDER = PrivateKey.fromHex('22'.repeat(32)).toPublicKey().toString();
 

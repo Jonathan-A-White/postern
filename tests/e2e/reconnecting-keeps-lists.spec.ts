@@ -6,9 +6,9 @@ import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 
-test.use({ serviceWorkers: 'block', viewport: { width: 360, height: 640 } });
+test.use({ serviceWorkers: 'block', viewport: sized({ width: 360, height: 640 }) });
 
 // the pill while the backend is out of reach: Reconnecting… first, then Offline or the chain read (mw-t64a3.11)
 const DOWN = /Reconnecting|Offline|Live from the chain/;
@@ -49,7 +49,7 @@ test('with the connection cut, the channel list, a channel and Needs you keep wh
   await expect(page.getByTestId('conversation')).toContainText('The runbook is in');
 
   // and Needs you
-  await page.getByRole('link', { name: 'Needs you' }).click();
+  await page.getByRole('link', { name: 'Needs you' }).first().click();
   await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible();
   await expect(page.getByText('Where should the BSV library live?').first()).toBeVisible();
   await expect(page.getByTestId('live-badge')).toHaveText(DOWN);

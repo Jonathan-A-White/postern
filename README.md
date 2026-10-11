@@ -36,11 +36,23 @@ a card in place, so a link may appear later. Protocol: docs/protocol.md §24.
 
 ## Screenshots
 
-A Builder runs `npm run shots` on demand (never in the gate) to capture every `tests/e2e/` spec's
-screen at a 390px phone width into `test-results/shots/`. `npm run shots:publish -- <story-id>`
-then rsyncs those into the story's own set. Sets land at
-`https://postern.allmymind.org/shots/<story-id>/<name>.png`, with only the newest 30 stories' sets
-kept on the VPS.
+`npm run shots` (on demand, never in the gate) runs every `tests/e2e/` spec three times, at 390x844
+(phone), 360x640 (small phone) and 1280x800 (desktop), and writes each spec's screen to
+`test-results/shots/<size>/<name>.png`. Only the fake backend and freshly made keys are involved:
+no shot shows a real key or message.
+
+`npm run shots:publish -- <story-id>` rsyncs those into the story's own set, at
+`https://postern.allmymind.org/shots/<story-id>/<size>/<name>.png`, with only the newest 30 stories'
+sets kept on the VPS.
+
+`npm run shots:publish -- latest` publishes the one fixed set another team can fetch, each screen
+at all three sizes, with an `index.html` gallery and a `manifest.json` (`version`, `commit`,
+`published_at`, and `files`: `name`, `screen`, `width`, `height`, `url` for each). It goes to two places:
+
+- `https://postern.allmymind.org/shots/latest/` (the gallery) and `.../shots/latest/manifest.json`;
+- the orphan `shots` branch of this repo, one new commit per publish replacing `latest/`, pushed without
+  force and skipped when nothing changed: `https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/manifest.json`.
+  The `url` of each file in the manifest is its raw.githubusercontent.com address, since some networks block allmymind.org.
 
 ## Credits
 

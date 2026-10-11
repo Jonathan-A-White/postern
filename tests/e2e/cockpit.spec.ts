@@ -1,7 +1,7 @@
 // tests/e2e/cockpit.spec.ts — plans/0021: the cockpit end to end in a real
 // browser against a stubbed v2 backend (docs/protocol.md §9–§15), from unlock to
-// every place, with one screenshot per place at whatever width the project runs
-// (390 px for `npm run shots`). The fixture is tests/support/cockpit-fixture.ts.
+// every place, with one screenshot per place at each size `npm run shots` runs
+// (see tests/e2e/shot.ts). The fixture is tests/support/cockpit-fixture.ts.
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
@@ -57,7 +57,7 @@ test('the cockpit: unlock, needs, map, epic, bead, talk, search, me', async ({ p
   const hands = page.locator('article[aria-label^="Your hands:"]');
   await hands.getByRole('listitem', { name: 'Step linger' }).getByRole('button', { name: 'Approve and run' }).click();
   await hands.scrollIntoViewIfNeeded();
-  await hands.screenshot({ path: 'test-results/shots/cockpit-hands.png' });
+  await shot(page, 'cockpit-hands', hands);
   await hands.getByRole('button', { name: 'Cancel' }).click();
 
   await page.getByRole('button', { name: 'New repo bsv-kit (recommended)' }).click();
@@ -139,7 +139,7 @@ test('a tapped push opens the bead thread it is about, and a watchdog alarm open
 });
 
 test('Channels: with more channels than fit, the last row scrolls fully into view above the Talk to the Mayor bar', async ({ page }) => {
-  test.skip((page.viewportSize()?.width ?? 0) >= 1024, 'the foot bar is the phone layout');
+  const phone = (page.viewportSize()?.width ?? 0) < 1024; // the foot bar is the phone layout; the wide one is only shot
   const mnemonic = createMnemonic();
   const governorKeyBytes = await deriveMasterKey(mnemonic);
   const governor = PrivateKey.fromHex(Buffer.from(governorKeyBytes).toString('hex'));
@@ -155,13 +155,15 @@ test('Channels: with more channels than fit, the last row scrolls fully into vie
   const rows = page.getByTestId('thread-list').locator('li');
   await expect(rows.last()).toBeAttached();
   await expect.poll(() => rows.count()).toBeGreaterThan(20);
-  const talkButton = page.getByRole('button', { name: 'Talk to the Mayor' });
-  await expect(talkButton).toBeVisible();
-  await expectTalkBarAtFoot(page);
+  if (phone) {
+    const talkButton = page.getByRole('button', { name: 'Talk to the Mayor' });
+    await expect(talkButton).toBeVisible();
+    await expectTalkBarAtFoot(page);
 
-  await rows.last().scrollIntoViewIfNeeded();
-  const talk = await talkButton.boundingBox();
-  const last = await rows.last().boundingBox();
-  expect(talk && last && last.y + last.height <= talk.y + 1).toBe(true);
+    await rows.last().scrollIntoViewIfNeeded();
+    const talk = await talkButton.boundingBox();
+    const last = await rows.last().boundingBox();
+    expect(talk && last && last.y + last.height <= talk.y + 1).toBe(true);
+  }
   await shot(page, 'cockpit-talk-many');
 });

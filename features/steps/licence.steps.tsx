@@ -122,7 +122,7 @@ describeFeature(feature, ({ Scenario }) => {
 
     Then('the "Mint my licence (testnet)" button is disabled', async () => {
       await screen.findByText(/Balance: \d+ sats/);
-      expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled());
     });
   });
 
@@ -155,7 +155,7 @@ describeFeature(feature, ({ Scenario }) => {
 
       Then('the txid is shown with a link to WhatsOnChain testnet', async () => {
         const link = await screen.findByRole('link', { name: MINT_TXID });
-        expect(link).toHaveAttribute('href', `https://test.whatsonchain.com/tx/${MINT_TXID}`);
+        await waitFor(() => expect(link).toHaveAttribute('href', `https://test.whatsonchain.com/tx/${MINT_TXID}`));
       });
 
       And('the gate opens on the next check', async () => {
@@ -320,7 +320,7 @@ describeFeature(feature, ({ Scenario }) => {
 
       Then('the "Mint my licence (testnet)" button is disabled', async () => {
         await screen.findByText(/Balance: \d+ sats/);
-        expect(await screen.findByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Mint my licence (testnet)' })).toBeDisabled());
       });
     },
   );

@@ -96,7 +96,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(await screen.findByText(new RegExp(`${id} is open, but the map on this phone is older than it\\. It will appear when the view refreshes\\.`))).toBeInTheDocument();
     });
     And('an {string} link is shown', async (_c, name: string) => {
-      expect(await screen.findByRole('link', { name })).toHaveAttribute('href', expect.stringContaining('mw-fresh'));
+      await waitFor(() => expect(screen.getByRole('link', { name })).toHaveAttribute('href', expect.stringContaining('mw-fresh')));
     });
     And('the view was asked to refresh once', async () => {
       await waitFor(() => expect(refreshNow).toHaveBeenCalledTimes(1));

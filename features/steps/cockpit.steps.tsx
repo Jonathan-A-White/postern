@@ -268,8 +268,10 @@ describeFeature(feature, ({ Scenario }) => {
     Then('the two maps are listed before the epics', async () => {
       const maps = await screen.findByRole('region', { name: 'Maps' });
       await waitFor(() => expect(within(maps).getAllByTestId('epic-card')).toHaveLength(2));
-      expect(maps).toHaveTextContent("Postern: the Governor's cockpit");
-      expect(maps).toHaveTextContent('The BSV library, built to its spec');
+      await waitFor(() => {
+        expect(maps).toHaveTextContent("Postern: the Governor's cockpit");
+        expect(maps).toHaveTextContent('The BSV library, built to its spec');
+      });
     });
     When('the epic "mw-f758y.30" is opened as a board', async () => {
       await openAt('?v=map&focus=mw-f758y.30&lens=board');
@@ -351,8 +353,8 @@ describeFeature(feature, ({ Scenario }) => {
       await openAt('?v=search&q=ping');
     });
     Then('beads and messages that mention it are listed in their own groups', async () => {
-      expect(await screen.findByTestId('hits-bead')).toHaveTextContent('GET /api/events streams message and view changes');
-      expect(await screen.findByTestId('hits-message')).toHaveTextContent('Make the ping interval 25 seconds');
+      await waitFor(() => expect(screen.getByTestId('hits-bead')).toHaveTextContent('GET /api/events streams message and view changes'));
+      await waitFor(() => expect(screen.getByTestId('hits-message')).toHaveTextContent('Make the ping interval 25 seconds'));
     });
   });
 
@@ -399,7 +401,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
     And('a step that already ran shows its outcome instead of the buttons', async () => {
       const ran = await screen.findByRole('listitem', { name: 'Step nginx' });
-      expect(ran).toHaveTextContent('ran');
+      await waitFor(() => expect(ran).toHaveTextContent('ran'));
       expect(within(ran).queryByRole('button', { name: 'Approve and run' })).toBeNull();
     });
   });

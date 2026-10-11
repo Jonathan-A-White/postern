@@ -69,8 +69,10 @@ describe('the version the app shows', () => {
     render(<MeScreen />);
     const [version, built, commit] = __APP_VERSION__.split(' · ');
     const line = await screen.findByLabelText('Build');
-    expect(line.firstElementChild).toHaveTextContent(`Build ${built} · ${commit}`);
-    expect(line.lastElementChild).toHaveTextContent(version);
+    await waitFor(() => {
+      expect(line.firstElementChild).toHaveTextContent(`Build ${built} · ${commit}`);
+      expect(line.lastElementChild).toHaveTextContent(version);
+    });
     // Let the screen's own reads land before it goes, so none outlives the test (mw-j0f2d.42).
     await waitFor(() => expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeInTheDocument());
     cleanup();

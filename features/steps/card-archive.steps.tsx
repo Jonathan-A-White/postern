@@ -168,8 +168,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the archive lists the card {string} closed, with {int} of {int} done', async (_c, title: string, done: number, of: number) => {
       const toggle = await screen.findByRole('button', { name: new RegExp(`^${title}`) });
-      expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      expect(toggle).toHaveTextContent(`${done} of ${of} done`);
+      await waitFor(() => {
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        expect(toggle).toHaveTextContent(`${done} of ${of} done`);
+      });
       expect(screen.queryByRole('article', { name: `Card: ${title}` })).toBeNull();
     });
     When('the card {string} is opened in the archive', async (_c, title: string) => {

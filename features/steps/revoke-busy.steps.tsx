@@ -132,7 +132,7 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     And('the Key screen of an issuer with one held licence is open', openKeyScreen);
     When('I revoke that licence', revokeTheLicence);
     Then('the row says WhatsOnChain is rate-limiting us, nothing was spent, try again in a minute', async () => {
-      expect(await theRow().findByRole('alert', {}, { timeout: 20_000 })).toHaveTextContent(RATE_LIMITED);
+      await waitFor(() => expect(theRow().getByRole('alert')).toHaveTextContent(RATE_LIMITED), { timeout: 20_000 });
     });
     And('the coins were asked for four times', () => {
       expect(revokeCalls.utxos).toBe(4);
@@ -152,7 +152,7 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     And('the Key screen of an issuer with one held licence is open', openKeyScreen);
     When('I revoke that licence', revokeTheLicence);
     Then('the row says WhatsOnChain is rate-limiting us, nothing was spent, try again in a minute', async () => {
-      expect(await theRow().findByRole('alert', {}, { timeout: 20_000 })).toHaveTextContent(RATE_LIMITED);
+      await waitFor(() => expect(theRow().getByRole('alert')).toHaveTextContent(RATE_LIMITED), { timeout: 20_000 });
     });
     And('the broadcast was tried four times', () => {
       expect(revokeCalls.broadcast).toBe(4);
@@ -173,9 +173,11 @@ describeFeature(feature, ({ BeforeEachScenario, AfterEachScenario, Scenario }) =
     When('I revoke that licence', revokeTheLicence);
     Then('the row says the revoke may have gone out and to check its status before revoking it again', async () => {
       const alert = await theRow().findByRole('alert', {}, { timeout: 20_000 });
-      expect(alert).toHaveTextContent(/may have gone out/);
-      expect(alert).toHaveTextContent(/before you revoke it again/);
-      expect(alert).not.toHaveTextContent(/Nothing was spent/);
+      await waitFor(() => {
+        expect(alert).toHaveTextContent(/may have gone out/);
+        expect(alert).toHaveTextContent(/before you revoke it again/);
+        expect(alert).not.toHaveTextContent(/Nothing was spent/);
+      });
       expect(document.body.textContent).not.toMatch(/<html/);
     });
     And('the broadcast was tried once', () => {

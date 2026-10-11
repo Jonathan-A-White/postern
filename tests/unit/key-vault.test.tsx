@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { db } from '../../src/data/db';
 import { KeyVault } from '../../src/key';
@@ -96,7 +96,7 @@ describe('KeyVault', () => {
     await user.type(screen.getByLabelText('Recovery phrase'), 'not a real recovery phrase at all');
     await user.click(screen.getByRole('button', { name: 'Restore' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/not words? of the recovery list/i);
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/not words? of the recovery list/i));
   });
 
   it('rejects a wordlist-valid recovery phrase with a bad checksum', async () => {
@@ -107,7 +107,7 @@ describe('KeyVault', () => {
     await user.type(screen.getByLabelText('Recovery phrase'), 'abandon '.repeat(11) + 'zoo');
     await user.click(screen.getByRole('button', { name: 'Restore' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/not a valid recovery phrase/i);
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/not a valid recovery phrase/i));
   });
 
   it('unlocks an existing fingerprint-wrapped key by fingerprint on a later visit', async () => {

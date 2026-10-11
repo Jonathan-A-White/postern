@@ -132,11 +132,11 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the Emergency screen shows {string}', async (_c, detail: string) => {
       const article = await screen.findByRole('article', { name: 'Emergency' });
-      expect(article).toHaveTextContent(detail);
+      await waitFor(() => expect(article).toHaveTextContent(detail));
     });
     And('the Emergency screen names the actor {string} and the time', async (_c, actor: string) => {
       const article = await screen.findByRole('article', { name: 'Emergency' });
-      expect(article).toHaveTextContent(actor);
+      await waitFor(() => expect(article).toHaveTextContent(actor));
       expect(article.querySelector('time')).not.toBeNull();
     });
   });

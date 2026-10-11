@@ -125,7 +125,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the Hold to talk bar and a Send arrow are both there, the arrow after the bar', async () => {
       const bar = screen.getByRole('button', { name: 'Hold to talk' });
       const arrow = await screen.findByRole('button', { name: 'Send' });
-      expect(arrow).toBeEnabled();
+      await waitFor(() => expect(arrow).toBeEnabled());
       expect(bar.compareDocumentPosition(arrow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(bar.parentElement).toBe(arrow.parentElement);
     });

@@ -778,7 +778,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(lastSent()).toMatchObject({ text: words, role: 'turn', talk: { turn: 1 } });
     });
     And('the screen shows {string} as what he said', async (_c, words: string) => {
-      expect(await screen.findByTestId('talk-said')).toHaveTextContent(words);
+      await waitFor(() => expect(screen.getByTestId('talk-said')).toHaveTextContent(words));
     });
   });
 
@@ -1246,7 +1246,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(await screen.findByText(text)).toBeInTheDocument();
     });
     And('his words {string} are still on the screen', async (_c, words: string) => {
-      expect(await screen.findByTestId('talk-said')).toHaveTextContent(words);
+      await waitFor(() => expect(screen.getByTestId('talk-said')).toHaveTextContent(words));
     });
     When('sending a turn works again', () => {
       sendTurn.mockResolvedValue({ txid: 'direct:x', channel: 'direct' });
@@ -1384,7 +1384,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
     Then("the screen says how to allow the microphone in the phone's Settings", async () => {
       const said = await screen.findByText(/microphone is not allowed/i);
-      expect(said).toHaveTextContent(/Settings.*Permissions.*Microphone.*Allow/);
+      await waitFor(() => expect(said).toHaveTextContent(/Settings.*Permissions.*Microphone.*Allow/));
     });
     And('the talk button reads {string}', async (_c, name: string) => {
       expect(await talkButton(name)).toBeInTheDocument();
@@ -1646,7 +1646,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       fireEvent.click(await talkButton(name));
     });
     Then('the call field reads {string}', async (_c, words: string) => {
-      expect(await screen.findByRole('textbox', { name: 'What to tell the Mayor' })).toHaveValue(words);
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'What to tell the Mayor' })).toHaveValue(words));
     });
     When('he then taps the {string} button', async (_c, name: string) => {
       fireEvent.click(await talkButton(name));
@@ -1656,7 +1656,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(sendCallRequest).toHaveBeenCalledWith(words, atMinute(time));
     });
     And('the screen reads {string}', async (_c, words: string) => {
-      expect(await screen.findByTestId('call-sent')).toHaveTextContent(words);
+      await waitFor(() => expect(screen.getByTestId('call-sent')).toHaveTextContent(words));
     });
     And('the call field is gone', () => {
       expect(screen.queryByRole('textbox', { name: 'What to tell the Mayor' })).not.toBeInTheDocument();
@@ -1670,7 +1670,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await lineOpen();
     });
     Then('the screen reads {string}', async (_c, words: string) => {
-      expect(await screen.findByTestId('call-sent')).toHaveTextContent(words);
+      await waitFor(() => expect(screen.getByTestId('call-sent')).toHaveTextContent(words));
     });
     When('the Mayor rings saying {string} at {string}', async (_c, words: string, time: string) => {
       await storeCall({ role: 'ring', text: words, at: atMinute(time) }, 'received', atMinute(time));
@@ -1704,7 +1704,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   };
   const noteAboveTheButton = async (_c: unknown, words: string) => {
     const note = await screen.findByTestId('ring-note');
-    expect(note).toHaveTextContent(words);
+    await waitFor(() => expect(note).toHaveTextContent(words));
     const button = await talkButton('Hold to talk');
     expect(note.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   };
@@ -1760,7 +1760,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       fireEvent.click(await talkButton(name));
     });
     Then('the screen reads {string}', async (_c, words: string) => {
-      expect(await screen.findByTestId('call-sent')).toHaveTextContent(words);
+      await waitFor(() => expect(screen.getByTestId('call-sent')).toHaveTextContent(words));
     });
     And('the call went to WhatsOnChain as one broadcast', () => {
       expect(down.broadcasts).toHaveLength(1);
@@ -1912,7 +1912,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await talkButton('Hold to talk');
     });
     Then('the screen shows no turns', async () => {
-      expect(await screen.findByTestId('talk-about')).toHaveTextContent('Nine');
+      await waitFor(() => expect(screen.getByTestId('talk-about')).toHaveTextContent('Nine'));
       expect(screen.queryAllByTestId('talk-turn')).toHaveLength(0);
     });
   });

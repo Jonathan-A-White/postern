@@ -235,9 +235,10 @@ export async function retryRow(id: number): Promise<void> {
 
 /** Discard on a refused row: forgotten, so the card or bubble it was on is as it was before. */
 export async function discardRow(id: number): Promise<void> {
+  const kind = (await outboxRepo.get(id))?.kind;
   await outboxRepo.remove(id);
   // A refused Talk turn held back the turns after it: they go on now.
-  kickOutbox(true);
+  if (kind === 'turn') kickOutbox(true);
 }
 
 /** Resolves once the sender has gone quiet (a test's seam; the app never waits on it). */

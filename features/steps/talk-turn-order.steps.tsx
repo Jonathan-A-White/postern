@@ -8,7 +8,7 @@ import { sendTurn } from '../../src/cockpit/send';
 import { RefusedError } from '../../src/services/apiAuth';
 import { db } from '../../src/data/db';
 import { outboxRepo } from '../../src/data/repositories';
-import { forgetOutboxState, kickOutbox, retryRow, startOutbox } from '../../src/services/outbox';
+import { discardRow, forgetOutboxState, kickOutbox, retryRow, startOutbox } from '../../src/services/outbox';
 import type { TalkTurn } from '../../src/model/talkLine';
 
 const backend = vi.hoisted(() => ({
@@ -120,6 +120,26 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the Mayor heard {string}, {string} and {string}, in that order, once each', async (_c, a: string, b: string, c: string) => {
       await waitFor(() => expect(backend.heard).toEqual([a, b, c]));
+    });
+  });
+
+  Scenario('mw-q6n8m0.12 AC-1: discarding a refused turn lets the turns after it go', ({ Given, And, When, Then }) => {
+    Given('the backend is up', () => {});
+    And('the backend refuses the Talk turn {string} for good, saying {string}', (_c, text: string) => {
+      backend.fate.set(text, 'refuse');
+    });
+    When('he says {string}, {string} and {string} on the Talk line', async (_c, a: string, b: string, c: string) => {
+      await say(a, b, c);
+    });
+    Then('the Mayor has heard no turns', async () => {
+      await waitFor(async () => expect((await rowFor('turn four'))?.state).toBe('failed'));
+      expect(backend.heard).toEqual([]);
+    });
+    When('he taps Discard on {string}', async (_c, text: string) => {
+      await discardRow((await rowFor(text))?.id as number);
+    });
+    Then('the Mayor heard {string} and {string}, in that order, once each', async (_c, a: string, b: string) => {
+      await waitFor(() => expect(backend.heard).toEqual([a, b]));
     });
   });
 });

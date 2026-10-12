@@ -14,6 +14,10 @@ export const outboxRepo = {
     return db.outbox.add({ ...row, clientId: newClientId(), created: row.created ?? Date.now(), attempts: 0, state: 'pending' });
   },
 
+  async get(id: number): Promise<OutboxRow | undefined> {
+    return db.outbox.get(id);
+  },
+
   /** Every row, oldest first. */
   async all(): Promise<OutboxRow[]> {
     return db.outbox.orderBy('id').toArray();

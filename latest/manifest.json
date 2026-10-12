@@ -1,7 +1,7 @@
 {
-  "version": "0.5.42",
-  "commit": "9cf16c9",
-  "published_at": "2026-10-12T14:39:48.333Z",
+  "version": "0.5.43",
+  "commit": "3be4f61",
+  "published_at": "2026-10-12T15:37:40.156Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -464,6 +464,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/gate.png"
+    },
+    {
+      "name": "390x844/ideas-only-settings.png",
+      "screen": "ideas-only-settings",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/ideas-only-settings.png"
+    },
+    {
+      "name": "360x640/ideas-only-settings.png",
+      "screen": "ideas-only-settings",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/ideas-only-settings.png"
+    },
+    {
+      "name": "1280x800/ideas-only-settings.png",
+      "screen": "ideas-only-settings",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/ideas-only-settings.png"
     },
     {
       "name": "390x844/key-issue.png",

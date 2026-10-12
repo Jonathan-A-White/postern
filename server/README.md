@@ -2,7 +2,8 @@
 
 The Go backend behind https://postern.allmymind.org. Configuration is in
 `internal/config`; the wire contract is `../docs/api.md` and
-`../docs/protocol.md`. This file documents the saved-prompts routes.
+`../docs/protocol.md`. This file documents the saved-prompts routes; the Ideas only routes are in
+`../docs/api.md` and `../docs/protocol.md` §25.
 
 ## Saved prompts
 

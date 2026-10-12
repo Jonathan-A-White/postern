@@ -561,6 +561,9 @@ data: {"seq": 43}
 event: view
 data: {"etag": "<the new view's ETag>"}
 
+event: ideas-only
+data: {"key": "<a key>", "on": true, "until": 1790000000}
+
 : ping
 ```
 
@@ -570,6 +573,8 @@ data: {"etag": "<the new view's ETag>"}
   The client pages `GET /api/messages?since=` from its own cursor, with `limit`
   (at most 500) to take a page at a time: it follows `next` until `more` is false.
 - `view` — the view file (§11) changed.
+- `ideas-only` — a key's Ideas only mode (§25) turned on or off, or its end moved; sent to every
+  open stream, so the Mayor's `mw` and every phone see it.
 - `: ping` — a comment line every 25 seconds, so a proxy never idles the stream out.
 
 The app reads it with `fetch` (not `EventSource`, which cannot send the
@@ -1892,3 +1897,77 @@ nothing else (a story closes at landing, before anyone has checked it, so `close
 satisfy it); `closed` by a move to `closed`; any other state by a move to that state. That tick is
 the app's own: nothing is sent, and no view or record is fetched. A card with every item done
 leaves You and shows under `Done · N`.
+
+## 25. Ideas only
+
+The Governor, 2026-10-12 (Talk `38dc7b04`; map `mw-8ifimx`): boundaries from Postern. In Ideas
+only he may still send an idea if one comes, and the factory still runs, but nothing is pushed
+to him, and nothing he sends is acted on until the mode is over. The mode is **per key**, kept
+on the backend like saved prompts (§23), so a phone, a second phone and the Mayor's `mw` all
+see the same one, and a second person's Postern would have a mode of its own. This section is
+the backend's half: the setting, the state worked out from it, the routes and the event. What
+the app shows, what `mw` holds and releases, and what the push sender withholds are other
+stories; the record fan-out (§9, §20–22) is untouched here.
+
+### The setting
+
+One JSON object per key, in `ideas-only.json` under `POSTERN_DATA`, keyed by the lower-cased
+public key:
+
+```json
+{
+  "until": 1790003600,
+  "schedule": {
+    "tz": "America/Chicago",
+    "windows": [
+      { "days": ["sun"], "from": "09:00", "to": "21:00" },
+      { "days": ["fri", "sat"], "from": "21:00", "to": "07:00" }
+    ]
+  },
+  "reaches": { "ring": true, "emergency": true },
+  "updatedAt": "2026-10-12T16:00:00Z",
+  "updatedBy": "<the key that wrote it>"
+}
+```
+
+- `until` — a Unix time in seconds; the mode is on until then. `0` means none.
+- `schedule` — optional, a week that repeats. `tz` is an IANA zone name and the windows are read
+  as wall-clock time there (daylight saving included). Each window has `days` (`mon` `tue` `wed`
+  `thu` `fri` `sat` `sun`, at least one), `from` and `to` as `HH:MM` (24 hours). The window is on
+  from `from` up to, not including, `to`. A `to` earlier than `from` crosses midnight: the window
+  belongs to the day it starts on and ends the next morning (`sat` `21:00`→`07:00` runs to Sunday
+  07:00). `to` equal to `from` is an empty window and refused.
+- `reaches` — what still gets through while the mode is on: `ring` and `emergency`. An absent
+  value is `true`.
+- `updatedAt` and `updatedBy` are stamped by the server on every write, whatever the request says.
+  A key that has stored nothing has the empty setting: `{"until": 0, "reaches": {}}`.
+
+### The state
+
+Worked out from the setting and the clock, never stored: `{"on": bool, "until": Unix seconds
+(0 when off), "by": "until" | "schedule" | ""}`. The mode is **on** while `until` is in the future
+or the time falls in a window. `state.until` is the **nearer** of the two ends when both hold, and
+`by` names which that is; the mode stays on while the other still holds, so a change event follows
+at that end with the other's end as its `until`. Windows that run back to back count as one
+stretch. A window's end and `until` are exclusive: at that second the mode is off.
+
+### The routes
+
+Contract in `docs/api.md`.
+
+| Route | Does | Which keys |
+|---|---|---|
+| `GET /api/ideas-only/{pubkey}` | `{"setting", "state"}` for that key | any cockpit key, and the Mayor's key with or without a licence (as `GET /api/events`) |
+| `PUT /api/ideas-only/{pubkey}` | replaces the key's whole setting; answers `{"setting", "state"}`; `400` with a one-line reason for a bad time zone, day, time or window; `413` over 16 KiB | **that very key only**; any other is `403` |
+
+A key with nothing stored answers an empty setting and state off, `200`. A backend without the store
+answers `501`.
+
+### The event
+
+`event: ideas-only`, `data: {"key": "<the key>", "on": true, "until": 1790003600}` (§10), sent to
+every open stream when a key's state changes: on every `PUT` that changes it (`on` or `until`; a
+`PUT` that changes only `reaches`, or nothing, sends none), and on every edge the clock brings (the
+moment `until` or a window passes, or a window begins). The backend keeps a timer per key, re-armed
+at each `PUT` and each edge, and re-armed from the file on a restart; a restart announces nothing.
+`until` is `0` when `on` is false.

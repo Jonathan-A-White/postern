@@ -505,6 +505,9 @@ data: {"seq":43}
 event: view
 data: {"etag":"\"60303ae2...\""}
 
+event: ideas-only
+data: {"key":"02ab...","on":true,"until":1790003600}
+
 : ping
 ```
 
@@ -515,6 +518,8 @@ data: {"etag":"\"60303ae2...\""}
   number. Page `GET /api/messages?since=` from your own cursor.
 - `view` — the view file changed; `etag` is its new ETag (`""` if it was
   removed).
+- `ideas-only` — a key's Ideas only mode turned on or off, or its end moved
+  (`docs/protocol.md` §25); `until` is `0` when `on` is false.
 - `: ping` — a comment every 25 seconds, so no proxy idles the stream out.
 
 A view ETag here is exactly the `ETag` header `GET /api/view` answers, double
@@ -625,6 +630,26 @@ record are in `server/README.md` and `docs/protocol.md` §23. An option's `type`
 words of a call that no flag takes (`/later a licence for Luke`): a signature has at
 most one, and a `PUT` with two answers `400 {"error": "options --a and --b are both
 free-text: a prompt has one"}`.
+
+## Ideas only (`/api/ideas-only/{pubkey}`)
+
+`docs/protocol.md` §25. A key's setting of a time it is away on purpose; both routes need the
+usual signed proof and a cockpit key, or the Mayor's key (licence or not) for `GET`.
+
+- `GET /api/ideas-only/{pubkey}` — `200`
+  `{"setting": {"until", "schedule", "reaches", "updatedAt", "updatedBy"}, "state": {"on", "until", "by"}}`.
+  `pubkey` is a compressed public key in hex (`400` otherwise). A key that has stored nothing
+  gets `{"setting": {"until": 0, "reaches": {}}, "state": {"on": false, "until": 0, "by": ""}}`.
+  Answered with `Cache-Control: no-store`.
+- `PUT /api/ideas-only/{pubkey}` — body
+  `{"until": <Unix seconds or 0>, "schedule": {"tz": "<IANA name>", "windows": [{"days": ["mon".."sun"], "from": "HH:MM", "to": "HH:MM"}]}, "reaches": {"ring": true, "emergency": true}}`
+  (`schedule` and the `reaches` values optional, absent = `true`; a window may cross midnight).
+  Replaces the whole setting; the server stamps `updatedAt` and `updatedBy`. `200` with the
+  same body as `GET`. `403` unless the caller's key is `pubkey`; `400 {"error": "<one line>"}` for
+  a bad time zone, day, time or window (including `from` equal to `to`) or invalid JSON; `413`
+  over 16 KiB. The stream carries an `ideas-only` event when the state changes.
+
+Without the store these answer `501`.
 
 ## The record fan-out
 

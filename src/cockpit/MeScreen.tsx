@@ -5,8 +5,11 @@
 import { useEffect, useState } from 'react';
 import { Banner, Button, Card, Chip, Dot, Icon, SectionTitle, TimeAgo } from '../ui';
 import { Screen } from './Shell';
+import { Row } from './MeRow';
+import { IdeasOnlySection } from './IdeasOnlySection';
 import { liveLabel } from './liveLabel';
 import { useUnlockedKey, useViewIndex } from './hooks';
+import { recallRead, rememberRead } from './lastKnown';
 import { MoveHomeButtons } from './MoveHome';
 import { ArchivedCardsLink } from './ArchiveScreen';
 import { HOMES, useStandby } from '../services/standby';
@@ -39,18 +42,16 @@ const SWITCHES: { key: keyof ClassNotificationSettings; label: string }[] = [
   { key: 'quiet', label: 'Quiet' },
 ];
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <span className="text-[14px] text-muted">{label}</span>
-      <span className="min-w-0 text-right text-[14px]">{children}</span>
-    </div>
-  );
-}
+const SETTINGS_NAME = 'notificationSettings';
 
 function Notifications() {
   const key = useUnlockedKey();
-  const [settings, setSettings] = useState<NotificationSettingsMap | null>(null);
+  // The switches as last read this session, so the screen is as tall as it was when it mounts again (scroll memory restores into it).
+  const [settings, setSettingsNow] = useState<NotificationSettingsMap | null>(() => recallRead<NotificationSettingsMap>(SETTINGS_NAME).value ?? null);
+  const setSettings = (next: NotificationSettingsMap) => {
+    rememberRead(SETTINGS_NAME, next);
+    setSettingsNow(next);
+  };
   const [subscribed, setSubscribed] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -332,6 +333,8 @@ export function MeScreen() {
         </section>
 
         <Notifications />
+
+        <IdeasOnlySection />
 
         <TestVoice />
 

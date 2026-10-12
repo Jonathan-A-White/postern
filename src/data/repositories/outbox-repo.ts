@@ -33,6 +33,11 @@ export const outboxRepo = {
       .first();
   },
 
+  /** The Talk turns written before row `id`, oldest first, whatever their state but acked (an acked turn has been seen by the Mayor's side and holds nothing). */
+  async turnsBefore(id: number): Promise<OutboxRow[]> {
+    return db.outbox.where('id').below(id).filter((row) => row.kind === 'turn' && row.state !== 'acked').toArray();
+  },
+
   async sent(): Promise<OutboxRow[]> {
     return db.outbox.where('state').equals('sent').sortBy('id');
   },

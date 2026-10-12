@@ -116,3 +116,13 @@ func marshal(v any) string {
 	data, _ := json.Marshal(v) // plain structs of strings and numbers never fail
 	return string(data)
 }
+
+// IdeasOnlyChanged publishes an "ideas-only" event: key's Ideas only mode is
+// now on (until the Unix second given) or off (docs/protocol.md §25).
+func (h *Hub) IdeasOnlyChanged(key string, on bool, until int64) {
+	h.Publish(Event{Name: "ideas-only", Data: marshal(struct {
+		Key   string `json:"key"`
+		On    bool   `json:"on"`
+		Until int64  `json:"until"`
+	}{key, on, until})})
+}

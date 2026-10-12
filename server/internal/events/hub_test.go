@@ -114,3 +114,19 @@ func TestCancelRemovesTheSubscriberAndIsSafeToRepeat(t *testing.T) {
 	cancel2()
 	<-ch2
 }
+
+func TestIdeasOnlyChangedPublishesAnIdeasOnlyEvent(t *testing.T) {
+	hub := NewHub()
+	ch, cancel := hub.Subscribe()
+	defer cancel()
+
+	hub.IdeasOnlyChanged("02ab", true, 1800003600)
+	hub.IdeasOnlyChanged("02ab", false, 0)
+
+	for _, want := range []string{`{"key":"02ab","on":true,"until":1800003600}`, `{"key":"02ab","on":false,"until":0}`} {
+		ev, ok := receive(t, ch)
+		if !ok || ev.Name != "ideas-only" || ev.Data != want {
+			t.Fatalf("event = %+v (open=%v), want ideas-only %s", ev, ok, want)
+		}
+	}
+}

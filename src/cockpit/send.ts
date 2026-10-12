@@ -19,6 +19,7 @@ import type { HandsStep } from '../model/hands';
 import { buildApproval, stepUp } from '../services/hands';
 import type { HomeHost } from '../services/standby';
 import { deliverCallLater } from '../services/call';
+import { recordedNoteNow } from '../services/ideasOnly';
 import type { TalkTurn } from '../model/talkLine';
 import { threadKey, type ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
@@ -96,7 +97,9 @@ export function refuseFile(file: { name: string; type: string; size: number }): 
  * when the message's turn comes, so nothing is sent until every file is up. */
 export async function sendToThread(thread: ThreadRef | undefined, text: string, files: OutgoingFile[] = [], re?: string, settles?: string): Promise<Queued[]> {
   const payload: QueuedMessage = { text, files: files.map(({ name, type, bytes }) => ({ name, type, data: packBytes(bytes) })), ...(thread !== undefined ? { thread } : {}), ...(re !== undefined ? { re } : {}), ...(settles !== undefined ? { settles } : {}) };
-  return [{ id: await enqueue({ kind: 'message', bead: thread && 'bead' in thread ? thread.bead : '', payload: payload as unknown as Record<string, unknown>, thread: threadKey(thread) }) }];
+  // While Ideas only is on the message goes out as always, and its row remembers it was recorded for later.
+  const recorded = await recordedNoteNow();
+  return [{ id: await enqueue({ kind: 'message', bead: thread && 'bead' in thread ? thread.bead : '', payload: payload as unknown as Record<string, unknown>, thread: threadKey(thread), ...(recorded !== undefined ? { recorded } : {}) }) }];
 }
 
 /** His Verified tap (docs/protocol.md §13): a channel message to the bead that begins VERIFIED and says where he tapped.

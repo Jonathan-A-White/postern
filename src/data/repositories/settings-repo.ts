@@ -9,6 +9,9 @@ const PENDING_LATERS_KEY = 'pendingLaters';
 const ANSWERED_RING_KEY = 'answeredRing';
 const PROMPTS_KEY = 'prompts';
 const IDEAS_ONLY_KEY = 'ideasOnly';
+const RECORDED_NOTES_KEY = 'recordedNotes';
+/** How many notes are kept: the newest ones; they are history, not a record. */
+const RECORDED_NOTES_KEPT = 500;
 // Also stored through the generic get/set: 'lastShareThread' is the thread key he shared to last
 // (src/cockpit/ShareScreen.tsx, mw-dw0i6.2); a string, never cleared.
 
@@ -94,6 +97,21 @@ export const settingsRepo = {
 
   async setIdeasOnly(kept: IdeasOnlyKept): Promise<void> {
     await db.settings.put({ key: IDEAS_ONLY_KEY, value: kept });
+  },
+
+  /** The 'Recorded for after 21:00' notes of his sent messages, by their txid (a record is never changed to carry one). */
+  async getRecordedNotes(): Promise<Record<string, string>> {
+    const row = await db.settings.get(RECORDED_NOTES_KEY);
+    return (row?.value as Record<string, string> | undefined) ?? {};
+  },
+
+  async addRecordedNote(txid: string, note: string): Promise<void> {
+    await db.transaction('rw', db.settings, async () => {
+      const row = await db.settings.get(RECORDED_NOTES_KEY);
+      const notes = { ...((row?.value as Record<string, string> | undefined) ?? {}), [txid]: note };
+      const keep = Object.entries(notes).slice(-RECORDED_NOTES_KEPT);
+      await db.settings.put({ key: RECORDED_NOTES_KEY, value: Object.fromEntries(keep) });
+    });
   },
 
   async resetNotificationSettings(): Promise<void> {

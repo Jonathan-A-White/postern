@@ -147,6 +147,13 @@ export function useAnswers(): AnswerRow[] {
 }
 
 /** Everything he did that has not yet been seen coming back (mw-jrx0s.10): pending and sent rows, oldest first. */
+const NO_NOTES: Record<string, string> = {};
+
+/** The 'Recorded for after 21:00' notes of his sent messages, by txid. */
+export function useRecordedNotes(): Record<string, string> {
+  return useLiveQuery(() => settingsRepo.getRecordedNotes(), [], NO_NOTES);
+}
+
 export function useOutbox(): OutboxRow[] {
   return useLiveQuery(() => outboxRepo.open(), [], [] as OutboxRow[]);
 }

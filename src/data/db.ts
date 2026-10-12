@@ -243,6 +243,8 @@ export interface OutboxRow {
   state: OutboxState;
   /** What the backend said, when it refused the row for good (`state` is `failed`). */
   failure?: string;
+  /** 'Recorded for after 21:00': what a message he sent while Ideas only was on shows under it (kept on the row, so a reload keeps it). */
+  recorded?: string;
   /** One plain line for a row still waiting after a try the backend answered with trouble (WhatsOnChain busy, a provider refusal); gone once the row has gone. */
   note?: string;
 }

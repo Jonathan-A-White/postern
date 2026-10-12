@@ -13,7 +13,7 @@ import { openAttachment } from '../services/blobs';
 import { useLive } from '../services/live';
 import { isSupported as canSpeak, speak, stop as stopSpeaking, useSpeechFailure } from '../services/speech';
 import { useSpeaking } from './useSpeaking';
-import { useAnswers, useBeadTitles, useOutbox, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
+import { useAnswers, useBeadTitles, useOutbox, useRecordedNotes, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { pendingAnswer } from '../model/outbox';
 import { FailedNote, OutboxMark, WaitLine } from './OutboxMark';
 import { PendingMark } from './PendingMark';
@@ -411,6 +411,11 @@ const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, on
           </button>
         )}
       </div>
+      {mine && item.recorded && (
+        <p data-testid="recorded-note" className="px-1 text-[11.5px] wrap-anywhere text-muted">
+          {item.recorded}
+        </p>
+      )}
       {item.pending && item.failure === undefined && item.note && <WaitLine note={item.note} className="block max-w-[88%] min-w-0 px-1 text-right text-[11.5px] wrap-anywhere text-muted lg:max-w-[75%]" />}
       {voiceFailure !== null && (
         <p role="status" className="px-1 text-[11px] text-danger">
@@ -467,6 +472,7 @@ export function Conversation({
   const seen = useRef<number | null>(null);
   const count = items.length;
   const titles = useBeadTitles();
+  const recordedNotes = useRecordedNotes();
   useLayoutEffect(() => {
     const first = seen.current === null;
     if ((first && scrollOnOpen) || (!first && count > (seen.current ?? 0))) {
@@ -529,7 +535,7 @@ export function Conversation({
                 <span className="h-px flex-1 bg-line" />
               </div>
             )}
-            <Bubble item={item} given={given.get(item.id)} until={askedAgain.get(item.id)} shareTitle={shareTitle} titles={titlesNow} onQuote={onQuote && quote} onReply={onReply && reply} />
+            <Bubble item={item.recorded === undefined && item.txid && recordedNotes[item.txid] ? { ...item, recorded: recordedNotes[item.txid] } : item} given={given.get(item.id)} until={askedAgain.get(item.id)} shareTitle={shareTitle} titles={titlesNow} onQuote={onQuote && quote} onReply={onReply && reply} />
             {footer?.(item)}
           </div>
         );

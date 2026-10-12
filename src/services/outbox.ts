@@ -9,7 +9,7 @@
 // backend's words (a provider's page made plain) and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
 // Talk turns are a lane of their own, so no upload or failing message holds one back; within the lane a turn never
 // goes ahead of an earlier one that was refused or went on the chain and has not been seen (mw-q6n8m0.12).
-import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo, viewRepo } from '../data/repositories';
+import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
 import type { OutboxKind, OutboxRow } from '../data/db';
 import type { GovernorAction } from '../model/conversation';
 import { retryDelay, turnHeldBy } from '../model/outbox';
@@ -93,10 +93,10 @@ function viewSeqOf(row: OutboxRow): number | undefined {
 }
 
 /** Writes one thing he did to the outbox and wakes the sender; resolves once it is written, not once it is sent. */
-export async function enqueue(row: { kind: OutboxKind; bead?: string; payload: Record<string, unknown>; thread?: string; label?: string }): Promise<number> {
+export async function enqueue(row: { kind: OutboxKind; bead?: string; payload: Record<string, unknown>; thread?: string; label?: string; recorded?: string }): Promise<number> {
   // What he taps is judged against the view he was shown: its seq travels with the row (docs/protocol.md §13).
   const viewSeq = row.kind === 'action' || row.kind === 'answer' || (row.kind === 'message' && typeof row.payload.settles === 'string') ? await shownViewSeq() : undefined;
-  const id = await outboxRepo.add({ kind: row.kind, bead: row.bead ?? '', payload: viewSeq !== undefined ? { ...row.payload, viewSeq } : row.payload, ...(row.thread !== undefined ? { thread: row.thread } : {}), ...(row.label !== undefined ? { label: row.label } : {}) });
+  const id = await outboxRepo.add({ kind: row.kind, bead: row.bead ?? '', payload: viewSeq !== undefined ? { ...row.payload, viewSeq } : row.payload, ...(row.thread !== undefined ? { thread: row.thread } : {}), ...(row.label !== undefined ? { label: row.label } : {}), ...(row.recorded !== undefined ? { recorded: row.recorded } : {}) });
   kickOutbox();
   return id;
 }
@@ -202,6 +202,8 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
     if (mine !== generation) return;
     await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, sentAt: Date.now(), attempts: row.attempts + 1, nextAt: undefined, note: undefined });
     rememberDelivered(row, delivered);
+    // The note outlives the outbox row: the record that comes back is found by its txid.
+    if (row.recorded) writeBehind(settingsRepo.addRecordedNote(delivered.txid, row.recorded), 'that it was recorded for later');
   }
 }
 

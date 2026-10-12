@@ -55,6 +55,8 @@ export interface ConversationItem {
   /** The outbox row a message still on its way is (mw-jrx0s.21), and what the backend said when it refused it for good. */
   outboxId?: number;
   failure?: string;
+  /** 'Recorded for after 21:00': his message was sent while Ideas only was on. */
+  recorded?: string;
   /** The plain line a message still waiting shows while its sender tries again (OutboxRow.note). */
   note?: string;
   source: 'message' | 'comment';

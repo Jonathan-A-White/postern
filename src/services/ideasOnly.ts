@@ -4,8 +4,9 @@
 // event. The last answer is kept in the settings table so the Settings section and the banner
 // read with no network.
 import { settingsRepo } from '../data/repositories';
-import { EMPTY_SETTING, readAnswer, type IdeasOnlyKept, type IdeasOnlySetting } from '../model/ideasOnly';
+import { EMPTY_SETTING, onUntil, readAnswer, recordedWords, type IdeasOnlyKept, type IdeasOnlySetting } from '../model/ideasOnly';
 import { apiFetch } from './apiAuth';
+import { getKey } from './keySession';
 import { publicKeyHexFromMasterKey } from './vault';
 
 export type { IdeasOnlyKept, IdeasOnlySetting };
@@ -86,4 +87,14 @@ export async function applyIdeasOnlyEvent(myKeyHex: string, data: string): Promi
 /** What live.ts does with the event: keep it at once, then ask for the exact state. */
 export async function onIdeasOnlyEvent(key: Uint8Array, data: string): Promise<void> {
   if (await applyIdeasOnlyEvent(publicKeyHexFromMasterKey(key), data)) await getIdeasOnly(key);
+}
+
+/** 'Recorded for after 21:00' when Ideas only is on for this phone's key right now, else undefined: what a send writes on its row. */
+export async function recordedNoteNow(): Promise<string | undefined> {
+  const key = getKey();
+  if (!key) return undefined;
+  const kept = await settingsRepo.getIdeasOnly();
+  if (kept?.key !== publicKeyHexFromMasterKey(key)) return undefined;
+  const until = onUntil(kept, Date.now());
+  return until === undefined ? undefined : recordedWords(until, Date.now());
 }

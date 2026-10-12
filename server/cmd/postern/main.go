@@ -17,6 +17,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/config"
 	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/hook"
+	"github.com/Jonathan-A-White/postern/server/internal/ideasonly"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
@@ -140,6 +141,13 @@ func newApp(cfg config.Config) (*app, error) {
 	}
 
 	hub := events.NewHub()
+	ideasStore, err := ideasonly.OpenStore(cfg.DataDir, ideasonly.WithPublish(func(key string, st ideasonly.Status) {
+		hub.IdeasOnlyChanged(key, st.On, st.Until)
+	}))
+	if err != nil {
+		store.Close()
+		return nil, fmt.Errorf("opening ideas-only store: %w", err)
+	}
 	fanout := buildFanout(cfg, home, sender, hub)
 	if cfg.MillKey != "" {
 		log.Printf("grist: mill %s, apps %v", cfg.MillKey, cfg.Apps)
@@ -169,6 +177,7 @@ func newApp(cfg config.Config) (*app, error) {
 		api.WithCatalogue(cfg.Collections, cfg.AppCollections, cfg.IssuerKey),
 		api.WithCORS(cfg.CORSOrigins),
 		api.WithPrompts(promptStore),
+		api.WithIdeasOnly(ideasStore),
 	)
 
 	start := func(stop <-chan struct{}) {
@@ -184,6 +193,8 @@ func newApp(cfg config.Config) (*app, error) {
 			go noteMillLicence(licenceChecker, cfg.MillKey, cfg.Apps)
 		}
 		go home.Run(stop, standby.DefaultInterval)
+		ideasStore.Start()
+		go func() { <-stop; ideasStore.Stop() }()
 		if cfg.ViewFile != "" {
 			go viewFile.Watch(stop, view.DefaultWatchInterval, hub.ViewChanged)
 		}

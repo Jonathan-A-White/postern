@@ -24,6 +24,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/buildinfo"
 	"github.com/Jonathan-A-White/postern/server/internal/chain"
 	"github.com/Jonathan-A-White/postern/server/internal/events"
+	"github.com/Jonathan-A-White/postern/server/internal/ideasonly"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
@@ -63,6 +64,7 @@ type options struct {
 	apps     map[string]string // POSTERN_APPS: an app's licence collection -> the app
 	cors     []string          // POSTERN_CORS_ORIGINS
 	prompts  *prompts.Store    // the saved prompts; nil answers 501
+	ideas    *ideasonly.Store  // each key's Ideas only setting (§25); nil answers 501
 
 	cockpitCollections []string // POSTERN_COLLECTIONS, for GET /api/me (§15)
 	appCollections     []string // POSTERN_APPS' collections in the order configured
@@ -145,6 +147,12 @@ func WithPrompts(store *prompts.Store) Option {
 	return func(o *options) { o.prompts = store }
 }
 
+// WithIdeasOnly sets the store GET and PUT /api/ideas-only/{pubkey} serve.
+// Without it those routes answer 501.
+func WithIdeasOnly(store *ideasonly.Store) Option {
+	return func(o *options) { o.ideas = store }
+}
+
 // WithView sets the view file GET /api/view serves (POSTERN_VIEW_FILE).
 // Without it, GET /api/view answers 404.
 func WithView(v *view.File) Option {
@@ -204,6 +212,8 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	mux.HandleFunc("GET /api/prompts/{name}", gate(everyKey|mayorKey, handlePromptGet(o.prompts)))
 	mux.HandleFunc("PUT /api/prompts/{name}", gate(cockpitKeys, handlePromptPut(o.prompts)))
 	mux.HandleFunc("DELETE /api/prompts/{name}", gate(cockpitKeys, handlePromptDelete(o.prompts)))
+	mux.HandleFunc("GET /api/ideas-only/{pubkey}", gate(cockpitKeys|mayorKey, handleIdeasOnlyGet(o.ideas)))
+	mux.HandleFunc("PUT /api/ideas-only/{pubkey}", gate(cockpitKeys|mayorKey, handleIdeasOnlyPut(o.ideas)))
 	mux.HandleFunc("GET /api/beads/{id}", gate(cockpitKeys, handleBead(o.beads)))
 	mux.HandleFunc("POST /api/broadcast", gate(cockpitKeys, handleBroadcast(client)))
 	mux.HandleFunc("GET /api/utxos/{address}", gate(cockpitKeys, handleUtxos(client)))

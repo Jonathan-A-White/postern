@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.0
+_2026-10-12_
+- New: While Ideas only is on, a banner at the top of every screen says until when; everything you send says "Recorded for after 21:00" at once, the Talk line says it aloud and is ready for your next turn, and taps say it in place of "waiting".
+
 ## 0.5.43
 _2026-10-12_
 - New: Settings now has an Ideas only section where you can set a time you are away (until 9 pm, until 7 am, for an hour, or a date), a weekly schedule, and choose whether the Mayor's ring and emergencies still reach you.

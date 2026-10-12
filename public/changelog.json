@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.42",
+    "date": "2026-10-12",
+    "story": "mw-q6n8m0.12",
+    "kind": "fixed",
+    "text": "Talk turns now always reach the Mayor in the order you spoke them, even when one has to wait or is retried."
+  },
+  {
     "version": "0.5.39",
     "date": "2026-10-11",
     "story": "mw-s6387p.1",

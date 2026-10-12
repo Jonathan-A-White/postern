@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.42
+_2026-10-12_
+- Fixed: Talk turns now always reach the Mayor in the order you spoke them, even when one has to wait or is retried.
+
 ## 0.5.39
 _2026-10-11_
 - New: a gallery of every Postern screen at phone, small phone and desktop sizes, published to the website and to GitHub, so another team can match Postern's look.

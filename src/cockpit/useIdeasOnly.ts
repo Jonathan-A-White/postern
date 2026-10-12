@@ -3,7 +3,8 @@
 // event for this key lands in the same kept answer (src/services/live.ts), so a screen re-renders by itself.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { settingsRepo } from '../data/repositories';
-import type { IdeasOnlyKept, IdeasOnlySetting } from '../model/ideasOnly';
+import { onUntil, recordedWords, type IdeasOnlyKept, type IdeasOnlySetting } from '../model/ideasOnly';
+import { useNow } from '../ui/useNow';
 import { getIdeasOnly, putIdeasOnly } from '../services/ideasOnly';
 import { publicKeyHexFromMasterKey } from '../services/vault';
 import { useLiveQuery, useUnlockedKey } from './hooks';
@@ -25,11 +26,46 @@ export interface IdeasOnlyView {
 
 const AVAILABILITY_NAME = 'ideasOnlyAvailability';
 
-export function useIdeasOnly(): IdeasOnlyView {
+/** The answer the phone kept for this phone's key, if any; it changes by itself when the stream's event or an ask lands. */
+function useKept(): IdeasOnlyKept | undefined {
   const key = useUnlockedKey();
   const keyHex = useMemo(() => (key ? publicKeyHexFromMasterKey(key) : null), [key]);
   const stored = useLiveQuery<IdeasOnlyKept | null>(() => settingsRepo.getIdeasOnly().then((row) => row ?? null), [], null, 'ideasOnly');
-  const kept = stored && stored.key === keyHex ? stored : undefined;
+  return stored && stored.key === keyHex ? stored : undefined;
+}
+
+/** Longest a timer can wait (setTimeout keeps its delay in 32 bits). */
+const MAX_WAIT_MS = 2 ** 31 - 1;
+
+/**
+ * Whether Ideas only is on for this phone's key right now, read from the kept answer and the phone's clock
+ * (no network): it turns off by itself when the stream's event lands, or when the clock reaches the end.
+ * Undefined when off; else the end in Unix seconds and the time it was read at.
+ */
+export function useIdeasOnlyNow(): { until: number; nowMs: number } | undefined {
+  const kept = useKept();
+  const nowMs = useNow(30_000);
+  const until = kept?.state.on ? kept.state.until : 0;
+  // The end passing is noticed at the end, not at the next tick of the shared clock.
+  const [passed, setPassed] = useState(0);
+  useEffect(() => {
+    if (!until) return;
+    const timer = setTimeout(() => setPassed(until), Math.min(MAX_WAIT_MS, Math.max(0, until * 1000 - Date.now())));
+    return () => clearTimeout(timer);
+  }, [until]);
+  const end = passed === until ? undefined : onUntil(kept, nowMs);
+  return end === undefined ? undefined : { until: end, nowMs };
+}
+
+/** 'Recorded for after 21:00' while the mode is on, else undefined: what a send says under itself, and a tap in place of 'waiting'. */
+export function useRecordedWords(): string | undefined {
+  const on = useIdeasOnlyNow();
+  return on ? recordedWords(on.until, on.nowMs) : undefined;
+}
+
+export function useIdeasOnly(): IdeasOnlyView {
+  const key = useUnlockedKey();
+  const kept = useKept();
   // What the backend last said is remembered, so a screen that mounts again is as tall as it was (the scroll memory restores into it).
   const [availability, setAvailabilityNow] = useState<IdeasOnlyAvailability>(() => recallRead<IdeasOnlyAvailability>(AVAILABILITY_NAME).value ?? 'checking');
   const setAvailability = useCallback((next: IdeasOnlyAvailability) => {

@@ -93,6 +93,23 @@ export function describeUntil(until: number): string {
   return `${at.toLocaleDateString('en-US', { weekday: 'short' })} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
+/** The end as he reads it: '21:00' when it is today, else 'Fri 07:00'. */
+export function untilClock(until: number, nowMs: number): string {
+  const at = new Date(until * 1000);
+  const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  return at.toDateString() === new Date(nowMs).toDateString() ? clock : `${at.toLocaleDateString('en-US', { weekday: 'short' })} ${clock}`;
+}
+
+/** What stands under everything he sends while the mode is on, and in place of 'waiting' on a tap. */
+export const recordedWords = (until: number, nowMs: number): string => `Recorded for after ${untilClock(until, nowMs)}`;
+
+/** The end of the mode as of `nowMs`, in Unix seconds; undefined when it is off (or its end has passed). */
+export function onUntil(kept: IdeasOnlyKept | undefined, nowMs: number): number | undefined {
+  if (!kept) return undefined;
+  const state = stateAt(kept.state, nowMs);
+  return state.on ? state.until : undefined;
+}
+
 /** The state as of `nowMs`: a kept 'on' whose end has passed is off until the backend says otherwise. */
 export function stateAt(state: IdeasOnlyState, nowMs: number): IdeasOnlyState {
   return state.on && state.until * 1000 <= nowMs ? { on: false, until: 0, by: '' } : state;

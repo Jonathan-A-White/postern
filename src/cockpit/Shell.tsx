@@ -13,6 +13,7 @@ import { useLive } from '../services/live';
 import { hostsToMoveTo, useStandby } from '../services/standby';
 import { MoveHomeButtons } from './MoveHome';
 import { EmergencyBanner } from './EmergencyBanner';
+import { IdeasOnlyBanner } from './IdeasOnlyBanner';
 import { RingBanner } from './RingBanner';
 import { AnswerBar } from './AnswerBar';
 import { SpeakingBar } from './SpeakingBar';
@@ -207,6 +208,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       <div className="flex min-w-0 flex-1 flex-col">
         <UpdateBanner />
         <EmergencyBanner />
+        <IdeasOnlyBanner />
         <HomeDown />
         <RingBanner />
         <AnswerBar />

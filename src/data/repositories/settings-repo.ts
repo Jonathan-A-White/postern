@@ -1,12 +1,14 @@
 import { db, type ArchiveChoices, type PromptsCache } from '../db';
 import { DEFAULT_NOTIFICATION_SETTINGS } from '../../push/classOptions';
 import type { NotificationSettingsMap } from '../../push/classOptions';
+import type { IdeasOnlyKept } from '../../model/ideasOnly';
 
 const NOTIFICATION_SETTINGS_KEY = 'notificationSettings';
 const THREAD_ARCHIVE_KEY = 'threadArchive';
 const PENDING_LATERS_KEY = 'pendingLaters';
 const ANSWERED_RING_KEY = 'answeredRing';
 const PROMPTS_KEY = 'prompts';
+const IDEAS_ONLY_KEY = 'ideasOnly';
 // Also stored through the generic get/set: 'lastShareThread' is the thread key he shared to last
 // (src/cockpit/ShareScreen.tsx, mw-dw0i6.2); a string, never cleared.
 
@@ -82,6 +84,16 @@ export const settingsRepo = {
 
   async setPromptsCache(cache: PromptsCache): Promise<void> {
     await db.settings.put({ key: PROMPTS_KEY, value: cache });
+  },
+
+  /** Ideas only as the backend last answered for this phone's key, with the time (src/services/ideasOnly.ts). */
+  async getIdeasOnly(): Promise<IdeasOnlyKept | undefined> {
+    const row = await db.settings.get(IDEAS_ONLY_KEY);
+    return row?.value as IdeasOnlyKept | undefined;
+  },
+
+  async setIdeasOnly(kept: IdeasOnlyKept): Promise<void> {
+    await db.settings.put({ key: IDEAS_ONLY_KEY, value: kept });
   },
 
   async resetNotificationSettings(): Promise<void> {

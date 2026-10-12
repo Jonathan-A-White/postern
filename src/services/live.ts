@@ -20,6 +20,7 @@
 import { useSyncExternalStore } from 'react';
 import { apiFetch } from './apiAuth';
 import { chain } from '../chain';
+import { onIdeasOnlyEvent } from './ideasOnly';
 import { projectBatches, syncMessagesAndEvents } from './events';
 import type { EventBatch } from '../model/events';
 import { freshRings, ringInApp } from './ringIn';
@@ -288,6 +289,7 @@ async function readStream(reader: ReadableStreamDefaultReader<string>, key: Uint
       if (parsed?.event === 'hello') void syncAll(key, { messages: true, view: true });
       else if (parsed?.event === 'message') void syncAll(key, { messages: true });
       else if (parsed?.event === 'view') onViewEvent(key);
+      else if (parsed?.event === 'ideas-only') void onIdeasOnlyEvent(key, parsed.data).catch(() => undefined);
       split = buffer.indexOf('\n\n');
     }
   }

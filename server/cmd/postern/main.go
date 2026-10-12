@@ -148,6 +148,7 @@ func newApp(cfg config.Config) (*app, error) {
 		store.Close()
 		return nil, fmt.Errorf("opening ideas-only store: %w", err)
 	}
+	sender.WithIdeasOnly(ideasStore) // while a key is in Ideas only, its push is withheld (§25)
 	fanout := buildFanout(cfg, home, sender, hub)
 	if cfg.MillKey != "" {
 		log.Printf("grist: mill %s, apps %v", cfg.MillKey, cfg.Apps)

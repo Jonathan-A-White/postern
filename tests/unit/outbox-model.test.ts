@@ -2,7 +2,7 @@
 // messages still read as pending bubbles.
 import { describe, expect, it } from 'vitest';
 import type { MessageRow, OutboxRow } from '../../src/data/db';
-import { anyPending, pendingAction, pendingAnswer, pendingMessageItems, retryDelay } from '../../src/model/outbox';
+import { anyPending, pendingAction, pendingAnswer, pendingMessageItems, retryDelay, turnHeldBy, CHAIN_HOLD_MS } from '../../src/model/outbox';
 
 function row(over: Partial<OutboxRow>): OutboxRow {
   return { id: 1, kind: 'message', bead: '', payload: { text: 'hi', files: [] }, created: 1000, attempts: 0, state: 'pending', ...over };
@@ -63,5 +63,28 @@ describe('a refused row (mw-jrx0s.21)', () => {
   it('shows a refused message as a bubble that says what the backend said', () => {
     const [item] = pendingMessageItems([row({ id: 4, state: 'failed', failure: 'too big' })], [], () => true);
     expect(item).toMatchObject({ id: 'outbox:4', outboxId: 4, failure: 'too big' });
+  });
+});
+
+describe('turnHeldBy (mw-q6n8m0.12)', () => {
+  const turn = (over: Partial<OutboxRow>) => row({ kind: 'turn', payload: { turn: {} }, ...over });
+  const onChain = '9'.repeat(64);
+
+  it('is not held by turns taken directly, or by none', () => {
+    expect(turnHeldBy([], 10_000)).toBeUndefined();
+    expect(turnHeldBy([turn({ state: 'sent', txid: 'direct:abc', sentAt: 9_000 })], 10_000)).toBeUndefined();
+  });
+
+  it('is held by a refused turn until he taps Retry or Discard, however long that takes', () => {
+    expect(turnHeldBy([turn({ state: 'failed' })], 10_000_000)).toEqual({ reason: 'refused' });
+  });
+
+  it('is held by a turn on the chain not yet seen, and looks again soon', () => {
+    expect(turnHeldBy([turn({ state: 'sent', txid: onChain, sentAt: 9_000 })], 10_000)).toEqual({ reason: 'chain', lookAt: 15_000 });
+  });
+
+  it('gives up on a turn on the chain that is not seen within the stated time', () => {
+    expect(turnHeldBy([turn({ state: 'sent', txid: onChain, sentAt: 9_000 })], 9_000 + CHAIN_HOLD_MS - 1)).toMatchObject({ reason: 'chain' });
+    expect(turnHeldBy([turn({ state: 'sent', txid: onChain, sentAt: 9_000 })], 9_000 + CHAIN_HOLD_MS)).toBeUndefined();
   });
 });

@@ -1522,6 +1522,10 @@ and goes the usual way once the backend answers:
   rig's chain switch (`chainConfig.providerBaseUrl`: WhatsOnChain's testnet today), the
   same chain the backend's poller reads. The phone's pending-spend memory still applies,
   so two calls in a row do not spend one coin twice.
+- **Order.** Talk turns go in the order he spoke them. A turn that went on chain reaches the
+  backend only when the poller reads it, so the turns after it wait in the outbox (they read
+  as pending) until its record comes back, or two minutes have passed. A turn the backend
+  refused for good (a 4xx) likewise holds the later turns until he taps Retry or Discard on it.
 - **Why the Mayor still hears.** The backend's poller reads the anchor address from
   WhatsOnChain every 5 seconds, so a record the phone broadcast reaches `GET /api/messages`
   and §10's stream with no backend change, and the Mayor's `mw talk wait` prints it within

@@ -15,6 +15,21 @@ export function retryDelay(attempts: number): number {
   return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1));
 }
 
+/** How long a Talk turn that went on the chain holds back the turns he spoke after it, waiting for its record to be seen (the poller reads the chain every 5 s; a minute is generous), before they go on without it. */
+export const CHAIN_HOLD_MS = 2 * 60 * 1000;
+
+/** How often the sender looks again while a turn waits on a turn that went on the chain. */
+export const CHAIN_HOLD_LOOK_MS = 5_000;
+
+/** Whether a Talk turn that was refused, or put on the chain and not yet seen, holds the later turn back (mw-q6n8m0.12): `earlier` is the turns written before it, oldest first, `now` ms since the epoch. A failed one holds it until he taps Retry or Discard; one on the chain holds it until its record is seen (it is then acked) or CHAIN_HOLD_MS has passed. */
+export function turnHeldBy(earlier: OutboxRow[], now: number): { reason: 'refused' | 'chain'; lookAt?: number } | undefined {
+  if (earlier.some((row) => row.state === 'failed')) return { reason: 'refused' };
+  // A row an older build sent has no sentAt and holds nothing.
+  const onChain = earlier.find((row) => row.state === 'sent' && row.txid !== undefined && !row.txid.startsWith('direct:') && row.sentAt !== undefined && now - row.sentAt < CHAIN_HOLD_MS);
+  if (onChain) return { reason: 'chain', lookAt: Math.min(now + CHAIN_HOLD_LOOK_MS, (onChain.sentAt as number) + CHAIN_HOLD_MS) };
+  return undefined;
+}
+
 /** Whether the row has not yet been taken by a backend or the chain. */
 export function isPending(row: OutboxRow): boolean {
   return row.state === 'pending';

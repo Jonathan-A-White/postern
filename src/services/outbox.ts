@@ -7,11 +7,12 @@
 // (since-paging, or the `card_answered` event naming its txid) and is then acked.
 // A 4xx the backend gives (other than 408 and 429) is final: the row is marked failed with the
 // backend's words (a provider's page made plain) and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
-// Talk turns are a lane of their own, so no upload or failing message holds one back.
+// Talk turns are a lane of their own, so no upload or failing message holds one back; within the lane a turn never
+// goes ahead of an earlier one that was refused or went on the chain and has not been seen (mw-q6n8m0.12).
 import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo, viewRepo } from '../data/repositories';
 import type { OutboxKind, OutboxRow } from '../data/db';
 import type { GovernorAction } from '../model/conversation';
-import { retryDelay } from '../model/outbox';
+import { retryDelay, turnHeldBy } from '../model/outbox';
 import { decodeView } from '../model/view';
 import { isPermanentRefusal, RefusedError } from './apiAuth';
 import { busyOf, plainMessage, waitingLine } from './chainBusy';
@@ -163,6 +164,11 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
     if (!row || mine !== generation) return;
     if (!force && row.nextAt !== undefined && row.nextAt > Date.now()) return wakeAt(lane, row.nextAt);
     force = false;
+    if (row.kind === 'turn') {
+      // Turns reach the Mayor in the order he spoke them (mw-q6n8m0.12): one refused for good, or one that went on the chain and has not been seen yet, holds the turns after it.
+      const held = turnHeldBy(await outboxRepo.turnsBefore(row.id as number), Date.now());
+      if (held) return held.lookAt !== undefined ? wakeAt(lane, held.lookAt) : undefined;
+    }
     const base = deliverOptions(getKey());
     if (!base) {
       // Locked, or the Mayor not yet known: the next live state or key change wakes the sender; this is the fallback.
@@ -194,7 +200,7 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
       return wakeAt(lane, nextAt);
     }
     if (mine !== generation) return;
-    await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, attempts: row.attempts + 1, nextAt: undefined, note: undefined });
+    await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, sentAt: Date.now(), attempts: row.attempts + 1, nextAt: undefined, note: undefined });
     rememberDelivered(row, delivered);
   }
 }
@@ -229,7 +235,10 @@ export async function retryRow(id: number): Promise<void> {
 
 /** Discard on a refused row: forgotten, so the card or bubble it was on is as it was before. */
 export async function discardRow(id: number): Promise<void> {
+  const kind = (await outboxRepo.get(id))?.kind;
   await outboxRepo.remove(id);
+  // A refused Talk turn held back the turns after it: they go on now.
+  if (kind === 'turn') kickOutbox(true);
 }
 
 /** Resolves once the sender has gone quiet (a test's seam; the app never waits on it). */

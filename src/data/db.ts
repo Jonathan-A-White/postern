@@ -236,6 +236,8 @@ export interface OutboxRow {
   /** Ms since the epoch: the next try waits until then. */
   nextAt?: number;
   txid?: string;
+  /** Ms since the epoch: when the row was taken by the backend or the chain (a Talk turn on the chain holds the turns after it until its record is seen, or a while has passed). */
+  sentAt?: number;
   /** Made once when the row is written (128 random bits, hex) and sent with every try, so the backend answers a retry of a send whose reply was lost with its first acceptance (mw-jrx0s.23). A row an older build wrote has none until its first try gives it one. */
   clientId?: string;
   state: OutboxState;

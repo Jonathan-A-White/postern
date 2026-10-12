@@ -14,6 +14,10 @@ export const outboxRepo = {
     return db.outbox.add({ ...row, clientId: newClientId(), created: row.created ?? Date.now(), attempts: 0, state: 'pending' });
   },
 
+  async get(id: number): Promise<OutboxRow | undefined> {
+    return db.outbox.get(id);
+  },
+
   /** Every row, oldest first. */
   async all(): Promise<OutboxRow[]> {
     return db.outbox.orderBy('id').toArray();
@@ -31,6 +35,11 @@ export const outboxRepo = {
       .equals('pending')
       .filter((row) => (row.kind === 'turn') === (lane === 'turn'))
       .first();
+  },
+
+  /** The Talk turns written before row `id`, oldest first, whatever their state but acked (an acked turn has been seen by the Mayor's side and holds nothing). */
+  async turnsBefore(id: number): Promise<OutboxRow[]> {
+    return db.outbox.where('id').below(id).filter((row) => row.kind === 'turn' && row.state !== 'acked').toArray();
   },
 
   async sent(): Promise<OutboxRow[]> {

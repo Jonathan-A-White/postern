@@ -12,6 +12,8 @@ export interface TalkLogEntry {
   cut: boolean;
   /** The model he asked for on this turn. */
   asked?: string;
+  /** Ideas only was on when the turn went out: 'Recorded for after 21:00', shown under it (not a received turn). */
+  recorded?: string;
   /** When he let go of the button (ms). */
   releasedAt: number;
   /** The Mayor's latest words for this turn: a holding answer until the real one comes. */
@@ -120,6 +122,12 @@ export function talkScreen(state: TalkScreenState, { event, at }: TalkScreenActi
       if (line.outgoing) {
         const { talk, text, cut, model } = line.outgoing;
         log = [...log, { turn: talk.turn, said: text, cut: cut === true, asked: model, releasedAt: at }];
+      }
+      break;
+    case 'sent':
+      if (event.recorded !== undefined && state.line.talk) {
+        const sentTurn = state.line.talk.turn;
+        log = log.map((entry) => (entry.turn === sentTurn ? { ...entry, recorded: event.recorded } : entry));
       }
       break;
     case 'incoming':

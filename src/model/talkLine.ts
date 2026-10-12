@@ -79,7 +79,8 @@ export type TalkLineEvent =
   | { type: 'hold'; talkId: string }
   | { type: 'release'; text: string }
   | { type: 'cancel' }
-  | { type: 'sent'; at: number; here?: boolean }
+  /** `recorded`: Ideas only is on, so the turn is kept for later and the line does not wait for an answer (words as shown under the turn). */
+  | { type: 'sent'; at: number; here?: boolean; recorded?: string }
   | { type: 'sendFailed'; message?: string }
   | { type: 'retry' }
   | { type: 'incoming'; turn: TalkTurn; hidden?: boolean }
@@ -231,6 +232,8 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       return idle(state, { talk: state.talk && state.talk.turn > 0 ? state.talk : undefined });
     case 'sent':
       if (state.phase !== 'sending') return state;
+      // Ideas only: the turn is recorded for after the mode ends, so there is no answer to wait for; the line is free for the next one.
+      if (event.recorded !== undefined) return idle(state, { cutPending: false });
       return { ...state, phase: 'waiting', outgoing: undefined, unsent: undefined, sentAt: event.at, thinking: false, mayorHere: event.here === true, cutPending: false };
     case 'sendFailed': {
       // His words stay: `retry` sends this very turn again, under the same number.

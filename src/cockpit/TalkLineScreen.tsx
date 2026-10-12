@@ -14,6 +14,7 @@ import { HoldToTalkBar, micName } from 'bsv-kit/composer';
 import { HOLD_BAR_CLASS } from './holdBar';
 import { useSpeech } from './useSpeaking';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
+import { useRecordedWords } from './useIdeasOnly';
 import { sendCallRequest } from './send';
 import { useRoute } from '../router';
 import { settingsRepo } from '../data/repositories';
@@ -213,7 +214,8 @@ const CALL_ME = 'Call me';
  * it says "Call sent HH:MM" until the Mayor rings or answers; a request that went on chain, with the
  * backend out of reach, says "Sent on chain HH:MM, txid <short>" instead (§21).
  */
-function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CallMe({ open, onClose, onRecorded }: { open: boolean; onClose: () => void; onRecorded: (words: string | undefined) => void }) {
+  const recorded = useRecordedWords();
   const [text, setText] = useState(CALL_ME);
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -227,6 +229,7 @@ function CallMe({ open, onClose }: { open: boolean; onClose: () => void }) {
       () => {
         setSending(false);
         setText(CALL_ME);
+        onRecorded(recorded);
         onClose();
       },
       () => {
@@ -344,6 +347,11 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: {
           {showsCutTag(entry) && <Chip>cut the last answer</Chip>}
           {entry.asked && <Chip>asked for {entry.asked}</Chip>}
         </span>
+        {entry.recorded && (
+          <span data-testid={id('recorded')} className="text-[12.5px] text-muted">
+            {entry.recorded}
+          </span>
+        )}
       </div>
       {entry.answer !== undefined && (
         <div data-testid={id('answer')} className="mr-auto flex max-w-[88%] flex-col gap-1">
@@ -425,6 +433,12 @@ export function TalkLineScreen() {
   const micOpen = talk.mic === 'ready';
   const label = buttonLabel(line.phase, talk.supported, micOpen);
   const [calling, setCalling] = useState(false);
+  // Ideas only was on when the request went: 'Recorded for after 21:00', shown and said (the turns do the same).
+  const [callRecorded, setCallRecorded] = useState<string>();
+  const onCallRecorded = (words: string | undefined) => {
+    setCallRecorded(words);
+    if (words !== undefined && canSpeak()) speak(words, { key: 'talk-recorded' });
+  };
   const callRows = useCallLine();
   const callSent = waitingCall(callRows);
   const outbox = useOutbox();
@@ -548,6 +562,11 @@ export function TalkLineScreen() {
             Call request <OutboxMark row={callWaiting} />
           </p>
         )}
+        {callRecorded !== undefined && (
+          <p data-testid="call-recorded" className="text-center text-[11.5px] text-muted">
+            {callRecorded}
+          </p>
+        )}
         {callSent !== undefined && (
           <p data-testid="call-sent" className="text-center text-[11.5px] text-faint">
             {callSent.onChain ? `Sent on chain ${clockHHMM(callSent.at)}, txid ${callSent.txid.slice(0, 8)}…` : `Call sent ${clockHHMM(callSent.at)}`}
@@ -575,7 +594,7 @@ export function TalkLineScreen() {
           ))}
         </div>
 
-        <CallMe open={calling} onClose={() => setCalling(false)} />
+        <CallMe open={calling} onClose={() => setCalling(false)} onRecorded={onCallRecorded} />
 
         <HoldToTalkBar label={label} listening={listening} disabled={dead} onPress={talk.press} onRelease={() => void talk.release()} onAbort={talk.abort} className={HOLD_BAR_CLASS} />
 

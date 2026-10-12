@@ -20,6 +20,7 @@ import { announceAnswer, clearAnnouncement } from '../services/talkAnswerNotice'
 import { sendTurn } from './send';
 import { useBeadTitles, useTalkTurns } from './hooks';
 import { useMayorHere } from './useMayorHere';
+import { useRecordedWords } from './useIdeasOnly';
 import { useHold } from 'bsv-kit/composer';
 import { APP_NAME } from './holdBar';
 
@@ -28,6 +29,9 @@ function pageHidden(): boolean {
 }
 
 const NO_ROWS: never[] = [];
+
+/** The speech key of 'Recorded for after 21:00' said over a turn, apart from the Mayor's answer's. */
+const RECORDED_KEY = 'talk-recorded';
 
 /** `fresh`: the screen was opened to start a new talk (a Talk button says what it is about), so the open one is left as it is. */
 export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
@@ -57,6 +61,13 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   useEffect(() => {
     hereNow.current = here;
   }, [here]);
+
+  // While Ideas only is on a turn is recorded for later: the line says so, aloud, and does not wait. Read at the moment of sending.
+  const recordedWords = useRecordedWords();
+  const recordedNow = useRef(recordedWords);
+  useEffect(() => {
+    recordedNow.current = recordedWords;
+  }, [recordedWords]);
 
   // The open talk is read back from its stored rows once they are read, so leaving the screen or
   // reloading the app loses nothing: his turns and the Mayor's answers are on the screen again, the next
@@ -92,7 +103,11 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     if (!outgoing || sending.current === outgoing) return;
     sending.current = outgoing;
     sendTurn(outgoing).then(
-      () => feed({ type: 'sent', at: now(), here: hereNow.current }),
+      () => {
+        const recorded = recordedNow.current;
+        feed({ type: 'sent', at: now(), here: hereNow.current, ...(recorded !== undefined ? { recorded } : {}) });
+        if (recorded !== undefined && canSpeak()) speak(recorded, { key: RECORDED_KEY });
+      },
       () => feed({ type: 'sendFailed' }),
     );
   }, [outgoing, feed]);

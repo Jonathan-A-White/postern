@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.5.43
+_2026-10-12_
+- New: Settings now has an Ideas only section where you can set a time you are away (until 9 pm, until 7 am, for an hour, or a date), a weekly schedule, and choose whether the Mayor's ring and emergencies still reach you.
+
 ## 0.5.42
 _2026-10-12_
 - Fixed: Talk turns now always reach the Mayor in the order you spoke them, even when one has to wait or is retried.

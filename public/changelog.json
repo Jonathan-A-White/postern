@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.43",
+    "date": "2026-10-12",
+    "story": "mw-8ifimx.3",
+    "kind": "new",
+    "text": "Settings now has an Ideas only section where you can set a time you are away (until 9 pm, until 7 am, for an hour, or a date), a weekly schedule, and choose whether the Mayor's ring and emergencies still reach you."
+  },
+  {
     "version": "0.5.42",
     "date": "2026-10-12",
     "story": "mw-q6n8m0.12",

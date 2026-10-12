@@ -1,5 +1,7 @@
 # postern
 
+The app's vision: [VISION.md](VISION.md).
+
 Building an app like this one? Start with [docs/best-practices.md](docs/best-practices.md): the
 front end, the back end, and how to run without the chain.
 To use another chain, or none, see [docs/swapping-the-chain.md](docs/swapping-the-chain.md).

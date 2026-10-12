@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/ideasonly"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
@@ -23,6 +24,13 @@ type Sender struct {
 	httpClient webpush.HTTPClient
 	twins      *twinMemory
 	timeout    time.Duration
+	ideas      IdeasOnly
+}
+
+// IdeasOnly is the one question the sender asks of the Ideas only store (docs/protocol.md §25):
+// a key's setting and whether its mode is on now. *ideasonly.Store answers it.
+type IdeasOnly interface {
+	Get(key string) (ideasonly.Setting, ideasonly.Status)
 }
 
 // NewSender builds a Sender that signs pushes with keys, identifies this
@@ -40,6 +48,14 @@ const defaultTimeout = 15 * time.Second
 // context, so it holds for an injected HTTP client that has no timeout of its own.
 func (s *Sender) WithTimeout(d time.Duration) *Sender {
 	s.timeout = d
+	return s
+}
+
+// WithIdeasOnly makes the sender ask ideas, before every push to a key, whether that key is in
+// Ideas only (docs/protocol.md §25): while it is, only a ring and an emergency are pushed, each
+// per the key's reaches switch. Without it every record is pushed as the other sections say.
+func (s *Sender) WithIdeasOnly(ideas IdeasOnly) *Sender {
+	s.ideas = ideas
 	return s
 }
 
@@ -148,6 +164,11 @@ func (s *Sender) NotifyRecord(txid string, payload json.RawMessage) error {
 		return nil
 	}
 
+	if s.silenced(addressed) {
+		log.Printf("push for record %s: dropped, %s while Ideas only is on", txid, droppedClass(addressed))
+		return nil
+	}
+
 	body, err := json.Marshal(push)
 	if err != nil {
 		return fmt.Errorf("marshaling push payload: %w", err)
@@ -186,6 +207,41 @@ func (s *Sender) NotifyRecord(txid string, payload json.RawMessage) error {
 		log.Printf("push for record %s: sent to %d device(s)", txid, sent)
 	}
 	return errors.Join(errs...)
+}
+
+// silenced reports whether the record's recipient is in Ideas only and this record is not one of
+// the two that may still reach them: a ring when reaches.ring is on, an emergency when
+// reaches.emergency is on (docs/protocol.md §25). The record itself is stored, evented and hooked
+// all the same; only its push is withheld.
+func (s *Sender) silenced(addressed addressedPayload) bool {
+	if s.ideas == nil {
+		return false
+	}
+	setting, state := s.ideas.Get(addressed.To)
+	if !state.On {
+		return false
+	}
+	switch addressed.Class {
+	case ringClass:
+		return !setting.Reaches.RingOn()
+	case eventsClass:
+		return !setting.Reaches.EmergencyOn()
+	}
+	return true
+}
+
+// droppedClass names a withheld push in the log: its record's class when it is one of the
+// cockpit's, ring or emergency for those two, and "other" for any class a sender made up.
+func droppedClass(addressed addressedPayload) string {
+	switch addressed.Class {
+	case ringClass:
+		return "ring"
+	case eventsClass:
+		return "emergency"
+	case "message", "decision-needed", "landing", "alarm", "talk", "grist":
+		return addressed.Class
+	}
+	return "other"
 }
 
 // recordPush is the push a record's payload asks for, and false for a record

@@ -20,10 +20,12 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/config"
 	"github.com/Jonathan-A-White/postern/server/internal/events"
+	"github.com/Jonathan-A-White/postern/server/internal/ideasonly"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/standby"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
+	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
 // stubChecker is a LicenceChecker test double that never touches a chain.
@@ -962,5 +964,92 @@ func TestRelayOnlyNeedsNoDataDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(missing); err == nil {
 		t.Fatal("POSTERN_DATA was created")
+	}
+}
+
+// While the Governor's key is in Ideas only (docs/protocol.md §25) the fan-out still tells the hub
+// and runs the on-message hook for each record, but the real sender pushes none of a message, a
+// decision, a landing, an alarm or the Mayor's talk answer; a ring and an emergency are pushed.
+func TestFanoutWithIdeasOnlyOnPushesOnlyARingAndAnEmergencyButHubAndHookRunForAll(t *testing.T) {
+	const mayor = "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+	const governor = "023c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1"
+	dir := t.TempDir()
+
+	var pushes atomic.Int32
+	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushes.Add(1)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer service.Close()
+	pushStore, err := push.OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pushStore.Add(push.Subscription{
+		PublicKeyHex: governor,
+		Endpoint:     service.URL + "/sub",
+		Keys:         webpush.Keys{P256dh: "BNNL5ZaTfK81qhXOx23-wewhigUeFb632jN6LvRWCFH1ubQr77FE_9qV1FuojuRmHP42zmf34rXgW80OvUVDgTk", Auth: "zqbxT6JKstKSY9JKibZLSQ"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	vapidPriv, vapidPub, err := webpush.GenerateVAPIDKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ideas, err := ideasonly.OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ideas.Put(governor, ideasonly.Setting{Until: time.Now().Add(time.Hour).Unix()}); err != nil {
+		t.Fatal(err)
+	}
+	sender := push.NewSender(push.VAPIDKeys{PublicKey: vapidPub, PrivateKey: vapidPriv}, "https://postern.allmymind.org", pushStore).WithIdeasOnly(ideas)
+
+	onMessage := filepath.Join(dir, "on-message")
+	cfg := config.Config{MayorKey: mayor, OnMessage: "echo x >> " + onMessage, HomeCmd: "exit 0"}
+	mon := standby.New(cfg.HomeCmd)
+	mon.Check()
+	hub := &recordingNotifier{}
+	fanout := buildFanout(cfg, mon, sender, hub)
+
+	envelope := func(txid, class, extra string) index.Record {
+		return index.Record{TxID: txid, Payload: []byte(`{"v":1,"kind":"msg","class":"` + class + `"` + extra + `,"to":"` + governor + `","from":"` + mayor + `","ts":1,"ct":"ct-` + txid + `","summary":"words"}`)}
+	}
+	for _, class := range []string{"message", "decision-needed", "landing", "alarm"} {
+		fanout.RecordIndexed(envelope("direct:"+class, class, ""))
+	}
+	fanout.RecordIndexed(envelope("direct:talk", "talk", ""))
+
+	lines := func() int {
+		b, _ := os.ReadFile(onMessage)
+		return strings.Count(string(b), "x")
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for lines() < 1 { // the hook debounces a burst of records into one run
+		if time.Now().After(deadline) {
+			t.Fatal("the on-message hook never ran while Ideas only was on")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if hub.n.Load() != 5 {
+		t.Fatalf("the hub was told about %d records, want 5", hub.n.Load())
+	}
+	if pushes.Load() != 0 {
+		t.Fatalf("%d pushes while Ideas only is on, want 0", pushes.Load())
+	}
+
+	fanout.RecordIndexed(envelope("direct:ring", "call", `,"role":"ring"`))
+	fanout.RecordIndexed(envelope("direct:emergency", "events", `,"lane":"emergency"`))
+	deadline = time.Now().Add(10 * time.Second)
+	for pushes.Load() < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d pushes after a ring and an emergency, want 2", pushes.Load())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if pushes.Load() != 2 {
+		t.Fatalf("%d pushes in all, want 2 (the ring and the emergency)", pushes.Load())
 	}
 }

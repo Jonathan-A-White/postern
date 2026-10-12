@@ -541,7 +541,8 @@ The backend:
    `call` record or an `events` record or a `card` or `card-update` record gets the `message`
    event only (§20, §21, §22, §24: evented, never pushed), but
    for the Mayor's ring (a `call` record whose clear `role` is `ring`), which is pushed too,
-   titled `The Mayor is calling`, its `summary` the body (§21).
+   titled `The Mayor is calling`, its `summary` the body (§21). While the recipient's key is in
+   Ideas only (§25) that push is withheld, but for a ring and an emergency per the key's `reaches`.
 
 A body over 256 KiB is refused `413`. The chain channel (§4) keeps working
 unchanged: a reader must accept both kinds of record, in `seq` order.
@@ -1911,7 +1912,8 @@ on the backend like saved prompts (§23), so a phone, a second phone and the May
 see the same one, and a second person's Postern would have a mode of its own. This section is
 the backend's half: the setting, the state worked out from it, the routes and the event. What
 the app shows, what `mw` holds and releases, and what the push sender withholds are other
-stories; the record fan-out (§9, §20–22) is untouched here.
+stories; the record fan-out (§9, §20–22) is untouched here, but for the push, described under "The push"
+below.
 
 ### The setting
 
@@ -1975,3 +1977,17 @@ every open stream when a key's state changes: on every `PUT` that changes it (`o
 moment `until` or a window passes, or a window begins). The backend keeps a timer per key, re-armed
 at each `PUT` and each edge, and re-armed from the file on a restart; a restart announces nothing.
 `until` is `0` when `on` is false.
+
+### The push
+
+While a key's state is on, the push sender (§9 item 6) asks the store for the record's `to` before
+every push and withholds it: no `message`, `decision-needed`, `landing`, `alarm`, `talk` answer
+(§20) or any other class is pushed to that key. Two stay: the Mayor's ring (§21) is pushed only
+when `reaches.ring` is on, and an emergency (§22) only when `reaches.emergency` is on; with
+`reaches.ring` or `reaches.emergency` off, that one is withheld too. A normal-lane `events` record
+and a ring-less `call` record are never pushed either way. Only the push is withheld: the record is
+still indexed, still gets its `message` event on §10's stream and still runs the on-message hook,
+exactly as §9 item 6 says. One log line per withheld push names the record's txid and its class
+(`ring`, `emergency` or the record's class) and never its words. While the state is off every push
+is as it was. A push with no record behind it (the watchdog's alarms) is not a record and is
+untouched.

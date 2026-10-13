@@ -17,6 +17,7 @@ import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState } from '../../src/services/outbox';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { stopLive } from '../../src/services/live';
+import { resetViewThrottle } from '../../src/services/viewThrottle';
 import { decryptMessage, encryptMessage, type MessagePayload } from '../../src/services/messages';
 import { sealDocument } from '../../src/services/documents';
 import { MAYOR, STALE_FACTS_END, fixtureDetail, fixtureRecords, fixtureStaleNeed, fixtureView } from '../../tests/support/cockpit-fixture';
@@ -127,6 +128,7 @@ async function fresh(options: BackendOptions = {}): Promise<void> {
 
 async function openAt(search: string): Promise<void> {
   cleanup();
+  resetViewThrottle(); // a page load starts with no fetch behind it (mw-7dige5.4)
   window.history.pushState({}, '', `/${search}`);
   render(<App />);
 }

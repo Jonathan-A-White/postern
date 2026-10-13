@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.17",
+    "date": "2026-10-13",
+    "story": "mw-7dige5.4",
+    "kind": "fixed",
+    "text": "Postern downloads far less data while you use it, because it no longer re-fetches the whole map every few seconds."
+  },
+  {
     "version": "0.6.15",
     "date": "2026-10-13",
     "story": "mw-ev7oyy.4",

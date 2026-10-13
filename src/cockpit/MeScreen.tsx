@@ -326,7 +326,7 @@ export function MeScreen() {
             </Row>
             {live.error && <p className="px-4 py-3 text-[13px] text-danger">{live.error}</p>}
             <div className="px-4 py-3">
-              <Button size="sm" icon="refresh" onClick={() => void refreshNow()} disabled={!key}>
+              <Button size="sm" icon="refresh" onClick={() => void refreshNow({ force: true })} disabled={!key}>
                 Refresh now
               </Button>
             </div>

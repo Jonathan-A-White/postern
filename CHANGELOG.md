@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.17
+_2026-10-13_
+- Fixed: Postern downloads far less data while you use it, because it no longer re-fetches the whole map every few seconds.
+
 ## 0.6.15
 _2026-10-13_
 - New: A To do tab shows your own lists as columns of cards; tap a card to turn it over for its notes, tap Done to close it.

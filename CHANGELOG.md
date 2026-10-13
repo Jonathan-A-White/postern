@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.19
+_2026-10-13_
+- New: You can now add, edit and rearrange the cards on your To do lists from the phone: hold a card to drag it, tap Add a card, or tap a card and choose Edit.
+
 ## 0.6.17
 _2026-10-13_
 - Fixed: Postern downloads far less data while you use it, because it no longer re-fetches the whole map every few seconds.

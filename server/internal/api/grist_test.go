@@ -240,7 +240,6 @@ func TestAppAndMillKeysAreRefusedTheCockpit(t *testing.T) {
 	s := newGristServer(t)
 	cockpitOnly := []struct{ method, path string }{
 		{http.MethodGet, "/api/view"},
-		{http.MethodGet, "/api/events"},
 		{http.MethodGet, "/api/beads/mw-1"},
 		{http.MethodPost, "/api/broadcast"},
 		{http.MethodGet, "/api/utxos/mxyz"},
@@ -256,6 +255,7 @@ func TestAppAndMillKeysAreRefusedTheCockpit(t *testing.T) {
 		}
 	}
 	for _, route := range []struct{ as, method, path string }{
+		{"mill", http.MethodGet, "/api/events"}, // an app key's stream is narrowed to its own records (app_events_test.go)
 		{"cairnPhone", http.MethodGet, "/api/blobs/" + strings.Repeat("a", 64)},
 		{"cairnPhone", http.MethodDelete, "/api/blobs/" + strings.Repeat("a", 64)},
 		{"mill", http.MethodPost, "/api/blobs"},
@@ -297,8 +297,8 @@ func TestMeNamesTheMillToEveryKeyAndTheMayorOnlyToTheCockpit(t *testing.T) {
 	_, millHex := s.v.key(t, "mill")
 
 	app := s.me(t, "cairnPhone")
-	if app.Mayor != nil || app.Mill != millHex || strings.Join(app.Features, ",") != "grist" || strings.Join(app.Apps, ",") != "cairn" {
-		t.Fatalf("app /api/me = %+v, want the mill, features [grist], apps [cairn] and no mayor", app)
+	if app.Mayor != nil || app.Mill != millHex || strings.Join(app.Features, ",") != "grist,events" || strings.Join(app.Apps, ",") != "cairn" {
+		t.Fatalf("app /api/me = %+v, want the mill, features [grist events], apps [cairn] and no mayor", app)
 	}
 	cockpit := s.me(t, "governor")
 	if cockpit.Mayor == nil || cockpit.Mill != millHex || !contains(cockpit.Features, "grist") || !contains(cockpit.Features, "view") {

@@ -78,8 +78,8 @@ func TestAGatedSpellforgeTokenOpensTheGristDoor(t *testing.T) {
 	s := newSpellforgeServer(t)
 
 	me := s.me(t, "purchaser")
-	if strings.Join(me.Apps, ",") != "spellforge" || strings.Join(me.Features, ",") != "grist" || me.Mayor != nil {
-		t.Fatalf("/api/me = %+v, want apps [spellforge], features [grist] and no mayor", me)
+	if strings.Join(me.Apps, ",") != "spellforge" || strings.Join(me.Features, ",") != "grist,events" || me.Mayor != nil {
+		t.Fatalf("/api/me = %+v, want apps [spellforge], features [grist events] and no mayor", me)
 	}
 
 	resp := s.deliver(t, "grist", "purchaser", "mill")

@@ -6,6 +6,7 @@ import { WhatsNewSheet, useChangelog } from 'bsv-kit/whats-new';
 import { Card, SectionTitle } from '../ui';
 import { APP_VERSION, CHANGELOG_URL, WHATS_NEW_STORAGE_KEY } from '../services/whatsNew';
 import { describeBuild } from '../services/buildLine';
+import { APP_VERSION_STRING } from '../version';
 
 /** The sheet that tells him what an update brought, once; nothing until the changelog is read, and nothing on a first install. */
 export function WhatsNewOnUpdate() {
@@ -26,7 +27,7 @@ const LINK = 'text-accent underline underline-offset-2';
 
 /** About's Version: this build and the link to what changed; the update check runs by itself (appUpdate.ts). */
 export function AboutVersion() {
-  const build = describeBuild(__APP_VERSION__);
+  const build = describeBuild(APP_VERSION_STRING);
   return (
     <section className="flex flex-col gap-2" aria-label="Version">
       <SectionTitle>Version</SectionTitle>

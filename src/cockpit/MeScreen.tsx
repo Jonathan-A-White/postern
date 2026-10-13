@@ -26,6 +26,7 @@ import { settingsRepo } from '../data/repositories';
 import { DEFAULT_NOTIFICATION_SETTINGS, MESSAGE_CLASSES, type ClassNotificationSettings, type NotificationSettingsMap, type PushClass } from '../push/classOptions';
 import { formatRoute } from '../nav/route';
 import { toast } from '../ui/toastStore';
+import { APP_VERSION_STRING } from '../version';
 
 const CLASS_LABELS: Record<PushClass, string> = {
   'decision-needed': 'Decisions',
@@ -200,7 +201,7 @@ export function MeScreen() {
   const live = useLive();
   const expires = sessionExpiresAt();
   const label = liveLabel(live);
-  const build = describeBuild(__APP_VERSION__);
+  const build = describeBuild(APP_VERSION_STRING);
   const standby = useStandby();
   const viewState = useViewIndex();
   // In standby the view on the phone may be from a home that has since changed hands.

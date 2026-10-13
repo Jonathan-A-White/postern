@@ -18,3 +18,21 @@ export function shortCommit(cwd: string = process.cwd(), git = 'git'): string {
 export function buildVersion(version: string, when: Date, commit: string): string {
   return `${version} · ${when.toISOString().slice(0, 16).replace('T', ' ')}Z · ${commit}`;
 }
+
+/**
+ * The time a build is stamped with: POSTERN_BUILD_AT when it names a time (a reproducible build, and the
+ * test that builds twice a day apart), otherwise now.
+ */
+export function buildStampAt(): Date {
+  const named = new Date(process.env.POSTERN_BUILD_AT ?? '');
+  return Number.isNaN(named.getTime()) ? new Date() : named;
+}
+
+/**
+ * The script that hands the version string to the app: index.html carries it, not a chunk of code, so a
+ * build whose code is unchanged leaves the main chunk's name and bytes alone (mw-7dige5.3). `<` is escaped
+ * so the string can never close the script tag.
+ */
+export function buildStampHtml(version: string): string {
+  return `window.__APP_VERSION__=${JSON.stringify(version).replace(/</g, '\\u003c')};`;
+}

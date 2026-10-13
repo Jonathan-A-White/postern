@@ -35,3 +35,38 @@ The lines that do not move, for everyone:
 
 ## How feedback is weighed
 Feedback that fits this vision is approved and built elegantly; where people differ, a setting; anything crossing a line or changing the vision goes to the Governor.
+
+## His To do board and reminders
+His words, Talk d1274929 turns 7-14, 2026-10-13 (dictated; verbatim on mw-ev7oyy, turns 7-8, and on the map mw-va88wh, turns 9-14).
+
+His own outside things only:
+- "I'm trying to juggle all these different things you know home and work and and you know the factory and all that stuff." (turn 7)
+- "I want it to be outside things" and "I don't want to get this into the world of the things that you're managing I want this to be the things that I need to do and you can help me manage that and organize that too." (turn 8). The board holds his own outside things, never the factory's epics or stories.
+
+He talks, the Mayor keeps it; hand edits allowed:
+- "most likely I'm not the one who's actually going to edit it I'm going to just talk to you but it probably would be good to be able to edit it you know maybe it's something like a one-off something quick but most likely I'm going to be interacting with you so you know make this this very you know AI native" (turn 7)
+- "be very inspired by Trello" (turn 7)
+
+What it does:
+- Due times: "oh I need this by a certain time" (turn 9)
+- Calendar: "maybe a calendar view of what all I need to do" (turn 9)
+- Reminders are their own pushes: "they should have a separate setting option where you could set them up differently from the other ones" (turn 10)
+- Search over everything, done items included: "search right search is huge even of old things" and "the searchability needs to be really good" (turn 9)
+- Hot on the phone, cold on the back end: "the front end is what's hot if you want to say it that way but cooler things are on the back end in a you know in a the appropriate database" (turn 9)
+- Repeats and the Mayor spotting patterns: "I see that you've done this now for a couple Tuesdays you know do you need to do this every Tuesday" (turn 9)
+
+Modular, so it may stand alone one day:
+- "make it modular" and "someday being used by other people" (turn 7)
+- "one day could stand alone as an app" (turn 9)
+
+Use before you build:
+- "we don't reinvent the wheel you know if there are solid open source components to this that you can that you can use and that will work well for us" (turn 10)
+- Build only a real gap, and then as a shareable library: "you're writing shareable libraries and other people could use this" and "if this truly is a gap that we found then other people might appreciate it as well" (turn 10)
+
+Integrate, never reinvent:
+- "let's do what we do well and if there are things that other people do well you know let's integrate well with them like seamlessly" (turn 13)
+- "just like with lampas I really like how it integrates so easily with logos" (turn 13)
+- A To do card hands off to what others do well: "turn something into a Google calendar entry", "something that you had to do to a text to that person or something that you had to do to an email to that person and it should maybe interact with my contacts" (turn 13)
+
+Small pieces that chain (Unix pipes):
+- "I'm a huge fan of the philosophy within I guess the Unix world and now the Linux world of like pipes and everything where you can things together and that sort of thing" (turn 14)

@@ -809,6 +809,9 @@ and the Mayor is told afterwards. An action is an ordinary message (§1, class
 | `chase` | — | the answer **Chase** to a `chase` need (§11): he is chasing the person now; the bead's wait starts again from now, so the next chase falls due 3 working days on |
 | `ask_done` | — | the answer **Done** to a `chase` need: the other side delivered; the host does what `mw ask done` does (clears `waiting:others`) |
 | `keep_waiting` | — | the answer **Keep waiting** to a `chase` need: no chase for another 3 working days |
+| `todo_add` | `list`, `title`, `notes`? (no `bead`) | files an open card on one of his To do lists (below) |
+| `todo_edit` | `title`?, `notes`? | sets a To do card's title and/or notes |
+| `todo_move` | `list`?, `before`?, `after`? | moves a To do card within its list or to another list (below) |
 
 ```json
 { "action": "keep", "bead": "mw-abc.3", "days": 30 }
@@ -843,6 +846,54 @@ is the truth again (the story may have been held a second time). No clock is com
 phone whose time is minutes slow does not offer a tapped action again, and a fast one does
 not hide a newer view. A view with no `seq`, or a tap made against such a view, falls back to
 the earlier rule: the phone's time of the tap against the view's `written_at`.
+
+### The To do board's hand edits
+
+His To do board (the `hitl:todo` beads; a list is the epic they hang from) is mostly kept by talking to the
+Mayor, but a quick edit works from the card (mw-ev7oyy.6 is the host's half). Three actions, all plaintext JSON
+like the rest of §13, all refused by the host for a bead that does not carry `hitl:todo` (and for an epic, which is a
+list, not a card):
+
+```json
+{ "action": "todo_add", "list": "mw-abc", "title": "Buy bin bags", "notes": "The tall kind." }
+{ "action": "todo_edit", "bead": "mw-abc.4", "title": "Buy bin bags and tape", "notes": "" }
+{ "action": "todo_move", "bead": "mw-abc.4", "list": "mw-def", "before": "mw-def.2" }
+```
+
+- `todo_add`: `list` is the epic's id (an open epic labelled `hitl:todo`), `title` is not blank, `notes` is optional
+  and becomes the card's description. It has **no `bead` field**: the card does not exist yet, so the phone cannot
+  name it, and cannot edit or move it until the view carries it (a card still being added is shown, marked pending,
+  but is not draggable and has no back).
+- `todo_edit`: `title` and/or `notes` (at least one; `"notes": ""` clears them; a blank `title` is refused). The
+  phone sends only what changed.
+- `todo_move`: `before` or `after` names a card on the target list (the card's own list when `list` is absent); with
+  neither, the card goes to the end of `list`. A move that names no place (no `before`, `after` or other `list`), both
+  `before` and `after`, a `list` that is not an open `hitl:todo` epic, or an anchor that is not an open card on the
+  target is refused. The phone never anchors on a card still being added, and never moves a card onto the Other column
+  (cards whose epic is not in the view), which is no epic. The host keeps the order as the bead's `todo_rank`
+  metadata, published on the view's bead; the cards of a list come in rank order, the unranked after them.
+- Like every action each is applied at most once per txid and echoed as an `action_applied` event (§22) whose
+  `detail` is its txid (millwright `docs/events.md`); a refused one writes nothing and is not echoed.
+
+**What the app shows.** The change shows at once on the board (a new card at the list's foot, the new title, the
+new order or list), marked *pending*, from the app's own outbox rows (§9, `src/todo/edits.ts`); no clock is compared
+while the view carries a `seq`:
+
+1. While the action is being sent, or sent and no event naming its txid has arrived, or the echo has arrived but the
+   view on screen has a `seq` below the echo's, the change stays on the board marked pending. Once the view's `seq` has
+   reached the echo's the view is the truth and the mark goes (a view with no `seq` falls back to its `written_at`
+   against the send's time).
+2. A send the backend refuses for good (a 4xx) is rolled back at once: the board is as the view says, and a line says
+   what was asked and why, with Retry and Discard (the outbox's `failed` row).
+3. An action that went but is not echoed within 90 seconds is read as refused by the Mayor's host (it mails the
+   Mayor "Not applied" and echoes nothing): the board is rolled back to the view, and a line says the change was not
+   done, with Dismiss, for ten minutes from the send. An echo that comes late takes the line away and the view shows
+   the change after all.
+
+Dragging is long-press-drag on a phone (a finger that moves before the hold is up scrolls the board), a few pixels'
+drag with a mouse; the keyboard's way is **Move up**, **Move down** and **Move to** on the card's back, and Alt + arrow
+keys on the focused card. Each drop is one `todo_move` naming the card it landed before (or after, at a list's foot)
+and, for another list, that list.
 
 ## 14. Voice notes, files and transcripts
 

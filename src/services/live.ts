@@ -8,8 +8,10 @@
 // address from the chain itself every 5 s, backing off to 60 s when WhatsOnChain fails, refuses or has nothing new, and not at all while the page is hidden (docs/protocol.md §21): a record
 // found there is kept, a ring rings, and the backend is tried again at once.
 // The factory's events (§22) come in the message sync and are projected onto the
-// stored view (src/services/events.ts); once they flow, the stream's `view` event
-// is only the recovery path, for when no events batch follows it. The line never says live over a dead
+// stored view (src/services/events.ts). The whole view (about 300 KB) is fetched at the start of
+// the session, and after that only when the events call for it: a gap in their seqs, a batch that
+// cannot be applied, or a start whose fetch failed. Once events flow, the stream's `view` event,
+// a hello, a reconnect and a return to the app fetch nothing (mw-7dige5.1). The line never says live over a dead
 // link: a stream with no ping for STREAM_STALE_MS is read as dropped, and a send the backend does not
 // answer (deliver's onUnreachable) drops it to reconnecting at once. A backend that did not answer /api/me
 // when the app opened is asked again on every turn of the loop until it does, so the stream and the
@@ -57,8 +59,6 @@ const STREAM_STALE_MS = 60_000;
 const STALE_CHECK_MS = 5_000;
 /** Two returns to the foreground closer than this are one. */
 const FOREGROUND_DEBOUNCE_MS = 3_000;
-/** Once events flow, how long a `view` event waits for an events batch to make fetching the view needless. */
-const VIEW_GRACE_MS = 10_000;
 
 let state: LiveState = { status: 'idle', me: null, reconnects: 0, syncs: 0 };
 const listeners = new Set<() => void>();
@@ -66,7 +66,8 @@ let current: { key: Uint8Array; abort: AbortController; interrupt?: AbortControl
 let lastForeground = 0;
 /** When this session last applied an events batch (ms), 0 before the first. */
 let lastProjected = 0;
-let viewWait: ReturnType<typeof setTimeout> | undefined;
+/** Whether this session has fetched the view (or been told by the backend that its copy is current). */
+let viewFresh = false;
 
 function setState(patch: Partial<LiveState>): void {
   state = { ...state, ...patch };
@@ -178,6 +179,18 @@ function queue(task: () => Promise<void>): Promise<void> {
   return syncing;
 }
 
+/** Whether the factory's events flow to this phone, so the stored view is kept by them and the whole view need not be fetched again. */
+function eventsKeepTheView(): boolean {
+  return hasFeature('events') && hasFeature('view');
+}
+
+/** The messages synced, and the view fetched only when nothing keeps it current: this session has not fetched it yet,
+ * or the backend sends no events to project onto it. A gap in the events or a batch that cannot be applied fetches it
+ * inside the message sync. */
+function syncMessagesKeepingView(key: Uint8Array): Promise<boolean> {
+  return syncAll(key, { messages: true, view: !eventsKeepTheView() || !viewFresh });
+}
+
 /** Resolves true when every part of the sync succeeded. */
 async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boolean }): Promise<boolean> {
   let ok = false;
@@ -189,13 +202,14 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boole
         const synced = await syncMessagesAndEvents({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key, mayorKey: state.mayorKey, live: hasFeature('view') });
         if (synced.applied > 0) lastProjected = Date.now();
         viewFetched = synced.refetched;
+        if (viewFetched) viewFresh = true;
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err));
       }
     }
     if (what.view && !viewFetched) {
       try {
-        await refreshView({ key, mayorKey: state.mayorKey, live: hasFeature('view') });
+        if ((await refreshView({ key, mayorKey: state.mayorKey, live: hasFeature('view') })) !== 'absent') viewFresh = true;
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err));
       }
@@ -208,20 +222,11 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boole
   return ok;
 }
 
-/** The stream says the view changed. Before any events batch this session it is fetched
- * at once, as ever; once events flow, the batch that follows within VIEW_GRACE_MS has
- * already changed the stored copy, and the view is fetched only if none does. */
+/** The stream says the view changed. Before any events batch this session it is fetched at once, as ever.
+ * Once events flow, the batch that carries the change has changed the stored copy (or will), and a change it
+ * does not carry shows as a gap or a batch that cannot be applied: the view event fetches nothing (mw-7dige5.1). */
 function onViewEvent(key: Uint8Array): void {
-  if (lastProjected === 0) {
-    void syncAll(key, { view: true });
-    return;
-  }
-  if (viewWait !== undefined) return;
-  const heard = Date.now();
-  viewWait = setTimeout(() => {
-    viewWait = undefined;
-    if (current?.key === key && lastProjected < heard - VIEW_GRACE_MS) void syncAll(key, { view: true });
-  }, VIEW_GRACE_MS);
+  if (lastProjected === 0) void syncAll(key, { view: true });
 }
 
 /** Parses the text of one server-sent event block ("event: x\ndata: {...}"). */
@@ -286,7 +291,7 @@ async function readStream(reader: ReadableStreamDefaultReader<string>, key: Uint
       buffer = buffer.slice(split + 2);
       const parsed = parseEventBlock(block);
       setState({ lastHeard: Date.now() });
-      if (parsed?.event === 'hello') void syncAll(key, { messages: true, view: true });
+      if (parsed?.event === 'hello') void syncMessagesKeepingView(key);
       else if (parsed?.event === 'message') void syncAll(key, { messages: true });
       else if (parsed?.event === 'view') onViewEvent(key);
       else if (parsed?.event === 'ideas-only') void onIdeasOnlyEvent(key, parsed.data).catch(() => undefined);
@@ -366,7 +371,7 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
       }
       await sleep(backoff, wake);
       backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
-      if (!signal.aborted) recoverySyncFailed = !(await syncAll(key, { messages: true, view: true }));
+      if (!signal.aborted) recoverySyncFailed = !(await syncMessagesKeepingView(key));
     } else {
       setState({ status: state.error ? 'offline' : 'polling' });
       // Not yet told who is who: ask again soon, backing off as a dropped stream does.
@@ -397,8 +402,7 @@ export function stopLive(): void {
   chainSeen.clear();
   lastForeground = 0;
   lastProjected = 0;
-  clearTimeout(viewWait);
-  viewWait = undefined;
+  viewFresh = false;
   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibilityChange);
   if (typeof window !== 'undefined') window.removeEventListener('pageshow', onForeground);
   setState({ status: 'idle' });
@@ -416,15 +420,16 @@ function streamIsDead(): boolean {
 }
 
 /** The app is back on screen (visible again, or restored from the bfcache): the OS
- * may have suspended the stream and swallowed `view` events, so pull everything
- * now and, if the stream is dead, open a new one at once. */
+ * may have suspended the stream and swallowed events, so pull the messages (and their
+ * events, which fetch the view if they leave a gap) now and, if the stream is dead,
+ * open a new one at once. */
 function onForeground(): void {
   if (!current) return;
   const now = Date.now();
   if (now - lastForeground < FOREGROUND_DEBOUNCE_MS) return;
   lastForeground = now;
   if (streamIsDead()) current.interrupt?.abort();
-  void refreshNow();
+  void syncMessagesKeepingView(current.key);
 }
 
 /** Pull everything now (pull-to-refresh, a notification tap, a Retry button). */

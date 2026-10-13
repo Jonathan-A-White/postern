@@ -113,14 +113,15 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario('mw-jrx0s.7: once events flow, a view event that no batch follows fetches the view', ({ Given, When, Then }) => {
+  // A change no batch carries shows as a gap in the seqs, or a batch that cannot be applied, and fetches then.
+  Scenario('mw-7dige5.1: once events flow, a view event that no batch follows fetches nothing either', ({ Given, When, Then }) => {
     Given('the event stream is live and an events batch was applied a minute ago', liveWithEvents);
     When('the stream says the view changed and nothing follows it', async () => {
       await say('event: view\ndata: {"etag": "\\"v2\\""}');
     });
-    Then('ten seconds on, the view has been fetched once', async () => {
+    Then('ten seconds on, the view has not been fetched', async () => {
       await advance(10_000);
-      expect(net.viewFetches).toBe(1);
+      expect(net.viewFetches).toBe(0);
     });
   });
 });

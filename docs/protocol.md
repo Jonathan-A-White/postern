@@ -580,7 +580,9 @@ data: {"key": "<a key>", "on": true, "until": 1790000000}
 
 The app reads it with `fetch` (not `EventSource`, which cannot send the
 `Authorization` header) and reconnects with a back-off from 1 to 30 seconds;
-after any reconnect it syncs messages and revalidates the view.
+after any reconnect it syncs messages. The view (§11, about 300 KB) is fetched at the start of
+a session and, once the factory's events flow (§22), only when they call for it: see "What the
+app does with a batch". A backend that sends no events is polled, and its view fetched each time.
 
 A cockpit key may read the stream, and so may the Mayor's key
 (`POSTERN_MAYOR_KEY`) with or without a licence (§20).
@@ -1687,8 +1689,13 @@ A changed field or a `hands_ran` fetches that bead's detail (§12) for the value
 does not carry. It fetches the view again only on a gap (the first event past the cursor is
 not cursor + 1), with no view yet, or when an event says something only the home can build
 (a new or reopened bead, a hold, a landing, a story closed, a question it does not hold).
-Once a batch has been applied in the session, §10's `view` event waits 10 seconds and
-fetches the view only if no batch came within 10 seconds of it.
+The whole view is therefore fetched at the start of a session, and after that only on a gap
+(also after a reconnect, whose first batch must follow on from the last `seq` seen), when a batch
+cannot be applied, or when a start's fetch failed (the next sync tries again). A hello, a
+reconnect, a return to the app and §10's `view` event fetch nothing of themselves. Before any
+batch has been applied in the session, a `view` event still fetches at once; once one has, it
+fetches nothing, since the batch carries the change and a change no batch carries shows as a gap.
+The Retry and pull-to-refresh buttons still fetch the view on request.
 
 `mw-jrx0s.8`. The bead's page hears the events about its bead: a `message` shows in its
 thread from the stored record (the sync keeps it before the batch is applied), so it fetches

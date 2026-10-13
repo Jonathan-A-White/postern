@@ -12,6 +12,7 @@ const net = vi.hoisted(() => ({
   streams: 0,
   viewFetches: 0,
   newBead: false,
+  delivered: false,
 }));
 
 vi.mock('../../src/services/apiAuth', () => ({
@@ -29,7 +30,15 @@ vi.mock('../../src/services/apiAuth', () => ({
     };
   }),
 }));
-vi.mock('../../src/services/inbox', () => ({ syncMessages: vi.fn(async () => ({ events: [] })) }));
+// The events record the Mayor sent while the app was away: a new bead, which only the home's view can place (mw-7dige5.1).
+vi.mock('../../src/services/inbox', () => ({
+  syncMessages: vi.fn(async () => {
+    if (!net.newBead || net.delivered) return { events: [] };
+    net.delivered = true;
+    const events = [{ seq: 1, ts: '2026-10-01T12:01:00Z', kind: 'bead_changed', bead: 'mw-eq5nn.4', actor: 'mw@laptop', from: '', to: 'open', detail: 'created', lane: 'normal' }];
+    return { events: [{ from: 1, to: 1, lane: 'normal', events }] };
+  }),
+}));
 vi.mock('../../src/services/view', async (importOriginal) => {
   const { viewRepo: repo } = await import('../../src/data/repositories');
   const { fixtureView: fixture } = await import('../../tests/support/cockpit-fixture');
@@ -61,6 +70,8 @@ Object.defineProperty(document, 'hidden', { configurable: true, get: () => !visi
 async function settle(ms = 0): Promise<void> {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(ms);
+    // IndexedDB answers on setImmediate, which the fake clock leaves alone: let the sync and its projection finish.
+    for (let i = 0; i < 20; i += 1) await new Promise<void>((resolve) => setImmediate(resolve));
   });
 }
 
@@ -88,23 +99,26 @@ describeFeature(feature, ({ BeforeEachScenario, Scenario }) => {
     net.streams = 0;
     net.viewFetches = 0;
     net.newBead = false;
+    net.delivered = false;
+    await db.events.clear();
+    await db.settings.clear();
     visible = false;
   });
 
-  const connected = async () => {
+  const connected = async (filed = true) => {
     await act(async () => {
       startLive(new Uint8Array(32).fill(7));
     });
     await settle();
     // The app went to the background; a bead was filed meanwhile.
-    net.newBead = true;
+    net.newBead = filed;
     before = net.viewFetches;
     // Past any debounce left by the start-up sync.
     await settle(10_000);
   };
 
-  Scenario('AC-1: becoming visible fetches the view, once however often it fires', ({ Given, When, Then, And }) => {
-    Given('the factory is connected and a bead is filed while the app was away', connected);
+  Scenario('AC-1: becoming visible syncs the events, which fetch the view once for a new bead, however often it fires', ({ Given, When, Then, And }) => {
+    Given('the factory is connected and a bead is filed while the app was away', () => connected());
     When('the app becomes visible', appears);
     And('the app becomes visible again a moment later', async () => {
       await settle(1000);
@@ -118,8 +132,8 @@ describeFeature(feature, ({ BeforeEachScenario, Scenario }) => {
     });
   });
 
-  Scenario('AC-1b: coming back from the bfcache refreshes the view too', ({ Given, When, Then, And }) => {
-    Given('the factory is connected and a bead is filed while the app was away', connected);
+  Scenario('AC-1b: coming back from the bfcache syncs the events too', ({ Given, When, Then, And }) => {
+    Given('the factory is connected and a bead is filed while the app was away', () => connected());
     When('the page is shown again from the back-forward cache', async () => {
       visible = true;
       window.dispatchEvent(new Event('pageshow'));
@@ -133,8 +147,16 @@ describeFeature(feature, ({ BeforeEachScenario, Scenario }) => {
     });
   });
 
+  Scenario('mw-7dige5.1: becoming visible with nothing new fetches no view', ({ Given, When, Then }) => {
+    Given('the factory is connected and nothing was filed while the app was away', () => connected(false));
+    When('the app becomes visible', appears);
+    Then('the view was not fetched again', () => {
+      expect(net.viewFetches - before).toBe(0);
+    });
+  });
+
   Scenario('AC-2: becoming visible with a dead stream reconnects it', ({ Given, When, Then, And }) => {
-    Given('the factory is connected and a bead is filed while the app was away', connected);
+    Given('the factory is connected and a bead is filed while the app was away', () => connected());
     And('the stream went silent long enough to be dead', async () => {
       // The server pings every 25 s; three minutes of nothing is a suspended socket.
       await settle(180_000);
@@ -146,7 +168,7 @@ describeFeature(feature, ({ BeforeEachScenario, Scenario }) => {
   });
 
   Scenario('AC-2b: becoming visible with a healthy stream leaves it be', ({ Given, When, Then }) => {
-    Given('the factory is connected and a bead is filed while the app was away', connected);
+    Given('the factory is connected and a bead is filed while the app was away', () => connected());
     When('the app becomes visible', appears);
     Then('the event stream was not opened again', () => {
       expect(net.streams).toBe(1);

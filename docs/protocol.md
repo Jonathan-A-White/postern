@@ -587,6 +587,23 @@ app does with a batch". A backend that sends no events is polled, and its view f
 A cockpit key may read the stream, and so may the Mayor's key
 (`POSTERN_MAYOR_KEY`) with or without a licence (§20).
 
+An app's key (§19) may read a narrowed stream, so it hears the answer to its grist
+as soon as the mill delivers it, rather than polling; `GET /api/me` lists `events`
+for it. The narrowed stream carries nothing the key cannot already read:
+
+- `hello` is `{"head": 42}`: the head only, which its `GET /api/messages` already
+  answers as `next`; never the view's ETag.
+- `message` only for a record whose `to` or `from` is the key, exactly the records
+  its `GET /api/messages` returns (§19, "its own records"). Another key's record,
+  and a `seq` the index does not hold, is never named, so the stream tells it
+  nothing of who else talks to the factory or when.
+- never `view`, `ideas-only` or any event added later: the narrowed stream passes
+  only what it names.
+- `: ping` as for every stream, on its own clock. An app's stream is not presence
+  (§20).
+
+The mill's key may not read the stream.
+
 ## 11. The live view
 
 The live replacement for §7's snapshot, decision 6. `mw postern view` builds it on
@@ -914,8 +931,9 @@ first, each `{ "name" }`, then the collections of `POSTERN_APPS`, each
 key gets neither field.
 
 An app's key (§19, *Who may do what*) gets a smaller answer: its own key, the
-mill, the network, `"features": ["grist"]` and `"apps"`, the apps its licences name;
-never the Mayor.
+mill, the network, `"features": ["grist", "events"]` (the mill's key: `["grist"]`)
+and `"apps"`, the apps its licences name; never the Mayor. `events` is its narrowed
+stream (§10).
 
 The app pins `mayor` the first time it sees it (trust on first use) and asks the
 Governor before accepting a different one; it never needs the key pasted by hand
@@ -1115,7 +1133,7 @@ A licence's collection (§16) now says which door it opens:
 | --- | --- | --- |
 | A **cockpit** key | a licence in one of `POSTERN_COLLECTIONS` (today `postern`) | everything, as before §19 |
 | The **mill** key | `POSTERN_MILL_KEY` | read its own records; post `grist` to any key; fetch blobs; delete a blob whose uploader has sent a grist to the mill; `GET /api/me` |
-| An **app** key | a licence only in an app's collection (`POSTERN_APPS`, e.g. `cairn=cairn`) | read its own records; post `grist` to the mill only; upload blobs; subscribe its own pushes; `GET /api/me` |
+| An **app** key | a licence only in an app's collection (`POSTERN_APPS`, e.g. `cairn=cairn`) | read its own records; hear them on a narrowed event stream (§10); post `grist` to the mill only; upload blobs; subscribe its own pushes; `GET /api/me` |
 
 Anything else an app or the mill key asks for is `403`. "Its own records" means
 `GET /api/messages` returns only records whose `to` or `from` is the caller: an app

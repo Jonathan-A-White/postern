@@ -11,7 +11,7 @@
 // stored view (src/services/events.ts). The whole view (about 300 KB) is fetched at the start of
 // the session, and after that only when the events call for it: a gap in their seqs, a batch that
 // cannot be applied, or a start whose fetch failed. Once events flow, the stream's `view` event,
-// a hello, a reconnect and a return to the app fetch nothing (mw-7dige5.1). The line never says live over a dead
+// a reconnect and a return to the app fetch nothing (mw-7dige5.1), and a hello fetches only when it names a view other than the one held (mw-7dige5.4). Every full fetch of the view goes through one throttle in view.ts, at most one a minute; only a tap on a Refresh button goes through it. The line never says live over a dead
 // link: a stream with no ping for STREAM_STALE_MS is read as dropped, and a send the backend does not
 // answer (deliver's onUnreachable) drops it to reconnecting at once. A backend that did not answer /api/me
 // when the app opened is asked again on every turn of the loop until it does, so the stream and the
@@ -30,6 +30,8 @@ import { fetchRecordByTxid } from './inbox';
 import { getKey } from './keySession';
 import { fetchMe, LEGACY, NoLicenceError, reconcileMayorKey, type Me } from './me';
 import { refreshView } from './view';
+import { viewRepo } from '../data/repositories';
+import { resetViewThrottle } from './viewThrottle';
 import { publicKeyHexFromMasterKey } from './vault';
 import type { DeliverOptions } from './deliver';
 
@@ -194,14 +196,14 @@ function syncMessagesKeepingView(key: Uint8Array): Promise<boolean> {
 }
 
 /** Resolves true when every part of the sync succeeded. */
-async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boolean }): Promise<boolean> {
+async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boolean; force?: boolean }): Promise<boolean> {
   let ok = false;
   await queue(async () => {
     const errors: string[] = [];
     let viewFetched = false;
     if (what.messages) {
       try {
-        const synced = await syncMessagesAndEvents({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key, mayorKey: state.mayorKey, live: hasFeature('view') });
+        const synced = await syncMessagesAndEvents({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key, mayorKey: state.mayorKey, live: hasFeature('view'), forceView: what.force });
         if (synced.applied > 0) lastProjected = Date.now();
         viewFetched = synced.refetched;
         if (viewFetched) viewFresh = true;
@@ -211,7 +213,7 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boole
     }
     if (what.view && !viewFetched) {
       try {
-        if ((await refreshView({ key, mayorKey: state.mayorKey, live: hasFeature('view') })) !== 'absent') viewFresh = true;
+        if ((await refreshView({ key, mayorKey: state.mayorKey, live: hasFeature('view'), force: what.force })) !== 'absent') viewFresh = true;
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err));
       }
@@ -229,6 +231,29 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: boole
  * does not carry shows as a gap or a batch that cannot be applied: the view event fetches nothing (mw-7dige5.1). */
 function onViewEvent(key: Uint8Array): void {
   if (lastProjected === 0) void syncAll(key, { view: true });
+}
+
+/** The ETag of the view the backend holds, as its hello carries it (docs/api.md); undefined when it names none. */
+function helloViewEtag(data: string): string | undefined {
+  try {
+    const view = (JSON.parse(data) as { view?: unknown }).view;
+    return typeof view === 'string' && view !== '' ? view : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The stream opened. A hello naming the very view this phone holds has nothing to fetch (mw-7dige5.4); one naming
+ * another asks for the view, through the throttle; one naming none is as it was before. */
+async function onHello(key: Uint8Array, data: string): Promise<void> {
+  const etag = helloViewEtag(data);
+  if (etag === undefined || !eventsKeepTheView()) {
+    await syncMessagesKeepingView(key);
+    return;
+  }
+  const held = (await viewRepo.get())?.etag;
+  if (held === etag) viewFresh = true;
+  await syncAll(key, { messages: true, view: held !== etag });
 }
 
 /** Parses the text of one server-sent event block ("event: x\ndata: {...}"). */
@@ -293,7 +318,7 @@ async function readStream(reader: ReadableStreamDefaultReader<string>, key: Uint
       buffer = buffer.slice(split + 2);
       const parsed = parseEventBlock(block);
       setState({ lastHeard: Date.now() });
-      if (parsed?.event === 'hello') void syncMessagesKeepingView(key);
+      if (parsed?.event === 'hello') void onHello(key, parsed.data);
       else if (parsed?.event === 'message') void syncAll(key, { messages: true });
       else if (parsed?.event === 'view') onViewEvent(key);
       else if (parsed?.event === 'ideas-only') void onIdeasOnlyEvent(key, parsed.data).catch(() => undefined);
@@ -405,6 +430,7 @@ export function stopLive(): void {
   lastForeground = 0;
   lastProjected = 0;
   viewFresh = false;
+  resetViewThrottle(); // a fetch waiting for the window would use a session that has ended
   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibilityChange);
   if (typeof window !== 'undefined') window.removeEventListener('pageshow', onForeground);
   setState({ status: 'idle' });
@@ -448,10 +474,12 @@ async function probeHome(key: Uint8Array): Promise<void> {
   }
 }
 
-/** Pull everything now (pull-to-refresh, a notification tap, a Retry button). */
-export async function refreshNow(): Promise<void> {
+/** Pull everything now (pull-to-refresh, a notification tap, a Retry button). The view goes through the fetch
+ * throttle (mw-7dige5.4) unless `force` says a tap asked for it: that fetch is made at once, and still asks with
+ * the ETag held. */
+export async function refreshNow(options: { force?: boolean } = {}): Promise<void> {
   if (!current) return;
-  await syncAll(current.key, { messages: true, view: true });
+  await syncAll(current.key, { messages: true, view: true, force: options.force });
 }
 
 /** A tap on a push (mw-8oshb2.1): the one record it names is fetched by its txid at once, without waiting for the

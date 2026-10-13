@@ -33,3 +33,14 @@ import { forgetLastKnown } from '../src/cockpit/lastKnown';
 beforeEach(({ task }) => {
   if (!/^(When|Then|And|But) /.test(task.name)) forgetLastKnown();
 });
+
+// The whole view is fetched at most once a minute (src/services/viewThrottle.ts): one test's fetch is not
+// the next's window. A scenario's steps share one, as they share one phone (see above).
+import { resetViewThrottle } from '../src/services/viewThrottle';
+
+let lastSuite: unknown;
+beforeEach(({ task }) => {
+  // A scenario that opens on a When has no Given to reset it: the suite changing is its start too.
+  if (task.suite !== lastSuite || !/^(When|Then|And|But) /.test(task.name)) resetViewThrottle();
+  lastSuite = task.suite;
+});

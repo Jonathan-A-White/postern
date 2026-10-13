@@ -6,6 +6,8 @@
 import { act } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
+import { db } from '../../src/data/db';
+import { viewRepo } from '../../src/data/repositories';
 import { startLive, stopLive } from '../../src/services/live';
 
 const net = vi.hoisted(() => ({
@@ -38,9 +40,11 @@ vi.mock('../../src/services/events', () => ({
   projectBatches: vi.fn(async () => ({ applied: [], refetch: false, details: [] })),
 }));
 vi.mock('../../src/services/view', () => ({
+  // Like the real one, a fetched view is kept under the ETag the backend gave it.
   refreshView: vi.fn(async () => {
     if (net.viewDown) throw new Error('No signal.');
     net.viewFetches += 1;
+    await viewRepo.save({ plaintext: '{}', written_at: 'w', etag: '"v1"', source: 'live', fetchedAt: 0 });
     return 'updated';
   }),
 }));
@@ -74,6 +78,7 @@ async function start(): Promise<void> {
   net.stream = undefined;
   net.next = { applied: 0, refetched: false };
   net.viewFetches = 0;
+  await db.view.clear();
   await act(async () => {
     startLive(new Uint8Array(32).fill(9));
     await vi.advanceTimersByTimeAsync(0);
@@ -89,12 +94,12 @@ async function liveWithEvents(): Promise<void> {
   await advance(60_000);
 }
 
-/** The stream drops, the loop waits its second, syncs, and opens a new stream, which greets with hello. */
+/** The stream drops, the loop waits its second, syncs, and opens a new stream, which greets with hello naming the view the phone holds. */
 async function dropAndReturn(): Promise<void> {
   net.stream?.close();
   await advance(1_000);
   await advance(0);
-  await say('event: hello\ndata: {"head": 2, "view": "\\"v2\\""}');
+  await say('event: hello\ndata: {"head": 2, "view": "\\"v1\\""}');
   await advance(1_000);
 }
 

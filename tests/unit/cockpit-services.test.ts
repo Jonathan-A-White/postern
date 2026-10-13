@@ -9,7 +9,7 @@ import { EncryptedMessage } from 'spell-forge-bsv';
 import { formatRoute, isDeep, parseRoute } from '../../src/nav/route';
 import { brc78Sender, openDocument, sealDocument, WrongSenderError } from '../../src/services/documents';
 import { acceptOfferedMayorKey, fetchMe, LEGACY, NoLicenceError, reconcileMayorKey } from '../../src/services/me';
-import { refreshView, storedView } from '../../src/services/view';
+import { refreshView, resetViewThrottle, storedView } from '../../src/services/view';
 import { parseEventBlock } from '../../src/services/live';
 import { db } from '../../src/data/db';
 import { getMayorPublicKey } from '../../src/services/messages';
@@ -133,6 +133,7 @@ describe('refreshView', () => {
       return tag === '"v1"' ? new Response(null, { status: 304 }) : new Response(sealed, { status: 200, headers: { ETag: '"v1"' } });
     });
     expect(await refreshView({ key: GOV_KEY, mayorKey: MAYOR_PUB, live: true, fetchImpl })).toBe('updated');
+    resetViewThrottle(); // a minute on (mw-7dige5.4)
     expect(await refreshView({ key: GOV_KEY, mayorKey: MAYOR_PUB, live: true, fetchImpl })).toBe('unchanged');
     expect(seen).toEqual([null, '"v1"']);
     expect((await storedView())?.view.host).toBe('desktop');
@@ -177,6 +178,7 @@ describe('refreshView', () => {
     const fetchImpl = vi.fn(async () => new Response(body, { status: 200 }));
     expect(await refreshView({ key: GOV_KEY, live: false, fetchImpl, snapshotUrl: '/snapshot' })).toBe('updated');
     body = '<!doctype html><html><body>Not found</body></html>';
+    resetViewThrottle(); // a minute on (mw-7dige5.4)
     expect(await refreshView({ key: GOV_KEY, live: false, fetchImpl, snapshotUrl: '/snapshot' })).toBe('absent');
     expect((await storedView())?.source).toBe('snapshot');
   });

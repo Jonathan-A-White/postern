@@ -16,8 +16,15 @@ export type Speaker = 'you' | 'mayor' | 'builder' | 'factory' | 'other';
 
 export interface GovernorAction {
   action: 'release' | 'hold' | 'priority' | 'verified' | 'run' | string;
-  bead: string;
+  /** The bead it is on; a todo_add names a `list` instead and has none. */
+  bead?: string;
   priority?: number;
+  /** docs/protocol.md §13 todo_*: the list (epic) a card is added to or moved to, the words, and the neighbour a moved card lands before or after. */
+  list?: string;
+  title?: string;
+  notes?: string;
+  before?: string;
+  after?: string;
   /** docs/protocol.md §17: the hands step a `run` approves, its hash, when and his signature. */
   step?: string;
   sha256?: string;
@@ -71,10 +78,19 @@ export function decodeAction(text: string): GovernorAction | undefined {
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
   const candidate = parsed as Record<string, unknown>;
-  if (typeof candidate.action !== 'string' || typeof candidate.bead !== 'string') return undefined;
+  if (typeof candidate.action !== 'string') return undefined;
+  // A todo_add names the list it goes on and has no bead (docs/protocol.md §13).
+  if (typeof candidate.bead !== 'string' && !(candidate.action === 'todo_add' && typeof candidate.list === 'string')) return undefined;
+  const kind = candidate.action;
+  const field = (key: 'list' | 'title' | 'notes' | 'before' | 'after') => (kind.startsWith('todo_') && typeof candidate[key] === 'string' ? { [key]: candidate[key] as string } : {});
   return {
     action: candidate.action,
-    bead: candidate.bead,
+    ...(typeof candidate.bead === 'string' ? { bead: candidate.bead } : {}),
+    ...field('list'),
+    ...field('title'),
+    ...field('notes'),
+    ...field('before'),
+    ...field('after'),
     ...(typeof candidate.priority === 'number' ? { priority: candidate.priority } : {}),
     ...(typeof candidate.step === 'string' ? { step: candidate.step } : {}),
   };
@@ -105,6 +121,12 @@ export function describeAction(action: GovernorAction): string {
       return `Kept ${action.bead}`;
     case 'close':
       return `Closed ${action.bead}`;
+    case 'todo_add':
+      return `Added “${action.title ?? ''}” to ${action.list ?? 'a list'}`;
+    case 'todo_edit':
+      return `Edited ${action.bead}`;
+    case 'todo_move':
+      return `Moved ${action.bead}`;
     case 'run':
       return `Approved step ${action.step ?? '?'} of ${action.bead} to run`;
     default:

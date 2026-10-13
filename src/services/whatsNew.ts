@@ -2,9 +2,10 @@
 // whats-new package is given: the version this build is, where the last one seen is kept, and the
 // CHANGELOG.md on GitHub that What's new on GitHub links to.
 import { describeBuild } from './buildLine';
+import { APP_VERSION_STRING } from '../version';
 
 /** The package version this build is ('0.5.10'), without the build time and commit. */
-export const APP_VERSION = describeBuild(__APP_VERSION__).version;
+export const APP_VERSION = describeBuild(APP_VERSION_STRING).version;
 
 /** Where the last version he saw What's new for is kept (localStorage). */
 export const WHATS_NEW_STORAGE_KEY = 'postern.lastSeenVersion';

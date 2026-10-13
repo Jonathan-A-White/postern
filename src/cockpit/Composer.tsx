@@ -25,6 +25,7 @@ import { useDraft } from './useDraft';
 import { ImageViewer } from './ImageViewer';
 import { useViewer } from './useViewer';
 import { openFile } from './openFile';
+import { prepareImage } from '../images/shrink';
 import { draftsRepo } from '../data/repositories';
 import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext } from '../model/prompts';
 import { optionChip } from '../services/prompts';
@@ -59,12 +60,15 @@ function barLabel(listening: boolean, micOpen: boolean): string {
   return micOpen ? 'Release to send' : 'Starting the mic…';
 }
 
-async function toPending(file: File | Blob, name: string, durationMs?: number): Promise<Pending> {
+async function toPending(original: File | Blob, name: string, durationMs?: number): Promise<Pending> {
+  const file = await prepareImage(original);
+  // a picture re-encoded as a JPEG is named for what it now is
+  const kept = file === original ? name : name.replace(/\.(png|webp|jpe?g)$/i, '') + '.jpg';
   const bytes = new Uint8Array(await file.arrayBuffer());
   const type = file.type || 'application/octet-stream';
   return {
     id: String(nextId++),
-    name,
+    name: kept,
     type,
     bytes,
     durationMs,

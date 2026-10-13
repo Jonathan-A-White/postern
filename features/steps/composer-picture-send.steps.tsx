@@ -13,6 +13,7 @@ import { db } from '../../src/data/db';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import type { Attachment } from '../../src/services/threads';
+import { imageSeam } from '../../src/images/shrink';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
 configure({ asyncUtilTimeout: 5000 });
@@ -178,6 +179,32 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the Send arrow is disabled', () => {
       expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    });
+  });
+  Scenario('AC-6: a big photo is cut to 2400 px on its long edge and sent as a JPEG (mw-7dige5.2)', ({ Given, And, When, Then }) => {
+    let encode: ReturnType<typeof vi.fn>;
+    Given('the composer is open', open);
+    And('the phone reads pictures as {int} by {int} pixels', (_c, width: number, height: number) => {
+      vi.spyOn(imageSeam, 'decode').mockResolvedValue({ width, height, source: null });
+      encode = vi.fn(async () => new Blob([new Uint8Array(2)], { type: 'image/jpeg' }));
+      vi.spyOn(imageSeam, 'encode').mockImplementation(encode as unknown as typeof imageSeam.encode);
+    });
+    When('he attaches the picture {string}', async (_c, name: string) => {
+      const input = document.querySelector('input[type="file"][multiple]') as HTMLInputElement;
+      await act(async () => fireEvent.change(input, { target: { files: [new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' })] } }));
+      await screen.findByLabelText('Remove photo.jpg');
+    });
+    And('he taps the mic', tapMic);
+    And('he taps the Send arrow', async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+      await act(async () => settledOutbox());
+    });
+    Then('the picture was drawn at {int} by {int} pixels', (_c, width: number, height: number) => {
+      expect(encode).toHaveBeenCalledWith(expect.anything(), width, height, 0.85);
+    });
+    And('one message is delivered with a JPEG attachment named {string}', async (_c, name: string) => {
+      await waitFor(() => expect(doubles.delivered).toHaveLength(1));
+      expect(doubles.delivered[0].attachments?.[0]).toMatchObject({ mime: 'image/jpeg', name });
     });
   });
 });

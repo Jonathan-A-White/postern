@@ -32,3 +32,12 @@ Feature: A picture sends with one tap, no typing (mw-jtzpw0.10; the Send arrow c
     And he taps the mic
     And he presses and holds the bar
     Then the Send arrow is disabled
+
+  Scenario: AC-6: a big photo is cut to 2400 px on its long edge and sent as a JPEG (mw-7dige5.2)
+    Given the composer is open
+    And the phone reads pictures as 4000 by 3000 pixels
+    When he attaches the picture "photo.png"
+    And he taps the mic
+    And he taps the Send arrow
+    Then the picture was drawn at 2400 by 1800 pixels
+    And one message is delivered with a JPEG attachment named "photo.jpg"

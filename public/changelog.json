@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.5",
+    "date": "2026-10-13",
+    "story": "mw-7dige5.2",
+    "kind": "new",
+    "text": "Pictures you send are now shrunk to at most 2400 px on the long side, so a screenshot keeps its full size and stays sharp while a big camera photo gets smaller."
+  },
+  {
     "version": "0.6.4",
     "date": "2026-10-13",
     "story": "mw-7dige5.1",

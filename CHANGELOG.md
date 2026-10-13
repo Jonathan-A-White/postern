@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.5
+_2026-10-13_
+- New: Pictures you send are now shrunk to at most 2400 px on the long side, so a screenshot keeps its full size and stays sharp while a big camera photo gets smaller.
+
 ## 0.6.4
 _2026-10-13_
 - Fixed: Postern no longer downloads the whole map over and over while the factory is busy, which saves mobile data.

@@ -1,7 +1,7 @@
 {
-  "version": "0.6.14",
-  "commit": "8bedf31",
-  "published_at": "2026-10-13T15:49:44.148Z",
+  "version": "0.6.15",
+  "commit": "be823e4",
+  "published_at": "2026-10-13T16:28:26.617Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1367,6 +1367,48 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/tap-message-thread.png"
+    },
+    {
+      "name": "390x844/todo-board.png",
+      "screen": "todo-board",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-board.png"
+    },
+    {
+      "name": "360x640/todo-board.png",
+      "screen": "todo-board",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-board.png"
+    },
+    {
+      "name": "1280x800/todo-board.png",
+      "screen": "todo-board",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-board.png"
+    },
+    {
+      "name": "390x844/todo-card-back.png",
+      "screen": "todo-card-back",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-card-back.png"
+    },
+    {
+      "name": "360x640/todo-card-back.png",
+      "screen": "todo-card-back",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-card-back.png"
+    },
+    {
+      "name": "1280x800/todo-card-back.png",
+      "screen": "todo-card-back",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-card-back.png"
     },
     {
       "name": "390x844/update-banner.png",

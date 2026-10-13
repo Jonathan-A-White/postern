@@ -3,7 +3,7 @@
 // older mw carries none of the three and must decode to the same Need shape.
 import { describe, expect, it } from 'vitest';
 import { decodeView } from '../../src/model/view';
-import { needsByWaiter } from '../../src/model/needs';
+import { needsByWaiter, splitFolded } from '../../src/model/needs';
 import { formatRoute, parseRoute } from '../../src/nav/route';
 import { fixtureView } from '../support/cockpit-fixture';
 
@@ -74,5 +74,18 @@ describe('the Needs switch (mw-tbx1n.8)', () => {
     expect(formatRoute({ view: 'needs', who: 'you' })).toBe('?v=needs');
     expect(parseRoute('?v=needs&who=factory')).toEqual({ view: 'needs', who: 'factory' });
     expect(parseRoute('?v=needs&who=nobody')).toEqual({ view: 'needs' });
+  });
+});
+
+describe('the folded verify cards (docs/protocol.md §11, mw-ev7oyy.3)', () => {
+  it('reads folded from the view, and absent reads as not folded', () => {
+    const [folded, plain] = decodeNeeds([{ ...BASE, kind: 'verify', folded: true }, { ...BASE, kind: 'verify' }]);
+    expect(folded.folded).toBe(true);
+    expect(plain.folded).toBeFalsy();
+  });
+
+  it('splits the folded needs from the rest, keeping each list in order', () => {
+    const [a, b, c] = decodeNeeds([{ ...BASE, bead: 'a' }, { ...BASE, bead: 'b', kind: 'verify', folded: true }, { ...BASE, bead: 'c' }]);
+    expect(splitFolded([a, b, c])).toEqual({ open: [a, c], folded: [b] });
   });
 });

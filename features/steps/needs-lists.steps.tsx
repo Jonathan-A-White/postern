@@ -31,6 +31,15 @@ async function save(): Promise<void> {
   await viewRepo.save({ plaintext: JSON.stringify({ ...fixtureView(now), needs, beads: [] }), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
 }
 
+async function saveFolded(): Promise<void> {
+  const needs = [
+    need({ kind: 'question', bead: 'mw-q', title: 'Which library?', options: ['A', 'B'] }),
+    need({ kind: 'verify', bead: 'mw-v1', title: 'Fresh landing', options: ['Verified'], text: 'Open the page.' }),
+    need({ kind: 'verify', bead: 'mw-v2', title: 'Old landing', options: ['Verified'], text: 'Open the old page.', folded: true }),
+  ];
+  await viewRepo.save({ plaintext: JSON.stringify({ ...fixtureView(now), needs, beads: [] }), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
+}
+
 async function fresh(): Promise<void> {
   cleanup();
   now = Date.now();
@@ -126,6 +135,43 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('{string} is the chosen part and its card is shown', async (_c, name: string) => {
       await waitFor(() => expect(screen.getByRole('tab', { name, selected: true })).toBeInTheDocument());
       await card('Merge the branch');
+    });
+  });
+
+  Scenario('mw-ev7oyy.3: folded verify cards sit in one closed line at the foot, and a tap opens them', ({ Given, When, Then, And }) => {
+    Given('a view with a question for him, a verify card and a folded verify card', saveFolded);
+    When('the Needs screen opens', opens);
+    Then('the You list shows the question and the verify card but not the folded one', async () => {
+      await card('Which library\\?');
+      await card('Fresh landing');
+      expect(screen.queryByText('Old landing')).not.toBeInTheDocument();
+    });
+    And('the foot reads {string} and is closed', async (_c, label: string) => {
+      await screen.findByRole('button', { name: label });
+      await waitFor(() => expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-expanded', 'false'));
+    });
+    When('the foot line is tapped', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Waiting on your use (1)' }));
+    });
+    Then('the folded verify card is shown with a Verified button', async () => {
+      const folded = await card('Old landing');
+      expect(within(folded).getByRole('button', { name: /Verified/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Waiting on your use (1)' })).toHaveAttribute('aria-expanded', 'true');
+    });
+  });
+
+  Scenario('mw-ev7oyy.3: the badge leaves the folded verify cards out', ({ Given, When, Then }) => {
+    Given('a view with a question for him, a verify card and a folded verify card', saveFolded);
+    When('the Needs screen opens inside the shell', async () => {
+      render(
+        <Shell route={{ view: 'needs' }}>
+          <Screen />
+        </Shell>,
+      );
+    });
+    Then('the Needs you tab badge reads {string}', async (_c, count: string) => {
+      const tab = await screen.findByRole('link', { name: /Needs you/ });
+      await waitFor(() => expect(tab.textContent).toBe(`${count}Needs you`));
     });
   });
 });

@@ -20,3 +20,16 @@ Feature: Needs you splits what waits on him from what waits on the Mayor or the 
     Given a view with a question for him, a step waiting on the Mayor and a step waiting on the factory
     When the address is "?v=needs&who=mayor" and the Needs screen opens
     Then "Mayor · 1" is the chosen part and its card is shown
+
+  Scenario: mw-ev7oyy.3: folded verify cards sit in one closed line at the foot, and a tap opens them
+    Given a view with a question for him, a verify card and a folded verify card
+    When the Needs screen opens
+    Then the You list shows the question and the verify card but not the folded one
+    And the foot reads "Waiting on your use (1)" and is closed
+    When the foot line is tapped
+    Then the folded verify card is shown with a Verified button
+
+  Scenario: mw-ev7oyy.3: the badge leaves the folded verify cards out
+    Given a view with a question for him, a verify card and a folded verify card
+    When the Needs screen opens inside the shell
+    Then the Needs you tab badge reads "2"

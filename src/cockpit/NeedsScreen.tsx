@@ -18,7 +18,7 @@ import { isPushSubscribed, pushSupported, rememberPushSubscribed, subscribeToPus
 import { publicKeyHexFromMasterKey } from '../services/vault';
 import { beadHref, formatRoute, threadHrefFor } from '../nav/route';
 import { previewText } from '../model/conversation';
-import { needsByWaiter, unsettledNeeds } from '../model/needs';
+import { needsByWaiter, splitFolded, unsettledNeeds } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
 import type { Need, WaitsFor } from '../model/view';
 import type { LiveCard as LiveCardData } from '../model/cards';
@@ -172,6 +172,32 @@ function WaitingOnOthers({ needs }: { needs: Need[] }) {
   );
 }
 
+/** The verify cards the Mayor folded (§11, `folded`): one closed line at the foot; a tap opens them as the same cards. */
+function FoldedNeeds({ needs, index }: { needs: Need[]; index: ViewIndex }) {
+  const [open, setOpen] = useState(false);
+  if (needs.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-3" aria-label="Waiting on your use">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+        className="inline-flex h-9 w-fit items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 text-[13px] font-medium text-muted hover:border-line-strong"
+      >
+        {`Waiting on your use (${needs.length})`}
+        <Icon name={open ? 'down' : 'forward'} size={13} />
+      </button>
+      {open && (
+        <div className="grid gap-3 xl:grid-cols-2">
+          {needs.map((need) => (
+            <NeedCard key={`${need.kind}:${need.bead}:${need.since}`} need={need} epicTitle={index.byId.get(need.epic)?.title} index={index} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 const EMPTY: Record<WaitsFor, { title: string; text: string }> = {
   you: { title: 'Nothing needs you', text: 'The factory is working on its own. You will get a notification when the Mayor needs a decision.' },
   mayor: { title: 'Nothing waits on the Mayor', text: 'Every card he owes you something on has been dealt with.' },
@@ -185,8 +211,10 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
   const answers = useAnswers();
   const [refreshing, setRefreshing] = useState(false);
   const index = view?.index;
-  const split = useMemo(() => needsByWaiter(index ? unsettledNeeds(index.view.needs, answers) : []), [index, answers]);
+  const apart = useMemo(() => splitFolded(index ? unsettledNeeds(index.view.needs, answers) : []), [index, answers]);
+  const split = useMemo(() => needsByWaiter(apart.open), [apart]);
   const needs = split[who];
+  const folded = useMemo(() => needsByWaiter(apart.folded)[who], [apart, who]);
   const { fresh: cards } = useCardArchive();
   const openCards = useMemo(() => cards.filter((card) => !card.done), [cards]);
   const doneCards = useMemo(() => cards.filter((card) => card.done), [cards]);
@@ -278,6 +306,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
         <WaitingOnOthers needs={split.others} />
 
         <UnreadThreads index={index} />
+        {index && <FoldedNeeds key={who} needs={folded} index={index} />}
         {who === 'you' && <ArchivedCardsLink />}
       </div>
     </Screen>

@@ -22,7 +22,7 @@ import { OutboxNote } from './OutboxNote';
 import { UpdateBanner } from './UpdateBanner';
 import { liveLabel } from './liveLabel';
 import { useAnswers, useMessages, useViewIndex, useWide } from './hooks';
-import { needsByWaiter, unsettledNeeds } from '../model/needs';
+import { needsByWaiter, splitFolded, unsettledNeeds } from '../model/needs';
 
 const TABS: { view: TopView; label: string; icon: IconName; route: Route; longPress?: Route }[] = [
   { view: 'needs', label: 'Needs you', icon: 'needs', route: { view: 'needs' } },
@@ -75,7 +75,7 @@ function useBadges(): Partial<Record<TopView, number>> {
   const messages = useMessages();
   const answers = useAnswers();
   const unread = messages.filter((row) => row.direction === 'received' && !row.read).length;
-  return { needs: view ? needsByWaiter(unsettledNeeds(view.index.view.needs, answers)).you.length : 0, talk: unread };
+  return { needs: view ? needsByWaiter(splitFolded(unsettledNeeds(view.index.view.needs, answers)).open).you.length : 0, talk: unread };
 }
 
 export function LiveBadge({ compact }: { compact?: boolean }) {

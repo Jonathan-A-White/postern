@@ -72,6 +72,8 @@ export interface Need {
   not_ready?: boolean;
   /** §11: what a not_ready card waits on: its open blockers' titles, or the Mayor's own words. */
   waiting_on?: string[];
+  /** §11: a verify card folded after the Mayor's verify_days; absent when not folded. The app lists it apart, closed, under 'Waiting on your use'. */
+  folded?: boolean;
   /** mw-jrx0s.7: set on this phone's copy by a card_answered event (§22): what was answered, and when (RFC 3339). */
   answered?: { option: string; at: string };
 }
@@ -215,6 +217,7 @@ function decodeNeed(value: unknown): Need | undefined {
     waits_for: WAITS_FOR.includes(raw.waits_for as WaitsFor) ? (raw.waits_for as WaitsFor) : raw.waits_for === undefined && raw.not_ready === true ? 'factory' : 'you',
     not_ready: raw.not_ready === true,
     waiting_on: strings(raw.waiting_on),
+    ...(raw.folded === true ? { folded: true } : {}),
     ...(answered ? { answered: { option: str(answered.option), at: str(answered.at) } } : {}),
   };
 }

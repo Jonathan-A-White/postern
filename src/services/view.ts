@@ -8,9 +8,11 @@ import { decryptSnapshotCiphertext } from './messages';
 import { decodeSnapshot } from './questions';
 import { decodeView, viewFromSnapshot, type View } from '../model/view';
 import { viewRepo } from '../data/repositories';
+import { VIEW_MIN_INTERVAL_MS, viewThrottle } from './viewThrottle';
 import { Utils } from '@bsv/sdk';
 
 export const SNAPSHOT_URL = '/snapshot';
+export { resetViewThrottle, VIEW_MIN_INTERVAL_MS } from './viewThrottle';
 
 export type ViewRefresh = 'updated' | 'unchanged' | 'absent';
 
@@ -22,6 +24,8 @@ export interface RefreshViewOptions {
   apiBase?: string;
   snapshotUrl?: string;
   fetchImpl?: typeof fetch;
+  /** A tap on a Refresh button: fetched now whatever the throttle says. The fetch still asks with the held ETag. */
+  force?: boolean;
 }
 
 async function refreshLive(options: RefreshViewOptions): Promise<ViewRefresh> {
@@ -67,13 +71,33 @@ async function refreshFromSnapshot(options: RefreshViewOptions): Promise<ViewRef
   return 'updated';
 }
 
-/** Brings the stored view up to date from whichever source the backend has. */
-export async function refreshView(options: RefreshViewOptions): Promise<ViewRefresh> {
+async function fetchView(options: RefreshViewOptions): Promise<ViewRefresh> {
   if (options.live) {
     const result = await refreshLive(options);
     if (result !== 'absent') return result;
   }
   return refreshFromSnapshot(options);
+}
+
+async function fetchNow(options: RefreshViewOptions): Promise<ViewRefresh> {
+  if (viewThrottle.trailing) clearTimeout(viewThrottle.trailing.timer);
+  viewThrottle.trailing = undefined;
+  viewThrottle.lastFetchAt = performance.now();
+  return fetchView(options);
+}
+
+/** Brings the stored view up to date from whichever source the backend has. The whole view is large, so every
+ * caller shares one throttle (mw-7dige5.4): the first call fetches at once; further calls inside the next
+ * VIEW_MIN_INTERVAL_MS are one fetch when the window ends, and resolve 'unchanged' without waiting for it (the
+ * view they want arrives through Dexie's live queries). `force` goes through the window. */
+export async function refreshView(options: RefreshViewOptions): Promise<ViewRefresh> {
+  if (options.force) return fetchNow(options);
+  const wait = viewThrottle.lastFetchAt + VIEW_MIN_INTERVAL_MS - performance.now();
+  if (wait <= 0) return fetchNow(options);
+  if (viewThrottle.trailing) clearTimeout(viewThrottle.trailing.timer);
+  const timer = setTimeout(() => void fetchNow(options).catch(() => undefined), wait);
+  viewThrottle.trailing = { timer, options };
+  return 'unchanged';
 }
 
 /** The stored view, decoded, or undefined before the first one arrives. */

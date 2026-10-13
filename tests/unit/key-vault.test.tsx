@@ -26,10 +26,27 @@ function toHex(bytes: Uint8Array): string {
     .join('');
 }
 
+// The licence check reads the confirmed history from WhatsOnChain (confirmedHistory.ts), not the provider's own.
+// A test that stubs nothing would reach the real WhatsOnChain, a round trip (or retry sleeps) a loaded gate
+// host outruns (mw-hvqj5c), so beforeEach stubs an empty history and a test that wants more calls this again.
+function stubHistory(txids: string[] | 'unreachable') {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (txids === 'unreachable') return new Response('{}', { status: 503 });
+      const path = new URL(String(input)).pathname;
+      const result = path.endsWith('/confirmed/history') ? txids.map((tx_hash) => ({ tx_hash, height: 1 })) : [];
+      return new Response(JSON.stringify({ result, nextPageToken: '', error: '' }), { status: 200 });
+    }),
+  );
+}
+
+
 describe('KeyVault', () => {
   beforeEach(async () => {
     fakeProvider = new FakeChainProvider();
     resetSharedChainReads(); // the same txid carries different bytes in another test
+    stubHistory([]);
     await db.vault.clear();
     await db.settings.clear();
     lock();
@@ -187,6 +204,7 @@ describe('KeyVault', () => {
     const address = addressForPublicKey(publicKeyHex);
     fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
     await checkLicence(publicKeyHex, fakeProvider);
+    stubHistory(['e'.repeat(64)]);
 
     await openUnlocked(mnemonic);
 
@@ -206,6 +224,7 @@ describe('KeyVault', () => {
     const address = addressForPublicKey(publicKeyHex);
     fakeProvider.addTransaction(address, 'e'.repeat(64), mintRecordTxHex(LEGACY_LICENCE_COLLECTION, address));
     await checkLicence(publicKeyHex, fakeProvider);
+    stubHistory(['e'.repeat(64)]);
 
     await openUnlocked(mnemonic);
 
@@ -264,19 +283,6 @@ describe('KeyVault', () => {
 
     expect(await screen.findByRole('button', { name: 'Mint my licence in postern' })).toBeInTheDocument();
   });
-
-  // The licence check reads the confirmed history from WhatsOnChain (confirmedHistory.ts), not the provider's own.
-  function stubHistory(txids: string[] | 'unreachable') {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        if (txids === 'unreachable') return new Response('{}', { status: 503 });
-        const path = new URL(String(input)).pathname;
-        const result = path.endsWith('/confirmed/history') ? txids.map((tx_hash) => ({ tx_hash, height: 1 })) : [];
-        return new Response(JSON.stringify({ result, nextPageToken: '', error: '' }), { status: 200 });
-      }),
-    );
-  }
 
   async function markPending(txid: string) {
     await db.settings.put({ key: 'licence-mint-pending', value: { txid, broadcastAt: new Date().toISOString() } });

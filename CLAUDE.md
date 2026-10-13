@@ -95,6 +95,8 @@ server/
 - Test files live in `tests/unit/` with a `.test.ts`/`.test.tsx` suffix; tests run with `TZ=UTC`.
 - Playwright's `webServer` binds a port other than 4173 — that's spell-forge's preview port and
   concurrent Builder sessions on this host may be using it. Check `ss -tlnp` before picking one.
+- A `vite preview` of this checkout left on that port by an earlier run is stopped as the config loads, and
+  the server goes through `scripts/preview-guard.mjs` so it dies with the run (Ctrl+C and timeout too).
 
 ## Deploy
 

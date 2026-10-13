@@ -18,6 +18,11 @@ Feature: The app catches up when it returns from the background (mw-t64a3.17)
     When the app becomes visible
     Then the view was not fetched again
 
+  Scenario: mw-7dige5.1: becoming visible asks whether home is up without asking for the view
+    Given the factory is connected and nothing was filed while the app was away
+    When the app becomes visible
+    Then the backend was asked about the view with If-None-Match *, which it answers with no body
+
   Scenario: AC-2: becoming visible with a dead stream reconnects it
     Given the factory is connected and a bead is filed while the app was away
     And the stream went silent long enough to be dead

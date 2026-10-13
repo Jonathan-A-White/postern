@@ -13,11 +13,17 @@ const net = vi.hoisted(() => ({
   viewFetches: 0,
   newBead: false,
   delivered: false,
+  probes: [] as string[],
 }));
 
 vi.mock('../../src/services/apiAuth', () => ({
   // An open stream that says nothing and errors when it is aborted.
-  apiFetch: vi.fn(async (_path: string, init?: RequestInit) => {
+  apiFetch: vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === '/view') {
+      // The home probe (mw-7dige5.1): a bare 304, never the body.
+      net.probes.push(new Headers(init?.headers).get('If-None-Match') ?? '');
+      return { ok: false, status: 304, body: null };
+    }
     net.streams += 1;
     return {
       ok: true,
@@ -100,6 +106,7 @@ describeFeature(feature, ({ BeforeEachScenario, Scenario }) => {
     net.viewFetches = 0;
     net.newBead = false;
     net.delivered = false;
+    net.probes = [];
     await db.events.clear();
     await db.settings.clear();
     visible = false;
@@ -152,6 +159,14 @@ describeFeature(feature, ({ BeforeEachScenario, Scenario }) => {
     When('the app becomes visible', appears);
     Then('the view was not fetched again', () => {
       expect(net.viewFetches - before).toBe(0);
+    });
+  });
+
+  Scenario('mw-7dige5.1: becoming visible asks whether home is up without asking for the view', ({ Given, When, Then }) => {
+    Given('the factory is connected and nothing was filed while the app was away', () => connected(false));
+    When('the app becomes visible', appears);
+    Then('the backend was asked about the view with If-None-Match *, which it answers with no body', () => {
+      expect(net.probes).toEqual(['*']);
     });
   });
 

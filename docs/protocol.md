@@ -1695,7 +1695,10 @@ cannot be applied, or when a start's fetch failed (the next sync tries again). A
 reconnect, a return to the app and §10's `view` event fetch nothing of themselves. Before any
 batch has been applied in the session, a `view` event still fetches at once; once one has, it
 fetches nothing, since the batch carries the change and a change no batch carries shows as a gap.
-The Retry and pull-to-refresh buttons still fetch the view on request.
+The Retry and pull-to-refresh buttons still fetch the view on request. A return to the app also
+asks `GET /api/view` with `If-None-Match: *`, which the backend answers with a bare `304` (or the
+standby `503`), never the body, so that 'Home is down' (§ standby) still shows and ends; a `304`
+ends it like a `200`.
 
 `mw-jrx0s.8`. The bead's page hears the events about its bead: a `message` shows in its
 thread from the stored record (the sync keeps it before the batch is applied), so it fetches

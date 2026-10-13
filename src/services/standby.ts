@@ -64,5 +64,6 @@ export async function noteApiResponse(path: string, response: Response): Promise
     }
     return;
   }
-  if (response.ok && !SERVED_IN_STANDBY.some((served) => path.startsWith(served))) clearStandby();
+  // A 304 is an answer too: a conditional GET that found nothing new came from a host that is home.
+  if ((response.ok || response.status === 304) && !SERVED_IN_STANDBY.some((served) => path.startsWith(served))) clearStandby();
 }

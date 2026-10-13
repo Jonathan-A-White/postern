@@ -425,11 +425,25 @@ function streamIsDead(): boolean {
  * open a new one at once. */
 function onForeground(): void {
   if (!current) return;
+  void probeHome(current.key); // a few hundred bytes: not worth debouncing, and it is what shows 'Home is down'
   const now = Date.now();
   if (now - lastForeground < FOREGROUND_DEBOUNCE_MS) return;
   lastForeground = now;
   if (streamIsDead()) current.interrupt?.abort();
   void syncMessagesKeepingView(current.key);
+}
+
+/** A host that is not home answers 503 to /api/view, and a message sync does not say so (standby serves /messages): on
+ * a return to the app this asks for the view with `If-None-Match: *`, which the backend answers with a bare 304 (or the
+ * 503), never the 300 KB body, so apiFetch can raise or end 'Home is down' (src/services/standby.ts). */
+async function probeHome(key: Uint8Array): Promise<void> {
+  if (!eventsKeepTheView()) return; // the sync fetches the view itself
+  try {
+    const response = await apiFetch('/view', { headers: { 'If-None-Match': '*' } }, { unlockedKey: key });
+    void response.body?.cancel().catch(() => undefined);
+  } catch {
+    // the sync reports an unreachable backend
+  }
 }
 
 /** Pull everything now (pull-to-refresh, a notification tap, a Retry button). */

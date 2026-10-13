@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.4",
+    "date": "2026-10-13",
+    "story": "mw-7dige5.1",
+    "kind": "fixed",
+    "text": "Postern no longer downloads the whole map over and over while the factory is busy, which saves mobile data."
+  },
+  {
     "version": "0.6.0",
     "date": "2026-10-12",
     "story": "mw-8ifimx.4",

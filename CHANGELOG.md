@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.4
+_2026-10-13_
+- Fixed: Postern no longer downloads the whole map over and over while the factory is busy, which saves mobile data.
+
 ## 0.6.0
 _2026-10-12_
 - New: While Ideas only is on, a banner at the top of every screen says until when, and everything you send says 'Recorded for after 21:00' at once; the Talk line says it aloud and is ready for your next turn.

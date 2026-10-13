@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.20
+_2026-10-13_
+- New: To do cards can have a due time shown on the card (red when it has passed), set or cleared on the card's back, a list can be sorted by due, and Me has a Reminders setting for sound and quiet hours.
+
 ## 0.6.19
 _2026-10-13_
 - New: You can now add, edit and rearrange the cards on your To do lists from the phone: hold a card to drag it, tap Add a card, or tap a card and choose Edit.

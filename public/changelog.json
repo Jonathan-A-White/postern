@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.20",
+    "date": "2026-10-13",
+    "story": "mw-ev7oyy.9",
+    "kind": "new",
+    "text": "To do cards can have a due time shown on the card (red when it has passed), set or cleared on the card's back, a list can be sorted by due, and Me has a Reminders setting for sound and quiet hours."
+  },
+  {
     "version": "0.6.19",
     "date": "2026-10-13",
     "story": "mw-ev7oyy.7",

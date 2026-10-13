@@ -24,6 +24,11 @@ export function waitsFor(need: Need): WaitsFor {
   return need.waits_for ?? (need.not_ready ? 'factory' : 'you');
 }
 
+/** The needs the Mayor folded (docs/protocol.md §11, `folded`) apart from the rest, each list in its order. */
+export function splitFolded(needs: Need[]): { open: Need[]; folded: Need[] } {
+  return { open: needs.filter((need) => !need.folded), folded: needs.filter((need) => need.folded) };
+}
+
 /** The unsettled needs split by whose turn they are. */
 export function needsByWaiter(needs: Need[]): Record<WaitsFor, Need[]> {
   const split: Record<WaitsFor, Need[]> = { you: [], mayor: [], factory: [], others: [] };

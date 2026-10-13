@@ -3,13 +3,16 @@
 // item. A tap on a card turns it over to its back (its notes, its comments, the beads it names, Edit
 // and the keyboard's way to move it); Done asks for the card to be closed and the card stays, greyed,
 // until the view drops it. A card is dragged (held, on a phone) to reorder it or move it to another
-// list; each list ends in 'Add a card'. Every change shows at once, marked pending, until the view agrees
+// list; each list ends in 'Add a card'. A card with a due time shows it on its face (red once past), its back sets or
+// clears it with a date-time input, and a list's menu sorts its cards by due (mw-ev7oyy.9). Every change shows at once, marked pending, until the view agrees
 // (mw-ev7oyy.7). Draws only what a TodoStore gives it.
-import { useRef, useState, type KeyboardEvent } from 'react';
-import { Button, Chip, EmptyState, Icon, Spinner, cx } from '../ui';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Button, Chip, EmptyState, Icon, IconButton, Spinner, cx } from '../ui';
+import { useNow } from '../ui/useNow';
 import { focusOnMount } from '../ui/focus';
 import { Markdown } from '../markdown/Markdown';
 import { beadHref } from '../nav/route';
+import { dueToInput, formatDue, inputToDue, isPastDue, sortByDue } from './due';
 import { moveFor } from './edits';
 import { beadsNamed, type TodoCard, type TodoList } from './lists';
 import { usePosternTodoStore } from './posternStore';
@@ -21,7 +24,12 @@ interface Place {
   lists: TodoList[];
   list: TodoList;
   index: number;
+  /** The list is shown sorted by due, so a card's place in it is not its place in his order. */
+  sorted: boolean;
 }
+
+/** How often a due time is read against the clock again, to turn red the minute it passes. */
+const DUE_LOOK_MS = 30_000;
 
 function PendingMark() {
   return (
@@ -29,6 +37,55 @@ function PendingMark() {
       <Icon name="clock" size={11} />
       pending
     </span>
+  );
+}
+
+/** The due time on a card's face: red, with 'Past due' for a screen reader, once it has passed. */
+function DueLine({ due }: { due: string }) {
+  const now = useNow(DUE_LOOK_MS);
+  const past = isPastDue(due, now);
+  return (
+    <p data-testid="due" data-past={past} className={cx('mt-1 flex items-center gap-1 text-[13px]', past ? 'font-medium text-danger' : 'text-muted')}>
+      <Icon name="clock" size={13} />
+      {past && <span className="sr-only">Past due: </span>}
+      {formatDue(due, now)}
+    </p>
+  );
+}
+
+/** The Due field of a card's back: a date-time input, Set due (dead until a different, whole time is picked) and Clear due (only when the card has one). */
+function DueField({ card, onSet }: { card: TodoCard; onSet: (due: string) => void }) {
+  const current = dueToInput(card.due);
+  const [value, setValue] = useState(current);
+  const picked = inputToDue(value);
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (picked && value !== current) onSet(picked);
+      }}
+    >
+      <label className="flex min-w-0 flex-col gap-1 text-[12.5px] text-muted">
+        Due
+        <input type="datetime-local" value={value} onChange={(event) => setValue(event.target.value)} className="h-10 text-[14px] text-text" />
+      </label>
+      <Button size="sm" variant="secondary" type="submit" disabled={!picked || value === current}>
+        Set due
+      </Button>
+      {card.due && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setValue('');
+            onSet('');
+          }}
+        >
+          Clear due
+        </Button>
+      )}
+    </form>
   );
 }
 
@@ -101,10 +158,16 @@ function MoveControls({ store, card, place }: { store: TodoStore; card: TodoCard
   };
   return (
     <div role="group" aria-label="Move this card" className="flex flex-wrap items-center gap-2 border-t border-line pt-2">
-      <Button size="sm" variant="secondary" disabled={index === 0} onClick={() => send(list.id, index - 1)}>
+      <Button size="sm" variant="secondary" disabled={place.sorted || index === 0} title={place.sorted ? 'Choose Sort by my order in the list menu to move cards' : undefined} onClick={() => send(list.id, index - 1)}>
         Move up
       </Button>
-      <Button size="sm" variant="secondary" disabled={index === list.cards.length - 1} onClick={() => send(list.id, index + 1)}>
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={place.sorted || index === list.cards.length - 1}
+        title={place.sorted ? 'Choose Sort by my order in the list menu to move cards' : undefined}
+        onClick={() => send(list.id, index + 1)}
+      >
         Move down
       </Button>
       {others.length > 0 && (
@@ -177,6 +240,7 @@ function CardBack({ store, card, place, onBack }: { store: TodoStore; card: Todo
           </Button>
         </div>
       )}
+      {!editing && <DueField key={card.due ?? ''} card={card} onSet={(due) => void store.edit(card.id, { due })} />}
       <MoveControls store={store} card={card} place={place} />
       {back.comments.length > 0 && (
         <section aria-label="Comments" className="flex flex-col gap-2 border-t border-line pt-2">
@@ -216,9 +280,10 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (!event.altKey) return;
     const listAt = place.lists.indexOf(place.list);
-    if (event.key === 'ArrowUp') shift(listAt, place.index - 1);
-    else if (event.key === 'ArrowDown') shift(listAt, place.index + 1);
-    else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      if (place.sorted) return;
+      shift(listAt, place.index + (event.key === 'ArrowUp' ? -1 : 1));
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       const next = place.lists.findIndex((candidate, at) => candidate.epic && at === listAt + (event.key === 'ArrowLeft' ? -1 : 1));
       if (next >= 0) shift(next, place.lists[next].cards.length);
     } else return;
@@ -228,7 +293,7 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
     <li
       data-testid="todo-card"
       data-card={card.id}
-      onPointerDown={over || card.adding ? undefined : onPress}
+      onPointerDown={over || card.adding || place.sorted ? undefined : onPress}
       onClickCapture={(event) => {
         if (wasDragged()) event.stopPropagation();
       }}
@@ -255,6 +320,7 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
             {card.pending && <PendingMark />}
             <Icon name="forward" size={16} className="mt-0.5 shrink-0 text-faint" />
           </button>
+          {card.due && <DueLine due={card.due} />}
           <div data-nodrag>
             <DoneControl state={state} />
           </div>
@@ -306,22 +372,82 @@ function AddCard({ store, list }: { store: TodoStore; list: TodoList }) {
   );
 }
 
-function Column({ store, lists, list, drag, onPress, wasDragged }: { store: TodoStore; lists: TodoList[]; list: TodoList; drag?: DragState; onPress: (card: string, event: React.PointerEvent<HTMLElement>) => void; wasDragged: () => boolean }) {
-  const slot = drag?.target?.list === list.id ? drag.target.index : undefined;
+/** A list's menu: today just how its cards are ordered, his own order or by due time. */
+function ListMenu({ sorted, onSort }: { sorted: boolean; onSort: (sorted: boolean) => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: Event) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: globalThis.KeyboardEvent) => event.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+  return (
+    <div ref={box} className="relative shrink-0" data-nodrag>
+      <IconButton icon="more" label="List menu" size="sm" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((was) => !was)} />
+      {open && (
+        <div role="menu" aria-label="List menu" className="absolute top-full right-0 z-20 mt-1 min-w-44 rounded-xl border border-line bg-surface p-1 shadow-lg">
+          <button
+            type="button"
+            role="menuitem"
+            className="flex h-9 w-full items-center rounded-lg px-3 text-left text-[14px] hover:bg-raised"
+            onClick={() => {
+              onSort(!sorted);
+              setOpen(false);
+            }}
+          >
+            {sorted ? 'Sort by my order' : 'Sort by due'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Column({
+  store,
+  lists,
+  list,
+  sorted,
+  onSort,
+  drag,
+  onPress,
+  wasDragged,
+}: {
+  store: TodoStore;
+  lists: TodoList[];
+  list: TodoList;
+  sorted: boolean;
+  onSort: (sorted: boolean) => void;
+  drag?: DragState;
+  onPress: (card: string, event: React.PointerEvent<HTMLElement>) => void;
+  wasDragged: () => boolean;
+}) {
+  // A card cannot be dropped into a list shown by due: where it lands there is not a place in his own order.
+  const slot = !sorted && drag?.target?.list === list.id ? drag.target.index : undefined;
   const rows: React.ReactNode[] = [];
   let others = 0;
-  list.cards.forEach((card, index) => {
+  (sorted ? sortByDue(list.cards) : list.cards).forEach((card, index) => {
     const held = drag?.card === card.id;
     if (!held && slot === others) rows.push(<li key="drop" aria-hidden data-testid="drop-mark" className="-my-1 h-1 shrink-0 rounded-full bg-accent" />);
-    rows.push(<Card key={card.id} store={store} card={card} place={{ lists, list, index }} drag={drag} onPress={(event) => onPress(card.id, event)} wasDragged={wasDragged} />);
+    rows.push(<Card key={card.id} store={store} card={card} place={{ lists, list, index, sorted }} drag={drag} onPress={(event) => onPress(card.id, event)} wasDragged={wasDragged} />);
     if (!held) others++;
   });
   if (slot !== undefined && slot >= others) rows.push(<li key="drop" aria-hidden data-testid="drop-mark" className="-my-1 h-1 shrink-0 rounded-full bg-accent" />);
   return (
     <section aria-label={list.title} data-list={list.id} className="flex max-h-full min-h-0 w-full shrink-0 snap-start flex-col rounded-2xl border border-line bg-canvas lg:w-80">
-      <header className="flex shrink-0 items-baseline gap-2 px-3 pt-3 pb-2">
+      <header className="flex shrink-0 items-center gap-2 px-3 pt-3 pb-2">
         <h2 className="min-w-0 flex-1 text-[15px] font-semibold wrap-anywhere">{list.epic ? <a href={beadHref(list.epic)}>{list.title}</a> : list.title}</h2>
+        {sorted && <span className="text-[11px] text-muted">by due</span>}
         <span className="rounded-full bg-raised px-2 text-[11px] text-muted tabular-nums">{list.cards.length}</span>
+        <ListMenu sorted={sorted} onSort={onSort} />
       </header>
       <ul className="scroll-thin flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">{rows}</ul>
       {list.epic && <AddCard store={store} list={list} />}
@@ -333,8 +459,9 @@ function Column({ store, lists, list, drag, onPress, wasDragged }: { store: Todo
 export function Board({ store }: { store: TodoStore }) {
   const lists = store.lists;
   const scroller = useRef<HTMLDivElement>(null);
+  const [byDue, setByDue] = useState<ReadonlySet<string>>(new Set());
   const { drag, startDrag, wasDragged } = useCardDrag(scroller, (card, list, index) => {
-    const move = lists ? moveFor(lists, card, list, index) : undefined;
+    const move = lists && !byDue.has(list) ? moveFor(lists, card, list, index) : undefined;
     if (move) void store.move(card, move);
   });
   if (!lists) {
@@ -357,7 +484,24 @@ export function Board({ store }: { store: TodoStore }) {
       {lists.length > 1 && <p className="shrink-0 px-4 pt-2 text-[12px] text-faint lg:hidden">Swipe sideways for the next list. Hold a card to move it.</p>}
       <div ref={scroller} className={cx('scroll-thin flex min-h-0 flex-1 snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto p-4', drag && 'snap-none')}>
         {lists.map((list) => (
-          <Column key={list.id} store={store} lists={lists} list={list} drag={drag} onPress={startDrag} wasDragged={wasDragged} />
+          <Column
+            key={list.id}
+            store={store}
+            lists={lists}
+            list={list}
+            sorted={byDue.has(list.id)}
+            onSort={(sorted) =>
+              setByDue((was) => {
+                const next = new Set(was);
+                if (sorted) next.add(list.id);
+                else next.delete(list.id);
+                return next;
+              })
+            }
+            drag={drag}
+            onPress={startDrag}
+            wasDragged={wasDragged}
+          />
         ))}
       </div>
       {drag && (

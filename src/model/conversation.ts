@@ -23,6 +23,8 @@ export interface GovernorAction {
   list?: string;
   title?: string;
   notes?: string;
+  /** A todo_edit's new due time (UTC), or '' to clear it. */
+  due?: string;
   before?: string;
   after?: string;
   /** docs/protocol.md §17: the hands step a `run` approves, its hash, when and his signature. */
@@ -82,13 +84,14 @@ export function decodeAction(text: string): GovernorAction | undefined {
   // A todo_add names the list it goes on and has no bead (docs/protocol.md §13).
   if (typeof candidate.bead !== 'string' && !(candidate.action === 'todo_add' && typeof candidate.list === 'string')) return undefined;
   const kind = candidate.action;
-  const field = (key: 'list' | 'title' | 'notes' | 'before' | 'after') => (kind.startsWith('todo_') && typeof candidate[key] === 'string' ? { [key]: candidate[key] as string } : {});
+  const field = (key: 'list' | 'title' | 'notes' | 'due' | 'before' | 'after') => (kind.startsWith('todo_') && typeof candidate[key] === 'string' ? { [key]: candidate[key] as string } : {});
   return {
     action: candidate.action,
     ...(typeof candidate.bead === 'string' ? { bead: candidate.bead } : {}),
     ...field('list'),
     ...field('title'),
     ...field('notes'),
+    ...field('due'),
     ...field('before'),
     ...field('after'),
     ...(typeof candidate.priority === 'number' ? { priority: candidate.priority } : {}),

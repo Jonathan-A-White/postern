@@ -93,6 +93,18 @@ describe('the Postern adapter over a view', () => {
   });
 });
 
+describe('the due time of a card (mw-ev7oyy.9)', () => {
+  it('reads todo_due from the view, and a card carries it as due', () => {
+    const view = decodeView(JSON.stringify({ v: 2, beads: [{ id: 'mw-a', todo_due: '2026-10-14T09:00:00Z' }, { id: 'mw-b', todo_due: '' }, { id: 'mw-c', todo_due: 'soon' }, { id: 'mw-d' }] }));
+    expect(view.beads.map((b) => b.todo_due)).toEqual(['2026-10-14T09:00:00Z', undefined, undefined, undefined]);
+  });
+
+  it('puts the due on the card of a list', () => {
+    const lists = listsOf([bead('mw-e', { type: 'epic' }), todo('mw-e.1', { parent: 'mw-e', todo_due: '2026-10-14T09:00:00Z' }), todo('mw-e.2', { parent: 'mw-e' })]);
+    expect(lists[0].cards.map((card) => card.due)).toEqual(['2026-10-14T09:00:00Z', undefined]);
+  });
+});
+
 describe('the beads a card names', () => {
   it('lists each bead id once, in the order met, never the card itself', () => {
     expect(beadsNamed('mw-card', ['Do it after mw-aaa.1 and see mw-bbb', 'mw-aaa.1 again, `mw-code` is code too, and mw-card itself'])).toEqual(['mw-aaa.1', 'mw-bbb', 'mw-code']);

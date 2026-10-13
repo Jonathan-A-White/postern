@@ -14,6 +14,11 @@ describe('todo_* actions in a conversation', () => {
     expect(decodeAction(JSON.stringify({ action: 'todo_move', bead: 'mw-abc.1', list: 'mw-def', before: 'mw-def.2' }))).toEqual({ action: 'todo_move', bead: 'mw-abc.1', list: 'mw-def', before: 'mw-def.2' });
   });
 
+  it('keeps a todo_edit due, set or cleared', () => {
+    expect(decodeAction(JSON.stringify({ action: 'todo_edit', bead: 'mw-abc.1', due: '2026-10-14T09:00:00.000Z' }))).toEqual({ action: 'todo_edit', bead: 'mw-abc.1', due: '2026-10-14T09:00:00.000Z' });
+    expect(decodeAction(JSON.stringify({ action: 'todo_edit', bead: 'mw-abc.1', due: '' }))).toEqual({ action: 'todo_edit', bead: 'mw-abc.1', due: '' });
+  });
+
   it('keeps the other actions as they were', () => {
     expect(decodeAction(JSON.stringify({ action: 'close', bead: 'mw-abc', title: 'ignored' }))).toEqual({ action: 'close', bead: 'mw-abc' });
   });

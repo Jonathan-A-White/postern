@@ -15,6 +15,8 @@ export interface TodoCard {
   priority: number;
   created: string;
   rank?: number | string;
+  /** When it is due, an RFC 3339 UTC time (the bead's todo_due), absent when it has none. */
+  due?: string;
   /** A change of his to this card has gone and the view does not yet agree (edits.ts). */
   pending?: boolean;
   /** The card is one he has just added: the Mayor has not made it, so it has no id yet. */
@@ -47,7 +49,7 @@ export function cardOrder(a: TodoCard, b: TodoCard): number {
 }
 
 function cardOf(bead: ViewBead): TodoCard {
-  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}) };
+  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}) };
 }
 
 /** The open hitl:todo beads of the view grouped under their parent epic: newest list first, Other last,

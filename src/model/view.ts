@@ -54,6 +54,8 @@ export interface ViewBead {
   done_earlier: number;
   /** A hitl:todo bead's place on its list (mw-ev7oyy.6): a number or a sortable string; absent when it has none. */
   todo_rank?: number | string;
+  /** A hitl:todo bead's due time (mw-ev7oyy.9), RFC 3339 UTC; absent when it has none. */
+  todo_due?: string;
 }
 
 export interface Need {
@@ -182,6 +184,7 @@ function decodeBead(value: unknown): ViewBead | undefined {
   if (!raw || typeof raw.id !== 'string' || raw.id === '') return undefined;
   const parent = str(raw.parent);
   const todoRank = rank(raw.todo_rank);
+  const todoDue = typeof raw.todo_due === 'string' && !Number.isNaN(Date.parse(raw.todo_due)) ? raw.todo_due : undefined;
   return {
     id: raw.id,
     title: str(raw.title) || raw.id,
@@ -202,6 +205,7 @@ function decodeBead(value: unknown): ViewBead | undefined {
     comments: num(raw.comments),
     done_earlier: num(raw.done_earlier),
     ...(todoRank !== undefined ? { todo_rank: todoRank } : {}),
+    ...(todoDue !== undefined ? { todo_due: todoDue } : {}),
   };
 }
 

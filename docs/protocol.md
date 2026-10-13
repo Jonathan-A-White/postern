@@ -687,6 +687,9 @@ parent chain up to the root, so the app can draw any level of the tree:
   in the app's To do board): its place on its list, a number or a sortable string. The app shows a
   list's cards by `todo_rank` (numbers, then strings, then the unranked), then `priority`, then the
   oldest first;
+- `todo_due` — optional, on a bead labelled `hitl:todo`: when the card is due, an RFC 3339 UTC time
+  (mw-ev7oyy.9; the host keeps it from `todo_edit`'s `due`). The card shows it on its face, red once it is
+  past, and a list can be sorted by it; a value that is not a time is read as none;
 - `waits` — the ids of the unfinished beads this one waits on (so an open bead
   with an empty `waits` is on the frontier);
 - `path` — the story's merged Path (the epic's defaults overlaid with its own);
@@ -810,7 +813,7 @@ and the Mayor is told afterwards. An action is an ordinary message (§1, class
 | `ask_done` | — | the answer **Done** to a `chase` need: the other side delivered; the host does what `mw ask done` does (clears `waiting:others`) |
 | `keep_waiting` | — | the answer **Keep waiting** to a `chase` need: no chase for another 3 working days |
 | `todo_add` | `list`, `title`, `notes`? (no `bead`) | files an open card on one of his To do lists (below) |
-| `todo_edit` | `title`?, `notes`? | sets a To do card's title and/or notes |
+| `todo_edit` | `title`?, `notes`?, `due`? | sets a To do card's title, notes and/or due time |
 | `todo_move` | `list`?, `before`?, `after`? | moves a To do card within its list or to another list (below) |
 
 ```json
@@ -864,8 +867,10 @@ list, not a card):
   and becomes the card's description. It has **no `bead` field**: the card does not exist yet, so the phone cannot
   name it, and cannot edit or move it until the view carries it (a card still being added is shown, marked pending,
   but is not draggable and has no back).
-- `todo_edit`: `title` and/or `notes` (at least one; `"notes": ""` clears them; a blank `title` is refused). The
-  phone sends only what changed.
+- `todo_edit`: `title`, `notes` and/or `due` (at least one; `"notes": ""` clears them; a blank `title` is refused).
+  `due` is a UTC time in RFC 3339 (`"2026-10-14T17:00:00.000Z"`, the phone having read the date-time field in its own
+  zone), published on the view's bead as `todo_due` (§11); `"due": ""` clears it; a `due` that is neither is refused.
+  The phone sends only what changed.
 - `todo_move`: `before` or `after` names a card on the target list (the card's own list when `list` is absent); with
   neither, the card goes to the end of `list`. A move that names no place (no `before`, `after` or other `list`), both
   `before` and `after`, a `list` that is not an open `hitl:todo` epic, or an anchor that is not an open card on the
@@ -889,6 +894,15 @@ while the view carries a `seq`:
    Mayor "Not applied" and echoes nothing): the board is rolled back to the view, and a line says the change was not
    done, with Dismiss, for ten minutes from the send. An echo that comes late takes the line away and the view shows
    the change after all.
+
+**Reminders.** A card whose due time has come is a *reminder*, which reaches the phone as a Web Push of its own class,
+`reminder` (`{ "class": "reminder", "txid"?, "ts", "title"?, "body"? }`, docs/api.md). A plain PWA gets one Android
+notification channel per origin (docs/research/notifications.md §1), so a reminder cannot have a channel of its
+own: the **Reminders** setting on the Me screen, apart from the Notifications rows, is read by the service worker for
+every `reminder` push. Sound and buzz are on or off, and inside the quiet hours he sets (a start and an end in the
+phone's zone, the end before the start running past midnight) a reminder still shows, silently. A reminder is
+never dropped by the app, stays until dealt with, and a tap opens the To do board. The push's sender is the
+host's, not this app's.
 
 Dragging is long-press-drag on a phone (a finger that moves before the hold is up scrolls the board), a few pixels'
 drag with a mouse; the keyboard's way is **Move up**, **Move down** and **Move to** on the card's back, and Alt + arrow

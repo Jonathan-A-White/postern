@@ -85,3 +85,45 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     Then the card "Renamed by hand" is pending
     When a newer view at seq 9 arrives with "mw-list.2" titled "Renamed by hand"
     Then the card "Renamed by hand" is not pending
+
+  Scenario: mw-ev7oyy.9 AC-1: a card shows its due time on its face, red once it is past
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" is due tomorrow at 9:00
+    And the card "mw-list.2" fell due yesterday at 18:30
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows the due time "Tomorrow 9:00", not red
+    And the card "Title of mw-list.2" shows the due time "Yesterday 18:30", in red
+
+  Scenario: mw-ev7oyy.9 AC-2: the Due field on a card's back sets the due time as a todo_edit, shown at once and pending
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    When the To do tab opens
+    And he taps the card "Title of mw-list.1"
+    Then Set due is not offered until a time is picked
+    When he picks tomorrow at 17:00 as the due time and taps Set due
+    Then a todo_edit for "mw-list.1" with that due time and nothing else waits in the outbox
+    When he taps Back on the card
+    Then the card "Title of mw-list.1" shows the due time "Tomorrow 17:00", not red
+    And the card "Title of mw-list.1" is pending
+
+  Scenario: mw-ev7oyy.9 AC-2: Clear due on the back sends an empty due and takes the time off the card
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" is due tomorrow at 9:00
+    When the To do tab opens
+    And he taps the card "Title of mw-list.1"
+    And he taps Clear due on the card
+    Then a todo_edit for "mw-list.1" with an empty due and nothing else waits in the outbox
+    When he taps Back on the card
+    Then the card "Title of mw-list.1" shows no due time
+
+  Scenario: mw-ev7oyy.9 AC-1: a list's menu sorts its cards by due, the earliest first and the undated last, and puts the order back
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" is due tomorrow at 9:00
+    And the card "mw-list.2" fell due yesterday at 18:30
+    And a card "mw-list.5" with no due time, made last
+    When the To do tab opens
+    Then the list "Title of mw-list" shows "Title of mw-list.1", "Title of mw-list.2" then "Title of mw-list.5"
+    When he chooses Sort by due in the menu of the list "Title of mw-list"
+    Then the list "Title of mw-list" now reads "Title of mw-list.2", "Title of mw-list.1" then "Title of mw-list.5"
+    And a card in the list "Title of mw-list" cannot be moved up or down while it is sorted by due
+    When he chooses Sort by my order in the menu of the list "Title of mw-list"
+    Then the list "Title of mw-list" is back to "Title of mw-list.1", "Title of mw-list.2" then "Title of mw-list.5"

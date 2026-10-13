@@ -366,4 +366,112 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await waitFor(() => expect(pendingIn(el)).toBeNull());
     });
   });
+
+  // mw-ev7oyy.9: the due time, in the phone's zone (the suite runs at TZ=UTC), counted from the test's own clock.
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const dayAt = (days: number, hour: number, minute: number) => {
+    const at = new Date(now);
+    at.setDate(at.getDate() + days);
+    at.setHours(hour, minute, 0, 0);
+    return at;
+  };
+  const inputValue = (at: Date) => `${at.getFullYear()}-${pad2(at.getMonth() + 1)}-${pad2(at.getDate())}T${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
+  const dueOf = (id: string, at: Date) => {
+    beads = beads.map((b) => (b.id === id ? { ...b, todo_due: at.toISOString() } : b));
+  };
+  const dueTomorrowAt9 = (_c: unknown, id: string) => dueOf(id, dayAt(1, 9, 0));
+  const fellDueYesterday = (_c: unknown, id: string) => dueOf(id, dayAt(-1, 18, 30));
+  const dueLine = async (name: string) => within(await card(name.replace('Title of ', ''))).queryByTestId('due');
+  const showsDue = (red: boolean) => async (_c: unknown, name: string, words: string) => {
+    await waitFor(async () => expect(await dueLine(name)).toHaveTextContent(words));
+    expect(await dueLine(name)).toHaveAttribute('data-past', String(red));
+    expect(((await dueLine(name)) as HTMLElement).className).toMatch(red ? /text-danger/ : /text-muted/);
+  };
+  const tapCard = async (_c: unknown, name: string) => {
+    await userEvent.click(await screen.findByRole('button', { name }));
+  };
+  const tapBack = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Back' }));
+  };
+  const menuOf = async (list: string) => within(await listNamed(list)).getByRole('button', { name: 'List menu' });
+  const order = async (list: string, expected: string[]) => {
+    const column = await listNamed(list);
+    await waitFor(() => expect(namesIn(column)).toEqual(expected));
+  };
+  const orderStep = async (_c: unknown, list: string, one: string, two: string, three: string) => order(list, [one, two, three]);
+  const chooseSort = (item: string) => async (_c: unknown, list: string) => {
+    await userEvent.click(await menuOf(list));
+    await userEvent.click(await screen.findByRole('menuitem', { name: item }));
+  };
+
+  Scenario('mw-ev7oyy.9 AC-1: a card shows its due time on its face, red once it is past', ({ Given, And, When, Then }) => {
+    Given('a view with a list {string} holding two open cards, a closed card and a card that is not a to do', aList);
+    And('the card {string} is due tomorrow at 9:00', dueTomorrowAt9);
+    And('the card {string} fell due yesterday at 18:30', fellDueYesterday);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows the due time {string}, not red', showsDue(false));
+    And('the card {string} shows the due time {string}, in red', showsDue(true));
+  });
+
+  Scenario("mw-ev7oyy.9 AC-2: the Due field on a card's back sets the due time as a todo_edit, shown at once and pending", ({ Given, When, And, Then }) => {
+    const picked = () => dayAt(1, 17, 0);
+    Given('a view with a list {string} holding two open cards, a closed card and a card that is not a to do', aList);
+    When('the To do tab opens', tabOpens);
+    And('he taps the card {string}', tapCard);
+    Then('Set due is not offered until a time is picked', async () => {
+      await screen.findByLabelText('Due');
+      await waitFor(() => expect(screen.getByLabelText('Due')).toHaveValue(''));
+      expect(screen.getByRole('button', { name: 'Set due' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Clear due' })).toBeNull();
+    });
+    When('he picks tomorrow at 17:00 as the due time and taps Set due', async () => {
+      fireEvent.change(await screen.findByLabelText('Due'), { target: { value: inputValue(picked()) } });
+      await userEvent.click(await screen.findByRole('button', { name: 'Set due' }));
+    });
+    Then('a todo_edit for {string} with that due time and nothing else waits in the outbox', (_c, bead: string) => waits({ action: 'todo_edit', bead, due: picked().toISOString() })());
+    When('he taps Back on the card', tapBack);
+    Then('the card {string} shows the due time {string}, not red', showsDue(false));
+    And('the card {string} is pending', async (_c, title: string) => {
+      const el = await cardTitled(title);
+      await waitFor(() => expect(pendingIn(el)).not.toBeNull());
+    });
+  });
+
+  Scenario('mw-ev7oyy.9 AC-2: Clear due on the back sends an empty due and takes the time off the card', ({ Given, When, And, Then }) => {
+    Given('a view with a list {string} holding two open cards, a closed card and a card that is not a to do', aList);
+    And('the card {string} is due tomorrow at 9:00', dueTomorrowAt9);
+    When('the To do tab opens', tabOpens);
+    And('he taps the card {string}', tapCard);
+    And('he taps Clear due on the card', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Clear due' }));
+    });
+    Then('a todo_edit for {string} with an empty due and nothing else waits in the outbox', (_c, bead: string) => waits({ action: 'todo_edit', bead, due: '' })());
+    When('he taps Back on the card', tapBack);
+    Then('the card {string} shows no due time', async (_c, name: string) => {
+      await card(name.replace('Title of ', ''));
+      expect(await dueLine(name)).toBeNull();
+    });
+  });
+
+  Scenario("mw-ev7oyy.9 AC-1: a list's menu sorts its cards by due, the earliest first and the undated last, and puts the order back", ({ Given, When, And, Then }) => {
+    Given('a view with a list {string} holding two open cards, a closed card and a card that is not a to do', aList);
+    And('the card {string} is due tomorrow at 9:00', dueTomorrowAt9);
+    And('the card {string} fell due yesterday at 18:30', fellDueYesterday);
+    And('a card {string} with no due time, made last', (_c, id: string) => {
+      beads.push(beadIn(id, { parent: 'mw-list', labels: ['hitl', 'hitl:todo'], created: new Date(now).toISOString() }));
+    });
+    When('the To do tab opens', tabOpens);
+    Then('the list {string} shows {string}, {string} then {string}', orderStep);
+    When('he chooses Sort by due in the menu of the list {string}', chooseSort('Sort by due'));
+    Then('the list {string} now reads {string}, {string} then {string}', orderStep);
+    And('a card in the list {string} cannot be moved up or down while it is sorted by due', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Title of mw-list.1' }));
+      await screen.findByRole('button', { name: 'Move up' });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Move up' })).toBeDisabled());
+      expect(screen.getByRole('button', { name: 'Move down' })).toBeDisabled();
+      await tapBack();
+    });
+    When('he chooses Sort by my order in the menu of the list {string}', chooseSort('Sort by my order'));
+    Then('the list {string} is back to {string}, {string} then {string}', orderStep);
+  });
 });

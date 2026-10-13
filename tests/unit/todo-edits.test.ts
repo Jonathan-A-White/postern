@@ -28,6 +28,16 @@ describe('applyChanges: the board before the Mayor has answered', () => {
     expect(notes.get('mw-a.2')).toBe('Fresh notes');
   });
 
+  it('shows an edited due time at once, and its removal', () => {
+    const dated = lists();
+    dated[0].cards[0] = { ...dated[0].cards[0], due: '2026-10-14T09:00:00Z' };
+    const set = applyChanges(lists(), [at({ action: 'todo_edit', bead: 'mw-a.2', due: '2026-10-15T09:00:00.000Z' })]).lists;
+    expect(set[0].cards[1]).toMatchObject({ due: '2026-10-15T09:00:00.000Z', pending: true });
+    const cleared = applyChanges(dated, [at({ action: 'todo_edit', bead: 'mw-a.1', due: '' })]).lists;
+    expect(cleared[0].cards[0].due).toBeUndefined();
+    expect(cleared[0].cards[0].pending).toBe(true);
+  });
+
   it('moves a card above another in its list', () => {
     const { lists: out } = applyChanges(lists(), [at({ action: 'todo_move', bead: 'mw-a.3', before: 'mw-a.1' })]);
     expect(ids(out[0])).toEqual(['mw-a.3', 'mw-a.1', 'mw-a.2']);

@@ -5,6 +5,7 @@
 // mw-ev7oyy.7: a card is added at a list's foot (the Mayor's host, simulated, applies it and echoes it), dragged above
 // another and its title edited: the outbox holds the three §13 actions with their shapes and the board shows the new order.
 // Shots: todo-board.png, todo-card-back.png, todo-board-hand-edits.png.
+// mw-ev7oyy.9: a due time set on a card's back goes out as a todo_edit with due and shows on the card's face (todo-card-due.png, todo-board-due.png).
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
@@ -231,4 +232,40 @@ test('add a card, drag it above another, edit its title: the outbox holds the th
     { action: 'todo_move', bead: NEW, before: 'mw-6ww.114.1' },
     { action: 'todo_edit', bead: NEW, title: 'Buy bin bags and tape' },
   ]);
+});
+
+test('mw-ev7oyy.9: a due time set on a card’s back is in the outbox as a todo_edit and shows on the card’s face', async ({ page }) => {
+  await open(page);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(17, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const picked = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}T17:00`;
+
+  await page.getByRole('button', { name: 'Take the trash out of the garage' }).click();
+  const back = page.getByRole('group', { name: 'Back of Take the trash out of the garage' });
+  await expect(back.getByRole('button', { name: 'Set due' })).toBeDisabled();
+  await back.getByLabel('Due', { exact: true }).fill(picked);
+  await shot(page, 'todo-card-due');
+  await back.getByRole('button', { name: 'Set due' }).click();
+
+  const actions = await page.evaluate(
+    () =>
+      new Promise<unknown[]>((resolve, reject) => {
+        const request = indexedDB.open('PosternDB');
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const all = request.result.transaction(['outbox'], 'readonly').objectStore('outbox').getAll();
+          all.onsuccess = () => resolve(all.result.map((row: { payload: { action: unknown } }) => row.payload.action));
+          all.onerror = () => reject(all.error);
+        };
+      }),
+  );
+  expect(actions).toEqual([{ action: 'todo_edit', bead: 'mw-6ww.114.1', due: tomorrow.toISOString() }]);
+
+  await back.getByRole('button', { name: 'Back', exact: true }).click();
+  const card = page.getByTestId('todo-card').filter({ hasText: 'Take the trash out of the garage' });
+  await expect(card.getByTestId('due')).toHaveText('Tomorrow 17:00');
+  await expect(card.getByTestId('due')).toHaveAttribute('data-past', 'false');
+  await shot(page, 'todo-board-due');
 });

@@ -21,6 +21,12 @@ import (
 // indexed in between is missed; it is dropped when the client goes (the
 // request's context ends) or the hub drops a subscriber that fell behind. While
 // it is open its key counts as present, and for PRESENCE_GRACE after (presence).
+//
+// An app's key that is neither a cockpit key nor the Mayor's gets the narrowed
+// stream (§19): a hello naming only the head, which its own GET /api/messages
+// already answers as next, and only the message events whose record it may page
+// there (readableBy); never the view, nor any other event. Its stream does not
+// count as presence.
 func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.Duration, here *presence) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
@@ -28,10 +34,15 @@ func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.D
 			writeError(w, http.StatusInternalServerError, "streaming is not supported")
 			return
 		}
+		key := AuthenticatedKey(r.Context())
+		granted := rightsOf(r.Context())
+		narrowed := !granted.cockpit && !granted.mayor
 
 		ch, cancel := hub.Subscribe()
 		defer cancel()
-		defer here.opened(AuthenticatedKey(r.Context()))()
+		if !narrowed {
+			defer here.opened(key)()
+		}
 
 		header := w.Header()
 		header.Set("Content-Type", "text/event-stream")
@@ -39,10 +50,17 @@ func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.D
 		header.Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
 
-		hello, _ := json.Marshal(struct {
-			Head uint64 `json:"head"`
-			View string `json:"view"`
-		}{Head: store.Head(), View: v.ETag()})
+		var hello []byte
+		if narrowed {
+			hello, _ = json.Marshal(struct {
+				Head uint64 `json:"head"`
+			}{Head: store.Head()})
+		} else {
+			hello, _ = json.Marshal(struct {
+				Head uint64 `json:"head"`
+				View string `json:"view"`
+			}{Head: store.Head(), View: v.ETag()})
+		}
 		if writeSSE(w, events.Event{Name: "hello", Data: string(hello)}) != nil {
 			return
 		}
@@ -59,6 +77,9 @@ func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.D
 				if !open {
 					return
 				}
+				if narrowed && !readableBy(store, key, ev) {
+					continue
+				}
 				err = writeSSE(w, ev)
 			case <-ticker.C:
 				_, err = io.WriteString(w, ": ping\n\n")
@@ -69,6 +90,24 @@ func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.D
 			flusher.Flush()
 		}
 	}
+}
+
+// readableBy reports whether an app key's narrowed stream carries ev: only a
+// message event naming a record the index holds and key may page from GET
+// /api/messages (ownRecords: its envelope names key as to or from). Every other
+// event, an event name added later included, stays off it.
+func readableBy(store *index.Store, key string, ev events.Event) bool {
+	if ev.Name != "message" {
+		return false
+	}
+	var msg struct {
+		Seq uint64 `json:"seq"`
+	}
+	if json.Unmarshal([]byte(ev.Data), &msg) != nil || msg.Seq == 0 {
+		return false
+	}
+	page, _, _ := store.SinceLimit(msg.Seq-1, 1)
+	return len(page) == 1 && page[0].Seq == msg.Seq && len(ownRecords(page, key)) == 1
 }
 
 // writeSSE writes one named event with its one-line data.

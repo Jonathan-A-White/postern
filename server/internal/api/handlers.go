@@ -206,7 +206,7 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	mux.HandleFunc("GET /api/me", gate(everyKey, handleMe(&o)))
 	mux.HandleFunc("GET /api/view", gate(cockpitKeys, handleView(o.view)))
 	here := newPresence()
-	mux.HandleFunc("GET /api/events", gate(cockpitKeys|mayorKey, handleEvents(store, o.hub, o.view, o.ping, here)))
+	mux.HandleFunc("GET /api/events", gate(cockpitKeys|mayorKey|appKeys, handleEvents(store, o.hub, o.view, o.ping, here)))
 	mux.HandleFunc("GET /api/presence", gate(cockpitKeys, handlePresence(here, o.mayorKey)))
 	mux.HandleFunc("GET /api/prompts", gate(everyKey|mayorKey, handlePromptList(o.prompts)))
 	mux.HandleFunc("GET /api/prompts/{name}", gate(everyKey|mayorKey, handlePromptGet(o.prompts)))
@@ -404,19 +404,24 @@ func keyPrefix(pubKeyHex string) string {
 // handleMe answers who the caller is, who the Mayor is and who the mill is,
 // and tells a cockpit key the backend's collections and the issuer's address
 // (docs/protocol.md §15, §19). An app's key or the mill's is never told the
-// Mayor, and is offered only grist.
+// Mayor, and is offered only grist, and an app's key also its narrowed event
+// stream.
 func handleMe(o *options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller := AuthenticatedKey(r.Context())
 		granted := rightsOf(r.Context())
 		if !granted.cockpit {
+			features := []string{featureGrist}
+			if appKeys.admits(granted) {
+				features = append(features, featureEvents)
+			}
 			writeJSON(w, http.StatusOK, struct {
 				PubKey   string   `json:"pubkey"`
 				Mill     string   `json:"mill"`
 				Network  string   `json:"network"`
 				Features []string `json:"features"`
 				Apps     []string `json:"apps,omitempty"`
-			}{PubKey: caller, Mill: o.millKey, Network: o.network, Features: []string{featureGrist}, Apps: granted.apps})
+			}{PubKey: caller, Mill: o.millKey, Network: o.network, Features: features, Apps: granted.apps})
 			return
 		}
 		features := Features
@@ -439,6 +444,10 @@ func handleMe(o *options) http.HandlerFunc {
 // featureGrist is what GET /api/me names when this backend takes grist
 // (docs/protocol.md §19).
 const featureGrist = "grist"
+
+// featureEvents is what GET /api/me names to a key that may open GET
+// /api/events (docs/protocol.md §10).
+const featureEvents = "events"
 
 func handleChallenge(nonces *auth.NonceStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

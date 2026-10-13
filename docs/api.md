@@ -167,8 +167,9 @@ A proved key is one of three kinds, and each endpoint below admits only some:
   `GET /api/blobs/{hash}`, and `DELETE /api/blobs/{hash}` for a blob whose
   uploader has sent a grist to the mill;
 - an **app** key holds a licence only in an app's collection (`POSTERN_APPS`):
-  `GET/POST /api/messages`, `GET /api/me`, `POST /api/blobs`,
-  `GET /api/push/vapid-public-key`, `POST /api/push/subscribe`.
+  `GET/POST /api/messages`, `GET /api/me`, `GET /api/events` (narrowed to its own
+  records), `POST /api/blobs`, `GET /api/push/vapid-public-key`,
+  `POST /api/push/subscribe`.
 
 A proved key of a kind an endpoint does not admit gets `403`. A key holding both a
 cockpit and an app licence is a cockpit key.
@@ -537,6 +538,33 @@ the mill's, and a failing licence check does not refuse it the stream. Without a
 licence the Mayor's key gets `403` from every other route (`docs/protocol.md`
 §20).
 
+An app's key may open the stream too, narrowed to what it may already read
+(`docs/protocol.md` §10, §19), so an app hears the answer to its grist at once
+instead of polling:
+
+```
+event: hello
+data: {"head":42}
+
+event: message
+data: {"seq":43}
+
+: ping
+```
+
+- `hello` carries only `head` (which the key's own `GET /api/messages` already
+  answers as `next`), never the view's ETag.
+- `message` is sent only for a record whose envelope names the key as `to` or
+  `from`: exactly the records its `GET /api/messages` pages (the mill's answers
+  to its grists, and its own grists). Another key's record, and a `seq` the index
+  does not hold, is never named.
+- No `view`, no `ideas-only`, and no event added later: the narrowed stream
+  passes only what it names.
+- `: ping` as for every stream. An app's stream does not count towards
+  `GET /api/presence`.
+
+The mill's key gets `403`.
+
 ## GET /api/presence
 
 Whether the Mayor is here (`docs/protocol.md` §20, "Presence"). A cockpit key only
@@ -610,15 +638,17 @@ Who the caller is, who the Mayor is and who the mill is (`docs/protocol.md` §15
   - `mill` — `POSTERN_MILL_KEY`; absent when unset.
   - `network` — `POSTERN_NETWORK`.
   - `features` — what this backend offers; `grist` too when a mill key is set.
+    `events` means this key may open `GET /api/events`.
   - `collections` — a cockpit key only: `[{"name"}, …]` for `POSTERN_COLLECTIONS`,
     then `{"name", "app"}` for each collection of `POSTERN_APPS`, in the order
     configured.
   - `issuer` — a cockpit key only: the testnet address of `POSTERN_ISSUER_KEY`;
     absent when that key is unset.
 
-  An app's key or the mill's gets `{"pubkey", "mill", "network", "features":
-  ["grist"], "apps"}` instead: never the Mayor, and `apps` names the apps its
-  licences open.
+  An app's key or the mill's gets `{"pubkey", "mill", "network", "features",
+  "apps"}` instead: never the Mayor, and `apps` names the apps its licences open.
+  `features` is `["grist", "events"]` for an app's key (its narrowed stream, see
+  `GET /api/events`) and `["grist"]` for the mill's.
 - `401` — as for every endpoint, which includes a key holding no licence: the
   app's cue to offer the licence screen.
 

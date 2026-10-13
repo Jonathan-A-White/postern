@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.14",
+    "date": "2026-10-13",
+    "story": "mw-ev7oyy.3",
+    "kind": "new",
+    "text": "Verify cards you have not touched for several days now fold into one 'Waiting on your use' line at the bottom of Needs you, and no longer count in the tab badge."
+  },
+  {
     "version": "0.6.10",
     "date": "2026-10-13",
     "story": "mw-8oshb2.1",

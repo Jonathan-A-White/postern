@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.14
+_2026-10-13_
+- New: Verify cards you have not touched for several days now fold into one 'Waiting on your use' line at the bottom of Needs you, and no longer count in the tab badge.
+
 ## 0.6.10
 _2026-10-13_
 - Fixed: Tapping a notification after Postern has been in the background now opens the message within a couple of seconds, or says it could not, instead of spinning for up to a minute.

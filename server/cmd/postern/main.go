@@ -48,8 +48,15 @@ const (
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "watchdog" {
-		os.Exit(runWatchdog(os.Getenv, log.Printf))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "watchdog":
+			os.Exit(runWatchdog(os.Getenv, log.Printf))
+		case "setup":
+			os.Exit(setupMain(os.Args[2:]))
+		case "keygen":
+			os.Exit(runKeygen(os.Args[2:], os.Stdout, os.Stderr))
+		}
 	}
 
 	cfg, err := config.Load(os.Getenv)

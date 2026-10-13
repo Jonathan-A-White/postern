@@ -643,3 +643,22 @@ func TestSinceLimitExactFitIsNotMoreAndEmptyPageKeepsTheCursor(t *testing.T) {
 		t.Fatalf("since past the head: %d records, next %d, more %v; want 0, 7, false", len(page), next, more)
 	}
 }
+
+func TestByTxIDReturnsEveryRecordOfThatTransaction(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+	store.Append(newRecord("tx1", 0))
+	store.Append(newRecord("tx2", 0))
+	store.Append(newRecord("tx2", 1))
+
+	got := store.ByTxID("tx2")
+	if len(got) != 2 || got[0].Vout != 0 || got[1].Vout != 1 {
+		t.Fatalf("ByTxID(tx2) = %+v, want its two outputs oldest first", got)
+	}
+	if got := store.ByTxID("nope"); got == nil || len(got) != 0 {
+		t.Fatalf("ByTxID(nope) = %#v, want an empty, non-nil slice", got)
+	}
+}

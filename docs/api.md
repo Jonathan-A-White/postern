@@ -224,6 +224,11 @@ and a challenge must never be able to stand in for one.
 
 ## GET /api/messages?since=\<seq\>[&limit=\<n\>]
 
+`GET /api/messages?txid=<txid>` instead answers only the records of that
+transaction (or `direct:` name), filtered to the caller like a page; `since` and
+`limit` are ignored with it, `next` is the index head and `more` is `false`. A tap
+on a push fetches the one record it names this way.
+
 Returns the indexed records after sequence number `since`, oldest first: all of
 them, or with `limit` one page. For an
 app's key or the mill's, only the records whose envelope names the caller as `to`

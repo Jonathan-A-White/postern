@@ -1368,3 +1368,17 @@ func TestAV1RefusalIsLoggedWithTheRouteAndKey(t *testing.T) {
 		t.Fatalf("log line %q carries more than the key's prefix", line)
 	}
 }
+
+func TestMessagesByTxIDAnswersOnlyThatTransactionsRecords(t *testing.T) {
+	server, store := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
+	appendFive(store)
+
+	page := getMessagesPage(t, server, "?txid=tx3")
+	if len(page.Records) != 1 || page.Records[0].TxID != "tx3" || page.More {
+		t.Fatalf("page = %+v, want only tx3 and more false", page)
+	}
+	page = getMessagesPage(t, server, "?txid=unknown")
+	if len(page.Records) != 0 || page.Records == nil {
+		t.Fatalf("page = %+v, want no records for an unknown txid", page)
+	}
+}

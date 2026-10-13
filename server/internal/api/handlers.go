@@ -476,6 +476,19 @@ const messagesLimitCap = 500
 
 func handleMessages(store *index.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// ?txid=: just that transaction's records (a tap on a push fetches the one it is about), filtered like a page.
+		if txid := r.URL.Query().Get("txid"); txid != "" {
+			records := store.ByTxID(txid)
+			if !rightsOf(r.Context()).cockpit {
+				records = ownRecords(records, AuthenticatedKey(r.Context()))
+			}
+			writeJSON(w, http.StatusOK, struct {
+				Records []index.Record `json:"records"`
+				Next    uint64         `json:"next"`
+				More    bool           `json:"more"`
+			}{Records: records, Next: store.Head(), More: false})
+			return
+		}
 		sinceParam := r.URL.Query().Get("since")
 		var since uint64
 		if sinceParam != "" {

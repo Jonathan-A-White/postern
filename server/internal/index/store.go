@@ -308,6 +308,20 @@ func (s *Store) SinceLimit(since uint64, n int) (page []Record, next uint64, mor
 	return page, next, false
 }
 
+// ByTxID returns every stored record of the transaction txid, oldest first
+// (empty, never nil, when it has none).
+func (s *Store) ByTxID(txid string) []Record {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []Record{}
+	for _, rec := range s.records {
+		if rec.TxID == txid {
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
 // Any reports whether any stored record satisfies match.
 func (s *Store) Any(match func(Record) bool) bool {
 	s.mu.Lock()

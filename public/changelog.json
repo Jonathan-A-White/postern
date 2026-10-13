@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.15",
+    "date": "2026-10-13",
+    "story": "mw-ev7oyy.4",
+    "kind": "new",
+    "text": "A To do tab shows your own lists as columns of cards; tap a card to turn it over for its notes, tap Done to close it."
+  },
+  {
     "version": "0.6.14",
     "date": "2026-10-13",
     "story": "mw-ev7oyy.3",

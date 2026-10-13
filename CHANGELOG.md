@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.15
+_2026-10-13_
+- New: A To do tab shows your own lists as columns of cards; tap a card to turn it over for its notes, tap Done to close it.
+
 ## 0.6.14
 _2026-10-13_
 - New: Verify cards you have not touched for several days now fold into one 'Waiting on your use' line at the bottom of Needs you, and no longer count in the tab badge.

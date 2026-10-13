@@ -753,6 +753,15 @@ is its `body`, and a chain ring has no body:
 { "class": "call", "txid": "direct:5d0a...", "ts": 1758700000, "title": "The Mayor is calling", "body": "Back now: two landings." }
 ```
 
+A reminder, a To do card whose due time has come (`docs/protocol.md` §13), is a push of its own class,
+`reminder`, with an optional `title` (the app's own is `Reminder`) and `body`; the service worker shows it
+by his Reminders setting (sound and buzz, quiet hours), not the per-class switches, and a tap opens the To do
+board. This backend does not send one yet; the worker shows one whenever a sender does:
+
+```json
+{ "class": "reminder", "ts": 1758700000, "title": "Due now", "body": "Call the bank" }
+```
+
 A push with no record behind it (the watchdog's, below) has no `txid`:
 
 ```json

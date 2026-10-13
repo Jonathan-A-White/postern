@@ -11,6 +11,7 @@
 //  - a tap lands at what the push is about (the bead's thread for a message or a
 //    decision, the alarm itself for a watchdog alarm; src/push/tapTarget.ts), in
 //    the open app if there is one;
+//  - a To do card's reminder (class reminder) follows his Reminders setting, not the per-class switches (src/push/reminder.ts);
 //  - the Mayor's ring (class call, docs/protocol.md §21) rings like an incoming call:
 //    Answer opens the Talk line, Later leaves a missed call on it (src/push/classOptions.ts);
 //  - the Mayor's talk answer (class talk, docs/protocol.md §20) is pushed with no words in it: the
@@ -23,6 +24,7 @@
 import { precacheAndRoute } from 'workbox-precaching';
 import { healPrecache, isGuardedAsset, serveAsset } from './precacheGuard';
 import { notificationSpecForClass, notificationSpecForEmergency, notificationSpecForRing, notificationSpecForTalkAnswer, quietedForTalk, type PushClass } from './push/classOptions';
+import { notificationSpecForReminder } from './push/reminder';
 import { resolveTapUrl, type TapData } from './push/tapTarget';
 import { parseRoute } from './nav/route';
 import { settingsRepo } from './data/repositories/settings-repo';
@@ -50,7 +52,7 @@ self.addEventListener('activate', (event) => {
 precacheAndRoute(self.__WB_MANIFEST);
 
 interface PushPayload {
-  class: PushClass | 'call' | 'events' | 'talk';
+  class: PushClass | 'call' | 'events' | 'talk' | 'reminder';
   txid?: string;
   ts: number;
   title?: string;
@@ -126,6 +128,13 @@ async function onPush(payload: PushPayload): Promise<void> {
     await self.registration.showNotification(emergency.title, emergency.options);
     return;
   }
+  // A To do card's reminder: it has its own Reminders setting (src/push/reminder.ts), read here per push, and
+  // shows whatever window is open, since the board in an open app does not say a time has come.
+  if (payload.class === 'reminder') {
+    const reminder = notificationSpecForReminder(payload.txid ?? '', await settingsRepo.getReminderSettings(), new Date(), { title: payload.title, body: payload.body });
+    await self.registration.showNotification(reminder.title, reminder.options);
+    return;
+  }
   // The Mayor's talk answer (§20), pushed with no words: a page the browser has frozen cannot show
   // this itself. A window he is looking at speaks the answer already, so only then is it not shown.
   if (payload.class === 'talk') {
@@ -197,8 +206,8 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
   // Answer, or a tap on the ring itself, opens the Talk line with the ring named; no thread is looked up for it.
-  // An emergency opens the app at its own url, where the banner waits.
-  const ringUrl = data?.class === 'call' || data?.class === 'events' || data?.class === 'talk' ? data.url : undefined;
+  // An emergency opens the app at its own url, where the banner waits; a reminder opens the To do board.
+  const ringUrl = data?.class === 'call' || data?.class === 'events' || data?.class === 'talk' || data?.class === 'reminder' ? data.url : undefined;
   event.waitUntil(ringUrl ? openAt(ringUrl) : resolveTapUrl(data).then(openAt));
 });
 

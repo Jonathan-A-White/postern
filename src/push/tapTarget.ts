@@ -14,7 +14,7 @@ const MAX_CHAIN = 50;
 
 export interface TapData {
   txid?: string;
-  class?: MessageClass;
+  class?: MessageClass | 'reminder';
   url?: string;
 }
 
@@ -92,5 +92,5 @@ export async function resolveTapUrl(data: TapData | undefined): Promise<string> 
     const thread = await threadUrlOfTxid(data.txid);
     if (thread) return thread;
   }
-  return data?.url ?? (data?.class ? CLASS_URLS[data.class] : undefined) ?? '/?v=needs';
+  return data?.url ?? (data?.class && data.class !== 'reminder' ? CLASS_URLS[data.class] : undefined) ?? '/?v=needs';
 }

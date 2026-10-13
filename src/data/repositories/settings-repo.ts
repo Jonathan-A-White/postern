@@ -1,9 +1,11 @@
 import { db, type ArchiveChoices, type PromptsCache } from '../db';
 import { DEFAULT_NOTIFICATION_SETTINGS } from '../../push/classOptions';
 import type { NotificationSettingsMap } from '../../push/classOptions';
+import { DEFAULT_REMINDER_SETTINGS, type ReminderSettings } from '../../push/reminder';
 import type { IdeasOnlyKept } from '../../model/ideasOnly';
 
 const NOTIFICATION_SETTINGS_KEY = 'notificationSettings';
+const REMINDER_SETTINGS_KEY = 'reminderSettings';
 const THREAD_ARCHIVE_KEY = 'threadArchive';
 const PENDING_LATERS_KEY = 'pendingLaters';
 const ANSWERED_RING_KEY = 'answeredRing';
@@ -39,6 +41,16 @@ export const settingsRepo = {
 
   async setNotificationSettings(settings: NotificationSettingsMap): Promise<void> {
     await db.settings.put({ key: NOTIFICATION_SETTINGS_KEY, value: settings });
+  },
+
+  /** The Reminders setting (src/push/reminder.ts), kept apart from the per-class switches: read by the Me screen and by src/sw.ts's push handler. */
+  async getReminderSettings(): Promise<ReminderSettings> {
+    const row = await db.settings.get(REMINDER_SETTINGS_KEY);
+    return { ...DEFAULT_REMINDER_SETTINGS, ...(row?.value as Partial<ReminderSettings> | undefined) };
+  },
+
+  async setReminderSettings(settings: ReminderSettings): Promise<void> {
+    await db.settings.put({ key: REMINDER_SETTINGS_KEY, value: settings });
   },
 
   /** His hand-made archive and unarchive choices, per thread key (mw-2y46l.6). */

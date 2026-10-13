@@ -18,7 +18,7 @@ export interface NotificationOptions {
   body?: string;
   /** Buttons on the notification (the Mayor's ring: Answer and Later). */
   actions?: { action: string; title: string }[];
-  data: { txid: string; class: PushClass | 'call' | 'events' | 'talk'; url: string };
+  data: { txid: string; class: PushClass | 'call' | 'events' | 'talk' | 'reminder'; url: string };
 }
 
 export interface NotificationSpec {

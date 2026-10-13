@@ -17,6 +17,7 @@ import { lock, sessionExpiresAt } from '../services/keySession';
 import { isSupported as canSpeak, speak, useSpeechFailure } from '../services/speech';
 import { useSpeaking } from './useSpeaking';
 import { describeBuild } from '../services/buildLine';
+import { RemindersSection } from './RemindersSection';
 import { WhatsNewOnGitHub } from './WhatsNew';
 import { refreshNow, stopLive, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
@@ -334,6 +335,8 @@ export function MeScreen() {
         </section>
 
         <Notifications />
+
+        <RemindersSection />
 
         <IdeasOnlySection />
 

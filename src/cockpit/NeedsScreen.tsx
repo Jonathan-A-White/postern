@@ -223,7 +223,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
 
   async function refresh() {
     setRefreshing(true);
-    await refreshNow();
+    await refreshNow({ force: true });
     setRefreshing(false);
   }
 

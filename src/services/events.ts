@@ -114,13 +114,15 @@ export interface SyncEventsOptions {
   live: boolean;
   apiBase?: string;
   fetchImpl?: typeof fetch;
+  /** The view fetch goes through the throttle's window (a tap on a Refresh button). */
+  forceView?: boolean;
 }
 
 /** The message sync with its events projected: pages the records past the cursor,
  * applies their events, fetches each bead's detail an event asked for, and the view
  * when the events call for it. Resolves whether the view was fetched. */
 export async function syncMessagesAndEvents(options: SyncEventsOptions): Promise<{ applied: number; refetched: boolean }> {
-  const { publicKeyHex, unlockedKey: key, mayorKey, live, apiBase, fetchImpl } = options;
+  const { publicKeyHex, unlockedKey: key, mayorKey, live, apiBase, fetchImpl, forceView } = options;
   const { events } = await syncMessages({ publicKeyHex, unlockedKey: key, mayorKey, apiBase, fetchImpl });
   const projected = await projectBatches(events);
   let refetch = projected.refetch;
@@ -133,8 +135,8 @@ export async function syncMessagesAndEvents(options: SyncEventsOptions): Promise
       refetch = true;
     }
   }
-  if (refetch) await refreshView({ key, mayorKey, live, apiBase, fetchImpl });
-  return { applied: projected.applied.length, refetched: refetch };
+  if (refetch || forceView) await refreshView({ key, mayorKey, live, apiBase, fetchImpl, force: forceView });
+  return { applied: projected.applied.length, refetched: refetch || Boolean(forceView) };
 }
 
 /** What a screen listens for: events of these kinds about these beads, naming these

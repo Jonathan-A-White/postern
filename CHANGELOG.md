@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.7
+_2026-10-13_
+- Fixed: The balance line on the Key and licence issue form now says why it could not be read, tries again by itself, and updates after you issue a licence.
+
 ## 0.6.5
 _2026-10-13_
 - New: Pictures you send are now shrunk to at most 2400 px on the long side, so a screenshot keeps its full size and stays sharp while a big camera photo gets smaller.

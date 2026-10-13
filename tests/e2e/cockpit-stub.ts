@@ -59,6 +59,8 @@ export interface StubExtras {
   needs?: Need[];
   /** Beads added to the fixture's view (mw-f758y.30: grillings and maps). */
   beads?: ViewBead[];
+  /** The description of a bead added with `beads`, which the bead route serves as its detail (mw-ev7oyy.4: a To do card's back). */
+  descriptions?: Record<string, string>;
   /** Adds the long-option decision cards of mw-gq6.172 to bead mw-2rbm.6's thread. */
   longOptions?: boolean;
   /** Adds a question card on bead mw-f758y.30.2 answered by a comment that quotes a 64-hex txid, and comments holding a bare txid, a long URL and a long code span (mw-jtzpw0.11). */
@@ -124,7 +126,8 @@ export async function stubBackend(
   });
   await page.route('**/api/beads/**', async (route) => {
     const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() ?? '');
-    const detail = fixtureDetail(id, now);
+    const added = extras.beads?.find((bead) => bead.id === id);
+    const detail = fixtureDetail(id, now) ?? (added ? { v: 2 as const, ...added, blocks: [], children: [], description: extras.descriptions?.[id] ?? '', acceptance: '', comments: [] } : undefined);
     if (!detail) return json(route, { error: 'no such bead' }, 404);
     if (extras.longTokens) detail.comments.push(...longTokenComments(id, now));
     return route.fulfill({ status: 200, contentType: 'text/plain', body: await sealDocument(JSON.stringify(detail), MAYOR.toHex(), governorPub) });

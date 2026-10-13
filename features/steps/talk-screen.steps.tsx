@@ -350,7 +350,7 @@ const lastSent = () => sendTurn.mock.calls.at(-1)?.[0] as TalkTurn;
 
 const places = async () => {
   const nav = await screen.findByRole('navigation', { name: 'Places' });
-  expect(within(nav).getAllByRole('link').map((link) => link.textContent?.replace(/^\d+/, ''))).toEqual(['Needs you', 'Map', 'Channels', 'Search', 'Me']);
+  expect(within(nav).getAllByRole('link').map((link) => link.textContent?.replace(/^\d+/, ''))).toEqual(['Needs you', 'To do', 'Map', 'Channels', 'Search', 'Me']);
 };
 
 /** The Mayor's answer as the message sync pages it, with the `events` record that names it (§22), and nothing else a backend serves. */
@@ -1437,7 +1437,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
   Scenario('AC-3: the bottom tab that lists the channels is called Channels', ({ Given, Then, And }) => {
     Given('the cockpit shell on a phone with the Channels place open', shellOpen);
-    Then('the bottom menu offers {string}, {string}, {string}, {string} and {string}', places);
+    Then('the bottom menu offers {string}, {string}, {string}, {string}, {string} and {string}', places);
     And('no screen calls the channel list {string}', async (_c, word: string) => {
       expect(await screen.findByRole('heading', { name: 'Channels' })).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: word })).toBeNull();

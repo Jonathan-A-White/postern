@@ -43,7 +43,7 @@ afterAll(() => {
   window.history.pushState({}, '', '/');
 });
 
-const places = ['Needs you', 'Map', 'Channels', 'Search', 'Me'];
+const places = ['Needs you', 'To do', 'Map', 'Channels', 'Search', 'Me'];
 
 const menu = () => screen.getByRole('navigation', { name: 'Places' });
 
@@ -76,7 +76,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       </Shell>,
     );
   };
-  const offersFive = async () => {
+  const offersSix = async () => {
     const nav = await screen.findByRole('navigation', { name: 'Places' });
     const labels = within(nav)
       .getAllByRole('link')
@@ -98,19 +98,19 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument());
   };
 
-  Scenario("mw-tbx1n.12: a bead's page on a phone still has the five places along the bottom, under its composer", ({ Given, When, Then, And }) => {
+  Scenario("mw-tbx1n.12: a bead's page on a phone still has the six places along the bottom, under its composer", ({ Given, When, Then, And }) => {
     Given('a phone 390 px wide and a view with a bead', phone);
     When("the bead's page opens inside the shell", beadOpens);
-    Then('the bottom menu offers {string}, {string}, {string}, {string} and {string}', offersFive);
+    Then('the bottom menu offers {string}, {string}, {string}, {string}, {string} and {string}', offersSix);
     And('{string} is the place marked as current', isCurrent);
     And('the composer sits above the bottom menu and only the menu keeps the bottom safe-area inset', composerAboveMenu);
     And('the header still offers Back', backStays);
   });
 
-  Scenario('mw-tbx1n.12: a thread on a phone still has the five places along the bottom, under its composer', ({ Given, When, Then, And }) => {
+  Scenario('mw-tbx1n.12: a thread on a phone still has the six places along the bottom, under its composer', ({ Given, When, Then, And }) => {
     Given('a phone 390 px wide and a view with a bead', phone);
     When('a thread opens inside the shell', threadOpens);
-    Then('the bottom menu offers {string}, {string}, {string}, {string} and {string}', offersFive);
+    Then('the bottom menu offers {string}, {string}, {string}, {string}, {string} and {string}', offersSix);
     And('{string} is the place marked as current', isCurrent);
     And('the composer sits above the bottom menu and only the menu keeps the bottom safe-area inset', composerAboveMenu);
     And('the header still offers Back', backStays);

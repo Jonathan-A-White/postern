@@ -415,7 +415,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
 
   Scenario: AC-3: the bottom tab that lists the channels is called Channels
     Given the cockpit shell on a phone with the Channels place open
-    Then the bottom menu offers "Needs you", "Map", "Channels", "Search" and "Me"
+    Then the bottom menu offers "Needs you", "To do", "Map", "Channels", "Search" and "Me"
     And no screen calls the channel list "Talk"
 
   Scenario: AC-3: the Channels place offers a Talk to the Mayor button

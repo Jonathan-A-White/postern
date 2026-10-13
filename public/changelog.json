@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.10",
+    "date": "2026-10-13",
+    "story": "mw-8oshb2.1",
+    "kind": "fixed",
+    "text": "Tapping a notification after Postern has been in the background now opens the message within a couple of seconds, or says it could not, instead of spinning for up to a minute."
+  },
+  {
     "version": "0.6.7",
     "date": "2026-10-13",
     "story": "mw-swrev1",

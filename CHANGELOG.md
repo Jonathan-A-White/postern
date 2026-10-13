@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.10
+_2026-10-13_
+- Fixed: Tapping a notification after Postern has been in the background now opens the message within a couple of seconds, or says it could not, instead of spinning for up to a minute.
+
 ## 0.6.7
 _2026-10-13_
 - Fixed: The balance line on the Key and licence issue form now says why it could not be read, tries again by itself, and updates after you issue a licence.

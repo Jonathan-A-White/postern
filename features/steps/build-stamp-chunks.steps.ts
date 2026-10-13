@@ -1,13 +1,16 @@
 // @vitest-environment node
 //
 // features/steps/build-stamp-chunks.steps.ts — runs features/build-stamp-chunks.feature under vitest via
-// @amiceli/vitest-cucumber: two real builds with the project's real vite.config.ts, the second a day
+// @amiceli/vitest-cucumber: two real builds (each its own vite process) with the project's real vite.config.ts, the second a day
 // later by POSTERN_BUILD_AT, and a look at what each put in dist/ (mw-7dige5.3).
 import { afterAll, beforeAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { build } from 'vite';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
+
+const run = promisify(execFile);
 
 const feature = await loadFeature('features/build-stamp-chunks.feature');
 
@@ -30,13 +33,15 @@ function look(dir: string): Built {
   return { dir, files, html, main, vendor };
 }
 
+// Each build is its own `vite build` process: one real build peaks near 2 GB, so two in the vitest
+// worker's own heap ran it out of memory (the worker died, the whole gate with it).
 async function buildAt(at: string, outDir: string): Promise<Built> {
-  process.env.POSTERN_BUILD_AT = at;
-  try {
-    await build({ configFile: path.resolve(process.cwd(), 'vite.config.ts'), logLevel: 'silent', build: { outDir } });
-  } finally {
-    delete process.env.POSTERN_BUILD_AT;
-  }
+  const vite = path.resolve(process.cwd(), 'node_modules', '.bin', 'vite');
+  await run(vite, ['build', '--outDir', outDir, '--logLevel', 'silent'], {
+    cwd: process.cwd(),
+    env: { ...process.env, POSTERN_BUILD_AT: at },
+    maxBuffer: 16 * 1024 * 1024,
+  });
   return look(outDir);
 }
 

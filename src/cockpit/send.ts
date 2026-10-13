@@ -47,7 +47,7 @@ export async function sendAnswer(bead: string, answer: string): Promise<Queued> 
 /** A one-tap action (docs/protocol.md §13), queued. Once it has gone it is remembered like an
  * answer, so the need it settles leaves the queue at once rather than at the next view. */
 export async function sendAction(action: GovernorAction): Promise<Queued> {
-  return { id: await enqueue({ kind: 'action', bead: action.bead, payload: { action }, label: action.action }) };
+  return { id: await enqueue({ kind: 'action', bead: action.bead ?? '', payload: { action }, label: action.action }) };
 }
 
 /** Queues one turn of the Talk line (docs/protocol.md §20): class `talk`, straight to the backend once it answers. */

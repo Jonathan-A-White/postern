@@ -2,13 +2,17 @@
 // two hitl:todo children shows To do with the epic's title and both cards; Done on one queues a close
 // action for that bead in the outbox and greys the row; a tap on a card turns it over to its back
 // (its description) and Back returns; the six tabs fit the width, 360 px included.
-// Shots: todo-board.png, todo-card-back.png.
+// mw-ev7oyy.7: a card is added at a list's foot (the Mayor's host, simulated, applies it and echoes it), dragged above
+// another and its title edited: the outbox holds the three §13 actions with their shapes and the board shows the new order.
+// Shots: todo-board.png, todo-card-back.png, todo-board-hand-edits.png.
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
+import { encryptMessage } from '../../src/services/messages';
+import { sealDocument } from '../../src/services/documents';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot } from './shot';
-import { fixtureView } from '../support/cockpit-fixture';
+import { MAYOR, fixtureView } from '../support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
 
 test.use({ serviceWorkers: 'block' });
@@ -128,4 +132,103 @@ test('the six tabs fit the width, none cut off or hidden', async ({ page }) => {
     expect(box.scroll, box.label ?? '').toBeLessThanOrEqual(box.client);
   }
   for (let i = 1; i < boxes.length; i++) expect(boxes[i].left).toBeGreaterThanOrEqual(boxes[i - 1].right - 0.5);
+});
+
+test('add a card, drag it above another, edit its title: the outbox holds the three actions and the board shows the new order', async ({ page }) => {
+  const mnemonic = createMnemonic();
+  const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
+  await stubBackend(page, governor, undefined, { beads: BEADS });
+
+  // Every action he sends gets its own txid; the Mayor's host, simulated, applies the add (and no more) and echoes it.
+  const txids: string[] = [];
+  let applied = false;
+  const NEW = 'mw-6ww.114.4';
+  const FIRST = 'Take the trash out of the garage';
+  await page.route('**/api/messages**', async (route) => {
+    if (route.request().method() === 'POST') {
+      txids.push(`direct:${String(txids.length + 1).padStart(64, '0')}`);
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ txid: txids[txids.length - 1], seq: 900 + txids.length }) });
+    }
+    if (!applied || Number(new URL(route.request().url()).searchParams.get('since') ?? 0) >= 1000) return route.fallback();
+    const echo = { seq: 20, ts: new Date().toISOString(), kind: 'action_applied', bead: NEW, actor: 'mw@laptop', from: '', to: '', detail: txids[0], lane: 'normal' };
+    const record = {
+      seq: 1000,
+      txid: `direct:${'f'.repeat(64)}`,
+      vout: 0,
+      payload: { ...encryptMessage({ text: JSON.stringify({ from: 20, to: 20, lane: 'normal', events: [echo] }), class: 'events', senderPrivateKeyHex: MAYOR.toHex(), recipientPublicKeyHex: governor.toPublicKey().toString() }), ts: Math.floor(Date.now() / 1000) },
+    };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [record], next: 1000 }) });
+  });
+  await page.route('**/api/view', async (route) => {
+    if (!applied) return route.fallback();
+    const base = fixtureView(Date.now());
+    const made = bead(NEW, { parent: 'mw-6ww.114', title: 'Buy bin bags', labels: ['hitl', 'hitl:todo'], created: new Date().toISOString() });
+    const sealed = await sealDocument(JSON.stringify({ ...base, seq: 20, beads: [...base.beads, ...BEADS, made] }), MAYOR.toHex(), governor.toPublicKey().toString());
+    return route.fulfill({ status: 200, contentType: 'text/plain', headers: { ETag: '"applied"' }, body: sealed });
+  });
+
+  await seedVault(page, mnemonic);
+  await page.goto('/?v=todo');
+  await page.getByLabel('Recovery phrase').fill(mnemonic);
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  const column = page.getByRole('region', { name: 'Governor’s list, this morning' });
+  await expect(column.getByRole('button', { name: FIRST })).toBeVisible();
+
+  // 1. Add a card at the list's foot: it shows at once, last, marked pending.
+  await column.getByRole('button', { name: 'Add a card' }).click();
+  await column.getByLabel('Title of the new card').fill('Buy bin bags');
+  await column.getByRole('button', { name: 'Add', exact: true }).click();
+  const names = () => column.getByTestId('todo-card').evaluateAll((cards) => cards.map((card) => card.querySelector('span')?.textContent ?? ''));
+  await expect.poll(names).toEqual([FIRST, 'Do the recycling on the back deck', 'Buy bin bags']);
+  await expect(column.getByTestId('todo-card').last().getByTestId('pending-mark')).toBeVisible();
+  await expect.poll(() => txids.length).toBe(1);
+
+  // The host applies it: the card is real once the view has reached the echo.
+  applied = true;
+  await page.reload();
+  await expect(column.getByRole('button', { name: 'Buy bin bags' })).toBeVisible({ timeout: 30_000 });
+  await expect(column.getByTestId('todo-card').filter({ hasText: 'Buy bin bags' }).getByTestId('pending-mark')).toHaveCount(0);
+
+  // 2. Drag it above the first card (a mouse picks a card up after a few pixels).
+  const grab = column.getByRole('button', { name: 'Buy bin bags' });
+  await grab.scrollIntoViewIfNeeded();
+  const from = (await grab.boundingBox())!;
+  const above = (await column.getByRole('button', { name: FIRST }).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 10, from.y + from.height / 2 - 10, { steps: 3 });
+  await page.mouse.move(above.x + above.width / 2, above.y - 4, { steps: 8 });
+  await expect(page.getByTestId('drop-mark')).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(names).toEqual(['Buy bin bags', FIRST, 'Do the recycling on the back deck']);
+  await expect(column.getByTestId('todo-card').first().getByTestId('pending-mark')).toBeVisible();
+
+  // 3. Edit its title on its back.
+  await column.getByRole('button', { name: 'Buy bin bags' }).click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByLabel('Title', { exact: true }).fill('Buy bin bags and tape');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(column.getByText('Buy bin bags and tape').first()).toBeVisible();
+  await shot(page, 'todo-board-hand-edits');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect.poll(names).toEqual(['Buy bin bags and tape', FIRST, 'Do the recycling on the back deck']);
+
+  // The outbox holds the three actions, in order, with the §13 shapes.
+  const actions = await page.evaluate(
+    () =>
+      new Promise<unknown[]>((resolve, reject) => {
+        const request = indexedDB.open('PosternDB');
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const all = request.result.transaction(['outbox'], 'readonly').objectStore('outbox').getAll();
+          all.onsuccess = () => resolve(all.result.map((row: { payload: { action: unknown } }) => row.payload.action));
+          all.onerror = () => reject(all.error);
+        };
+      }),
+  );
+  expect(actions).toEqual([
+    { action: 'todo_add', list: 'mw-6ww.114', title: 'Buy bin bags' },
+    { action: 'todo_move', bead: NEW, before: 'mw-6ww.114.1' },
+    { action: 'todo_edit', bead: NEW, title: 'Buy bin bags and tape' },
+  ]);
 });

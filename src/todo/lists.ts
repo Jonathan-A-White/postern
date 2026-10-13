@@ -15,6 +15,10 @@ export interface TodoCard {
   priority: number;
   created: string;
   rank?: number | string;
+  /** A change of his to this card has gone and the view does not yet agree (edits.ts). */
+  pending?: boolean;
+  /** The card is one he has just added: the Mayor has not made it, so it has no id yet. */
+  adding?: boolean;
 }
 
 export interface TodoList {

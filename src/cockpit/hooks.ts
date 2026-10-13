@@ -158,6 +158,24 @@ export function useOutbox(): OutboxRow[] {
   return useLiveQuery(() => outboxRepo.open(), [], [] as OutboxRow[]);
 }
 
+/** A To do hand edit (§13 todo_*) and the seq of the event that echoed it, undefined while none has. */
+export interface TodoRow {
+  row: OutboxRow;
+  echoSeq?: number;
+}
+
+/** Every To do hand edit he has queued or sent, oldest first. */
+export function useTodoRows(): TodoRow[] {
+  return useLiveQuery(
+    async () => {
+      const rows = await outboxRepo.todoActions();
+      return Promise.all(rows.map(async (row) => ({ row, echoSeq: row.txid ? await eventsRepo.seqOfDetail(row.txid) : undefined })));
+    },
+    [],
+    [] as TodoRow[],
+  );
+}
+
 export type DetailStatus = 'idle' | 'loading' | 'ok' | 'missing' | 'unsupported' | 'error';
 
 /** One bead's full detail: the stored copy at once, then a fresh fetch. */

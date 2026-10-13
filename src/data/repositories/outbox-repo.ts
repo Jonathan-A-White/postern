@@ -23,6 +23,14 @@ export const outboxRepo = {
     return db.outbox.orderBy('id').toArray();
   },
 
+  /** The To do board's hand edits (§13 todo_*), whatever their state, oldest first: an acked one still shows until the view agrees (src/todo/edits.ts). */
+  async todoActions(): Promise<OutboxRow[]> {
+    return db.outbox
+      .orderBy('id')
+      .filter((row) => row.kind === 'action' && String((row.payload.action as { action?: unknown } | undefined)?.action ?? '').startsWith('todo_'))
+      .toArray();
+  },
+
   /** The rows still on their way or not yet seen coming back: everything but the acked. */
   async open(): Promise<OutboxRow[]> {
     return db.outbox.orderBy('id').filter((row) => row.state !== 'acked').toArray();

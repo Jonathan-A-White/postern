@@ -134,7 +134,8 @@ function rememberDelivered(row: OutboxRow, delivered: Delivered): void {
   if (row.kind === 'answer') writeBehind(answersRepo.save({ bead: row.bead, answer: String(row.payload.answer ?? ''), txid: delivered.txid, ...seq }), 'your answer');
   else if (row.kind === 'action') {
     const action = row.payload.action as GovernorAction;
-    writeBehind(answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid, ...seq }), 'your action');
+    // A To do card's hand edit (§13 todo_*) is judged by its own outbox row (src/todo/edits.ts): a todo_add has no bead and several edits may be on one.
+    if (action.bead && !action.action.startsWith('todo_')) writeBehind(answersRepo.save({ bead: action.bead, answer: action.action, txid: delivered.txid, ...seq }), 'your action');
   } else if (row.kind === 'message' && typeof row.payload.settles === 'string') {
     writeBehind(answersRepo.save({ bead: row.bead, answer: row.payload.settles, txid: delivered.txid, ...seq }), 'your action');
   }

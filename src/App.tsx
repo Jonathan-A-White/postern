@@ -29,6 +29,7 @@ import { NoticeScreen } from './cockpit/NoticeScreen';
 import { AlarmScreen } from './cockpit/AlarmScreen';
 import { EmergencyScreen } from './cockpit/EmergencyScreen';
 import { ArchiveScreen } from './cockpit/ArchiveScreen';
+import { TodoScreen } from './cockpit/TodoScreen';
 import { ToastHost } from './ui/toast';
 import { answerSeen } from './services/seen';
 import { sendCallLater } from './cockpit/send';
@@ -65,6 +66,8 @@ function Place({ route }: { route: Route }) {
       return <EmergencyScreen />;
     case 'archive':
       return <ArchiveScreen />;
+    case 'todo':
+      return <TodoScreen />;
     default:
       return <NeedsScreen who={route.view === 'needs' ? route.who : undefined} />;
   }

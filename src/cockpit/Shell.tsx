@@ -23,9 +23,11 @@ import { UpdateBanner } from './UpdateBanner';
 import { liveLabel } from './liveLabel';
 import { useAnswers, useMessages, useViewIndex, useWide } from './hooks';
 import { needsByWaiter, splitFolded, unsettledNeeds } from '../model/needs';
+import { useTodoCount } from '../todo';
 
 const TABS: { view: TopView; label: string; icon: IconName; route: Route; longPress?: Route }[] = [
   { view: 'needs', label: 'Needs you', icon: 'needs', route: { view: 'needs' } },
+  { view: 'todo', label: 'To do', icon: 'check', route: { view: 'todo' } },
   { view: 'map', label: 'Map', icon: 'map', route: { view: 'map' } },
   // The channel list. A long press goes straight to the Talk line, which has its own button on this place too.
   { view: 'talk', label: 'Channels', icon: 'talk', route: { view: 'talk' }, longPress: { view: 'line' } },
@@ -74,8 +76,9 @@ function useBadges(): Partial<Record<TopView, number>> {
   const view = useViewIndex();
   const messages = useMessages();
   const answers = useAnswers();
+  const todo = useTodoCount();
   const unread = messages.filter((row) => row.direction === 'received' && !row.read).length;
-  return { needs: view ? needsByWaiter(splitFolded(unsettledNeeds(view.index.view.needs, answers)).open).you.length : 0, talk: unread };
+  return { needs: view ? needsByWaiter(splitFolded(unsettledNeeds(view.index.view.needs, answers)).open).you.length : 0, todo, talk: unread };
 }
 
 export function LiveBadge({ compact }: { compact?: boolean }) {

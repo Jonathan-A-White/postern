@@ -1,0 +1,100 @@
+// tests/unit/todo-lists.test.ts — mw-ev7oyy.4: the To do board's lists and cards from the view.
+// The grouping helper puts open hitl:todo beads under their epic, newest list first, and skips
+// closed beads and beads without the label; the Postern adapter's store gives them in todo_rank order.
+import { describe, expect, it } from 'vitest';
+import { indexView } from '../../src/model/tree';
+import { decodeView } from '../../src/model/view';
+import { beadsNamed, openTodoCount, todoListsFromView, TODO_LABEL, OTHER_LIST } from '../../src/todo';
+import { fixtureView } from '../support/cockpit-fixture';
+import type { ViewBead } from '../../src/model/view';
+
+const NOW = Date.parse('2026-10-13T12:00:00Z');
+const at = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
+
+function bead(id: string, extra: Partial<ViewBead> = {}): ViewBead {
+  return { ...fixtureView(NOW).beads[0], id, title: `Title of ${id}`, type: 'task', status: 'open', parent: undefined, labels: [], waits: [], done_earlier: 0, closed: '', created: at(60), ...extra };
+}
+
+const todo = (id: string, extra: Partial<ViewBead> = {}) => bead(id, { labels: ['hitl', TODO_LABEL], ...extra });
+
+function listsOf(beads: ViewBead[]) {
+  return todoListsFromView(indexView({ ...fixtureView(NOW), needs: [], beads }));
+}
+
+describe('the grouping helper', () => {
+  it('puts hitl:todo beads under their epic, newest list first', () => {
+    const lists = listsOf([
+      bead('mw-old', { type: 'epic', created: at(600) }),
+      bead('mw-new', { type: 'epic', created: at(30) }),
+      todo('mw-old.1', { parent: 'mw-old' }),
+      todo('mw-new.1', { parent: 'mw-new' }),
+      todo('mw-new.2', { parent: 'mw-new' }),
+    ]);
+    expect(lists.map((list) => [list.id, list.title, list.cards.map((card) => card.id)])).toEqual([
+      ['mw-new', 'Title of mw-new', ['mw-new.1', 'mw-new.2']],
+      ['mw-old', 'Title of mw-old', ['mw-old.1']],
+    ]);
+  });
+
+  it('skips closed beads and beads without the label, and an epic with nothing open on it', () => {
+    const lists = listsOf([
+      bead('mw-e', { type: 'epic' }),
+      bead('mw-factory', { type: 'epic' }),
+      todo('mw-e.1', { parent: 'mw-e' }),
+      todo('mw-e.2', { parent: 'mw-e', status: 'closed', closed: at(5) }),
+      bead('mw-e.3', { parent: 'mw-e', labels: ['hitl'] }),
+      bead('mw-factory.1', { parent: 'mw-factory' }),
+    ]);
+    expect(lists.map((list) => list.id)).toEqual(['mw-e']);
+    expect(lists[0].cards.map((card) => card.id)).toEqual(['mw-e.1']);
+    expect(openTodoCount(indexView({ ...fixtureView(NOW), needs: [], beads: [bead('mw-e', { type: 'epic' }), todo('mw-e.1', { parent: 'mw-e' }), todo('mw-e.2', { parent: 'mw-e', status: 'closed' })] }))).toBe(1);
+  });
+
+  it('puts a bead with no epic under Other, last', () => {
+    const lists = listsOf([bead('mw-e', { type: 'epic' }), todo('mw-loose'), todo('mw-e.1', { parent: 'mw-e' }), todo('mw-gone.1', { parent: 'mw-not-in-view' })]);
+    expect(lists.map((list) => list.id)).toEqual(['mw-e', OTHER_LIST]);
+    expect(lists[1].title).toBe('Other');
+    expect(lists[1].cards.map((card) => card.id)).toEqual(['mw-gone.1', 'mw-loose']);
+  });
+
+  it('does not show a list epic labelled hitl:todo as a card of its own', () => {
+    const lists = listsOf([todo('mw-e', { type: 'epic' }), todo('mw-e.1', { parent: 'mw-e' })]);
+    expect(lists.map((list) => [list.id, list.cards.map((card) => card.id)])).toEqual([['mw-e', ['mw-e.1']]]);
+  });
+});
+
+describe('the Postern adapter over a view', () => {
+  it('gives the cards in todo_rank order, then priority, then age', () => {
+    const lists = listsOf([
+      bead('mw-e', { type: 'epic' }),
+      todo('mw-e.late', { parent: 'mw-e', priority: 1, created: at(5) }),
+      todo('mw-e.early', { parent: 'mw-e', priority: 1, created: at(50) }),
+      todo('mw-e.p0', { parent: 'mw-e', priority: 0, created: at(1) }),
+      todo('mw-e.r2', { parent: 'mw-e', priority: 3, todo_rank: 2 }),
+      todo('mw-e.r1', { parent: 'mw-e', priority: 4, todo_rank: 1 }),
+      todo('mw-e.r15', { parent: 'mw-e', todo_rank: 1.5 }),
+    ]);
+    expect(lists[0].cards.map((card) => card.id)).toEqual(['mw-e.r1', 'mw-e.r15', 'mw-e.r2', 'mw-e.p0', 'mw-e.early', 'mw-e.late']);
+  });
+
+  it('orders a string todo_rank as text, after the numbers and before the unranked', () => {
+    const lists = listsOf([
+      bead('mw-e', { type: 'epic' }),
+      todo('mw-e.none', { parent: 'mw-e' }),
+      todo('mw-e.b', { parent: 'mw-e', todo_rank: 'b0' }),
+      todo('mw-e.a', { parent: 'mw-e', todo_rank: 'a0' }),
+    ]);
+    expect(lists[0].cards.map((card) => card.id)).toEqual(['mw-e.a', 'mw-e.b', 'mw-e.none']);
+  });
+
+  it('reads todo_rank from the view, as a number or a string', () => {
+    const view = decodeView(JSON.stringify({ v: 2, beads: [{ id: 'mw-a', todo_rank: 3 }, { id: 'mw-b', todo_rank: 'm0' }, { id: 'mw-c', todo_rank: '' }, { id: 'mw-d' }] }));
+    expect(view.beads.map((b) => b.todo_rank)).toEqual([3, 'm0', undefined, undefined]);
+  });
+});
+
+describe('the beads a card names', () => {
+  it('lists each bead id once, in the order met, never the card itself', () => {
+    expect(beadsNamed('mw-card', ['Do it after mw-aaa.1 and see mw-bbb', 'mw-aaa.1 again, `mw-code` is code too, and mw-card itself'])).toEqual(['mw-aaa.1', 'mw-bbb', 'mw-code']);
+  });
+});

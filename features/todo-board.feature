@@ -31,3 +31,57 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     When the To do tab opens
     Then the board says "Nothing on your lists."
     And the To do tab shows no count
+
+  Scenario: mw-ev7oyy.7 AC-1: Add a card at a list's foot shows it at once, pending, and queues a todo_add
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    When the To do tab opens
+    And he adds the card "Buy bin bags" at the foot of the list "Title of mw-list"
+    Then a todo_add for the list "mw-list" titled "Buy bin bags" waits in the outbox
+    And the list "Title of mw-list" ends with the pending card "Buy bin bags"
+
+  Scenario: mw-ev7oyy.7 AC-1: Edit on a card's back saves its title, shown at once and pending, as a todo_edit
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Do it after mw-other.7, then tell the Mayor."
+    When the To do tab opens
+    And he taps the card "Title of mw-list.1"
+    And he taps Edit on the card, changes the title to "Renamed card" and saves
+    Then a todo_edit for "mw-list.1" with the title "Renamed card" and no notes waits in the outbox
+    And the card "Renamed card" is pending
+
+  Scenario: mw-ev7oyy.7 AC-1: Dragging a card above another reorders the list at once and queues a todo_move
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    When the To do tab opens
+    And he drags the card "Title of mw-list.2" above the card "Title of mw-list.1"
+    Then a todo_move for "mw-list.2" before "mw-list.1" waits in the outbox
+    And the list "Title of mw-list" shows "Title of mw-list.2" then "Title of mw-list.1", the first pending
+
+  Scenario: mw-ev7oyy.7 AC-1: Dragging a card onto another list moves it there and names the list
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And a second list "mw-other" holding one open card
+    When the To do tab opens
+    And he drags the card "Title of mw-list.1" onto the foot of the list "Title of mw-other"
+    Then a todo_move for "mw-list.1" to the list "mw-other" after "mw-other.1" waits in the outbox
+    And the list "Title of mw-other" shows "Title of mw-other.1" then "Title of mw-list.1"
+    And the list "Title of mw-list" shows only "Title of mw-list.2"
+
+  Scenario: mw-ev7oyy.7 AC-1: Move down on a card's back is the keyboard's way to reorder
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    When the To do tab opens
+    And he taps the card "Title of mw-list.1"
+    And he taps Move down on the card
+    Then a todo_move for "mw-list.1" after "mw-list.2" waits in the outbox
+
+  Scenario: mw-ev7oyy.7 AC-1: A change the Mayor never echoes is rolled back with a short note
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And a move of "mw-list.2" before "mw-list.1" that went three minutes ago and was never echoed
+    When the To do tab opens
+    Then the list "Title of mw-list" shows "Title of mw-list.1" then "Title of mw-list.2", neither pending
+    And a note says the move was not done
+
+  Scenario: mw-ev7oyy.7 AC-1: A change stays pending until the view has reached its echo
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And an edit of "mw-list.2" to "Renamed by hand" that went and was echoed at seq 9, the view being at seq 5
+    When the To do tab opens
+    Then the card "Renamed by hand" is pending
+    When a newer view at seq 9 arrives with "mw-list.2" titled "Renamed by hand"
+    Then the card "Renamed by hand" is not pending

@@ -683,6 +683,10 @@ parent chain up to the root, so the app can draw any level of the tree:
 - `status` is the tracker's own word: `open`, `in_progress`, `deferred` (held),
   `closed`; `type` likewise (`epic`, `task`, `bug`, `feature`, `chore`, …); a map
   is an epic labelled `wayfinder:map`;
+- `todo_rank` — optional, on a bead labelled `hitl:todo` (an item on one of his own lists, shown
+  in the app's To do board): its place on its list, a number or a sortable string. The app shows a
+  list's cards by `todo_rank` (numbers, then strings, then the unranked), then `priority`, then the
+  oldest first;
 - `waits` — the ids of the unfinished beads this one waits on (so an open bead
   with an empty `waits` is on the frontier);
 - `path` — the story's merged Path (the epic's defaults overlaid with its own);

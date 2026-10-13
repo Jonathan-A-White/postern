@@ -52,6 +52,8 @@ export interface ViewBead {
   summary: string;
   comments: number;
   done_earlier: number;
+  /** A hitl:todo bead's place on its list (mw-ev7oyy.6): a number or a sortable string; absent when it has none. */
+  todo_rank?: number | string;
 }
 
 export interface Need {
@@ -170,10 +172,16 @@ function priorityNumber(value: unknown): number {
   return 2;
 }
 
+function rank(value: unknown): number | string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
 function decodeBead(value: unknown): ViewBead | undefined {
   const raw = record(value);
   if (!raw || typeof raw.id !== 'string' || raw.id === '') return undefined;
   const parent = str(raw.parent);
+  const todoRank = rank(raw.todo_rank);
   return {
     id: raw.id,
     title: str(raw.title) || raw.id,
@@ -193,6 +201,7 @@ function decodeBead(value: unknown): ViewBead | undefined {
     summary: str(raw.summary),
     comments: num(raw.comments),
     done_earlier: num(raw.done_earlier),
+    ...(todoRank !== undefined ? { todo_rank: todoRank } : {}),
   };
 }
 

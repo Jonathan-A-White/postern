@@ -13,6 +13,8 @@ export type MapLens = 'board' | 'graph' | 'list';
 export type Route =
   /** `who` is the part of the Needs switch: whose turn the cards are (absent: You). */
   | { view: 'needs'; who?: WaitsFor }
+  /** His own outside things as a board (src/todo/): a column per list, a card per item. */
+  | { view: 'todo' }
   | { view: 'map'; focus?: string; lens?: MapLens; bucket?: string; filter?: string; landed?: 'today' }
   | { view: 'bead'; id: string }
   /** `root` is the txid of a General post whose thread of replies is open (docs/protocol.md §14). */
@@ -37,7 +39,7 @@ export type Route =
   /** The live cards untouched for 48 h, newest first, each still updating (src/cockpit/ArchiveScreen.tsx). */
   | { view: 'archive' };
 
-export type TopView = 'needs' | 'map' | 'talk' | 'search' | 'me';
+export type TopView = 'needs' | 'todo' | 'map' | 'talk' | 'search' | 'me';
 
 const CLASSES: MessageClass[] = ['message', 'decision-needed', 'landing', 'alarm'];
 
@@ -136,6 +138,8 @@ export function parseRoute(search: string): Route {
       return { view: 'emergency' };
     case 'archive':
       return { view: 'archive' };
+    case 'todo':
+      return { view: 'todo' };
     case 'needs': {
       const who = params.get('who');
       return who === 'mayor' || who === 'factory' ? { view: 'needs', who } : { view: 'needs' };
@@ -196,6 +200,8 @@ export function formatRoute(route: Route): string {
 
 export function topViewOf(route: Route): TopView {
   switch (route.view) {
+    case 'todo':
+      return 'todo';
     case 'bead':
     case 'map':
       return 'map';

@@ -216,3 +216,33 @@ export async function syncMessages(params: SyncMessagesParams): Promise<SyncMess
   }
   return { events };
 }
+
+export interface FetchRecordParams {
+  txid: string;
+  publicKeyHex: string;
+  unlockedKey: Uint8Array;
+  apiBase?: string;
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Fetches the records of one transaction by its txid (GET /api/messages?txid=), keeps the ones naming
+ * this key and decrypts them, leaving the stored cursor alone: a tap on a push is about that one message,
+ * and does not wait for the sync (mw-8oshb2.1). Throws if the fetch fails. Resolves with the rows kept.
+ */
+export async function fetchRecordByTxid(params: FetchRecordParams): Promise<MessageRow[]> {
+  const response = await apiFetch(`/messages?txid=${encodeURIComponent(params.txid)}`, undefined, {
+    unlockedKey: params.unlockedKey,
+    apiBase: params.apiBase,
+    fetchImpl: params.fetchImpl,
+  });
+  if (!response.ok) throw new Error(`Could not fetch the message (${response.status}).`);
+  const body = (await response.json()) as ApiResponse;
+  const kept: MessageRow[] = [];
+  for (const record of body.records ?? []) {
+    if (!isMessagePayload(record.payload) || record.payload.class === 'events') continue;
+    const row = await storeRecord({ seq: record.seq, txid: record.txid, vout: record.vout, payload: record.payload }, params.publicKeyHex, keyToHex(params.unlockedKey));
+    if (row) kept.push(row);
+  }
+  return kept;
+}

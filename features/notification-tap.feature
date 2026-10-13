@@ -79,3 +79,22 @@ Feature: Tapping a push notification opens the app at what it is about (mw-f758y
     And the app opens where the notification pointed
     And the reply arrives and decrypts
     Then the app moves to the reply thread of the post in the channel of bead "mw-j0f2d"
+
+  Scenario: mw-8oshb2.1 AC-13: a tap with the live connection not up fetches that one message by its txid and opens its thread
+    Given the phone is unlocked and its live connection is not up
+    And the backend holds the Mayor's message for the thread of bead "mw-2rbm.10"
+    And the Mayor's message push arrives for a message the phone does not hold yet
+    When he taps the notification
+    And the app opens where the notification pointed
+    Then the app moves to the thread of bead "mw-2rbm.10"
+    And the backend was asked for that message by its txid exactly once
+
+  Scenario: mw-8oshb2.1 AC-14: a backend that never answers gives way to Needs you within 5 seconds, saying the message could not be opened
+    Given the phone is unlocked and its live connection is not up
+    And the backend never answers
+    And the Mayor's decision push arrives for a message the phone does not hold yet
+    When he taps the notification
+    And the app opens where the notification pointed
+    And 5 seconds pass
+    Then the app moves to the Needs-you queue
+    And the screen says "Could not open that message yet"

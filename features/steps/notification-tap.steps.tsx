@@ -5,6 +5,7 @@
 // scenarios end at the screen the Governor would see.
 import '@testing-library/react/dont-cleanup-after-each';
 import { render, screen, cleanup } from '@testing-library/react';
+import { PrivateKey, Utils } from '@bsv/sdk';
 import { afterAll, beforeAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { db, type MessageClass, type MessageRow } from '../../src/data/db';
@@ -13,6 +14,11 @@ import { parseRoute } from '../../src/nav/route';
 import { waitForRoute } from '../../tests/support/wait-for-route';
 import { NoticeScreen } from '../../src/cockpit/NoticeScreen';
 import { AlarmScreen } from '../../src/cockpit/AlarmScreen';
+import { encryptMessage } from '../../src/services/messages';
+import { lock, setKey } from '../../src/services/keySession';
+import { getLiveState, stopLive } from '../../src/services/live';
+import { currentToasts, dismissAllToasts } from '../../src/ui/toastStore';
+import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { fakeWindowClient, loadWorker, type FakeWindowClient, type WorkerHarness } from '../../tests/support/sw-harness';
 
 const TXID = 'ab'.repeat(32);
@@ -60,8 +66,53 @@ async function arrive(messageClass: MessageClass): Promise<void> {
   await worker.push({ class: messageClass, txid: TXID, ts: 1_790_000_000 });
 }
 
+const PHONE = PrivateKey.fromHex('44'.repeat(32));
+const MAYOR = PrivateKey.fromHex('55'.repeat(32));
+let txidAsks: string[] = [];
+
+/** The phone's own key is unlocked; nothing has started the live connection (the app woke from the background). */
+function unlockPhone(): void {
+  setKey(new Uint8Array(Utils.toArray(PHONE.toHex(), 'hex')));
+  expect(getLiveState().status).toBe('idle');
+}
+
+/** A backend that holds the Mayor's message under TXID and answers a fetch of it by txid; everything else is not found. */
+function backendHolding(bead: string): void {
+  const payload = encryptMessage({
+    text: JSON.stringify({ thread: { bead }, text: 'a word about the library' }),
+    class: 'message',
+    senderPrivateKeyHex: MAYOR.toHex(),
+    recipientPublicKeyHex: PHONE.toPublicKey().toString(),
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (isChallengeRequest(url)) return challengeResponse();
+      if (url.includes(`/messages?txid=${TXID}`)) {
+        txidAsks.push(url);
+        return new Response(JSON.stringify({ records: [{ seq: 1, txid: TXID, vout: 0, payload }], next: 1, more: false }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('{}', { status: 404 });
+    }),
+  );
+}
+
+/** A backend that takes the sign-in code and then answers nothing, ever. */
+function backendThatNeverAnswers(): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL) => (isChallengeRequest(String(input)) ? Promise.resolve(challengeResponse()) : new Promise<Response>(() => undefined))),
+  );
+}
+
 async function fresh(): Promise<void> {
   cleanup();
+  stopLive();
+  lock();
+  dismissAllToasts();
+  vi.unstubAllGlobals();
+  txidAsks = [];
   vi.useRealTimers();
   await db.messages.clear();
   appWindow = undefined;
@@ -272,6 +323,51 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the app moves to the reply thread of the General post', async () => {
       await waitForRoute(replyThread);
+    });
+  });
+
+  Scenario('mw-8oshb2.1 AC-13: a tap with the live connection not up fetches that one message by its txid and opens its thread', ({ Given, And, When, Then }) => {
+    Given('the phone is unlocked and its live connection is not up', unlockPhone);
+    And("the backend holds the Mayor's message for the thread of bead {string}", (_ctx, bead: string) => backendHolding(bead));
+    And("the Mayor's message push arrives for a message the phone does not hold yet", () => arrive('message'));
+    When('he taps the notification', tap);
+    And('the app opens where the notification pointed', () => {
+      window.history.replaceState(null, '', tappedUrl!);
+      const route = parseRoute(window.location.search);
+      expect(route).toMatchObject({ view: 'notice', tx: TXID });
+      if (route.view !== 'notice') return;
+      render(<NoticeScreen tx={route.tx} cls={route.cls} />);
+    });
+    Then('the app moves to the thread of bead {string}', async (_ctx, bead: string) => {
+      await waitForRoute({ view: 'talk', thread: `bead:${bead}` });
+    });
+    And('the backend was asked for that message by its txid exactly once', () => {
+      expect(txidAsks).toHaveLength(1);
+    });
+  });
+
+  Scenario('mw-8oshb2.1 AC-14: a backend that never answers gives way to Needs you within 5 seconds, saying the message could not be opened', ({ Given, And, When, Then }) => {
+    Given('the phone is unlocked and its live connection is not up', unlockPhone);
+    And('the backend never answers', backendThatNeverAnswers);
+    And("the Mayor's decision push arrives for a message the phone does not hold yet", () => arrive('decision-needed'));
+    When('he taps the notification', tap);
+    And('the app opens where the notification pointed', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      window.history.replaceState(null, '', tappedUrl!);
+      const route = parseRoute(window.location.search);
+      expect(route).toMatchObject({ view: 'notice', tx: TXID, cls: 'decision-needed' });
+      if (route.view !== 'notice') return;
+      render(<NoticeScreen tx={route.tx} cls={route.cls} />);
+    });
+    And('5 seconds pass', async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+      vi.useRealTimers();
+    });
+    Then('the app moves to the Needs-you queue', () => {
+      expect(parseRoute(window.location.search)).toEqual({ view: 'needs' });
+    });
+    And('the screen says {string}', (_ctx, note: string) => {
+      expect(currentToasts().map((toast) => toast.text)).toContain(note);
     });
   });
 });

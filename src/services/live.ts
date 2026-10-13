@@ -26,6 +26,8 @@ import { onIdeasOnlyEvent } from './ideasOnly';
 import { projectBatches, syncMessagesAndEvents } from './events';
 import type { EventBatch } from '../model/events';
 import { freshRings, ringInApp } from './ringIn';
+import { fetchRecordByTxid } from './inbox';
+import { getKey } from './keySession';
 import { fetchMe, LEGACY, NoLicenceError, reconcileMayorKey, type Me } from './me';
 import { refreshView } from './view';
 import { publicKeyHexFromMasterKey } from './vault';
@@ -450,6 +452,23 @@ async function probeHome(key: Uint8Array): Promise<void> {
 export async function refreshNow(): Promise<void> {
   if (!current) return;
   await syncAll(current.key, { messages: true, view: true });
+}
+
+/** A tap on a push (mw-8oshb2.1): the one record it names is fetched by its txid at once, without waiting for the
+ * live connection or its sync, and the connection is brought up if it is not (started when it never was, cut short
+ * of its backoff when it dropped). Resolves true when the record is kept; false when the phone is locked, the backend
+ * has no such record for this key, or it could not be reached. */
+export async function openRecordNow(txid: string): Promise<boolean> {
+  const key = current?.key ?? getKey();
+  if (!key) return false;
+  if (!current) startLive(key);
+  else if (state.status === 'reconnecting' || state.status === 'offline') current.interrupt?.abort();
+  try {
+    const rows = await fetchRecordByTxid({ txid, publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key });
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {

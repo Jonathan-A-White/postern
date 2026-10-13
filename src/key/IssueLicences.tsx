@@ -38,6 +38,12 @@ type Listing =
 /** The wait before the first automatic re-read of a list that failed; it doubles each time. */
 const LISTING_RETRY_MS = 2000;
 const LISTING_RETRIES = 5;
+/** The same for the balance: the first wait, doubling, and how many automatic re-reads before the Retry button is all there is. */
+const BALANCE_RETRY_MS = 2000;
+const BALANCE_RETRIES = 5;
+
+/** The issuer's balance: loading, read, or refused with the reason (shown as the Key screen shows it). */
+type Balance = { name: 'loading' } | { name: 'loaded'; satoshis: number } | { name: 'error'; message: string; failures: number };
 
 type IssueOutcome = { name: 'idle' } | { name: 'issuing'; busy?: boolean } | { name: 'issued'; txid: string } | { name: 'error'; message: string };
 
@@ -57,7 +63,11 @@ const loadCollections = (key: Uint8Array): Promise<Collections> =>
     (): Collections => ({ name: 'error' }),
   );
 
-const loadBalance = (key: Uint8Array): Promise<number | null> => chain.issuerBalance({ issuerKey: key }).catch(() => null);
+const loadBalance = (key: Uint8Array): Promise<Balance> =>
+  chain.issuerBalance({ issuerKey: key }).then(
+    (satoshis): Balance => ({ name: 'loaded', satoshis }),
+    (error): Balance => ({ name: 'error', message: plainMessage(error), failures: 1 }),
+  );
 
 const loadListing = (issuerPublicKeyHex: string): Promise<Listing> =>
   chain.issuedLicences({ issuerPublicKeyHex }).then(
@@ -143,7 +153,9 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const issuerPublicKeyHex = publicKeyHexFromMasterKey(issuerKey);
   const [collectionsState, setCollectionsState] = useState<Collections>({ name: 'loading' });
   const [collectionsToken, setCollectionsToken] = useState(0);
-  const [balance, setBalance] = useState<number | null | undefined>(undefined);
+  const [balance, setBalance] = useState<Balance>({ name: 'loading' });
+  const [balanceToken, setBalanceToken] = useState(0);
+  const failedBalanceReads = useRef(0);
   const [listing, setListing] = useState<Listing>({ name: 'loading' });
   const [times, setTimes] = useState<Record<string, number>>({});
   const [refreshToken, setRefreshToken] = useState(0);
@@ -177,7 +189,6 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   useEffect(() => {
     if (!enabled) return;
     let current = true;
-    void loadBalance(issuerKey).then(setBalance);
     void loadListing(issuerPublicKeyHex).then((next) => {
       // A read that a newer one has replaced says nothing more.
       if (!current) return;
@@ -196,6 +207,25 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       current = false;
     };
   }, [enabled, issuerKey, issuerPublicKeyHex, refreshToken]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let current = true;
+    void loadBalance(issuerKey).then((next) => {
+      if (!current) return;
+      failedBalanceReads.current = next.name === 'error' ? failedBalanceReads.current + 1 : 0;
+      setBalance(next.name === 'error' ? { ...next, failures: failedBalanceReads.current } : next);
+    });
+    return () => {
+      current = false;
+    };
+  }, [enabled, issuerKey, balanceToken]);
+
+  useEffect(() => {
+    if (balance.name !== 'error' || balance.failures > BALANCE_RETRIES) return;
+    const timer = setTimeout(() => setBalanceToken((token) => token + 1), BALANCE_RETRY_MS * 2 ** (balance.failures - 1));
+    return () => clearTimeout(timer);
+  }, [balance]);
 
   useEffect(() => {
     if (listing.name !== 'retrying') return;
@@ -232,7 +262,8 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const cost = chain.issueCost();
   const collection = collections.some((c) => c.name === chosen) ? chosen : collections[0].name;
 
-  const short = typeof balance === 'number' && balance < cost.totalSatoshis;
+  const balanceSatoshis = balance.name === 'loaded' ? balance.satoshis : null;
+  const short = balanceSatoshis !== null && balanceSatoshis < cost.totalSatoshis;
   const fundingAddress = chain.addressFor(issuerPublicKeyHex);
 
   async function handleCopyAddress() {
@@ -263,6 +294,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       setOutcome({ name: 'issued', txid: issued.txid });
       setHolder('');
       setRefreshToken((token) => token + 1);
+      setBalanceToken((token) => token + 1);
     } catch (error) {
       setOutcome({ name: 'error', message: plainMessage(error) });
     } finally {
@@ -333,12 +365,26 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
 
         <p data-testid="issue-cost" className="text-sm text-muted">
           Cost: {sats(cost.fuelSatoshis)} mint fuel + about {sats(cost.feeEstimateSatoshis)} fee.{' '}
-          {balance === undefined ? 'Checking balance…' : balance === null ? 'Balance unavailable.' : `Balance: ${sats(balance)}.`}
+          {balance.name === 'loading' && 'Checking balance…'}
+          {balance.name === 'loaded' && `Balance: ${sats(balance.satoshis)}.`}
+          {balance.name === 'error' && <span className={WRAP}>Balance unavailable (WhatsOnChain): {balance.message}</span>}
         </p>
+        {balance.name === 'error' && balance.failures > BALANCE_RETRIES && (
+          <button
+            className={`${BUTTON} self-start`}
+            onClick={() => {
+              failedBalanceReads.current = 0;
+              setBalance({ name: 'loading' });
+              setBalanceToken((token) => token + 1);
+            }}
+          >
+            Check balance again
+          </button>
+        )}
         {short && (
           <div className="flex flex-col gap-2">
             <p role="alert" className={`text-danger ${WRAP}`}>
-              Not enough sats: this needs {cost.totalSatoshis.toLocaleString('en-US')}, you have {balance.toLocaleString('en-US')}.
+              Not enough sats: this needs {cost.totalSatoshis.toLocaleString('en-US')}, you have {(balanceSatoshis ?? 0).toLocaleString('en-US')}.
             </p>
             <p className="text-sm text-muted">
               Send testnet sats to this key&apos;s address:{' '}

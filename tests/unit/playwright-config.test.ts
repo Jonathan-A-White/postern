@@ -26,6 +26,20 @@ describe('playwright.config.ts shots project', () => {
   });
 });
 
+// mw-gq6.403: the preview server goes through scripts/preview-guard.mjs, which stops a leftover
+// `vite preview` from this checkout first, so a stale one never fails a shots run.
+describe('playwright.config.ts webServer', () => {
+  const source = readFileSync(path.join(process.cwd(), 'playwright.config.ts'), 'utf-8');
+
+  it('stops a leftover preview as the main process loads the config, not in the workers', () => {
+    expect(source).toMatch(/TEST_WORKER_INDEX === undefined[^\n]*stopLeftoverPreview\(PREVIEW_PORT\)/);
+  });
+
+  it('starts the preview through the guard, on the strict port', () => {
+    expect(source).toMatch(/command:\s*`node scripts\/preview-guard\.mjs \$\{PREVIEW_PORT\} -- npm run preview -- --port \$\{PREVIEW_PORT\} --strictPort`/);
+  });
+});
+
 describe('shotSize', () => {
   it('reads SHOT_SIZE as <width>x<height>', () => {
     expect(shotSize({ SHOT_SIZE: '360x640' })).toEqual({ width: 360, height: 640 });

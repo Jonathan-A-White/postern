@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.21
+_2026-10-14_
+- Fixed: Postern no longer downloads the whole board about once a minute while the factory is busy; a new card from a hold, a landing or a finished story may take up to 15 minutes to appear unless you pull to refresh.
+
 ## 0.6.20
 _2026-10-13_
 - New: To do cards can have a due time shown on the card (red when it has passed), set or cleared on the card's back, a list can be sorted by due, and Me has a Reminders setting for sound and quiet hours.

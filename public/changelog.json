@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.21",
+    "date": "2026-10-14",
+    "story": "mw-7dige5.5",
+    "kind": "fixed",
+    "text": "Postern no longer downloads the whole board about once a minute while the factory is busy; a new card from a hold, a landing or a finished story may take up to 15 minutes to appear unless you pull to refresh."
+  },
+  {
     "version": "0.6.20",
     "date": "2026-10-13",
     "story": "mw-ev7oyy.9",

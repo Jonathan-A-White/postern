@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.22",
+    "date": "2026-10-14",
+    "story": "mw-q6n8m0.13",
+    "kind": "fixed",
+    "text": "A notification for the Mayor's reply to a card now opens the card with the reply under it, instead of \"That post is not on this phone\"."
+  },
+  {
     "version": "0.6.21",
     "date": "2026-10-14",
     "story": "mw-7dige5.5",

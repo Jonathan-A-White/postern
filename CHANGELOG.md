@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.22
+_2026-10-14_
+- Fixed: A notification for the Mayor's reply to a card now opens the card with the reply under it, instead of "That post is not on this phone".
+
 ## 0.6.21
 _2026-10-14_
 - Fixed: Postern no longer downloads the whole board about once a minute while the factory is busy; a new card from a hold, a landing or a finished story may take up to 15 minutes to appear unless you pull to refresh.

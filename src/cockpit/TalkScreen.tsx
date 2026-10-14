@@ -11,12 +11,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, EmptyState, Icon, IconButton, TimeAgo, cx } from '../ui';
 import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
-import { ThreadCards } from './LiveCard';
+import { LiveCard, ThreadCards } from './LiveCard';
 import { Composer } from './Composer';
 import { TopicForm } from './TopicForm';
 import { topicKey } from './topicKey';
 import type { MessageRow } from '../data/db';
-import { useBeadComments, useBeadDetail, useMessages, useOutbox, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
+import type { LiveCard as LiveCardData } from '../model/cards';
+import { useBeadComments, useBeadDetail, useCardRoot, useMessages, useOutbox, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
 import { pendingMessageItems } from '../model/outbox';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { groupPosts } from '../model/postThreads';
@@ -198,9 +199,16 @@ function ChannelPane({ threadKey, prefill, held }: { threadKey: string; prefill?
   );
 }
 
+/** A live card as the post a thread is rooted at: only its txid, time and title, for groupPosts to hang replies on. */
+function cardRoot(card: LiveCardData): ConversationItem {
+  return { id: card.id, at: card.sentAt, speaker: 'mayor', speakerLabel: 'Mayor', kind: 'text', text: card.title, txid: card.id, source: 'message' };
+}
+
 /** One post with its replies in time order, and a composer that answers it. The
  * replies are found across every channel: one sent with no channel to a post of a
  * bead's or a named channel sits in Factory but belongs under its post (mw-gq6.170).
+ * A live card is a post like any other: the card itself heads the thread, and a reply
+ * to one of its updates is a reply to the card (mw-q6n8m0.13).
  * `threadKey` is the post's own channel. */
 function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: string }) {
   const ref: ThreadRef | undefined = parseThreadKey(threadKey);
@@ -211,12 +219,19 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
   const bead = ref && 'bead' in ref ? ref.bead : undefined;
   const { detail } = useBeadDetail(bead);
   const view = useViewIndex();
+  const card = useCardRoot(rootTxid);
   const thread = useMemo(() => {
     const wanted = rootTxid.toLowerCase();
     const waiting = pendingMessageItems(outbox, all, () => true);
-    return groupPosts([...mergeConversation(all, detail?.comments ?? []), ...waiting]).find((candidate) => candidate.root.txid?.toLowerCase() === wanted);
-  }, [all, detail, rootTxid, outbox]);
+    const posts = [...mergeConversation(all, detail?.comments ?? []), ...waiting];
+    if (!card) return groupPosts(posts).find((candidate) => candidate.root.txid?.toLowerCase() === wanted);
+    const updates = new Set(card.updates.map((txid) => txid.toLowerCase()));
+    const answers = posts.map((post) => (post.re !== undefined && updates.has(post.re.toLowerCase()) ? { ...post, re: card.card.id } : post));
+    return groupPosts([cardRoot(card.card), ...answers]).find((candidate) => candidate.root.txid?.toLowerCase() === wanted);
+  }, [all, detail, rootTxid, outbox, card]);
   const items = useMemo(() => (thread ? [thread.root, ...thread.replies] : []), [thread]);
+  // The card is drawn as the channel draws it, so the conversation under it holds the replies alone.
+  const shown = card && thread ? thread.replies : items;
   const remember = useScrollMemory('replies');
   const [quote, setQuote] = useState<{ speaker: string; text: string } | null>(null);
 
@@ -235,13 +250,20 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
     <>
       <div ref={remember} className="scroll-thin min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-3xl">
-          <Conversation
-            items={items}
-            windowed={false}
-            shareTitle={shareTitle(titleFor(threadKey, view?.index).title)}
-            onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}
-            empty={<EmptyState icon="talk" title="That post is not on this phone">It may still be arriving; Back returns to the channel.</EmptyState>}
-          />
+          {card && (
+            <div className="mb-3" data-testid="thread-root-card">
+              <LiveCard card={card.card} titleOf={(bead) => view?.index.byId.get(bead)?.title} shareTitle={shareTitle(titleFor(threadKey, view?.index).title)} />
+            </div>
+          )}
+          {(!card || shown.length > 0) && (
+            <Conversation
+              items={shown}
+              windowed={false}
+              shareTitle={shareTitle(titleFor(threadKey, view?.index).title)}
+              onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}
+              empty={<EmptyState icon="talk" title="That post is not on this phone">It may still be arriving; Back returns to the channel.</EmptyState>}
+            />
+          )}
         </div>
       </div>
       {thread && <Composer thread={ref} re={thread.root.txid} placeholder="Reply…" quote={quote} onClearQuote={() => setQuote(null)} />}

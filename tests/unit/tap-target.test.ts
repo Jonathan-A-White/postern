@@ -121,3 +121,43 @@ describe('resolveTapUrl: a reply opens the post it answers', () => {
     expect(route(await resolveTapUrl({ txid: REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'general', root: REPLY });
   });
 });
+
+describe('a live card is a thread root (mw-q6n8m0.13)', () => {
+  const CARD = `direct:${'ca'.repeat(32)}`;
+  const UPDATE = `direct:${'cb'.repeat(32)}`;
+  const card = (thread?: string) => row(CARD, { title: 'Top 5', items: [], ...(thread ? { thread: { bead: thread } } : {}) }, { class: 'card' });
+  const update = () => row(UPDATE, { re: CARD, items: [], links: {}, tick: [] }, { class: 'card-update' });
+
+  beforeEach(async () => {
+    await db.messages.clear();
+  });
+
+  it('opens the reply thread of a card in General, rooted at the card', async () => {
+    await messagesRepo.put(card());
+    await messagesRepo.put(row(REPLY, { text: 'the answer', re: CARD }));
+    expect(route(await resolveTapUrl({ txid: REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'general', root: CARD });
+  });
+
+  it("names the card's own channel, which only its plaintext holds, when it was sent to a bead", async () => {
+    await messagesRepo.put(card('mw-t.1'));
+    await messagesRepo.put(row(REPLY, { text: 'the answer', re: CARD }));
+    expect(route(await resolveTapUrl({ txid: REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'bead:mw-t.1', root: CARD });
+  });
+
+  it('follows a reply to a card-update to the card', async () => {
+    await messagesRepo.put(card());
+    await messagesRepo.put(update());
+    await messagesRepo.put(row(REPLY, { text: 'about the change', re: UPDATE }));
+    expect(route(await resolveTapUrl({ txid: REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'general', root: CARD });
+  });
+
+  it('the notice screen path finds the card among the stored rows', () => {
+    const rows = [card('mw-t.1'), row(REPLY, { text: 'the answer', re: CARD })];
+    expect(route(threadUrlOfMessage(rows[1], rows)!)).toEqual({ view: 'talk', thread: 'bead:mw-t.1', root: CARD });
+  });
+
+  it("a tap on the card's own record opens the channel it was sent to", async () => {
+    await messagesRepo.put(card('mw-t.1'));
+    expect(route(await resolveTapUrl({ txid: CARD, class: 'card' }))).toEqual({ view: 'talk', thread: 'bead:mw-t.1' });
+  });
+});

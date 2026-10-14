@@ -97,6 +97,11 @@ export function useMessages(): MessageRow[] {
   return useLiveQuery(() => messagesRepo.getAllOldestFirst(), [], [] as MessageRow[], 'messages');
 }
 
+/** Every stored message, cards and card updates included (no list shows those): what a tapped notification follows a reply's `re` chain through. */
+export function useStoredMessages(): MessageRow[] {
+  return useLiveQuery(() => messagesRepo.getAllStored(), [], [] as MessageRow[]);
+}
+
 /** The Talk line's turns, oldest first (class `talk`, docs/protocol.md §20); undefined until they have been read. */
 export function useTalkTurns(): MessageRow[] | undefined {
   return useLiveQuery(() => messagesRepo.talkTurns(), [], undefined as MessageRow[] | undefined);
@@ -125,6 +130,16 @@ export function useThreadMessages(threadKey: string | undefined, held?: readonly
 export function useCards(): LiveCard[] {
   const rows = useLiveQuery(() => cardsRepo.getAll(), [], [] as CardRow[], 'cards');
   return useMemo(() => rows.map(liveCard).filter((card): card is LiveCard => card !== undefined).sort((a, b) => b.sentAt - a.sentAt), [rows]);
+}
+
+/** The live card a reply thread is rooted at, with the txids of its updates (a reply to an update answers the card), or undefined when `txid` names no card held. */
+export function useCardRoot(txid: string | undefined): { card: LiveCard; updates: string[] } | undefined {
+  const rows = useLiveQuery(() => cardsRepo.getAll(), [], [] as CardRow[], 'cards');
+  return useMemo(() => {
+    const row = txid === undefined ? undefined : rows.find((held) => held.id.toLowerCase() === txid.toLowerCase());
+    const card = row && liveCard(row);
+    return row && card ? { card, updates: row.updates.map((update) => update.txid) } : undefined;
+  }, [rows, txid]);
 }
 
 /** The live cards split at 48 h untouched (mw-v1uyku.1): the fresh ones for Needs you, the archived ones newest touch first.

@@ -15,7 +15,7 @@
 import { useEffect, useState } from 'react';
 import { EmptyState, Spinner } from '../ui';
 import { Screen } from './Shell';
-import { useMessages, useUnlockedKey } from './hooks';
+import { useStoredMessages, useUnlockedKey } from './hooks';
 import { navigate } from '../router';
 import { CLASS_URLS } from '../push/classOptions';
 import { threadUrlOfMessage } from '../push/tapTarget';
@@ -38,7 +38,8 @@ interface NoticeScreenProps {
 }
 
 export function NoticeScreen({ tx, cls, waitMs, graceMs = GRACE_MS }: NoticeScreenProps) {
-  const messages = useMessages();
+  // Cards are no message in a list, but a reply to one is followed to it.
+  const messages = useStoredMessages();
   const key = useUnlockedKey();
   const holdsKey = key !== null;
   const giveUpMs = waitMs ?? (holdsKey ? DIRECT_WAIT_MS : WAIT_MS);

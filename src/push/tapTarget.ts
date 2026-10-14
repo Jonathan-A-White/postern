@@ -5,6 +5,7 @@
 // the app writes) and by the notice screen the tap otherwise lands on.
 import type { MessageClass, MessageRow } from '../data/db';
 import { messagesRepo } from '../data/repositories/messages-repo';
+import { cardThread, decodeCardUpdate } from '../model/cards';
 import { formatRoute, threadHrefFor } from '../nav/route';
 import { decodeThreadedMessage } from '../services/threads';
 import { CLASS_URLS } from './classOptions';
@@ -23,8 +24,16 @@ export interface TapData {
  * mw-f758y.29), never a transcript. */
 function repliedTo(row: MessageRow): string | undefined {
   if (row.plaintext === undefined || row.class === 'talk') return undefined;
+  // A card-update names its card as `re` (§24), so a reply to the update answers the card.
+  if (row.class === 'card-update') return decodeCardUpdate(row.plaintext)?.re;
   const body = decodeThreadedMessage(row.plaintext);
   return body.re !== undefined && body.role === undefined ? body.re : undefined;
+}
+
+/** The channel a stored message lives in (its thread key; undefined is Factory). A card record carries no
+ * `thread` of its own: the bead's channel it was sent to is named in its plaintext, as the channel draws it. */
+function channelOf(row: MessageRow): string | undefined {
+  return row.class === 'card' && row.plaintext !== undefined ? cardThread(row.plaintext) : row.thread;
 }
 
 /** The root of the reply thread this message belongs to: the post its `re` chain
@@ -57,9 +66,10 @@ export function threadUrlOfMessage(row: MessageRow | undefined, rows: MessageRow
     const root = rootOf(row, (txid) => byTxid.get(txid.toLowerCase()));
     // In a bead's or a named channel a `re` naming nothing of it leaves the message a post (§14): its channel opens.
     // (General keeps opening the message as the root of its own thread, as mw-gq6.160 settled.)
-    if (root !== row || !row.thread) return `/${formatRoute({ view: 'talk', thread: root.thread ?? 'general', root: root.txid })}`;
+    if (root !== row || !row.thread) return `/${formatRoute({ view: 'talk', thread: channelOf(root) ?? 'general', root: root.txid })}`;
   }
-  if (row.thread) return `/${threadHrefFor(row.thread)}`;
+  const channel = channelOf(row);
+  if (channel) return `/${threadHrefFor(channel)}`;
   if (row.plaintext !== undefined || row.decryptFailed) return `/${threadHrefFor(undefined)}`;
   return undefined;
 }

@@ -113,3 +113,32 @@ func TestViewRequiresAuthorization(t *testing.T) {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}
 }
+
+// A client that says why it asks for the view (?why=, mw-7dige5.5) has the reason on the gate's accepted line, so the
+// Governor's fetches can be counted, and told apart, from the log alone; one that says nothing logs as before, and a
+// reason that is not a short plain word is logged as why=? (never a second line).
+func TestViewRequestLogsTheReasonItGives(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "postern-view.txt")
+	if err := os.WriteFile(path, []byte("QkIQMwOdGrrs"), 0o644); err != nil {
+		t.Fatalf("writing view: %v", err)
+	}
+	server, _ := newServerWithOptions(t, WithView(view.New(path)))
+	for _, tc := range []struct{ target, want, wantNot string }{
+		{"/api/view?why=gap", "accepted GET /api/view why=gap (scheme=v2 key ", ""},
+		{"/api/view?why=probe", "accepted GET /api/view why=probe (scheme=v2 key ", ""},
+		{"/api/view", "accepted GET /api/view (scheme=v2 key ", "why="},
+		{"/api/view?why=a%0Aaccepted%20GET%20/api/fake", "accepted GET /api/view why=? (scheme=v2 key ", "fake"},
+		{"/api/view?why=" + strings.Repeat("x", 40), "accepted GET /api/view why=? (scheme=v2 key ", ""},
+	} {
+		buf := captureAcceptLog(t)
+		resp := doAuthorized(t, http.MethodGet, server.URL+tc.target, nil, server)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status = %d, want 200", tc.target, resp.StatusCode)
+		}
+		lines := logLines(buf)
+		if len(lines) != 1 || !strings.Contains(lines[0], tc.want) || (tc.wantNot != "" && strings.Contains(lines[0], tc.wantNot)) {
+			t.Fatalf("%s logged %q, want one line with %q and without %q", tc.target, lines, tc.want, tc.wantNot)
+		}
+	}
+}

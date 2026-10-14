@@ -323,7 +323,7 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 			refuse(w, r, http.StatusForbidden, reasonForbidden, "this key's licence does not open this route", key)
 			return
 		}
-		acceptLog.Printf("accepted %s %s (scheme=v2 key %s)", r.Method, r.URL.EscapedPath(), keyPrefix(key))
+		acceptLog.Printf("accepted %s %s%s (scheme=v2 key %s)", r.Method, r.URL.EscapedPath(), whyLogged(r), keyPrefix(key))
 		ctx := context.WithValue(r.Context(), authKey{}, key)
 		next(w, r.WithContext(context.WithValue(ctx, rightsKey{}, granted)))
 	}
@@ -348,6 +348,20 @@ func readSignedBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	return body, true
+}
+
+// whyLogged is the reason a request gives for itself (?why=, mw-7dige5.5: the app says why it fetches the whole view)
+// as the accepted line writes it, " why=<reason>"; "" when it gives none, and " why=?" for one that is not a short
+// word of lower-case letters, digits and hyphens, so a reason can never forge a line or a field of its own.
+func whyLogged(r *http.Request) string {
+	why, given := r.URL.Query()["why"]
+	if !given {
+		return ""
+	}
+	if len(why) != 1 || why[0] == "" || len(why[0]) > 24 || strings.Trim(why[0], "abcdefghijklmnopqrstuvwxyz0123456789-") != "" {
+		return " why=?"
+	}
+	return " why=" + why[0]
 }
 
 // acceptLog takes the one line each accepted request writes: the route, the

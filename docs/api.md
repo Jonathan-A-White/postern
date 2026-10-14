@@ -71,7 +71,10 @@ nonce alone), is no longer accepted: any request under it, however well signed, 
 refused `401` with `reason: "signature-v1"`, and the refusal is logged with the
 route and the key's first 12 hex characters. A client that gets `signature-v1` is
 an old build and has to update; it is not worth a retry. Every accepted request
-writes one log line, `accepted <METHOD> <path> (scheme=v2 key <first 12 hex>)`.
+writes one log line, `accepted <METHOD> <path> (scheme=v2 key <first 12 hex>)`; a
+request that says why it was made (`?why=<reason>`, as the app's `GET /api/view` does)
+has it after the path, `accepted GET /api/view why=gap (scheme=v2 key …)`, and a reason
+that is not one short word of `a-z`, `0-9` and `-` (at most 24) is written `why=?`.
 `GET /api/challenge` stays unsigned.
 
 A nonce is consumed the moment it's presented and verified — it can never be
@@ -590,6 +593,12 @@ until the streams reconnect.
 
 The live view (`docs/protocol.md` §11): the bytes of `POSTERN_VIEW_FILE` as they
 stand on disk.
+
+`?why=` (optional, mw-7dige5.5) says why the app asks, and only goes into the log line
+(above), so the Governor's fetches can be counted and told apart from the log alone:
+`start`, `hello`, `reconnect`, `gap`, `unapplied`, `behind`, `view-event`, `poll`,
+`refresh`, `focus`, `mayor-key` or `probe` (`docs/protocol.md` §22). It changes nothing
+in the answer.
 
 - `200 text/plain; charset=utf-8` — the file's bytes (the base64 BRC-78
   ciphertext `mw postern view` wrote), with `ETag: "<sha256 hex of the bytes>"`

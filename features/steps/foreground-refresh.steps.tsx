@@ -19,7 +19,7 @@ const net = vi.hoisted(() => ({
 vi.mock('../../src/services/apiAuth', () => ({
   // An open stream that says nothing and errors when it is aborted.
   apiFetch: vi.fn(async (path: string, init?: RequestInit) => {
-    if (path === '/view') {
+    if (path.split('?')[0] === '/view') {
       // The home probe (mw-7dige5.1): a bare 304, never the body.
       net.probes.push(new Headers(init?.headers).get('If-None-Match') ?? '');
       return { ok: false, status: 304, body: null };

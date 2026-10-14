@@ -108,7 +108,7 @@ async function liveWithTwoScreenshots(): Promise<void> {
       const path = new URL(String(input), 'http://localhost').pathname;
       if (path.endsWith('/challenge')) return json({ nonce: crypto.randomUUID().replace(/-/g, '') });
       if (path.endsWith('/me')) return json({ pubkey: HIM_PUB, mayor: MAYOR.toPublicKey().toString(), network: 'testnet', features: ['direct', 'view', 'beads', 'me'] });
-      if (path.endsWith('/view')) return new Response(view, { status: 200, headers: { ETag: '"fixture"' } });
+      if (path.split('?')[0].endsWith('/view')) return new Response(view, { status: 200, headers: { ETag: '"fixture"' } });
       if (path.endsWith('/messages')) return json({ records, next: records.length });
       return new Response('not found', { status: 404 });
     }),

@@ -27,7 +27,7 @@ async function inFactoryChannelWithBanner(page: Page): Promise<void> {
   await stubBackend(page, governor, undefined, { longThread: true });
   // The home goes down while the channel is open: 'Home is down' is a Shell banner like the update bar.
   let down = false;
-  await page.route('**/api/view', (route) => (down ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ standby: true, home: 'desktop' }) }) : route.fallback()));
+  await page.route(/\/api\/view(\?|$)/, (route) => (down ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ standby: true, home: 'desktop' }) }) : route.fallback()));
   await seedVault(page, mnemonic);
   await page.goto('/');
   await page.getByLabel('Recovery phrase').fill(mnemonic);

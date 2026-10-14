@@ -9,14 +9,14 @@ import type { EventBatch } from '../../src/model/events';
 import type { View, ViewBead } from '../../src/model/view';
 import { syncMessagesAndEvents } from '../../src/services/events';
 import { sealDocument } from '../../src/services/documents';
-import { refreshView, resetViewThrottle, VIEW_MIN_INTERVAL_MS } from '../../src/services/view';
+import { refreshView, resetViewThrottle, VIEW_BEHIND_INTERVAL_MS, VIEW_MIN_INTERVAL_MS } from '../../src/services/view';
 import { MAYOR } from '../support/cockpit-fixture';
 
 const net = vi.hoisted(() => ({
   /** what the next message sync hands back */
   batches: [] as unknown[],
-  /** every GET /api/view: when it was asked (ms on the test's clock) and the If-None-Match it carried */
-  views: [] as { at: number; ifNoneMatch: string | null }[],
+  /** every GET /api/view: when it was asked (ms on the test's clock), why (?why=) and the If-None-Match it carried */
+  views: [] as { at: number; why: string | null; ifNoneMatch: string | null }[],
   /** the sealed view the backend serves, and the ETag it serves it under */
   sealed: '',
   etag: '"v1"',
@@ -31,9 +31,9 @@ vi.mock('../../src/services/inbox', () => ({
 }));
 vi.mock('../../src/services/apiAuth', () => ({
   apiFetch: vi.fn(async (path: string, init?: RequestInit) => {
-    if (path !== '/view') throw new Error(`unexpected ${path}`);
+    if (path.split('?')[0] !== '/view') throw new Error(`unexpected ${path}`);
     const ifNoneMatch = new Headers(init?.headers).get('If-None-Match');
-    net.views.push({ at: performance.now(), ifNoneMatch });
+    net.views.push({ at: performance.now(), why: new URL(path, 'https://postern.test/api/').searchParams.get('why'), ifNoneMatch });
     if (ifNoneMatch === net.etag) return new Response(null, { status: 304 });
     return new Response(net.sealed, { status: 200, headers: { ETag: net.etag } });
   }),
@@ -78,7 +78,8 @@ async function wait(ms: number): Promise<void> {
 }
 
 const sync = () => syncMessagesAndEvents({ publicKeyHex: GOV_PUB, unlockedKey: KEY, mayorKey: MAYOR_PUB, live: true });
-const refresh = (force = false) => refreshView({ key: KEY, mayorKey: MAYOR_PUB, live: true, force });
+const refresh = (force = false) => refreshView({ key: KEY, mayorKey: MAYOR_PUB, live: true, why: force ? 'refresh' : 'gap', force });
+const behind = () => refreshView({ key: KEY, mayorKey: MAYOR_PUB, live: true, why: 'behind', within: VIEW_BEHIND_INTERVAL_MS });
 
 describe('the view fetch throttle (mw-7dige5.4)', () => {
   beforeEach(async () => {
@@ -149,5 +150,46 @@ describe('the view fetch throttle (mw-7dige5.4)', () => {
     await wait(VIEW_MIN_INTERVAL_MS);
     await refresh();
     expect(net.views.map((v) => v.ifNoneMatch)).toEqual(['"v0"', '"B"']);
+  });
+
+  it('a story closing in an unbroken run fetches nothing now, and once when a quarter of an hour has passed since the last fetch, saying behind (mw-7dige5.5)', async () => {
+    await refresh();
+    for (let i = 0; i < 8; i++) {
+      net.batches = [batchOf([event({ kind: 'bead_changed', bead: STORIES[i], from: 'claimed', to: 'closed', detail: 'status' })])];
+      await sync();
+      await wait(VIEW_MIN_INTERVAL_MS);
+    }
+    expect(net.views.map((v) => v.why)).toEqual(['gap']);
+    await wait(VIEW_BEHIND_INTERVAL_MS - 8 * VIEW_MIN_INTERVAL_MS);
+    expect(net.views.map((v) => v.why)).toEqual(['gap', 'behind']);
+    expect(net.views[1].at - net.views[0].at).toBe(VIEW_BEHIND_INTERVAL_MS);
+  });
+
+  it('behind with the last fetch a quarter of an hour old fetches at once', async () => {
+    await refresh();
+    await wait(VIEW_BEHIND_INTERVAL_MS);
+    await behind();
+    expect(net.views.map((v) => v.why)).toEqual(['gap', 'behind']);
+  });
+
+  it('a sooner fetch takes the place of a waiting behind one, and answers it: a gap inside the minute fetches when the minute ends, and nothing follows (mw-7dige5.5)', async () => {
+    await refresh();
+    await behind();
+    await wait(10_000);
+    await refresh();
+    await wait(VIEW_MIN_INTERVAL_MS);
+    expect(net.views.map((v) => v.why)).toEqual(['gap', 'gap']);
+    await wait(VIEW_BEHIND_INTERVAL_MS * 2);
+    expect(net.views).toHaveLength(2);
+  });
+
+  it('a waiting fetch is kept when a later behind one asks: the minute still ends in one fetch (mw-7dige5.5)', async () => {
+    await refresh();
+    await refresh();
+    await behind();
+    await wait(VIEW_MIN_INTERVAL_MS);
+    expect(net.views.map((v) => v.why)).toEqual(['gap', 'gap']);
+    await wait(VIEW_BEHIND_INTERVAL_MS * 2);
+    expect(net.views).toHaveLength(2);
   });
 });

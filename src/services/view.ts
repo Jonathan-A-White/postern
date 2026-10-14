@@ -12,9 +12,17 @@ import { VIEW_MIN_INTERVAL_MS, viewThrottle } from './viewThrottle';
 import { Utils } from '@bsv/sdk';
 
 export const SNAPSHOT_URL = '/snapshot';
-export { resetViewThrottle, VIEW_MIN_INTERVAL_MS } from './viewThrottle';
+export { resetViewThrottle, VIEW_BEHIND_INTERVAL_MS, VIEW_MIN_INTERVAL_MS } from './viewThrottle';
 
 export type ViewRefresh = 'updated' | 'unchanged' | 'absent';
+
+/** Why the whole view is asked for, sent as `GET /api/view?why=` so the backend's log says it and a count of fetches
+ * reads from the log alone (mw-7dige5.5): the session's `start`; a first `hello` naming another view, or a `reconnect`'s;
+ * a `gap` in the events' seqs, or a batch that could not be applied (`unapplied`); `behind`, the events having named
+ * something only the home builds; a `view-event` before any batch; `poll` on a backend without events; a tap on a
+ * Refresh button (`refresh`); a bead the Map was sent to that the copy does not hold (`focus`); the Mayor's key
+ * accepted (`mayor-key`); and a return to the app's bodiless `probe` (src/services/live.ts). */
+export type ViewWhy = 'start' | 'hello' | 'reconnect' | 'gap' | 'unapplied' | 'behind' | 'view-event' | 'poll' | 'refresh' | 'focus' | 'mayor-key' | 'probe';
 
 export interface RefreshViewOptions {
   key: Uint8Array;
@@ -24,6 +32,10 @@ export interface RefreshViewOptions {
   apiBase?: string;
   snapshotUrl?: string;
   fetchImpl?: typeof fetch;
+  /** Why it is asked for: the backend logs it. */
+  why: ViewWhy;
+  /** The least time since the last full fetch: VIEW_MIN_INTERVAL_MS unless given (VIEW_BEHIND_INTERVAL_MS for `behind`). */
+  within?: number;
   /** A tap on a Refresh button: fetched now whatever the throttle says. The fetch still asks with the held ETag. */
   force?: boolean;
 }
@@ -32,7 +44,7 @@ async function refreshLive(options: RefreshViewOptions): Promise<ViewRefresh> {
   const stored = await viewRepo.get();
   const headers: Record<string, string> = {};
   if (stored?.source === 'live' && stored.etag) headers['If-None-Match'] = stored.etag;
-  const response = await apiFetch('/view', { headers }, { unlockedKey: options.key, apiBase: options.apiBase, fetchImpl: options.fetchImpl });
+  const response = await apiFetch(`/view?why=${options.why}`, { headers }, { unlockedKey: options.key, apiBase: options.apiBase, fetchImpl: options.fetchImpl });
   if (response.status === 304) return 'unchanged';
   if (response.status === 404) return 'absent';
   if (!response.ok) throw new Error(`The backend answered ${response.status} for the view.`);
@@ -87,16 +99,20 @@ async function fetchNow(options: RefreshViewOptions): Promise<ViewRefresh> {
 }
 
 /** Brings the stored view up to date from whichever source the backend has. The whole view is large, so every
- * caller shares one throttle (mw-7dige5.4): the first call fetches at once; further calls inside the next
- * VIEW_MIN_INTERVAL_MS are one fetch when the window ends, and resolve 'unchanged' without waiting for it (the
- * view they want arrives through Dexie's live queries). `force` goes through the window. */
+ * caller shares one throttle (mw-7dige5.4): a call fetches at once when the last full fetch is `within` (a minute
+ * unless given) behind it; otherwise it is one fetch when that window ends, and resolves 'unchanged' without waiting
+ * for it (the view it wants arrives through Dexie's live queries). Only the soonest waiting fetch is kept, since it
+ * brings what a later one would. `force` goes through the window. */
 export async function refreshView(options: RefreshViewOptions): Promise<ViewRefresh> {
   if (options.force) return fetchNow(options);
-  const wait = viewThrottle.lastFetchAt + VIEW_MIN_INTERVAL_MS - performance.now();
+  const due = viewThrottle.lastFetchAt + (options.within ?? VIEW_MIN_INTERVAL_MS);
+  const wait = due - performance.now();
   if (wait <= 0) return fetchNow(options);
-  if (viewThrottle.trailing) clearTimeout(viewThrottle.trailing.timer);
+  const waiting = viewThrottle.trailing;
+  if (waiting && waiting.due < due) return 'unchanged';
+  if (waiting) clearTimeout(waiting.timer);
   const timer = setTimeout(() => void fetchNow(options).catch(() => undefined), wait);
-  viewThrottle.trailing = { timer, options };
+  viewThrottle.trailing = { timer, due, options };
   return 'unchanged';
 }
 

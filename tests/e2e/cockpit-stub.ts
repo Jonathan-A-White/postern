@@ -113,7 +113,7 @@ export async function stubBackend(
   await page.route('**/api/utxos/**', (route) =>
     json(route, { utxos: extras.utxoSatoshis ? [{ txid: 'a'.repeat(64), vout: 0, satoshis: extras.utxoSatoshis, height: 100 }] : [] }),
   );
-  await page.route('**/api/view', (route) => route.fulfill({ status: 200, contentType: 'text/plain', headers: { ETag: '"fixture"' }, body: view }));
+  await page.route(/\/api\/view(\?|$)/, (route) => route.fulfill({ status: 200, contentType: 'text/plain', headers: { ETag: '"fixture"' }, body: view }));
   await page.route('**/api/events', (route) =>
     route.fulfill({ status: 200, contentType: 'text/event-stream', body: `event: hello\ndata: {"head": ${records.length}, "view": "\\"fixture\\""}\n\n` }),
   );

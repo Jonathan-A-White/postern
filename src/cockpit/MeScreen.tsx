@@ -268,7 +268,7 @@ export function MeScreen() {
                   tone="needs"
                   icon="key"
                   action={
-                    <Button size="sm" onClick={() => void acceptOfferedMayorKey().then(() => refreshNow())}>
+                    <Button size="sm" onClick={() => void acceptOfferedMayorKey().then(() => refreshNow({ view: 'mayor-key' }))}>
                       Trust it
                     </Button>
                   }

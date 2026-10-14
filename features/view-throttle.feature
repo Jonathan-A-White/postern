@@ -11,9 +11,9 @@ Feature: The whole view is fetched at most once a minute, and only when it has m
     Then at once the view has been fetched once in all
     And a minute on, the view has been fetched twice in all, the second time asking with the ETag held
 
-  Scenario: mw-7dige5.4: screens asking for a refresh inside the minute make one fetch when it is out
+  Scenario: mw-7dige5.4: screens asking for the view inside the minute make one fetch when it is out
     Given the event stream is live and the view was fetched at the start
-    When five screens ask for a refresh over the next thirty seconds
+    When five screens ask for the view over the next thirty seconds
     Then at once the view has been fetched once in all
     And a minute on, the view has been fetched twice in all, the second time asking with the ETag held
 

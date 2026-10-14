@@ -244,7 +244,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
             tone="needs"
             icon="key"
             action={
-              <Button size="sm" onClick={() => void acceptOfferedMayorKey().then(() => refreshNow())}>
+              <Button size="sm" onClick={() => void acceptOfferedMayorKey().then(() => refreshNow({ view: 'mayor-key' }))}>
                 Trust it
               </Button>
             }

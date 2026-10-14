@@ -1788,6 +1788,20 @@ asks `GET /api/view` with `If-None-Match: *`, which the backend answers with a b
 standby `503`), never the body, so that 'Home is down' (§ standby) still shows and ends; a `304`
 ends it like a `200`.
 
+`mw-7dige5.5`. In a busy factory an event that only the home can build follows (a new bead, a
+hold, a landing, a story closed) comes nearly every minute, so those no longer fetch the view at
+once: they mark the copy behind, and the view is fetched once a quarter of an hour
+(`VIEW_BEHIND_INTERVAL_MS`) has passed since the last full fetch, whichever fetch that was (a gap,
+a reconnect, a tap on Refresh answers it sooner). A gap, a batch that cannot be applied and a
+question the phone does not hold still fetch it at once (through the one-a-minute throttle). A
+push, an opened notice or another screen asking for the messages syncs the messages and their
+events and asks for no view; the Map sent to a bead its copy does not hold, and the Mayor's key
+accepted, still ask for it. Every ask says why, `GET /api/view?why=<reason>`: `start` (the
+session's first, or its retry), `hello` (the first stream naming another view), `reconnect` (a
+later one), `gap`, `unapplied`, `behind`, `view-event`, `poll` (a backend without events),
+`refresh` (a tap), `focus` (the Map), `mayor-key` or `probe` (the bodiless return-to-the-app ask
+above); the backend writes it on the request's log line (docs/api.md).
+
 `mw-jrx0s.8`. The bead's page hears the events about its bead: a `message` shows in its
 thread from the stored record (the sync keeps it before the batch is applied), so it fetches
 nothing; a `bead_changed` whose detail is `comment` is the one thing only the bead's detail

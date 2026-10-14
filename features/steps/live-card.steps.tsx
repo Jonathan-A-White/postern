@@ -82,7 +82,7 @@ const backend = async (input: RequestInfo | URL): Promise<Response> => {
     page = [];
     return new Response(JSON.stringify({ records, next: recordSeq }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-  if (url.endsWith('/view')) {
+  if (url.split('?')[0].endsWith('/view')) {
     viewFetches += 1;
     const sealedView = await sealDocument(JSON.stringify({ ...fixtureView(Date.parse(WRITTEN)), written_at: '2026-10-01T12:05:00Z' }), MAYOR.toHex(), GOV_PUB);
     return new Response(sealedView, { status: 200, headers: { ETag: '"second"' } });

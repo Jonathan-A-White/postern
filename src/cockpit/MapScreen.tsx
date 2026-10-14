@@ -262,7 +262,7 @@ function FocusNotInView({ focus }: { focus: string }) {
   const { detail, status } = useBeadDetail(focus);
   const stillOpen = status === 'ok' && (detail?.status === 'open' || detail?.status === 'in_progress');
   useEffect(() => {
-    if (stillOpen) void refreshNow();
+    if (stillOpen) void refreshNow({ view: 'focus' });
   }, [stillOpen]);
   if (status === 'loading') {
     return (

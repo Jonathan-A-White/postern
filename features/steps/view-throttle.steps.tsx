@@ -24,7 +24,7 @@ const net = vi.hoisted(() => ({
 
 vi.mock('../../src/services/apiAuth', () => ({
   apiFetch: vi.fn(async (path: string, init?: RequestInit) => {
-    if (path === '/view') {
+    if (path.split('?')[0] === '/view') {
       const ifNoneMatch = new Headers(init?.headers).get('If-None-Match');
       net.views.push(ifNoneMatch);
       if (ifNoneMatch === net.etag) return new Response(null, { status: 304 });
@@ -127,14 +127,14 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario('mw-7dige5.4: screens asking for a refresh inside the minute make one fetch when it is out', ({ Given, When, Then, And }) => {
+  Scenario('mw-7dige5.4: screens asking for the view inside the minute make one fetch when it is out', ({ Given, When, Then, And }) => {
     Given('the event stream is live and the view was fetched at the start', live);
-    When('five screens ask for a refresh over the next thirty seconds', async () => {
+    When('five screens ask for the view over the next thirty seconds', async () => {
       net.etag = '"e2"';
       for (let i = 0; i < 5; i += 1) {
         await advance(6_000);
         await act(async () => {
-          await refreshNow();
+          await refreshNow({ view: 'focus' }); // the Map sent to a bead its copy does not hold
         });
       }
     });

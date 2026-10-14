@@ -107,6 +107,7 @@ describe('projectBatches', () => {
     await eventsRepo.setCursor(3);
     const result = await projectBatches([batch([event({ seq: 7, kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'claimed', detail: 'status' })])]);
     expect(result.refetch).toBe(true);
+    expect(result.gap).toBe(true);
     expect(result.applied.map((e) => e.seq)).toEqual([7]);
     expect(await eventsRepo.cursor()).toBe(7);
     expect((await projectBatches([batch([event({ seq: 8, kind: 'job', from: 'scheduled', to: 'running' })])])).refetch).toBe(false);
@@ -117,6 +118,12 @@ describe('projectBatches', () => {
     const result = await projectBatches([batch([event({ seq: 5, kind: 'message', bead: 'mw-a' })])]);
     expect(result.applied).toEqual([]);
     expect(decodeView((await viewRepo.get())!.plaintext).beads[0].comments).toBe(0);
+  });
+
+  it('a new bead in an unbroken run leaves the copy behind, with no ask for the view now (mw-7dige5.5)', async () => {
+    const result = await projectBatches([batch([event({ seq: 1, kind: 'bead_changed', bead: 'mw-new', from: '', to: 'open', detail: 'created' })])]);
+    expect(result).toMatchObject({ refetch: false, gap: false, behind: true });
+    expect((await projectBatches([batch([event({ seq: 2, kind: 'job' })])])).behind).toBe(false);
   });
 
   it('with no view stored yet asks for one', async () => {
@@ -157,15 +164,21 @@ describe('projectEvents', () => {
     expect(after.view.beads[1].waits).toEqual([]);
     expect(after.view.needs.map((n) => n.bead)).toEqual(['mw-b']);
     expect(after.view.needs[0]).toMatchObject({ waits_for: 'you', not_ready: false, waiting_on: [] });
-    // A story that closes may raise a verify card, which only the home can build.
-    expect(after.refetch).toBe(true);
+    // A story that closes may raise a verify card, which only the home can build: the copy is behind, not to be fetched at once (mw-7dige5.5).
+    expect(after.behind).toBe(true);
+    expect(after.refetch).toBe(false);
   });
 
-  it('asks for the view where the event cannot say what follows: a bead it does not hold, a landing, a hold', () => {
+  it('marks the copy behind where only the home can say what follows: a bead it does not hold, a landing, a hold; none asks for the view at once (mw-7dige5.5)', () => {
     const before = view([bead('mw-a')]);
-    expect(projectEvents(before, [event({ kind: 'bead_changed', bead: 'mw-new', from: '', to: 'open', detail: 'status' })], NO_LOOKUPS).refetch).toBe(true);
-    expect(projectEvents(before, [event({ kind: 'bead_changed', bead: 'mw-a', from: 'running', to: 'landed', detail: 'status' })], NO_LOOKUPS).refetch).toBe(true);
-    expect(projectEvents(before, [event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'held', detail: 'status' })], NO_LOOKUPS).refetch).toBe(true);
+    for (const changed of [
+      event({ kind: 'bead_changed', bead: 'mw-new', from: '', to: 'open', detail: 'status' }),
+      event({ kind: 'bead_changed', bead: 'mw-a', from: 'running', to: 'landed', detail: 'status' }),
+      event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'held', detail: 'status' }),
+    ]) {
+      expect(projectEvents(before, [changed], NO_LOOKUPS)).toMatchObject({ behind: true, refetch: false });
+    }
+    expect(projectEvents(before, [event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'claimed', detail: 'status' })], NO_LOOKUPS)).toMatchObject({ behind: false, refetch: false });
   });
 
   it('a field changed (a title) asks for that bead\'s detail; a comment and a message bump its count', () => {

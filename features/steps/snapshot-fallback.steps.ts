@@ -33,14 +33,14 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     return vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/challenge')) return new Response(JSON.stringify({ nonce: 'ab'.repeat(32) }), { status: 200 });
-      if (url.endsWith('/view')) return new Response('404 page not found', { status: 404 });
+      if (url.split('?')[0].endsWith('/view')) return new Response('404 page not found', { status: 404 });
       return new Response(snapshotBody, { status: 200 });
     }) as unknown as typeof fetch;
   }
 
   function refresh() {
     return async () => {
-      result = await refreshView({ key: GOV_KEY, live: true, fetchImpl, snapshotUrl: '/snapshot' });
+      result = await refreshView({ key: GOV_KEY, live: true, why: 'start', fetchImpl, snapshotUrl: '/snapshot' });
     };
   }
 

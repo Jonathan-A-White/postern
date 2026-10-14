@@ -160,7 +160,7 @@ test('add a card, drag it above another, edit its title: the outbox holds the th
     };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [record], next: 1000 }) });
   });
-  await page.route('**/api/view', async (route) => {
+  await page.route(/\/api\/view(\?|$)/, async (route) => {
     if (!applied) return route.fallback();
     const base = fixtureView(Date.now());
     const made = bead(NEW, { parent: 'mw-6ww.114', title: 'Buy bin bags', labels: ['hitl', 'hitl:todo'], created: new Date().toISOString() });

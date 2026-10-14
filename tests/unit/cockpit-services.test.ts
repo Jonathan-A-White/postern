@@ -132,9 +132,9 @@ describe('refreshView', () => {
       seen.push(tag);
       return tag === '"v1"' ? new Response(null, { status: 304 }) : new Response(sealed, { status: 200, headers: { ETag: '"v1"' } });
     });
-    expect(await refreshView({ key: GOV_KEY, mayorKey: MAYOR_PUB, live: true, fetchImpl })).toBe('updated');
+    expect(await refreshView({ key: GOV_KEY, mayorKey: MAYOR_PUB, live: true, why: 'start', fetchImpl })).toBe('updated');
     resetViewThrottle(); // a minute on (mw-7dige5.4)
-    expect(await refreshView({ key: GOV_KEY, mayorKey: MAYOR_PUB, live: true, fetchImpl })).toBe('unchanged');
+    expect(await refreshView({ key: GOV_KEY, mayorKey: MAYOR_PUB, live: true, why: 'start', fetchImpl })).toBe('unchanged');
     expect(seen).toEqual([null, '"v1"']);
     expect((await storedView())?.view.host).toBe('desktop');
   });
@@ -145,10 +145,10 @@ describe('refreshView', () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/challenge')) return json({ nonce: 'ab'.repeat(32) });
-      if (url.endsWith('/view')) return new Response('404 page not found', { status: 404 });
+      if (url.split('?')[0].endsWith('/view')) return new Response('404 page not found', { status: 404 });
       return new Response(ct, { status: 200 });
     });
-    expect(await refreshView({ key: GOV_KEY, live: true, fetchImpl, snapshotUrl: '/snapshot' })).toBe('updated');
+    expect(await refreshView({ key: GOV_KEY, live: true, why: 'start', fetchImpl, snapshotUrl: '/snapshot' })).toBe('updated');
     const stored = await storedView();
     expect(stored?.source).toBe('snapshot');
     expect(stored?.view.beads[0]).toMatchObject({ id: 'e', type: 'epic' });
@@ -163,10 +163,10 @@ describe('refreshView', () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/challenge')) return json({ nonce: 'ab'.repeat(32) });
-      if (url.endsWith('/view')) return new Response('404 page not found', { status: 404 });
+      if (url.split('?')[0].endsWith('/view')) return new Response('404 page not found', { status: 404 });
       return new Response(body, { status: 200, headers: { 'Content-Type': 'text/html' } });
     });
-    expect(await refreshView({ key: GOV_KEY, live: true, fetchImpl, snapshotUrl: '/snapshot' })).toBe('absent');
+    expect(await refreshView({ key: GOV_KEY, live: true, why: 'start', fetchImpl, snapshotUrl: '/snapshot' })).toBe('absent');
     expect(await db.view.count()).toBe(0);
     expect(await storedView()).toBeUndefined();
   });
@@ -176,10 +176,10 @@ describe('refreshView', () => {
     const ct = Utils.toBase64(EncryptedMessage.encrypt(Utils.toArray(JSON.stringify(snapshot), 'utf8'), MAYOR, PublicKey.fromString(GOV_PUB)));
     let body = ct;
     const fetchImpl = vi.fn(async () => new Response(body, { status: 200 }));
-    expect(await refreshView({ key: GOV_KEY, live: false, fetchImpl, snapshotUrl: '/snapshot' })).toBe('updated');
+    expect(await refreshView({ key: GOV_KEY, live: false, why: 'start', fetchImpl, snapshotUrl: '/snapshot' })).toBe('updated');
     body = '<!doctype html><html><body>Not found</body></html>';
     resetViewThrottle(); // a minute on (mw-7dige5.4)
-    expect(await refreshView({ key: GOV_KEY, live: false, fetchImpl, snapshotUrl: '/snapshot' })).toBe('absent');
+    expect(await refreshView({ key: GOV_KEY, live: false, why: 'start', fetchImpl, snapshotUrl: '/snapshot' })).toBe('absent');
     expect((await storedView())?.source).toBe('snapshot');
   });
 });

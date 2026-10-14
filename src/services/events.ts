@@ -2,8 +2,9 @@
 // (mw-jrx0s.7). The message sync hands back each `events` record's batch; this keeps
 // every event once by seq, applies the ones past the cursor in seq order to the stored
 // view (so Needs you and the Map re-render through their live queries), fetches the view
-// again only on a gap or when an event says something only the home can work out, and
-// tells each useEvents subscriber of the events it asked for.
+// again at once only on a gap or a batch it cannot apply, and within a quarter of an hour
+// when an event names something only the home builds (mw-7dige5.5), and tells each
+// useEvents subscriber of the events it asked for.
 import { useMemo, useSyncExternalStore } from 'react';
 import { answersRepo, eventsRepo, messagesRepo, viewRepo } from '../data/repositories';
 import { applyBeadDetail, projectEvents, type EventBatch, type FactoryEvent, type Projection } from '../model/events';
@@ -11,13 +12,18 @@ import { decodeView } from '../model/view';
 import { fetchBeadDetail } from './beads';
 import { syncMessages } from './inbox';
 import { decodeQuestion, decodeReply, type QuestionBody } from './questions';
-import { refreshView } from './view';
+import { refreshView, VIEW_BEHIND_INTERVAL_MS } from './view';
 
 export interface ProjectedBatches {
   /** The events applied, in seq order: those past the cursor, each once. */
   applied: FactoryEvent[];
-  /** A gap in the seqs, no view to project onto, or an event the copy cannot follow: fetch the view. */
+  /** A gap in the seqs, no view to project onto, or an event the copy cannot follow: fetch the view now. */
   refetch: boolean;
+  /** Whether that is a gap in the seqs. */
+  gap: boolean;
+  /** An event named something only the home builds (a new bead, a hold, a landing, a story closed): the view is fetched
+   * once VIEW_BEHIND_INTERVAL_MS has passed since the last full fetch, not now. */
+  behind: boolean;
   /** Beads whose detail (§12) holds what an event named but did not carry. */
   details: string[];
 }
@@ -63,13 +69,14 @@ async function applyToView(events: FactoryEvent[]): Promise<{ held: boolean; pro
  * batch, out of seq order if need be; its seqs are recorded so the ordinary pass, which
  * still moves the cursor over them, does not apply them a second time. */
 export async function projectBatches(batches: EventBatch[]): Promise<ProjectedBatches> {
-  const none: ProjectedBatches = { applied: [], refetch: false, details: [] };
+  const none: ProjectedBatches = { applied: [], refetch: false, gap: false, behind: false, details: [] };
   if (batches.length === 0) return none;
   const cursor = await eventsRepo.cursor();
-  const result: ProjectedBatches = { applied: [], refetch: false, details: [] };
+  const result: ProjectedBatches = { applied: [], refetch: false, gap: false, behind: false, details: [] };
   const merge = (applied: FactoryEvent[], held: boolean, projection: Projection | undefined) => {
     result.applied.push(...applied);
     result.refetch = result.refetch || !held || !projection || projection.refetch;
+    result.behind = result.behind || Boolean(projection?.behind);
     for (const id of projection?.details ?? []) if (!result.details.includes(id)) result.details.push(id);
   };
 
@@ -103,6 +110,7 @@ export async function projectBatches(batches: EventBatch[]): Promise<ProjectedBa
   await eventsRepo.setCursor(last);
   if (early.size > 0) await eventsRepo.setEarly([...early].filter((seq) => seq > last));
   result.refetch = result.refetch || gap;
+  result.gap = gap;
   return result;
 }
 
@@ -120,22 +128,28 @@ export interface SyncEventsOptions {
 
 /** The message sync with its events projected: pages the records past the cursor,
  * applies their events, fetches each bead's detail an event asked for, and the view
- * when the events call for it. Resolves whether the view was fetched. */
+ * when the events call for it: now on a gap or a batch it cannot apply, within
+ * VIEW_BEHIND_INTERVAL_MS of the last fetch when they name something only the home
+ * builds or a detail could not be had. Resolves whether the view was fetched now. */
 export async function syncMessagesAndEvents(options: SyncEventsOptions): Promise<{ applied: number; refetched: boolean }> {
   const { publicKeyHex, unlockedKey: key, mayorKey, live, apiBase, fetchImpl, forceView } = options;
   const { events } = await syncMessages({ publicKeyHex, unlockedKey: key, mayorKey, apiBase, fetchImpl });
   const projected = await projectBatches(events);
-  let refetch = projected.refetch;
+  const refetch = projected.refetch;
+  let behind = projected.behind;
   for (const id of projected.details) {
     try {
       const fetched = await fetchBeadDetail(id, { key, mayorKey, apiBase, fetchImpl });
       if (fetched.status === 'ok') await viewRepo.update((plaintext) => JSON.stringify(applyBeadDetail(decodeView(plaintext), fetched.detail)));
-      else refetch = true;
+      else behind = true;
     } catch {
-      refetch = true;
+      behind = true;
     }
   }
-  if (refetch || forceView) await refreshView({ key, mayorKey, live, apiBase, fetchImpl, force: forceView });
+  const view = { key, mayorKey, live, apiBase, fetchImpl };
+  if (forceView) await refreshView({ ...view, why: 'refresh', force: true });
+  else if (refetch) await refreshView({ ...view, why: projected.gap ? 'gap' : 'unapplied' });
+  else if (behind) await refreshView({ ...view, why: 'behind', within: VIEW_BEHIND_INTERVAL_MS });
   return { applied: projected.applied.length, refetched: refetch || Boolean(forceView) };
 }
 

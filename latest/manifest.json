@@ -1,7 +1,7 @@
 {
-  "version": "0.6.29",
-  "commit": "2f8db6e",
-  "published_at": "2026-10-15T21:24:04.526Z",
+  "version": "0.6.30",
+  "commit": "de0dfad",
+  "published_at": "2026-10-15T22:05:49.376Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -674,6 +674,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/keyboard-scroll.png"
+    },
+    {
+      "name": "390x844/launch-big-history.png",
+      "screen": "launch-big-history",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/launch-big-history.png"
+    },
+    {
+      "name": "360x640/launch-big-history.png",
+      "screen": "launch-big-history",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/launch-big-history.png"
+    },
+    {
+      "name": "1280x800/launch-big-history.png",
+      "screen": "launch-big-history",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/launch-big-history.png"
     },
     {
       "name": "390x844/line-about.png",

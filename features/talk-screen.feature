@@ -894,3 +894,65 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the Talk line shows no speaking bar
     And the answer's buttons are "Stop reading, Pause"
     And each of the answer's buttons is at least 44 px
+
+  Scenario: mw-q6n8m0.14 AC1: the Talk screen offers Attach and Take a photo beside the hold button
+    Given the Talk line is open with a believable speech recogniser
+    Then the Talk screen has the buttons "Attach" and "Take a photo"
+    And no picture is attached and there is no Send button
+
+  Scenario: mw-q6n8m0.14 AC1: choosing a 3000 px PNG shows a thumbnail with Remove, cut to 2400 px
+    Given the Talk line is open with a believable speech recogniser
+    And the phone reads pictures as 3000 by 2000 pixels
+    When he attaches the screenshot "screen.png"
+    Then a thumbnail of the picture is shown with a "Remove" button
+    And the picture was drawn at 2400 by 1600 pixels
+
+  Scenario: mw-q6n8m0.14 AC1: releasing hold-to-talk with words sends one turn with the picture, uploaded first
+    Given the Talk line is open with a believable speech recogniser
+    And turns reach the Mayor through the real outbox
+    And the phone reads pictures as 3000 by 2000 pixels
+    When he attaches the screenshot "screen.png"
+    And he holds the talk button and says "What is wrong here" and lets go
+    And the outbox has done its work
+    Then the picture was uploaded before the turn was delivered
+    And one turn was delivered saying "What is wrong here" with role "turn" and a JPEG picture named "screen.jpg"
+    And the sent turn's bubble shows the thumbnail
+    And no picture is attached any more
+
+  Scenario: mw-q6n8m0.14 AC1: with a picture and nothing said, Send sends a turn with empty text and the picture
+    Given the Talk line is open with a believable speech recogniser
+    And turns reach the Mayor through the real outbox
+    And the phone reads pictures as 3000 by 2000 pixels
+    When he attaches the screenshot "screen.png"
+    And he taps "Send"
+    And the outbox has done its work
+    Then one turn was delivered saying "" with role "turn" and a JPEG picture named "screen.jpg"
+    And no picture is attached any more
+
+  Scenario: mw-q6n8m0.14 AC1: Remove before sending sends no picture
+    Given the Talk line is open with a believable speech recogniser
+    And turns reach the Mayor through the real outbox
+    When he attaches the screenshot "screen.png"
+    And he taps "Remove"
+    And he holds the talk button and says "Never mind the picture" and lets go
+    And the outbox has done its work
+    Then one turn was delivered saying "Never mind the picture" with no attachment key at all
+    And nothing was uploaded
+
+  Scenario: mw-q6n8m0.14 AC1: a turn with no picture has no attachment key at all
+    Given the Talk line is open with a believable speech recogniser
+    And turns reach the Mayor through the real outbox
+    When he holds the talk button and says "Just words" and lets go
+    And the outbox has done its work
+    Then one turn was delivered saying "Just words" with no attachment key at all
+
+  Scenario: mw-q6n8m0.14 AC2: choosing a second picture replaces the first, never two on a turn
+    Given the Talk line is open with a believable speech recogniser
+    And turns reach the Mayor through the real outbox
+    And the phone reads pictures as 3000 by 2000 pixels
+    When he attaches the screenshot "first.png"
+    And he then attaches the screenshot "second.png"
+    Then exactly one thumbnail is shown
+    When he taps "Send"
+    And the outbox has done its work
+    Then one turn was delivered saying "" with role "turn" and a JPEG picture named "second.jpg"

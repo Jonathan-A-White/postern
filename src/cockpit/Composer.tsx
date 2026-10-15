@@ -25,7 +25,7 @@ import { useDraft } from './useDraft';
 import { ImageViewer } from './ImageViewer';
 import { useViewer } from './useViewer';
 import { openFile } from './openFile';
-import { prepareImage } from '../images/shrink';
+import { toPicked } from './pickedFile';
 import { draftsRepo } from '../data/repositories';
 import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext } from '../model/prompts';
 import { optionChip } from '../services/prompts';
@@ -61,19 +61,7 @@ function barLabel(listening: boolean, micOpen: boolean): string {
 }
 
 async function toPending(original: File | Blob, name: string, durationMs?: number): Promise<Pending> {
-  const file = await prepareImage(original);
-  // a picture re-encoded as a JPEG is named for what it now is
-  const kept = file === original ? name : name.replace(/\.(png|webp|jpe?g)$/i, '') + '.jpg';
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const type = file.type || 'application/octet-stream';
-  return {
-    id: String(nextId++),
-    name: kept,
-    type,
-    bytes,
-    durationMs,
-    preview: type.startsWith('image/') || type.startsWith('audio/') ? URL.createObjectURL(file) : undefined,
-  };
+  return { ...(await toPicked(original, name)), id: String(nextId++), durationMs };
 }
 
 /** The voice note a hold recorded, as a file for the message. */

@@ -108,12 +108,25 @@ async function deliverRow(row: OutboxRow, options: DeliverOptions): Promise<Deli
     case 'action':
       return deliverAction(row.payload.action as GovernorAction, options);
     case 'turn':
-      return deliverTurn(row.payload.turn as TalkTurn, options);
+      return deliverQueuedTurn(row, options);
     case 'call':
       return deliverCallRequest(String(row.payload.text ?? ''), Number(row.payload.at ?? 0), options);
     case 'message':
       return deliverMessage(row, options);
   }
+}
+
+/** A turn with a picture waiting: the picture is uploaded first (docs/protocol.md §8, once: a retry reuses the upload), then the turn goes with its reference. */
+async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
+  const turn = row.payload.turn as TalkTurn;
+  const file = row.payload.file as QueuedFile | undefined;
+  if (!file) return deliverTurn(turn, options);
+  let attachment = row.payload.uploaded as Attachment | undefined;
+  if (!attachment) {
+    attachment = await uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey });
+    await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded: attachment } });
+  }
+  return deliverTurn({ ...turn, attachment }, options);
 }
 
 /** Uploads the message's files that are not up yet (docs/protocol.md §8), then delivers it as ONE message. */

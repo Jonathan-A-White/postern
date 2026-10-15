@@ -5,7 +5,7 @@
 // What the screen does is in useTalkLine; this only draws it.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Button, Chip, Icon, cx } from '../ui';
+import { Button, Chip, Icon, IconButton, cx } from '../ui';
 import type { IconName } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
@@ -26,6 +26,7 @@ import { formatSeconds, showsCutTag, tookLong } from '../model/talkScreen';
 import { isUnsent, pendingTurn } from '../model/outbox';
 import type { OutboxRow } from '../data/db';
 import { OutboxMark } from './OutboxMark';
+import { AttachmentView } from './Conversation';
 import { NOT_KEPT, type TalkPhase } from '../model/talkLine';
 import { EARLIER_PAGE, talkDividerLabel, type EarlierTalk } from '../model/talkLog';
 import type { TalkLogEntry } from '../model/talkScreen';
@@ -339,9 +340,20 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: {
   return (
     <li className="flex flex-col gap-2" data-testid={id('turn')}>
       <div className="ml-auto flex max-w-[88%] flex-col items-end gap-1">
-        <p data-testid={id('said')} className="rounded-2xl bg-accent/15 px-3.5 py-2 text-[15px] wrap-anywhere">
-          {entry.said}
-        </p>
+        {entry.picture ? (
+          <img src={entry.picture} alt="Attached picture" data-testid={id('picture')} className="max-h-60 min-h-12 min-w-12 w-auto max-w-full rounded-2xl object-contain" />
+        ) : (
+          entry.attachment && (
+            <div data-testid={id('picture')} className="max-w-full">
+              <AttachmentView attachment={entry.attachment} direction="sent" />
+            </div>
+          )
+        )}
+        {entry.said !== '' && (
+          <p data-testid={id('said')} className="rounded-2xl bg-accent/15 px-3.5 py-2 text-[15px] wrap-anywhere">
+            {entry.said}
+          </p>
+        )}
         <span className="flex gap-1.5">
           {marks}
           {showsCutTag(entry) && <Chip>cut the last answer</Chip>}
@@ -407,6 +419,48 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: {
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * The picture for his next turn (mw-q6n8m0.14): Attach and Take a photo beside the hold button, the chosen picture as a thumbnail
+ * with Remove, and Send when there is a picture and nothing said. One picture at a time; a second choice replaces the first.
+ */
+function PictureRow({ talk }: { talk: ReturnType<typeof useTalkLine> }) {
+  const { line } = talk;
+  const picker = useRef<HTMLInputElement>(null);
+  const camera = useRef<HTMLInputElement>(null);
+  const picture = line.picture;
+  const busy = line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting';
+  const onChosen = (event: React.ChangeEvent<HTMLInputElement>) => {
+    void talk.attach(event.target.files?.[0]);
+    event.target.value = '';
+  };
+  return (
+    <div data-testid="talk-picture-row" className="flex w-full max-w-xl items-center gap-1">
+      <IconButton icon="attach" label="Attach" onClick={() => picker.current?.click()} />
+      <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} />
+      {picture && (
+        <span data-testid="talk-attached" className="ml-1 flex min-w-0 items-center gap-1.5 rounded-xl border border-line bg-surface py-1 pr-1 pl-1">
+          {picture.preview && <img src={picture.preview} alt="Attached picture" className="h-10 w-10 shrink-0 rounded-lg object-cover" />}
+          <span className="min-w-0 truncate text-[12.5px] text-muted">{picture.name}</span>
+          <IconButton icon="x" label="Remove" size="sm" onClick={talk.removePicture} />
+        </span>
+      )}
+      {picture && (
+        <Button
+          variant="primary"
+          className="ml-auto shrink-0"
+          disabled={busy}
+          title={busy ? 'The picture goes with your next turn' : 'Send the picture as a turn'}
+          onClick={talk.sendPicture}
+        >
+          Send
+        </Button>
+      )}
+      <input ref={picker} type="file" hidden accept="image/*" onChange={onChosen} />
+      <input ref={camera} type="file" hidden accept="image/*" capture="environment" onChange={onChosen} />
+    </div>
   );
 }
 
@@ -595,6 +649,8 @@ export function TalkLineScreen() {
         </div>
 
         <CallMe open={calling} onClose={() => setCalling(false)} onRecorded={onCallRecorded} />
+
+        <PictureRow talk={talk} />
 
         <HoldToTalkBar label={label} listening={listening} disabled={dead} onPress={talk.press} onRelease={() => void talk.release()} onAbort={talk.abort} className={HOLD_BAR_CLASS} />
 

@@ -104,7 +104,7 @@ export async function enqueue(row: { kind: OutboxKind; bead?: string; payload: R
 async function deliverRow(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
   switch (row.kind) {
     case 'answer':
-      return deliverAnswer(row.bead, String(row.payload.answer ?? ''), options);
+      return deliverAnswer(row.bead, String(row.payload.answer ?? ''), options, typeof row.payload.re === 'string' ? row.payload.re : undefined);
     case 'action':
       return deliverAction(row.payload.action as GovernorAction, options);
     case 'turn':
@@ -144,7 +144,7 @@ async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<
 function rememberDelivered(row: OutboxRow, delivered: Delivered): void {
   const viewSeq = viewSeqOf(row);
   const seq = viewSeq !== undefined ? { viewSeq } : {};
-  if (row.kind === 'answer') writeBehind(answersRepo.save({ bead: row.bead, answer: String(row.payload.answer ?? ''), txid: delivered.txid, ...seq }), 'your answer');
+  if (row.kind === 'answer') writeBehind(answersRepo.save({ bead: row.bead, answer: String(row.payload.answer ?? ''), txid: delivered.txid, ...(typeof row.payload.re === 'string' ? { re: row.payload.re } : {}), ...seq }), 'your answer');
   else if (row.kind === 'action') {
     const action = row.payload.action as GovernorAction;
     // A To do card's hand edit (§13 todo_*) is judged by its own outbox row (src/todo/edits.ts): a todo_add has no bead and several edits may be on one.

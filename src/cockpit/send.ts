@@ -39,9 +39,10 @@ export interface Queued {
   id: number;
 }
 
-/** His answer to a question on `bead` (docs/protocol.md §6), queued: `answer` is what the card says he tapped. */
-export async function sendAnswer(bead: string, answer: string): Promise<Queued> {
-  return { id: await enqueue({ kind: 'answer', bead, payload: { answer }, label: answer }) };
+/** His answer to a question on `bead` (docs/protocol.md §6), queued: `answer` is what the card says he tapped,
+ * `re` the txid of the question card he tapped it on, so two cards on one bead stay separate. */
+export async function sendAnswer(bead: string, answer: string, re?: string): Promise<Queued> {
+  return { id: await enqueue({ kind: 'answer', bead, payload: { answer, ...(re !== undefined ? { re } : {}) }, label: answer }) };
 }
 
 /** A one-tap action (docs/protocol.md §13), queued. Once it has gone it is remembered like an

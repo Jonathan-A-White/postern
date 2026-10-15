@@ -229,12 +229,12 @@ function QuestionBlock({ item, given, until }: { item: ConversationItem; given?:
   const open = view?.index.view.needs.filter((need) => need.kind === 'question' && need.bead !== '') ?? [];
   const soleQuestion = open.length === 1 && open[0].bead === question?.bead;
   const inWords = useMemo(
-    () => (question && asks ? answeredQuestion(needOfQuestion(question, item.at), { sent, comments, messages: [...inBeadThread, ...inFactory], outbox, soleQuestion }, until) : undefined),
-    [question, asks, item.at, sent, comments, inBeadThread, inFactory, outbox, soleQuestion, until],
+    () => (question && asks ? answeredQuestion(needOfQuestion(question, item.at), { sent, comments, messages: [...inBeadThread, ...inFactory], outbox, soleQuestion, txid: item.txid }, until) : undefined),
+    [question, asks, item.at, item.txid, sent, comments, inBeadThread, inFactory, outbox, soleQuestion, until],
   );
   if (!question) return null;
   // An answer still in the outbox (mw-jrx0s.10) is dead and says so too: it is marked pending until it has gone.
-  const queued = pendingAnswer(outbox, question.bead, item.at);
+  const queued = pendingAnswer(outbox, question.bead, item.at, item.txid);
   const answered = given ?? (tapped.said ? { answer: tapped.said.label, at: tapped.said.at } : queued ? { answer: queued.label ?? '', at: queued.created } : inWords ? { answer: inWords.label, at: inWords.at } : undefined);
   const dead = answered !== undefined || tapped.waiting;
   const stacked = question.options.some((option) => option.length >= SHORT_OPTION);
@@ -242,7 +242,7 @@ function QuestionBlock({ item, given, until }: { item: ConversationItem; given?:
   async function choose(option: string) {
     if (dead) return;
     setFailed(false);
-    const sent = await tapped.tap(() => sendAnswer(question!.bead, option), `Answered: ${option}`, option);
+    const sent = await tapped.tap(() => sendAnswer(question!.bead, option, ...(item.txid !== undefined ? [item.txid] : [])), `Answered: ${option}`, option);
     if (sent === undefined) setFailed(true);
   }
 

@@ -2,6 +2,7 @@
 // card, bubble or turn still waits to go, the one-line note for the status line, and how
 // long a failed send waits before its next try. Pure: the rows are src/data/db.ts's OutboxRow.
 import type { MessageRow, OutboxRow } from '../data/db';
+import { namesCard } from '../services/questions';
 import type { ConversationItem } from './conversation';
 
 /** The one line the status line shows while anything he did has not yet gone. */
@@ -40,9 +41,10 @@ export function isUnsent(row: OutboxRow): boolean {
   return row.state === 'pending' || row.state === 'failed';
 }
 
-/** His answer to a question on `bead` asked at `sinceMs` that has not yet gone. */
-export function pendingAnswer(rows: OutboxRow[], bead: string, sinceMs: number): OutboxRow | undefined {
-  return rows.find((row) => row.kind === 'answer' && row.bead === bead && isUnsent(row) && row.created >= sinceMs);
+/** His answer to a question on `bead` asked at `sinceMs` that has not yet gone. An answer that names a card
+ * (its `re`) is pending for that card only: `re` is the txid of the card asking, when it has one. */
+export function pendingAnswer(rows: OutboxRow[], bead: string, sinceMs: number, re?: string): OutboxRow | undefined {
+  return rows.find((row) => row.kind === 'answer' && row.bead === bead && isUnsent(row) && row.created >= sinceMs && namesCard(row.payload.re, re));
 }
 
 /** His one-tap `action` on `bead` that has not yet gone: an action row, or a message that settles it (Verified's channel message). */

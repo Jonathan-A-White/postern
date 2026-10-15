@@ -13,10 +13,11 @@ import { GENERAL, titleFor } from '../model/threads';
 import type { TalkAbout } from '../model/talkLine';
 import { navigate } from '../router';
 import { threadKey } from '../services/threads';
+import { namesCard } from '../services/questions';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import type { Need } from '../model/view';
-import { answeredByComment, answeredInWords, hitlParts, orderedOptions, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
+import { answeredByComment, answeredInWords, hitlParts, orderedOptions, questionTxidOf, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
@@ -91,14 +92,16 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const asks = need.kind === 'question' && need.bead !== '';
   const answerTap = useOneTap(asks ? need.bead : '', `answer:${need.since}`);
   // What he sent is on this phone's own record too: the card stays dead across a reload and a view refetch.
-  const sentRow = useAnswers().find((row) => row.bead === need.bead && row.ts * 1000 >= Date.parse(need.since));
+  // An answer that names another question card on the bead (its `re`) is that card's, not this one's.
+  const inBeadThread = useThreadMessages(asks ? threadKey({ bead: need.bead }) : undefined);
+  const cardTxid = useMemo(() => questionTxidOf(need, inBeadThread), [need, inBeadThread]);
+  const sentRow = useAnswers().find((row) => row.bead === need.bead && row.ts * 1000 >= Date.parse(need.since) && namesCard(row.re, cardTxid));
   // An answer the factory has heard (a card_answered event, §22, on the view's copy) is dead too, whichever device sent it.
   const heard = need.answered;
   // An answer still in the outbox (mw-jrx0s.10) is dead and says so too: it is marked pending until it has gone.
   const outbox = useOutbox();
-  const pendingRow = asks ? pendingAnswer(outbox, need.bead, Date.parse(need.since)) : undefined;
+  const pendingRow = asks ? pendingAnswer(outbox, need.bead, Date.parse(need.since), cardTxid) : undefined;
   // Words count as an answer too (mw-gq6.199): typed in the bead's thread or in Factory naming an option, or an ANSWER comment on the bead.
-  const inBeadThread = useThreadMessages(asks ? threadKey({ bead: need.bead }) : undefined);
   const inFactory = useThreadMessages(undefined);
   const comments = useStoredComments(asks ? need.bead : '');
   const soleQuestion = index !== undefined && index.view.needs.filter((n) => n.kind === 'question' && n.bead !== '').length === 1;
@@ -144,9 +147,9 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   async function choose(option: string) {
     if (asks) {
       setNotSent(false);
-      if ((await answerTap.tap(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread }, option)) === undefined) setNotSent(true);
+      if ((await answerTap.tap(() => sendAnswer(need.bead, option, cardTxid), { text: `Answered ${need.bead}: ${option}`, open: openThread }, option)) === undefined) setNotSent(true);
     }
-    else if (need.kind === 'question') await run(() => sendAnswer(need.bead, option), { text: `Answered ${need.bead}: ${option}`, open: openThread });
+    else if (need.kind === 'question') await run(() => sendAnswer(need.bead, option, cardTxid), { text: `Answered ${need.bead}: ${option}`, open: openThread });
     else if (need.kind === 'approve') await oneTap.tap(() => sendAction({ action: 'release', bead: need.bead }), `Released ${need.bead}`);
     else await run(() => sendToThread(thread, option), { text: `Told the Mayor in ${threadName}: ${option}`, open: openThread });
   }
@@ -157,7 +160,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
     setNotSent(false);
     const sent =
       need.kind === 'question'
-        ? await (asks ? answerTap.tap(() => sendAnswer(need.bead, text), { text: `Answered ${need.bead}`, open: openThread }, text) : run(() => sendAnswer(need.bead, text), { text: `Answered ${need.bead}`, open: openThread }))
+        ? await (asks ? answerTap.tap(() => sendAnswer(need.bead, text, cardTxid), { text: `Answered ${need.bead}`, open: openThread }, text) : run(() => sendAnswer(need.bead, text, cardTxid), { text: `Answered ${need.bead}`, open: openThread }))
         : await run(() => sendToThread(thread, text), { text: `Sent to the Mayor in ${threadName}`, open: openThread });
     if (asks && sent === undefined) setNotSent(true);
     if (sent) {

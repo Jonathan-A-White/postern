@@ -48,6 +48,8 @@ export interface ConversationItem {
   answer?: string;
   /** The bead an 'answer' item answers on (its reply record's `bead`). */
   answerBead?: string;
+  /** The question card an 'answer' item answers (its reply record's `re`); absent on an older record. */
+  answerRe?: string;
   action?: GovernorAction;
   /** The files this message carries, in order: one or more, on an 'attachment' item. */
   attachments?: Attachment[];
@@ -206,7 +208,7 @@ export function itemFromMessage(row: MessageRow): ConversationItem & { transcrip
   const action = decodeAction(text);
   if (action) return { ...base, kind: 'action', text: describeAction(action), action };
   const reply = decodeReply(text);
-  if (reply) return { ...base, kind: 'answer', text: reply.answer, answer: reply.answer, answerBead: reply.bead };
+  if (reply) return { ...base, kind: 'answer', text: reply.answer, answer: reply.answer, answerBead: reply.bead, ...(reply.re !== undefined ? { answerRe: reply.re } : {}) };
   const body = decodeThreadedMessage(text);
   if (body.role === 'transcript' && body.re) {
     return { ...base, kind: 'text', text: body.text, transcriptOf: body.re };
@@ -321,15 +323,21 @@ export function askedAgainAt(items: ConversationItem[]): Map<string, number> {
   return again;
 }
 
-/** For each question item, his answer to it: the first answer he sent on its bead after it was asked
- * and before the same bead asked again. The sent records are the truth, so this survives a reload. */
+/** For each question item, his answer to it. An answer that names a card (its `re`) belongs to that card and no
+ * other, whenever it was sent; one that names none (an older record) is the first answer he sent on the bead
+ * after the card was asked and before the same bead asked again. The sent records are the truth, so this
+ * survives a reload. */
 export function answersGiven(items: ConversationItem[]): Map<string, GivenAnswer> {
   const given = new Map<string, GivenAnswer>();
   const again = askedAgainAt(items);
   for (const item of items.filter((candidate) => candidate.kind === 'question' && candidate.question)) {
     const bead = item.question!.bead;
     const nextAsked = again.get(item.id) ?? Infinity;
-    const reply = items.find((other) => other.kind === 'answer' && other.speaker === 'you' && other.answerBead === bead && other.at >= item.at && other.at < nextAsked);
+    const mine = (other: ConversationItem) => other.kind === 'answer' && other.speaker === 'you' && other.answerBead === bead;
+    const txid = item.txid?.toLowerCase();
+    const reply =
+      (txid !== undefined ? items.find((other) => mine(other) && other.answerRe?.toLowerCase() === txid) : undefined) ??
+      items.find((other) => mine(other) && other.answerRe === undefined && other.at >= item.at && other.at < nextAsked);
     if (reply?.answer !== undefined) given.set(item.id, { answer: reply.answer, at: reply.at });
   }
   return given;

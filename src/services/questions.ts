@@ -14,6 +14,8 @@ export interface QuestionBody {
 export interface ReplyBody {
   bead: string;
   answer: string;
+  /** The txid of the question card this answers (docs/protocol.md §6); absent on an older record. */
+  re?: string;
 }
 
 /** A bead's newest comments (docs/protocol.md §7, added by mw-hy6f4.3): newest
@@ -110,6 +112,14 @@ export function decodeQuestion(text: string): QuestionBody | undefined {
   return { bead: bead as string, q, rec, options: options as string[] };
 }
 
+/** Whether an answer that names `recorded` (its `re`) may count for the question card `card`. An answer that names
+ * no card (an older record) counts for any card on its bead, by the bead-and-window rule; a card whose txid is
+ * not known cannot tell the answers apart, so it takes any. Otherwise the answer counts for the card it names only. */
+export function namesCard(recorded: unknown, card: string | undefined): boolean {
+  if (typeof recorded !== 'string' || recorded === '' || card === undefined || card === '') return true;
+  return recorded.toLowerCase() === card.toLowerCase();
+}
+
 export function encodeReply(body: ReplyBody): string {
   return JSON.stringify(body);
 }
@@ -119,9 +129,9 @@ export function encodeReply(body: ReplyBody): string {
 export function decodeReply(text: string): ReplyBody | undefined {
   const candidate = parseStructured(text);
   if (!candidate) return undefined;
-  const { bead, answer } = candidate;
+  const { bead, answer, re } = candidate;
   if (typeof answer !== 'string') return undefined;
-  return { bead: bead as string, answer };
+  return { bead: bead as string, answer, ...(typeof re === 'string' && re !== '' ? { re } : {}) };
 }
 
 /** Decodes a decrypted snapshot plaintext (docs/protocol.md §7) into its typed

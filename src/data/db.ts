@@ -99,6 +99,8 @@ export interface AnswerRow {
   bead: string;
   answer: string;
   txid: string;
+  /** The txid of the question card an answer was tapped on (docs/protocol.md §6); absent for an older answer or an action. */
+  re?: string;
   /** Unix seconds. */
   ts: number;
   /** The seq of the view he was shown when he tapped (docs/protocol.md §11); absent when that view had none. */

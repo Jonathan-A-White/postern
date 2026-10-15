@@ -157,8 +157,8 @@ export function deliverThreaded(message: ThreadedMessage, options: DeliverOption
 }
 
 /** docs/protocol.md §6: his answer to a question on `bead`. */
-export function deliverAnswer(bead: string, answer: string, options: DeliverOptions): Promise<Delivered> {
-  return deliver(encodeReply({ bead, answer }), 'message', options);
+export function deliverAnswer(bead: string, answer: string, options: DeliverOptions, re?: string): Promise<Delivered> {
+  return deliver(encodeReply({ bead, answer, ...(re !== undefined ? { re } : {}) }), 'message', options);
 }
 
 /** docs/protocol.md §13: a one-tap action the Mayor's host applies at once. */

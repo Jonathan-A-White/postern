@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.23
+_2026-10-15_
+- New: a To do card now shows small link buttons (Kindle, Audible and so on) under its title that open the app directly.
+
 ## 0.6.22
 _2026-10-14_
 - Fixed: A notification for the Mayor's reply to a card now opens the card with the reply under it, instead of "That post is not on this phone".

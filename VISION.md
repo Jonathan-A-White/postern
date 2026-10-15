@@ -70,3 +70,14 @@ Integrate, never reinvent:
 
 Small pieces that chain (Unix pipes):
 - "I'm a huge fan of the philosophy within I guess the Unix world and now the Linux world of like pipes and everything where you can things together and that sort of thing" (turn 14)
+
+AI-native (his words, Postern 2026-10-15 02:40Z, direct:eb877d2f...):
+- "the beauty of this to do this should be like an AI native to do list right where you know you're able to help as much as possible"
+- "when the user puts in something and I really do your best to to set them up well so that once they get to it it's straightforward"
+- "what's very easy to have happen with a to-do list is it just gets long and it gets depressing"
+- "not really thinking about it as a list ... is like a priority tree and you know searchable"
+- "there can be things that start on the tool to to-do list but then fall off and that's okay it's just we don't want important things to fall off"
+- "build the right Machinery so that it's straightforward for you and you're not using crazy amounts of tokens right and that you're not dropping balls"
+- "I think that an AI native to-do list could could be a huge way of helping people"
+- (Postern general 2026-10-15T02:42:44Z, direct:8c22abc5...) "and the to-do list should never from a UI standpoint it should never feel overwhelming no it it really should capture you know what's the best use of my time right now you know and and you know what are the what are you know some of my top priorities and that sort of thing and the things that don't make it it's okay that they that you don't that they don't take headspace you know but you know on your end right it's making sure that the important things get done right and ideally they're dealt with before they become urgent right and that and unurgent things that they don't happen maybe and and that the unimportant and urgent things you know that there you know I mean really use wisdom from Stephen covey's book said I feel like this could really help people"
+- (Postern general 2026-10-15T02:43:06Z, direct:a381136e...) "so this should definitely not feel cluttered it should feel it should be freeing like knowing in the right thing to do at the right time is gold"

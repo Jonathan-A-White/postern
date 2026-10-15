@@ -55,7 +55,7 @@ function useNearViewport(): [React.RefObject<HTMLDivElement | null>, boolean] {
 }
 
 /** One file: loaded only once it nears the viewport (mw-gq6.284), a placeholder until then. */
-function AttachmentView({ attachment, direction }: { attachment: Attachment; direction: 'sent' | 'received' }) {
+export function AttachmentView({ attachment, direction }: { attachment: Attachment; direction: 'sent' | 'received' }) {
   const [ref, near] = useNearViewport();
   return (
     <div ref={ref}>

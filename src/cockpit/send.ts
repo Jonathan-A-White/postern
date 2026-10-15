@@ -50,9 +50,11 @@ export async function sendAction(action: GovernorAction): Promise<Queued> {
   return { id: await enqueue({ kind: 'action', bead: action.bead ?? '', payload: { action }, label: action.action }) };
 }
 
-/** Queues one turn of the Talk line (docs/protocol.md §20): class `talk`, straight to the backend once it answers. */
-export async function sendTurn(turn: TalkTurn): Promise<Queued> {
-  return { id: await enqueue({ kind: 'turn', payload: { turn }, label: turn.text }) };
+/** Queues one turn of the Talk line (docs/protocol.md §20): class `talk`, straight to the backend once it answers.
+ * A picture goes with it (one at most): kept whole in the outbox and uploaded first when the turn's turn comes. */
+export async function sendTurn(turn: TalkTurn, picture?: OutgoingFile): Promise<Queued> {
+  const file = picture && { name: picture.name, type: picture.type, data: packBytes(picture.bytes) };
+  return { id: await enqueue({ kind: 'turn', payload: { turn, ...(file ? { file } : {}) }, label: turn.text || (picture ? 'Picture' : '') }) };
 }
 
 /** Queues a Call me request (docs/protocol.md §21): class `call`. `at` is Unix seconds. */

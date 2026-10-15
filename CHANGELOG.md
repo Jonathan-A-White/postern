@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.25
+_2026-10-15_
+- New: Attach a screenshot or photo to a Talk turn.
+
 ## 0.6.23
 _2026-10-15_
 - New: a To do card now shows small link buttons (Kindle, Audible and so on) under its title that open the app directly.

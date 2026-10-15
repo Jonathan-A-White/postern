@@ -2,6 +2,7 @@
 // state machine (src/model/talkLine.ts): the turns of this talk as he sees them,
 // each with his words, the Mayor's answer and how soon the first words of it came.
 // Pure: the screen feeds it events with the time they happened.
+import type { Attachment } from '../services/threads';
 import { isLateAnswer, talkLine, TALK_AWAY_TIMEOUT_MS, type TalkLineEvent, type TalkLineState } from './talkLine';
 
 export interface TalkLogEntry {
@@ -14,6 +15,10 @@ export interface TalkLogEntry {
   asked?: string;
   /** Ideas only was on when the turn went out: 'Recorded for after 21:00', shown under it (not a received turn). */
   recorded?: string;
+  /** The picture that went with the turn: a local preview while this phone holds it. */
+  picture?: string;
+  /** The picture a stored turn names (§8's shape), for the bubble to load when there is no local preview. */
+  attachment?: Attachment;
   /** When he let go of the button (ms). */
   releasedAt: number;
   /** The Mayor's latest words for this turn: a holding answer until the real one comes. */
@@ -121,7 +126,8 @@ export function talkScreen(state: TalkScreenState, { event, at }: TalkScreenActi
     case 'release':
       if (line.outgoing) {
         const { talk, text, cut, model } = line.outgoing;
-        log = [...log, { turn: talk.turn, said: text, cut: cut === true, asked: model, releasedAt: at }];
+        const preview = line.outgoingPicture?.preview;
+        log = [...log, { turn: talk.turn, said: text, cut: cut === true, asked: model, releasedAt: at, ...(preview ? { picture: preview } : {}) }];
       }
       break;
     case 'sent':

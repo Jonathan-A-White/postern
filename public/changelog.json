@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.27",
+    "date": "2026-10-15",
+    "story": "mw-ev7oyy.15",
+    "kind": "new",
+    "text": "To do cards have a star for important ones, say in words when they are due or overdue, and the ones due within two days or overdue float to the top of their list."
+  },
+  {
     "version": "0.6.26",
     "date": "2026-10-15",
     "story": "mw-ev7oyy.14",

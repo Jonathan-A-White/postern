@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.30",
+    "date": "2026-10-15",
+    "story": "mw-4gkijo.1",
+    "kind": "fixed",
+    "text": "Postern opens straight away on a long history instead of sitting on the padlock, and if it ever stalls it says what it waits on and offers Try again."
+  },
+  {
     "version": "0.6.29",
     "date": "2026-10-15",
     "story": "mw-1cfk7g.1",

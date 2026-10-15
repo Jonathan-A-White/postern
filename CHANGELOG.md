@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.30
+_2026-10-15_
+- Fixed: Postern opens straight away on a long history instead of sitting on the padlock, and if it ever stalls it says what it waits on and offers Try again.
+
 ## 0.6.29
 _2026-10-15_
 - Fixed: With two questions open on one bead, tapping an answer on one now marks only that question as answered.

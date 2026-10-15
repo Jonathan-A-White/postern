@@ -28,6 +28,8 @@ import { installHonestSpeech, type HonestSpeech } from '../../tests/support/hone
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-woc';
 import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
+import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { imageSeam } from '../../src/images/shrink';
 
 configure({ asyncUtilTimeout: 5000 });
 
@@ -43,11 +45,47 @@ vi.mock('../../src/services/idleHold', async (importOriginal) => {
 
 const sendTurn = vi.fn();
 const sendCallRequest = vi.fn();
-vi.mock('../../src/cockpit/send', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/cockpit/send')>()),
-  sendTurn: (...args: unknown[]) => sendTurn(...args),
-  sendCallRequest: (...args: unknown[]) => sendCallRequest(...args),
+vi.mock('../../src/cockpit/send', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/cockpit/send')>();
+  outbox.sendTurn = original.sendTurn as typeof outbox.sendTurn;
+  return {
+    ...original,
+    sendTurn: (...args: unknown[]) => sendTurn(...args),
+    sendCallRequest: (...args: unknown[]) => sendCallRequest(...args),
+  };
+});
+
+// mw-q6n8m0.14: a scenario can let a turn go through the real outbox, which uploads the picture (a stubbed
+// POST /api/blobs) and delivers the turn: only the delivery's last step, the sealed record, is a double.
+const outbox = vi.hoisted(() => ({
+  real: false,
+  key: new Uint8Array(32).fill(7),
+  mayorKey: '',
+  sendTurn: undefined as undefined | ((...args: unknown[]) => Promise<unknown>),
+  events: [] as string[],
+  delivered: [] as string[],
 }));
+outbox.mayorKey = PrivateKey.fromRandom().toPublicKey().toString();
+vi.mock('../../src/services/live', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/services/live')>();
+  return { ...original, deliverOptions: (...args: Parameters<typeof original.deliverOptions>) => (outbox.real ? { key: outbox.key, mayorKey: outbox.mayorKey, direct: true } : original.deliverOptions(...args)) };
+});
+vi.mock('../../src/services/keySession', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/services/keySession')>();
+  return { ...original, getKey: () => (outbox.real ? outbox.key : original.getKey()) };
+});
+vi.mock('../../src/services/deliver', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/services/deliver')>();
+  return {
+    ...original,
+    deliver: (...args: Parameters<typeof original.deliver>) => {
+      if (!outbox.real) return original.deliver(...args);
+      outbox.events.push('deliver');
+      outbox.delivered.push(args[0]);
+      return Promise.resolve({ txid: 'ef'.repeat(32), channel: 'direct' as const });
+    },
+  };
+});
 
 // Whether the Mayor is here is what the backend's presence route says; a test sets it.
 const mayor = vi.hoisted(() => ({ here: undefined as boolean | undefined }));
@@ -295,6 +333,8 @@ let silentFor = 0;
 const realNow = Date.now.bind(Date);
 const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + silentFor);
 
+const seamSpies: { mockRestore(): void }[] = [];
+
 async function fresh(): Promise<void> {
   cleanup();
   stopSpeaking(); // a speech paused by a screen left in the last scenario must not be resumed by this one
@@ -306,6 +346,10 @@ async function fresh(): Promise<void> {
   vi.unstubAllGlobals();
   sequence = 0;
   clock.at = 1_000_000;
+  outbox.events = [];
+  outbox.delivered = [];
+  for (const spy of seamSpies.splice(0)) spy.mockRestore();
+  outbox.real = false;
   sendTurn.mockReset();
   sendTurn.mockResolvedValue({ txid: 'direct:x', channel: 'direct' });
   // Delivering a request keeps a sent copy, as the real deliver does.
@@ -2593,6 +2637,165 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
         expect(button.className).toMatch(/\bh-11\b/);
         expect(button.className).toMatch(/\bmin-w-11\b/);
       }
+    });
+  });
+
+  // mw-q6n8m0.14: a picture on a turn.
+  let encode: ReturnType<typeof vi.fn> | undefined;
+  const attachInput = () => document.querySelector('input[type="file"]:not([capture])') as HTMLInputElement;
+  const attaches = async (_c: unknown, name: string) => {
+    await act(async () => fireEvent.change(attachInput(), { target: { files: [new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' })] } }));
+    await screen.findByRole('button', { name: 'Remove' });
+  };
+  const thumbnails = () => screen.queryAllByRole('img', { name: 'Attached picture' });
+  const delivered = () => outbox.delivered.map((plaintext) => JSON.parse(plaintext) as TalkTurn & { attachment?: Record<string, unknown> });
+  const readsPicturesAs = (_c: unknown, width: number, height: number) => {
+    URL.createObjectURL = () => 'blob:preview';
+    URL.revokeObjectURL = () => {};
+    seamSpies.push(vi.spyOn(imageSeam, 'decode').mockResolvedValue({ width, height, source: null }));
+    encode = vi.fn(async () => new Blob([new Uint8Array(2)], { type: 'image/jpeg' }));
+    seamSpies.push(vi.spyOn(imageSeam, 'encode').mockImplementation(encode as unknown as typeof imageSeam.encode));
+  };
+  const throughTheRealOutbox = async () => {
+    URL.createObjectURL = () => 'blob:preview';
+    URL.revokeObjectURL = () => {};
+    outbox.real = true;
+    setKey(outbox.key);
+    forgetOutboxState();
+    await db.outbox.clear();
+    let uploads = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (isChallengeRequest(url)) return challengeResponse();
+        if (url.endsWith('/blobs')) {
+          uploads += 1;
+          outbox.events.push('upload');
+          return new Response(JSON.stringify({ hash: String(uploads).padStart(2, 'a').repeat(32), size: 100 + uploads }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    sendTurn.mockImplementation((...args: unknown[]) => outbox.sendTurn!(...args));
+  };
+  const outboxDone = async () => {
+    await act(async () => settledOutbox());
+  };
+  const deliveredOne = async (_c: unknown, words: string) => {
+    await waitFor(() => expect(outbox.delivered).toHaveLength(1));
+    expect(delivered()[0]).toMatchObject({ text: words, role: 'turn' });
+  };
+
+  Scenario('mw-q6n8m0.14 AC1: the Talk screen offers Attach and Take a photo beside the hold button', ({ Given, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    Then('the Talk screen has the buttons {string} and {string}', (_c, attach: string, camera: string) => {
+      expect(screen.getByRole('button', { name: attach })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: camera })).toBeInTheDocument();
+      expect(document.querySelector('input[type="file"][accept="image/*"]:not([capture])')).not.toBeNull();
+      expect(document.querySelector('input[type="file"][accept="image/*"][capture="environment"]')).not.toBeNull();
+    });
+    And('no picture is attached and there is no Send button', () => {
+      expect(thumbnails()).toHaveLength(0);
+      expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+    });
+  });
+
+  Scenario('mw-q6n8m0.14 AC1: choosing a 3000 px PNG shows a thumbnail with Remove, cut to 2400 px', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('the phone reads pictures as {int} by {int} pixels', readsPicturesAs);
+    When('he attaches the screenshot {string}', attaches);
+    Then('a thumbnail of the picture is shown with a {string} button', (_c, remove: string) => {
+      expect(thumbnails()).toHaveLength(1);
+      expect(screen.getByRole('button', { name: remove })).toBeInTheDocument();
+    });
+    And('the picture was drawn at {int} by {int} pixels', (_c, width: number, height: number) => {
+      expect(encode).toHaveBeenCalledWith(expect.anything(), width, height, 0.85);
+    });
+  });
+
+  Scenario('mw-q6n8m0.14 AC1: releasing hold-to-talk with words sends one turn with the picture, uploaded first', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('turns reach the Mayor through the real outbox', throughTheRealOutbox);
+    And('the phone reads pictures as {int} by {int} pixels', readsPicturesAs);
+    When('he attaches the screenshot {string}', attaches);
+    And('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the outbox has done its work', outboxDone);
+    Then('the picture was uploaded before the turn was delivered', async () => {
+      await waitFor(() => expect(outbox.events).toEqual(['upload', 'deliver']));
+    });
+    And('one turn was delivered saying {string} with role {string} and a JPEG picture named {string}', async (_c, words: string, role: string, name: string) => {
+      await waitFor(() => expect(outbox.delivered).toHaveLength(1));
+      expect(delivered()[0]).toMatchObject({ text: words, role, attachment: { mime: 'image/jpeg', name, size: 101 } });
+      expect(delivered()[0].attachment?.hash).toMatch(/^[0-9a-f]{64}$/);
+    });
+    And("the sent turn's bubble shows the thumbnail", () => {
+      expect(within(screen.getByTestId('talk-turn')).getByRole('img', { name: 'Attached picture' })).toBeInTheDocument();
+    });
+    And('no picture is attached any more', async () => {
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull());
+      expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+    });
+  });
+
+  Scenario('mw-q6n8m0.14 AC1: with a picture and nothing said, Send sends a turn with empty text and the picture', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('turns reach the Mayor through the real outbox', throughTheRealOutbox);
+    And('the phone reads pictures as {int} by {int} pixels', readsPicturesAs);
+    When('he attaches the screenshot {string}', attaches);
+    And('he taps {string}', tapButton);
+    And('the outbox has done its work', outboxDone);
+    Then('one turn was delivered saying {string} with role {string} and a JPEG picture named {string}', async (_c, words: string, role: string, name: string) => {
+      await waitFor(() => expect(outbox.delivered).toHaveLength(1));
+      expect(delivered()[0]).toMatchObject({ text: words, role, attachment: { mime: 'image/jpeg', name } });
+    });
+    And('no picture is attached any more', async () => {
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull());
+      expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+    });
+  });
+
+  Scenario('mw-q6n8m0.14 AC1: Remove before sending sends no picture', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('turns reach the Mayor through the real outbox', throughTheRealOutbox);
+    When('he attaches the screenshot {string}', attaches);
+    And('he taps {string}', tapButton);
+    And('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the outbox has done its work', outboxDone);
+    Then('one turn was delivered saying {string} with no attachment key at all', async (_c, words: string) => {
+      await deliveredOne(_c, words);
+      expect(Object.keys(delivered()[0])).not.toContain('attachment');
+    });
+    And('nothing was uploaded', async () => {
+      await waitFor(() => expect(outbox.events).toEqual(['deliver']));
+    });
+  });
+
+  Scenario('mw-q6n8m0.14 AC1: a turn with no picture has no attachment key at all', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('turns reach the Mayor through the real outbox', throughTheRealOutbox);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the outbox has done its work', outboxDone);
+    Then('one turn was delivered saying {string} with no attachment key at all', async (_c, words: string) => {
+      await deliveredOne(_c, words);
+      expect(Object.keys(delivered()[0])).not.toContain('attachment');
+    });
+  });
+
+  Scenario('mw-q6n8m0.14 AC2: choosing a second picture replaces the first, never two on a turn', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('turns reach the Mayor through the real outbox', throughTheRealOutbox);
+    And('the phone reads pictures as {int} by {int} pixels', readsPicturesAs);
+    When('he attaches the screenshot {string}', attaches);
+    And('he then attaches the screenshot {string}', attaches);
+    Then('exactly one thumbnail is shown', () => {
+      expect(thumbnails()).toHaveLength(1);
+    });
+    When('he taps {string}', tapButton);
+    And('the outbox has done its work', outboxDone);
+    Then('one turn was delivered saying {string} with role {string} and a JPEG picture named {string}', async (_c, words: string, role: string, name: string) => {
+      await waitFor(() => expect(outbox.delivered).toHaveLength(1));
+      expect(delivered()[0]).toMatchObject({ text: words, role, attachment: { mime: 'image/jpeg', name } });
     });
   });
 });

@@ -17,7 +17,9 @@ import { holdAwake } from '../services/wakeLock';
 import { holdVoiceAlive } from '../services/silentLoop';
 import { holdWhileActive, type IdleHold } from '../services/idleHold';
 import { announceAnswer, clearAnnouncement } from '../services/talkAnswerNotice';
-import { sendTurn } from './send';
+import { refuseFile, sendTurn } from './send';
+import { toPicked } from './pickedFile';
+import { toast } from '../ui/toastStore';
 import { useBeadTitles, useTalkTurns } from './hooks';
 import { useMayorHere } from './useMayorHere';
 import { useRecordedWords } from './useIdeasOnly';
@@ -99,10 +101,11 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
 
   // His turn goes out once, whenever the line asks for it.
   const outgoing = line.outgoing;
+  const outgoingPicture = line.outgoingPicture;
   useEffect(() => {
     if (!outgoing || sending.current === outgoing) return;
     sending.current = outgoing;
-    sendTurn(outgoing).then(
+    sendTurn(outgoing, outgoingPicture).then(
       () => {
         const recorded = recordedNow.current;
         feed({ type: 'sent', at: now(), here: hereNow.current, ...(recorded !== undefined ? { recorded } : {}) });
@@ -110,7 +113,7 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
       },
       () => feed({ type: 'sendFailed' }),
     );
-  }, [outgoing, feed]);
+  }, [outgoing, outgoingPicture, feed]);
 
   // The Mayor's answers arrive as stored records. An answer that comes before the
   // line knows his turn went out waits until it does.
@@ -259,15 +262,46 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     };
   }, [open, holding]);
 
-  function press(): void {
-    if (!hold.supported || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
-    if (!hold.begin()) return;
-    // The speech is paused at once, so its sound is not in the way of the microphone; the line keeps the answer for Resume.
+  /** The speech is paused at once, so its sound is not in the way of the microphone (or of a turn he sends); the line keeps the answer for Resume. */
+  function pauseAnswer(): void {
     if (line.phase === 'speaking' && line.speaking?.holding === false && !line.speaking.unspoken) {
       keepForResume.current = true;
       pauseSpeaking();
     }
+  }
+
+  function press(): void {
+    if (!hold.supported || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
+    if (!hold.begin()) return;
+    pauseAnswer();
     feed({ type: 'hold', talkId: line.talk?.id ?? newTalkId() });
+  }
+
+  // The one picture for his next turn (mw-q6n8m0.14): the same cut to 2400 px and JPEG as a message's. A second choice replaces the first.
+  async function attach(file: File | undefined): Promise<void> {
+    if (!file) return;
+    const refusal = file.type.startsWith('image/') ? refuseFile(file) : `${file.name} is not a picture: only a picture can go with a Talk turn.`;
+    if (refusal) {
+      toast(refusal, 'error');
+      return;
+    }
+    try {
+      feed({ type: 'attach', picture: await toPicked(file, file.name) });
+    } catch {
+      toast(`Could not read ${file.name}.`, 'error');
+    }
+  }
+
+  function removePicture(): void {
+    feed({ type: 'detach' });
+  }
+
+  /** A picture is chosen and he says nothing: it goes as a turn of its own. */
+  function sendPicture(): void {
+    if (!line.picture || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
+    pauseAnswer();
+    hold.setNotice(undefined);
+    feed({ type: 'sendPicture', talkId: line.talk?.id ?? newTalkId() });
   }
 
   async function release(): Promise<void> {
@@ -330,6 +364,9 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     here,
     supported: hold.supported,
     press,
+    attach,
+    removePicture,
+    sendPicture,
     release,
     abort,
     cut,

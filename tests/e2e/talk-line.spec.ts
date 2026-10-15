@@ -567,3 +567,67 @@ test.describe('phone viewport: the answer bar', () => {
     await expect(bar).toHaveCount(0);
   });
 });
+
+// a 2×2 red PNG
+const RED_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP8z8Dwn4GBgYEBAB8CAgFsrJ/LAAAAAElFTkSuQmCC', 'base64');
+
+test('talk line: a screenshot attached on the Talk screen goes with the turn and shows in its bubble (mw-q6n8m0.14)', async ({ page }) => {
+  await page.setViewportSize(sized({ width: 390, height: 844 }));
+  const width = page.viewportSize()?.width ?? PHONE_WIDTH;
+  const { posted } = await unlocked(page);
+  let uploads = 0;
+  await page.route('**/api/blobs', (route) => {
+    uploads += 1;
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ hash: 'ab'.repeat(32), size: 120 }) });
+  });
+
+  await page.goto('/?v=line');
+  const attach = page.getByRole('button', { name: 'Attach', exact: true });
+  const camera = page.getByRole('button', { name: 'Take a photo' });
+  await expect(attach).toBeVisible();
+  await expect(camera).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeHidden();
+
+  // the picture shows as a thumbnail above the hold button, with Remove and, nothing said yet, Send
+  await page.locator('input[type="file"]:not([capture])').setInputFiles({ name: 'screen.png', mimeType: 'image/png', buffer: RED_PNG });
+  const thumb = page.getByTestId('talk-attached').getByRole('img', { name: 'Attached picture' });
+  await expect(thumb).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+  const hold = (await page.getByRole('button', { name: 'Hold to talk' }).boundingBox())!;
+  const row = (await page.getByTestId('talk-picture-row').boundingBox())!;
+  expect(row.y + row.height).toBeLessThanOrEqual(hold.y);
+  expect(row.x).toBeGreaterThanOrEqual(0);
+  expect(row.x + row.width).toBeLessThanOrEqual(width);
+  for (const control of [attach, camera, page.getByRole('button', { name: 'Send', exact: true })]) {
+    const box = (await control.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    expect(box.height).toBeGreaterThanOrEqual(40);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  await shot(page, 'talk-line-picture-attached');
+
+  // hold, say one line, release: the words and the thumbnail are his bubble
+  const button = page.getByRole('button', { name: 'Hold to talk' });
+  const box = (await button.boundingBox())!;
+  const before = posted.length;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(page.getByRole('button', { name: 'Release to send' })).toBeVisible();
+  await page.evaluate(() => window.__hear('What is wrong in this screenshot?'));
+  await page.mouse.up();
+  const turn = page.getByTestId('talk-turn').first();
+  await expect(turn.getByTestId('talk-said')).toHaveText('What is wrong in this screenshot?');
+  const bubble = turn.getByRole('img', { name: 'Attached picture' });
+  await expect(bubble).toBeVisible();
+  // the picture has loaded and has a size to look at, even a 2 px one
+  await expect.poll(async () => (await bubble.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(40);
+  expect(await bubble.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+  await expect.poll(() => posted.length).toBeGreaterThan(before);
+  expect(uploads).toBe(1);
+  // the picture is spent: no thumbnail row item and no Send
+  await expect(page.getByTestId('talk-attached')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  await shot(page, 'talk-line-picture-sent');
+});

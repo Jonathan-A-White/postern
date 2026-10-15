@@ -690,6 +690,9 @@ parent chain up to the root, so the app can draw any level of the tree:
 - `todo_due` — optional, on a bead labelled `hitl:todo`: when the card is due, an RFC 3339 UTC time
   (mw-ev7oyy.9; the host keeps it from `todo_edit`'s `due`). The card shows it on its face, red once it is
   past, and a list can be sorted by it; a value that is not a time is read as none;
+- `todo_name` — optional, on an epic that is one of his To do lists: its short name (mw-ev7oyy.14). The
+  board heads the list with it, on one line; without it the header is the epic's `title` cut at its first
+  `:` (followed by a space) or ` (`. The whole title stays on the list's menu. Text only; blank is none;
 - `waits` — the ids of the unfinished beads this one waits on (so an open bead
   with an empty `waits` is on the frontier);
 - `path` — the story's merged Path (the epic's defaults overlaid with its own);

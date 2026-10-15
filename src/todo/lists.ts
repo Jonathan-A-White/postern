@@ -31,11 +31,25 @@ export interface TodoCard {
 export interface TodoList {
   /** The epic's bead id, or OTHER_LIST. */
   id: string;
+  /** The epic's whole title. */
   title: string;
+  /** What the list's header says: its short name (shortName), one line. */
+  name: string;
   /** The epic's bead id when the heading links to its page; absent on Other. */
   epic?: string;
   created: string;
   cards: TodoCard[];
+}
+
+/** A list's short name for its header (mw-ev7oyy.14): the epic's todo_name when it has one, else its title cut at the
+ * first ':' (a colon then a space, so a time of day stays whole) or ' ('; the whole title when nothing is left. */
+export function shortName(title: string, todoName?: string): string {
+  const named = todoName?.trim();
+  if (named) return named;
+  const whole = title.trim();
+  const cut = whole.search(/:(\s|$)| \(/);
+  const short = cut > 0 ? whole.slice(0, cut).trim() : whole;
+  return short || whole;
 }
 
 /** Numbers first (as numbers), then strings (as text), then the unranked. */
@@ -80,7 +94,7 @@ export function todoListsFromView(index: ViewIndex): TodoList[] {
     const key = epic?.id ?? OTHER_LIST;
     let list = lists.get(key);
     if (!list) {
-      list = epic ? { id: epic.id, title: epic.title, epic: epic.id, created: epic.created, cards: [] } : { id: OTHER_LIST, title: 'Other', created: '', cards: [] };
+      list = epic ? { id: epic.id, title: epic.title, name: shortName(epic.title, epic.todo_name), epic: epic.id, created: epic.created, cards: [] } : { id: OTHER_LIST, title: 'Other', name: 'Other', created: '', cards: [] };
       lists.set(key, list);
     }
     list.cards.push(cardOf(bead));

@@ -7,9 +7,9 @@ import { OTHER_LIST, REFUSED_AFTER_MS, applyChanges, dropPlace, judge, moveFor, 
 
 const card = (id: string) => ({ id, title: `Title of ${id}`, priority: 2, created: '2026-10-13T10:00:00Z' });
 const lists = (): TodoList[] => [
-  { id: 'mw-a', title: 'List A', epic: 'mw-a', created: '2026-10-13T10:00:00Z', cards: [card('mw-a.1'), card('mw-a.2'), card('mw-a.3')] },
-  { id: 'mw-b', title: 'List B', epic: 'mw-b', created: '2026-10-12T10:00:00Z', cards: [card('mw-b.1')] },
-  { id: OTHER_LIST, title: 'Other', created: '', cards: [card('mw-x.1'), card('mw-x.2')] },
+  { id: 'mw-a', title: 'List A', name: 'List A', epic: 'mw-a', created: '2026-10-13T10:00:00Z', cards: [card('mw-a.1'), card('mw-a.2'), card('mw-a.3')] },
+  { id: 'mw-b', title: 'List B', name: 'List B', epic: 'mw-b', created: '2026-10-12T10:00:00Z', cards: [card('mw-b.1')] },
+  { id: OTHER_LIST, title: 'Other', name: 'Other', created: '', cards: [card('mw-x.1'), card('mw-x.2')] },
 ];
 const ids = (list: TodoList) => list.cards.map((c) => c.id);
 const at = (change: TodoChange['action'], id = 1): TodoChange => ({ id, action: change });

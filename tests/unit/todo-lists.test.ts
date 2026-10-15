@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { indexView } from '../../src/model/tree';
 import { decodeView } from '../../src/model/view';
-import { beadsNamed, openTodoCount, todoListsFromView, TODO_LABEL, OTHER_LIST } from '../../src/todo';
+import { beadsNamed, openTodoCount, shortName, todoListsFromView, TODO_LABEL, OTHER_LIST } from '../../src/todo';
 import { fixtureView } from '../support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
 
@@ -108,5 +108,43 @@ describe('the due time of a card (mw-ev7oyy.9)', () => {
 describe('the beads a card names', () => {
   it('lists each bead id once, in the order met, never the card itself', () => {
     expect(beadsNamed('mw-card', ['Do it after mw-aaa.1 and see mw-bbb', 'mw-aaa.1 again, `mw-code` is code too, and mw-card itself'])).toEqual(['mw-aaa.1', 'mw-bbb', 'mw-code']);
+  });
+});
+
+describe('a list header is its short name (mw-ev7oyy.14 AC-4)', () => {
+  const LONG = "Governor's Discipleship Institute list (Deep Discipleship, Weeks 4-6): last week's unfinished work and this week's pre-work, due at the next group meeting";
+
+  it("cuts the epic's title at its first ' (' or ':'", () => {
+    expect(shortName(LONG)).toBe("Governor's Discipleship Institute list");
+    expect(shortName('Errands: the garage and the deck')).toBe('Errands');
+    expect(shortName('Books (to read)')).toBe('Books');
+  });
+
+  it('leaves a title with no colon or bracket as it is', () => {
+    expect(shortName('Title of mw-list')).toBe('Title of mw-list');
+    expect(shortName('  Later this week  ')).toBe('Later this week');
+  });
+
+  it('does not cut a time of day, and never comes out empty', () => {
+    expect(shortName('Call at 10:30 about the car')).toBe('Call at 10:30 about the car');
+    expect(shortName(': a title that opens with a colon')).toBe(': a title that opens with a colon');
+  });
+
+  it("prefers the epic's todo_name when it is set", () => {
+    expect(shortName(LONG, 'Deep Discipleship')).toBe('Deep Discipleship');
+    expect(shortName(LONG, '   ')).toBe("Governor's Discipleship Institute list");
+  });
+
+  it('puts the short name on each list, the whole title kept beside it', () => {
+    const lists = listsOf([bead('mw-a', { type: 'epic', title: LONG }), todo('mw-a.1', { parent: 'mw-a' }), bead('mw-b', { type: 'epic', title: LONG, todo_name: 'Deep Discipleship', created: at(10) }), todo('mw-b.1', { parent: 'mw-b' })]);
+    expect(lists.map((list) => [list.id, list.name, list.title])).toEqual([
+      ['mw-b', 'Deep Discipleship', LONG],
+      ['mw-a', "Governor's Discipleship Institute list", LONG],
+    ]);
+  });
+
+  it('reads todo_name from the view as text and drops anything else', () => {
+    const view = decodeView(JSON.stringify({ v: 2, beads: [{ id: "mw-x", todo_name: "Deep Discipleship" }, { id: "mw-y", todo_name: 7 }] }));
+    expect(view?.beads.map((b) => b.todo_name)).toEqual(['Deep Discipleship', undefined]);
   });
 });

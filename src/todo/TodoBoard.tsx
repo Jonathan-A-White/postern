@@ -3,8 +3,8 @@
 // item. A tap on a card turns it over to its back (its notes, its comments, the beads it names, Edit
 // and the keyboard's way to move it); Done asks for the card to be closed and the card stays, greyed,
 // until the view drops it. A card is dragged (held, on a phone) to reorder it or move it to another
-// list; each list ends in 'Add a card'. A card with a due time shows it on its face (red once past), its back sets or
-// clears it with a date-time input, and a list's menu sorts its cards by due (mw-ev7oyy.9). Every change shows at once, marked pending, until the view agrees
+// list; each list ends in 'Add a card'. A card with a due time says it in words on its face ('due Thu', 'overdue since Tue', never red), its back sets or
+// clears it with a date-time input, a star at its right marks it important (mw-ev7oyy.15; the store floats the due-soon and the important cards up), and a list's menu sorts its cards by due (mw-ev7oyy.9). Every change shows at once, marked pending, until the view agrees
 // (mw-ev7oyy.7). A card is one compact row (mw-ev7oyy.14): a small round check at its left for Done, the title, then its due
 // time and chips; a list's header is its short name. A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
 // link and nothing else (mw-ev7oyy.12; links.ts says what each is). Draws only what a TodoStore gives it.
@@ -14,7 +14,7 @@ import { useNow } from '../ui/useNow';
 import { focusOnMount } from '../ui/focus';
 import { Markdown } from '../markdown/Markdown';
 import { beadHref } from '../nav/route';
-import { dueToInput, formatDue, inputToDue, isPastDue, sortByDue } from './due';
+import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
 import { moveFor } from './edits';
 import { linkProps, parseOpenLinks, type OpenLink } from './links';
 import { beadsNamed, type TodoCard, type TodoList } from './lists';
@@ -62,16 +62,31 @@ function PendingMark() {
   );
 }
 
-/** The due time on a card's face: red, with 'Past due' for a screen reader, once it has passed. */
+/** The due date on a card's face, in words ('due Thu', 'due today', 'overdue since Tue'), never in red (mw-ev7oyy.15); an overdue one is bolder. */
 function DueLine({ due }: { due: string }) {
   const now = useNow(DUE_LOOK_MS);
-  const past = isPastDue(due, now);
+  const overdue = isOverdue(due, now);
   return (
-    <p data-testid="due" data-past={past} className={cx('mt-0.5 flex items-center gap-1 text-[12.5px]', past ? 'font-medium text-danger' : 'text-muted')}>
+    <p data-testid="due" data-past={overdue} className={cx('mt-0.5 flex items-center gap-1 text-[12.5px] text-muted', overdue && 'font-medium')}>
       <Icon name="clock" size={13} />
-      {past && <span className="sr-only">Past due: </span>}
-      {formatDue(due, now)}
+      {dueWords(due, now)}
     </p>
+  );
+}
+
+/** The star at a card's right: one tap marks the card important, a second clears it. Named for what a tap will do ('Mark important: <title>'
+ * / 'Clear important: <title>'); a filled star says it is on. Its tap area is wider than it looks. */
+function StarButton({ card, onToggle }: { card: TodoCard; onToggle: (important: boolean) => void }) {
+  const on = card.important === true;
+  return (
+    <button
+      type="button"
+      aria-label={`${on ? 'Clear important' : 'Mark important'}: ${card.title}`}
+      onClick={() => onToggle(!on)}
+      className={cx("relative mt-px flex size-6 shrink-0 items-center justify-center before:absolute before:-inset-2.5 before:content-['']", on ? 'text-accent' : 'text-faint hover:text-accent focus-visible:text-accent')}
+    >
+      <Icon name="star" size={18} className={on ? 'fill-current' : undefined} />
+    </button>
   );
 }
 
@@ -414,6 +429,9 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
             <div data-nodrag>
               <DoneStatus state={state} />
             </div>
+          </div>
+          <div data-nodrag className="flex shrink-0">
+            <StarButton card={card} onToggle={(important) => void store.edit(card.id, { important })} />
           </div>
         </div>
       )}

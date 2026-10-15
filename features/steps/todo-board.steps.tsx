@@ -389,10 +389,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   const dueTomorrowAt9 = (_c: unknown, id: string) => dueOf(id, dayAt(1, 9, 0));
   const fellDueYesterday = (_c: unknown, id: string) => dueOf(id, dayAt(-1, 18, 30));
   const dueLine = async (name: string) => within(await card(name.replace('Title of ', ''))).queryByTestId('due');
-  const showsDue = (red: boolean) => async (_c: unknown, name: string, words: string) => {
+  const dueInDays = (_c: unknown, id: string, days: string) => dueOf(id, dayAt(Number(days), 9, 0));
+  const saysDue = (overdue: boolean) => async (_c: unknown, name: string, words: string) => {
     await waitFor(async () => expect(await dueLine(name)).toHaveTextContent(words));
-    expect(await dueLine(name)).toHaveAttribute('data-past', String(red));
-    expect(((await dueLine(name)) as HTMLElement).className).toMatch(red ? /text-danger/ : /text-muted/);
+    expect(await dueLine(name)).toHaveAttribute('data-past', String(overdue));
   };
   const tapCard = async (_c: unknown, name: string) => {
     await userEvent.click(await screen.findByRole('button', { name }));
@@ -411,13 +411,16 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     await userEvent.click(await screen.findByRole('menuitem', { name: item }));
   };
 
-  Scenario('mw-ev7oyy.9 AC-1: a card shows its due time on its face, red once it is past', ({ Given, And, When, Then }) => {
+  Scenario('mw-ev7oyy.15 AC-2: a card says in words when it is due or overdue, and is never red', ({ Given, And, When, Then }) => {
     Given('a view with a list {string} holding two open cards, a closed card and a card that is not a to do', aList);
     And('the card {string} is due tomorrow at 9:00', dueTomorrowAt9);
     And('the card {string} fell due yesterday at 18:30', fellDueYesterday);
     When('the To do tab opens', tabOpens);
-    Then('the card {string} shows the due time {string}, not red', showsDue(false));
-    And('the card {string} shows the due time {string}, in red', showsDue(true));
+    Then('the card {string} says {string} and is not overdue', saysDue(false));
+    And('the card {string} says {string} and is overdue', saysDue(true));
+    And("neither card's due line is red", async () => {
+      for (const name of ['Title of mw-list.1', 'Title of mw-list.2']) expect(((await dueLine(name)) as HTMLElement).className).not.toMatch(/danger/);
+    });
   });
 
   Scenario("mw-ev7oyy.9 AC-2: the Due field on a card's back sets the due time as a todo_edit, shown at once and pending", ({ Given, When, And, Then }) => {
@@ -437,7 +440,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('a todo_edit for {string} with that due time and nothing else waits in the outbox', (_c, bead: string) => waits({ action: 'todo_edit', bead, due: picked().toISOString() })());
     When('he taps Back on the card', tapBack);
-    Then('the card {string} shows the due time {string}, not red', showsDue(false));
+    Then('the card {string} says {string} and is not overdue', saysDue(false));
     And('the card {string} is pending', async (_c, title: string) => {
       const el = await cardTitled(title);
       await waitFor(() => expect(pendingIn(el)).not.toBeNull());
@@ -462,8 +465,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
   Scenario("mw-ev7oyy.9 AC-1: a list's menu sorts its cards by due, the earliest first and the undated last, and puts the order back", ({ Given, When, And, Then }) => {
     Given('a view with a list {string} holding two open cards, a closed card and a card that is not a to do', aList);
-    And('the card {string} is due tomorrow at 9:00', dueTomorrowAt9);
-    And('the card {string} fell due yesterday at 18:30', fellDueYesterday);
+    And('the card {string} is due in 5 days at 9:00', (_c, id: string) => dueInDays(_c, id, '5'));
+    And('the card {string} is due in 4 days at 9:00', (_c, id: string) => dueInDays(_c, id, '4'));
     And('a card {string} with no due time, made last', (_c, id: string) => {
       beads.push(beadIn(id, { parent: 'mw-list', labels: ['hitl', 'hitl:todo'], created: new Date(now).toISOString() }));
     });
@@ -480,6 +483,60 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     When('he chooses Sort by my order in the menu of the list {string}', chooseSort('Sort by my order'));
     Then('the list {string} is back to {string}, {string} then {string}', orderStep);
+  });
+
+  // mw-ev7oyy.15: the star, and the float.
+  const starOf = async (name: string) => within(await card(name.replace('Title of ', ''))).findByRole('button', { name: new RegExp(`^(Mark important|Clear important): ${name}$`) });
+  const starOffers = (label: string) => async (_c: unknown, name: string) => {
+    await waitFor(async () => expect(await starOf(name)).toHaveAccessibleName(`${label}: ${name}`));
+  };
+  const tapStar = async (_c: unknown, name: string) => {
+    await userEvent.click(await starOf(name));
+  };
+  const madeLast = (id: string, extra: Partial<ViewBead>) => beads.push(beadIn(id, { parent: 'mw-list', labels: ['hitl', 'hitl:todo'], created: new Date(now).toISOString(), ...extra }));
+
+  Scenario('mw-ev7oyy.15 AC-1: the star on a card marks it important with one tap and a second tap clears it', ({ Given, When, And, Then }) => {
+    Given('a view with a list {string} holding two open cards, a closed card and a card that is not a to do', aList);
+    When('the To do tab opens', tabOpens);
+    And('he taps the star on {string}', tapStar);
+    Then('a todo_edit for {string} marking it important and nothing else waits in the outbox', (_c, bead: string) => waits({ action: 'todo_edit', bead, important: true })());
+    And('the star on {string} now offers to clear it', starOffers('Clear important'));
+    And('the card {string} is pending', async (_c, title: string) => {
+      const el = await cardTitled(title);
+      await waitFor(() => expect(pendingIn(el)).not.toBeNull());
+    });
+    When('he taps the star on {string}', tapStar);
+    Then('the outbox holds the todo_edit marking {string} important, then one clearing it', async (_c, bead: string) => {
+      await waitFor(async () =>
+        expect(await outboxActions()).toEqual([
+          { action: 'todo_edit', bead, important: true },
+          { action: 'todo_edit', bead, important: false },
+        ]),
+      );
+    });
+  });
+
+  Scenario('mw-ev7oyy.15 AC-1: a card the view says is important shows its star filled, and it survives a reload', ({ Given, When, And, Then }) => {
+    Given('a view with a list {string} holding two open cards, a closed card and a card that is not a to do', aList);
+    And('the card {string} is important in the view', (_c, id: string) => {
+      beads = beads.map((b) => (b.id === id ? { ...b, todo_important: true } : b));
+    });
+    When('the To do tab opens', tabOpens);
+    Then('the star on {string} offers to clear it', starOffers('Clear important'));
+    And('the star on {string} offers to mark it important', starOffers('Mark important'));
+  });
+
+  Scenario('mw-ev7oyy.15 AC-3: a card due within 48 hours or overdue floats up, soonest first, then the important ones, then the rest', ({ Given, And, When, Then }) => {
+    Given('a view with a list {string} holding two open cards, a closed card and a card that is not a to do', aList);
+    And('a card {string} that is important, made last', (_c, id: string) => madeLast(id, { todo_important: true }));
+    And('a card {string} due tomorrow at 9:00, made last', (_c, id: string) => madeLast(id, { todo_due: dayAt(1, 9, 0).toISOString() }));
+    And('a card {string} that fell due yesterday at 18:30, made last', (_c, id: string) => madeLast(id, { todo_due: dayAt(-1, 18, 30).toISOString() }));
+    And('a card {string} due in 5 days at 9:00, made last', (_c, id: string) => madeLast(id, { todo_due: dayAt(5, 9, 0).toISOString() }));
+    When('the To do tab opens', tabOpens);
+    Then('the list {string} reads in order {string}, {string}, {string}, {string}, {string} then {string}', async (_c, list: string, ...expected: string[]) => {
+      const column = await listNamed(list);
+      await waitFor(() => expect(namesIn(column)).toEqual(expected));
+    });
   });
 
   // mw-ev7oyy.12: link chips on a card's front, from the Open: line of its notes.

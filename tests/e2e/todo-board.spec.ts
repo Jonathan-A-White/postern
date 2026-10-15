@@ -6,6 +6,7 @@
 // another and its title edited: the outbox holds the three §13 actions with their shapes and the board shows the new order.
 // Shots: todo-board.png, todo-card-back.png, todo-board-hand-edits.png.
 // mw-ev7oyy.12: a card whose notes carry an 'Open:' line shows a chip per link under its title (todo-card-links.png).
+// mw-ev7oyy.15: a list with one important card, one due tomorrow and one overdue shows them overdue, due, important, then the rest (todo-board-float.png).
 // mw-ev7oyy.9: a due time set on a card's back goes out as a todo_edit with due and shows on the card's face (todo-card-due.png, todo-board-due.png).
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
@@ -266,9 +267,38 @@ test('mw-ev7oyy.9: a due time set on a card’s back is in the outbox as a todo_
 
   await back.getByRole('button', { name: 'Back', exact: true }).click();
   const card = page.getByTestId('todo-card').filter({ hasText: 'Take the trash out of the garage' });
-  await expect(card.getByTestId('due')).toHaveText('Tomorrow 17:00');
+  await expect(card.getByTestId('due')).toHaveText('due tomorrow');
   await expect(card.getByTestId('due')).toHaveAttribute('data-past', 'false');
   await shot(page, 'todo-board-due');
+});
+
+test('mw-ev7oyy.15: a card due within 48 hours or overdue floats above an important one, which floats above the rest; a tap on the star marks it', async ({ page }) => {
+  const day = (days: number, hour: number) => {
+    const at = new Date();
+    at.setDate(at.getDate() + days);
+    at.setHours(hour, 0, 0, 0);
+    return at.toISOString();
+  };
+  const card = (id: string, title: string, extra: Partial<ViewBead>) => bead(`mw-6ww.114.${id}`, { parent: 'mw-6ww.114', title, labels: ['hitl', 'hitl:todo'], created: new Date(Date.now() - 3_600_000 * (10 - Number(id))).toISOString(), ...extra });
+  await open(page, [
+    bead('mw-6ww.114', { type: 'epic', title: 'Governor’s list, this morning', labels: ['hitl'] }),
+    card('1', 'Plain card, first in line', {}),
+    card('2', 'The important card', { todo_important: true }),
+    card('3', 'Due tomorrow card', { todo_due: day(1, 9) }),
+    card('4', 'Overdue card', { todo_due: day(-2, 9) }),
+    card('5', 'Plain card, last in line', {}),
+  ]);
+  const column = page.getByRole('region', { name: 'Governor’s list, this morning' });
+  const titles = () => column.getByTestId('todo-card').locator('button[title="Turn the card over"] > span.line-clamp-2').allTextContents();
+  await expect.poll(titles).toEqual(['Overdue card', 'Due tomorrow card', 'The important card', 'Plain card, first in line', 'Plain card, last in line']);
+  await expect(column.getByTestId('todo-card').filter({ hasText: 'Overdue card' }).getByTestId('due')).toHaveText(/^overdue since /);
+  await expect(column.getByTestId('todo-card').filter({ hasText: 'Due tomorrow card' }).getByTestId('due')).toHaveText('due tomorrow');
+  await expect(column.getByRole('button', { name: 'Clear important: The important card' })).toBeVisible();
+  await shot(page, 'todo-board-float');
+
+  await column.getByRole('button', { name: 'Mark important: Plain card, last in line' }).click();
+  await expect(column.getByRole('button', { name: 'Clear important: Plain card, last in line' })).toBeVisible();
+  await expect.poll(titles).toEqual(['Overdue card', 'Due tomorrow card', 'The important card', 'Plain card, last in line', 'Plain card, first in line']);
 });
 
 test('mw-ev7oyy.12: a card whose notes carry an Open: line shows its links as chips under the title, and a tap opens one without turning the card over', async ({ page }) => {

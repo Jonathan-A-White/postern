@@ -1,7 +1,7 @@
 {
-  "version": "0.6.24",
-  "commit": "4b67387",
-  "published_at": "2026-10-15T10:24:26.056Z",
+  "version": "0.6.25",
+  "commit": "d9e4638",
+  "published_at": "2026-10-15T10:40:24.401Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1304,6 +1304,48 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/talk-line-mayor-here.png"
+    },
+    {
+      "name": "390x844/talk-line-picture-attached.png",
+      "screen": "talk-line-picture-attached",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/talk-line-picture-attached.png"
+    },
+    {
+      "name": "360x640/talk-line-picture-attached.png",
+      "screen": "talk-line-picture-attached",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/talk-line-picture-attached.png"
+    },
+    {
+      "name": "1280x800/talk-line-picture-attached.png",
+      "screen": "talk-line-picture-attached",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/talk-line-picture-attached.png"
+    },
+    {
+      "name": "390x844/talk-line-picture-sent.png",
+      "screen": "talk-line-picture-sent",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/talk-line-picture-sent.png"
+    },
+    {
+      "name": "360x640/talk-line-picture-sent.png",
+      "screen": "talk-line-picture-sent",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/talk-line-picture-sent.png"
+    },
+    {
+      "name": "1280x800/talk-line-picture-sent.png",
+      "screen": "talk-line-picture-sent",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/talk-line-picture-sent.png"
     },
     {
       "name": "390x844/talk-line-with-history.png",

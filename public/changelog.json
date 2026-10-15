@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.29",
+    "date": "2026-10-15",
+    "story": "mw-1cfk7g.1",
+    "kind": "fixed",
+    "text": "With two questions open on one bead, tapping an answer on one now marks only that question as answered."
+  },
+  {
     "version": "0.6.28",
     "date": "2026-10-15",
     "story": "mw-ev7oyy.16",

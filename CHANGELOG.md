@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.29
+_2026-10-15_
+- Fixed: With two questions open on one bead, tapping an answer on one now marks only that question as answered.
+
 ## 0.6.28
 _2026-10-15_
 - New: Your To do lists now show Today, Soon and Someday, with Soon and Someday folded to a count until you tap them.

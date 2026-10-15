@@ -63,7 +63,7 @@ src/
 ├── services/            # protocol and I/O: deliver (§9), live (§10 stream + polling), view (§11), events (§22, projected; useEvents), cards (§24: live cards folded from card/card-update records, ticked from held events),
 │                        #   outbox (the phone's outgoing queue: written first, sent in order, acked), beads (§12), me (§15, pinned Mayor), documents (seal/open), keySession +
 │                        #   session (daily unlock), blobs, recorder, messages/threads/questions (§1–§8)
-├── todo/                # the To do board (his own hitl:todo lists): lists.ts (pure grouping), links.ts (pure: the table of link kinds; a card's 'Open:' line as chips), due.ts (pure: a due time on a card, its date-time input, Sort by due), edits.ts (pure: the §13 todo_* actions, the optimistic board, drop places, judge), store.ts (TodoStore), posternStore.ts (the one adapter), useDrag.ts, TodoBoard.tsx; imported only through its index.ts
+├── todo/                # the To do board (his own hitl:todo lists): lists.ts (pure grouping, and the Today/Soon/Someday groups), links.ts (pure: the table of link kinds; a card's 'Open:' line as chips), due.ts (pure: a due time on a card, its date-time input, Sort by due), edits.ts (pure: the §13 todo_* actions, the optimistic board, drop places, judge), kept.ts (what the board keeps on the phone: which groups he has opened, the cards tapped into Today), store.ts (TodoStore), posternStore.ts (the one adapter), useDrag.ts, TodoBoard.tsx; imported only through its index.ts
 ├── ui/                  # design system: Icon set, primitives (Button, Chip, Card…), tokens, toasts
 ├── key/                 # KeyVault: create, restore, passkey, licence mint
 ├── data/

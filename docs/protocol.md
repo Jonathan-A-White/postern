@@ -698,6 +698,13 @@ parent chain up to the root, so the app can draw any level of the tree:
   `orderCards` in `src/todo/lists.ts`): the list's own order (`todo_rank`, `priority`, oldest) is the base, then the
   cards due within 48 hours or past due come first, soonest first, then the important cards, then the rest, the last
   two groups each keeping the base order. A card due in 49 hours stays in the base order;
+  **Groups** (mw-ev7oyy.16, `groupCards` in `src/todo/lists.ts`; kept on the phone, nothing on the wire): a list shows
+  its cards in three groups, in the order Today, Soon, Someday, an empty group left out, each group in `orderCards`'
+  order. *Today*: due today (any hour) or overdue, or tapped into Today from the card's back ("Move to Today", for
+  that calendar day of the phone's zone only: the next day the card is back in its own group). *Soon*: due within the
+  next 7 calendar days, or important. *Someday*: the rest, undated cards included. Today is open and Soon and Someday
+  folded to their count until he opens them; what he opens or folds is kept per list on the phone. A list's header
+  count and the tab's count are the sum of the groups, every open card;
 - `todo_name` — optional, on an epic that is one of his To do lists: its short name (mw-ev7oyy.14). The
   board heads the list with it, on one line; without it the header is the epic's `title` cut at its first
   `:` (followed by a space) or ` (`. The whole title stays on the list's menu. Text only; blank is none;

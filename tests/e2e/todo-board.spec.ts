@@ -7,6 +7,8 @@
 // Shots: todo-board.png, todo-card-back.png, todo-board-hand-edits.png.
 // mw-ev7oyy.12: a card whose notes carry an 'Open:' line shows a chip per link under its title (todo-card-links.png).
 // mw-ev7oyy.15: a list with one important card, one due tomorrow and one overdue shows them overdue, due, important, then the rest (todo-board-float.png).
+// mw-ev7oyy.16: a list of twelve cards is folded to Today plus two counts, and what he opens stays open across a reload (todo-board-groups.png).
+// The other tests open every group first (groupsOpen), the cards being undated and so in Someday, folded.
 // mw-ev7oyy.9: a due time set on a card's back goes out as a todo_edit with due and shows on the card's face (todo-card-due.png, todo-board-due.png).
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
@@ -33,7 +35,17 @@ const BEADS: ViewBead[] = [
   bead('mw-5zz.2.1', { parent: 'mw-5zz.2', title: 'Check the TrueCrypt volume opens', labels: ['hitl', 'hitl:todo'] }),
 ];
 
-async function open(page: Page, beads: ViewBead[] = BEADS): Promise<{ posted: string[]; release: () => void }> {
+/** Every group of every list open before the app loads (once: what he opens or folds after that is kept), so a test about the cards need not open them. */
+async function groupsOpen(page: Page, beads: ViewBead[]): Promise<void> {
+  const open = { today: true, soon: true, someday: true };
+  const kept = Object.fromEntries([...beads.filter((b) => b.type === 'epic').map((b) => b.id), 'other'].map((id) => [id, open]));
+  await page.addInitScript(([key, value]) => {
+    if (!localStorage.getItem(key)) localStorage.setItem(key, value);
+  }, ['postern.todo.groups', JSON.stringify(kept)]);
+}
+
+async function open(page: Page, beads: ViewBead[] = BEADS, folded = false): Promise<{ posted: string[]; release: () => void }> {
+  if (!folded) await groupsOpen(page, beads);
   const mnemonic = createMnemonic();
   const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
   const { posted } = await stubBackend(page, governor, undefined, {
@@ -140,6 +152,7 @@ test('the six tabs fit the width, none cut off or hidden', async ({ page }) => {
 test('add a card, drag it above another, edit its title: the outbox holds the three actions and the board shows the new order', async ({ page }) => {
   const mnemonic = createMnemonic();
   const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
+  await groupsOpen(page, BEADS);
   await stubBackend(page, governor, undefined, { beads: BEADS });
 
   // Every action he sends gets its own txid; the Mayor's host, simulated, applies the add (and no more) and echoes it.
@@ -379,4 +392,55 @@ test('mw-ev7oyy.14: a list with a long epic title has a one-line header and a ca
   const inView = boxes.filter((box) => box && box.y >= area.y && box.y + box.height <= area.y + area.height && box.y + box.height <= screen.height);
   expect(inView.length).toBeGreaterThanOrEqual(screen.height >= 800 ? 8 : 5);
   await shot(page, 'todo-board-compact');
+});
+
+test('mw-ev7oyy.16: a list of twelve cards is folded to Today plus the counts of Soon and Someday, and what he opens stays open after a reload', async ({ page }) => {
+  const day = 86_400_000;
+  const at9 = (days: number) => {
+    const when = new Date();
+    when.setDate(when.getDate() + days);
+    when.setHours(9, 0, 0, 0);
+    return when.toISOString();
+  };
+  const spec: Partial<ViewBead>[] = [
+    { title: 'Pay the water bill', todo_due: at9(0) },
+    { title: 'Return the library books', todo_due: at9(-2) },
+    { title: 'Call the dentist', todo_due: at9(0) },
+    { title: 'Renew the car tags', todo_due: at9(-1) },
+    { title: 'Order the new filter', todo_due: at9(3) },
+    { title: 'Book the flights', todo_important: true },
+    { title: 'Plan the Sunday lesson', todo_due: at9(6) },
+    { title: 'Sort the garage shelves' },
+    { title: 'Clean out the old files' },
+    { title: 'Try the new bakery' },
+    { title: 'Read the long article' },
+    { title: 'Look at the paint colours', todo_due: at9(40) },
+  ];
+  const cards = spec.map((extra, at) => bead(`mw-er.1.${at + 1}`, { parent: 'mw-er.1', labels: ['hitl', 'hitl:todo'], created: new Date(Date.now() - (60 - at) * 60_000 - day).toISOString(), ...extra }));
+  await open(page, [bead('mw-er.1', { type: 'epic', title: 'Errands', labels: ['hitl'] }), ...cards], true);
+
+  const column = page.getByRole('region', { name: 'Errands' });
+  // Today is open with its four cards, the due-soonest first (the one overdue longest); Soon and Someday are folded to their counts.
+  await expect(column.getByRole('button', { name: 'Fold Today, 4 cards' })).toBeVisible();
+  await expect(column.getByRole('button', { name: 'Open Soon, 3 cards' })).toBeVisible();
+  await expect(column.getByRole('button', { name: 'Open Someday, 5 cards' })).toBeVisible();
+  const names = () => column.getByTestId('todo-card').evaluateAll((els) => els.map((el) => el.querySelector('button[title="Turn the card over"] span')?.textContent));
+  await expect.poll(names).toEqual(['Return the library books', 'Renew the car tags', 'Pay the water bill', 'Call the dentist']);
+  // The groups come in the order Today, Soon, Someday, and the header counts all twelve.
+  const groups = await column.getByTestId('todo-group').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.group));
+  expect(groups).toEqual(['today', 'soon', 'someday']);
+  await expect(column.getByRole('heading', { level: 2 }).locator('xpath=following-sibling::span').last()).toHaveText('12');
+  await shot(page, 'todo-board-groups');
+
+  // One tap opens Soon: the important card first, then the rest in his order (nothing in it is due within 48 hours). Someday stays folded.
+  await column.getByRole('button', { name: 'Open Soon, 3 cards' }).click();
+  await expect(column.getByRole('button', { name: 'Fold Soon, 3 cards' })).toBeVisible();
+  await expect.poll(names).toEqual(['Return the library books', 'Renew the car tags', 'Pay the water bill', 'Call the dentist', 'Book the flights', 'Order the new filter', 'Plan the Sunday lesson']);
+
+  // A reload keeps it open, and Someday folded.
+  await page.reload();
+  const again = page.getByRole('region', { name: 'Errands' });
+  await expect(again.getByRole('button', { name: 'Fold Soon, 3 cards' })).toBeVisible();
+  await expect(again.getByRole('button', { name: 'Open Someday, 5 cards' })).toBeVisible();
+  await expect(again.getByRole('button', { name: 'Fold Today, 4 cards' })).toBeVisible();
 });

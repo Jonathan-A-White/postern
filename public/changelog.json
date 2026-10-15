@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.28",
+    "date": "2026-10-15",
+    "story": "mw-ev7oyy.16",
+    "kind": "new",
+    "text": "Your To do lists now show Today, Soon and Someday, with Soon and Someday folded to a count until you tap them."
+  },
+  {
     "version": "0.6.27",
     "date": "2026-10-15",
     "story": "mw-ev7oyy.15",

@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.26
+_2026-10-15_
+- New: To do lists have a short one-line name and each card is a single compact row with a small round check, so many more fit on the phone.
+
 ## 0.6.25
 _2026-10-15_
 - New: Attach a screenshot or photo to a Talk turn.

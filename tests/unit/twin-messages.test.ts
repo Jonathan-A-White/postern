@@ -9,6 +9,7 @@ import { encryptMessage, type MessagePayload } from '../../src/services/messages
 import { encodeThreadedMessage } from '../../src/services/threads';
 import { mergeConversation } from '../../src/model/conversation';
 import { twinsToDrop } from '../../src/model/twins';
+import { tidyHistory } from '../../src/data/tidy';
 
 const ME = PrivateKey.fromHex('44'.repeat(32));
 const MAYOR = PrivateKey.fromHex('55'.repeat(32));
@@ -69,7 +70,7 @@ describe('a message that arrives direct and on chain (mw-f758y.40)', () => {
     expect(await db.messages.count()).toBe(1);
   });
 
-  it('the app opening removes a pair an older build kept twice, keeping the direct row', async () => {
+  it('the app being shown removes a pair an older build kept twice, keeping the direct row', async () => {
     const payload = reply('Twice.');
     const base = { seq: 1, vout: 0, class: 'message', to: ME_PUB, from: MAYOR.toPublicKey().toString(), ts: payload.ts, ciphertext: payload.ct, plaintext: 'Twice.', direction: 'received', read: false } as const;
     await db.messages.bulkPut([
@@ -78,6 +79,9 @@ describe('a message that arrives direct and on chain (mw-f758y.40)', () => {
     ]);
     db.close();
     await db.open();
+    // Not on open (mw-4gkijo.1): once the app is shown.
+    expect(await db.messages.count()).toBe(2);
+    await tidyHistory();
     expect((await db.messages.toArray()).map((row) => row.txid)).toEqual([DIRECT]);
   });
 });

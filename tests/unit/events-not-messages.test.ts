@@ -2,6 +2,7 @@
 // whichever road brings one, and whatever an older build once stored.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, type MessageRow } from '../../src/data/db';
+import { tidyHistory } from '../../src/data/tidy';
 import { messagesRepo } from '../../src/data/repositories';
 
 function row(id: string, cls: MessageRow['class'], ts: number, thread?: string): MessageRow {
@@ -27,10 +28,11 @@ describe('a message row made from an events record', () => {
     expect(await messagesRepo.countUnread()).toBe(1);
   });
 
-  it('is removed when the app opens, and the messages stay', async () => {
+  it('is removed once the app is shown, and the messages stay', async () => {
     await db.messages.bulkPut([row('aa', 'events', 1), row('cc', 'message', 3)]);
     db.close();
     await db.open();
+    await tidyHistory();
     expect((await db.messages.toArray()).map((r) => r.id)).toEqual(['cc']);
   });
 });

@@ -6,6 +6,7 @@ import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { db, type MessageRow } from '../../src/data/db';
+import { tidyHistory } from '../../src/data/tidy';
 import { eventsRepo, messagesRepo, viewRepo } from '../../src/data/repositories';
 import { projectBatches, syncMessagesAndEvents } from '../../src/services/events';
 import { readChain } from '../../src/services/chainRead';
@@ -91,6 +92,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('the app opens', async () => {
       db.close();
       await db.open();
+      // The clean-up runs once the app is shown, not as the database opens (mw-4gkijo.1).
+      await tidyHistory();
     });
     Then('the stored events row is gone', async () => {
       expect((await db.messages.toArray()).filter((row) => row.class === 'events')).toEqual([]);

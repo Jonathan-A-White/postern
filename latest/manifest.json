@@ -1,7 +1,7 @@
 {
-  "version": "0.6.25",
-  "commit": "d9e4638",
-  "published_at": "2026-10-15T10:40:24.401Z",
+  "version": "0.6.26",
+  "commit": "13374aa",
+  "published_at": "2026-10-15T14:49:46.547Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1430,6 +1430,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-board.png"
+    },
+    {
+      "name": "390x844/todo-board-compact.png",
+      "screen": "todo-board-compact",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-board-compact.png"
+    },
+    {
+      "name": "360x640/todo-board-compact.png",
+      "screen": "todo-board-compact",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-board-compact.png"
+    },
+    {
+      "name": "1280x800/todo-board-compact.png",
+      "screen": "todo-board-compact",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-board-compact.png"
     },
     {
       "name": "390x844/todo-board-due.png",

@@ -3,7 +3,7 @@
 // lands (dropPlace), and when a change the phone has sent is waiting, settled, or refused (judge).
 import { describe, expect, it } from 'vitest';
 import type { OutboxRow } from '../../src/data/db';
-import { OTHER_LIST, REFUSED_AFTER_MS, applyChanges, dropPlace, judge, moveFor, type TodoChange, type TodoList } from '../../src/todo';
+import { OTHER_LIST, REFUSED_AFTER_MS, applyChanges, dropPlace, judge, moveFor, realIndex, type TodoChange, type TodoList } from '../../src/todo';
 
 const card = (id: string) => ({ id, title: `Title of ${id}`, priority: 2, created: '2026-10-13T10:00:00Z' });
 const lists = (): TodoList[] => [
@@ -170,5 +170,27 @@ describe('judge: waiting, settled, refused or failed', () => {
     const sent = row({ state: 'acked', sentAt: Date.parse('2026-10-13T10:00:00Z') });
     expect(judge(sent, ctx({ echoSeq: 9, view: { writtenAt: '2026-10-13T09:59:00Z' } }))).toBe('waiting');
     expect(judge(sent, ctx({ echoSeq: 9, view: { writtenAt: '2026-10-13T10:01:00Z' } }))).toBe('settled');
+  });
+});
+
+// mw-ev7oyy.16: a drop is counted among the cards on screen; the cards in folded groups are not on screen, so the place is turned into one among them all.
+describe('realIndex: a drop among the shown cards, placed among all of a list', () => {
+  const grouped = (): TodoList => ({ id: 'mw-a', title: 'A', name: 'A', epic: 'mw-a', created: '', cards: [
+    { ...card('t1'), group: 'today' }, { ...card('t2'), group: 'today' }, { ...card('s1'), group: 'soon' }, { ...card('s2'), group: 'soon' }, { ...card('z1'), group: 'someday' },
+  ] });
+  const shownIfNotSoon = (other: { group?: string }) => other.group !== 'soon';
+
+  it('counts every card when none are hidden', () => {
+    expect(realIndex(grouped(), 'z1', 2, () => true)).toBe(2);
+  });
+
+  it('skips the hidden cards: the shown card the drop came before names the place', () => {
+    expect(realIndex(grouped(), 't1', 1, shownIfNotSoon)).toBe(3);
+    expect(realIndex(grouped(), 't1', 0, shownIfNotSoon)).toBe(0);
+  });
+
+  it('puts a drop below the last shown card after it, and at the foot when nothing is shown', () => {
+    expect(realIndex(grouped(), 't1', 9, shownIfNotSoon)).toBe(4);
+    expect(realIndex(grouped(), 't1', 0, () => false)).toBe(4);
   });
 });

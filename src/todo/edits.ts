@@ -101,6 +101,15 @@ export function moveFor(lists: TodoList[], card: string, list: string, index: nu
   return 'before' in place || 'after' in place || 'list' in named ? { ...named, ...place } : undefined;
 }
 
+/** Where a card dropped at `shown` (counted among the cards on screen, without the card itself) lies among all the cards of `list` (counted without it too):
+ * before the shown card it came to, else after the last shown one; a list with nothing shown takes it at its foot. */
+export function realIndex(list: TodoList, card: string, shown: number, isShown: (other: TodoCard) => boolean): number {
+  const rest = list.cards.filter((other) => other.id !== card);
+  const seen = rest.filter(isShown);
+  if (shown < seen.length) return rest.indexOf(seen[shown]);
+  return seen.length > 0 ? rest.indexOf(seen[seen.length - 1]) + 1 : rest.length;
+}
+
 export interface Box {
   left: number;
   top: number;

@@ -3,7 +3,7 @@
 import { BEAD_ID, WORD_CHAR } from '../markdown/beadLinks';
 import { isClosed, type ViewIndex } from '../model/tree';
 import type { ViewBead } from '../model/view';
-import { dueMs, isDueSoon } from './due';
+import { dayKey, dueDays, dueMs, isDueSoon } from './due';
 import { parseOpenLinks, type OpenLink } from './links';
 
 export const TODO_LABEL = 'hitl:todo';
@@ -25,11 +25,25 @@ export interface TodoCard {
   links?: OpenLink[];
   /** The view's summary of the notes may have been cut short: the notes themselves may hold more links. */
   summaryCut?: boolean;
+  /** The group the card is shown in (groupCards stamps it): Today, Soon or Someday. */
+  group?: TodoGroup;
+  /** He tapped it into Today for today (groupCards stamps it only when that, and not its own due time, put it there). */
+  tapped?: boolean;
   /** A change of his to this card has gone and the view does not yet agree (edits.ts). */
   pending?: boolean;
   /** The card is one he has just added: the Mayor has not made it, so it has no id yet. */
   adding?: boolean;
 }
+
+/** A list's three groups (mw-ev7oyy.16), in the order they are shown. */
+export type TodoGroup = 'today' | 'soon' | 'someday';
+export const TODO_GROUPS: readonly TodoGroup[] = ['today', 'soon', 'someday'];
+
+/** A card due within this many days (or important) is Soon. */
+export const SOON_DAYS = 7;
+
+/** The cards tapped into Today, by card id: the calendar day (dayKey) the tap was made. A tap holds for that day only. */
+export type TodayPicks = Readonly<Record<string, string>>;
 
 export interface TodoList {
   /** The epic's bead id, or OTHER_LIST. */
@@ -77,6 +91,35 @@ export function orderCards(cards: readonly TodoCard[], now: number): TodoCard[] 
   const soon = cards.filter((card) => isDueSoon(card.due, now)).sort((a, b) => (dueMs(a.due) as number) - (dueMs(b.due) as number));
   const rest = cards.filter((card) => !isDueSoon(card.due, now));
   return [...soon, ...rest.filter((card) => card.important), ...rest.filter((card) => !card.important)];
+}
+
+/** The group a card belongs to by its own due time and star: Today when it is due today or overdue, Soon when it is due within SOON_DAYS days
+ * or important, else Someday. */
+function ownGroup(card: TodoCard, now: number): TodoGroup {
+  const days = dueDays(card.due, now);
+  if (days !== undefined && days <= 0) return 'today';
+  if (days !== undefined && days <= SOON_DAYS) return 'soon';
+  return card.important ? 'soon' : 'someday';
+}
+
+/** The group a card is shown in (mw-ev7oyy.16): Today also holds the cards he has tapped into Today, for the day he tapped and no longer. */
+export function groupOf(card: TodoCard, now: number, picks: TodayPicks): TodoGroup {
+  return picks[card.id] === dayKey(now) ? 'today' : ownGroup(card, now);
+}
+
+/** THE order of a list's cards with the groups (mw-ev7oyy.16): orderCards' order, then Today's cards, Soon's, Someday's, each group keeping that
+ * order; each card is stamped with its group (and `tapped` when a pick put it in Today). The cards given are not changed. */
+export function groupCards(cards: readonly TodoCard[], now: number, picks: TodayPicks): TodoCard[] {
+  const stamped = orderCards(cards, now).map((card): TodoCard => {
+    const group = groupOf(card, now, picks);
+    return { ...card, group, ...(group === 'today' && ownGroup(card, now) !== 'today' ? { tapped: true } : {}) };
+  });
+  return TODO_GROUPS.flatMap((group) => stamped.filter((card) => card.group === group));
+}
+
+/** How many cards each group holds, in the order Today, Soon, Someday, an empty group left out. A card with no group counts in Today. */
+export function groupCounts(cards: readonly TodoCard[]): { group: TodoGroup; count: number }[] {
+  return TODO_GROUPS.map((group) => ({ group, count: cards.filter((card) => (card.group ?? 'today') === group).length })).filter(({ count }) => count > 0);
 }
 
 /** How many runes of the notes the view's summary holds (docs/protocol.md §11). */

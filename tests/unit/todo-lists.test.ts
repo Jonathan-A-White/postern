@@ -4,7 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { indexView } from '../../src/model/tree';
 import { decodeView } from '../../src/model/view';
-import { beadsNamed, openTodoCount, shortName, todoListsFromView, TODO_LABEL, OTHER_LIST } from '../../src/todo';
+import { beadsNamed, openTodoCount, orderCards, shortName, todoListsFromView, TODO_LABEL, OTHER_LIST } from '../../src/todo';
+import type { TodoCard } from '../../src/todo';
 import { fixtureView } from '../support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
 
@@ -18,7 +19,7 @@ function bead(id: string, extra: Partial<ViewBead> = {}): ViewBead {
 const todo = (id: string, extra: Partial<ViewBead> = {}) => bead(id, { labels: ['hitl', TODO_LABEL], ...extra });
 
 function listsOf(beads: ViewBead[]) {
-  return todoListsFromView(indexView({ ...fixtureView(NOW), needs: [], beads }));
+  return todoListsFromView(indexView({ ...fixtureView(NOW), needs: [], beads }), NOW);
 }
 
 describe('the grouping helper', () => {
@@ -146,5 +147,64 @@ describe('a list header is its short name (mw-ev7oyy.14 AC-4)', () => {
   it('reads todo_name from the view as text and drops anything else', () => {
     const view = decodeView(JSON.stringify({ v: 2, beads: [{ id: "mw-x", todo_name: "Deep Discipleship" }, { id: "mw-y", todo_name: 7 }] }));
     expect(view?.beads.map((b) => b.todo_name)).toEqual(['Deep Discipleship', undefined]);
+  });
+});
+
+// mw-ev7oyy.15: within 48 hours of its due time (or past it) a card sorts above the rest, soonest first; then the important
+// ones; then everything else in the order it came. A fake clock (NOW) says which side of the line each card is on.
+describe('orderCards: due soon first, then important, then the rest', () => {
+  const HOUR = 3_600_000;
+  const card = (id: string, extra: Partial<TodoCard> = {}): TodoCard => ({ id, title: id, priority: 2, created: '', ...extra });
+  const dueIn = (hours: number) => new Date(NOW + hours * HOUR).toISOString();
+  const ids = (cards: TodoCard[]) => cards.map((c) => c.id);
+
+  it('floats a card due within 48 hours above cards that are not due', () => {
+    expect(ids(orderCards([card('a'), card('b'), card('c', { due: dueIn(30) })], NOW))).toEqual(['c', 'a', 'b']);
+  });
+
+  it('floats an overdue card too, and puts the soonest (the most overdue) first', () => {
+    const cards = [card('a'), card('later', { due: dueIn(10) }), card('late', { due: dueIn(-80) }), card('mid', { due: dueIn(-1) })];
+    expect(ids(orderCards(cards, NOW))).toEqual(['late', 'mid', 'later', 'a']);
+  });
+
+  it('keeps a card due in 49 hours where it was, and floats one due in exactly 48', () => {
+    expect(ids(orderCards([card('a'), card('far', { due: dueIn(49) }), card('b')], NOW))).toEqual(['a', 'far', 'b']);
+    expect(ids(orderCards([card('a'), card('edge', { due: dueIn(48) })], NOW))).toEqual(['edge', 'a']);
+  });
+
+  it('puts important cards after the due ones and before the rest, each group in its current order', () => {
+    const cards = [card('a'), card('star2', { important: true }), card('b'), card('due', { due: dueIn(5) }), card('star1', { important: true })];
+    expect(ids(orderCards(cards, NOW))).toEqual(['due', 'star2', 'star1', 'a', 'b']);
+  });
+
+  it('puts an important card that is also due soon among the due ones, by its due time', () => {
+    const cards = [card('plain', { due: dueIn(20) }), card('both', { important: true, due: dueIn(2) }), card('star', { important: true })];
+    expect(ids(orderCards(cards, NOW))).toEqual(['both', 'plain', 'star']);
+  });
+
+  it('leaves the order alone when nothing is due or important, and does not change the cards given', () => {
+    const cards = [card('a'), card('b', { due: dueIn(100) }), card('c')];
+    const before = ids(cards);
+    expect(ids(orderCards(cards, NOW))).toEqual(['a', 'b', 'c']);
+    expect(ids(cards)).toEqual(before);
+  });
+
+  it('reads a due time that is no time as no due time', () => {
+    expect(ids(orderCards([card('a'), card('b', { due: 'soon' })], NOW))).toEqual(['a', 'b']);
+  });
+});
+
+describe('the star on a card from the view', () => {
+  it('reads todo_important only when it is true', () => {
+    const view = decodeView(JSON.stringify({ v: 2, beads: [{ id: 'mw-a', todo_important: true }, { id: 'mw-b', todo_important: false }, { id: 'mw-c', todo_important: 'yes' }, { id: 'mw-d' }] }));
+    expect(view.beads.map((b) => b.todo_important)).toEqual([true, undefined, undefined, undefined]);
+  });
+
+  it('reads todo_important from the view as the card being important', () => {
+    const lists = listsOf([bead('mw-l', { type: 'epic' }), todo('mw-l.1', { parent: 'mw-l', todo_important: true }), todo('mw-l.2', { parent: 'mw-l' })]);
+    expect(lists[0].cards.map((c) => [c.id, c.important])).toEqual([
+      ['mw-l.1', true],
+      ['mw-l.2', undefined],
+    ]);
   });
 });

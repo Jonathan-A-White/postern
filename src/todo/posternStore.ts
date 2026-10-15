@@ -12,7 +12,7 @@ import { FailedNote } from '../cockpit/OutboxMark';
 import { sendAction } from '../cockpit/send';
 import { useNow } from '../ui/useNow';
 import { NOTE_FOR_MS, applyChanges, describeChange, judge, todoActionOf, type TodoChange } from './edits';
-import { openTodoCount, todoListsFromView } from './lists';
+import { openTodoCount, orderCards, todoListsFromView } from './lists';
 import { RefusedNote } from './RefusedNote';
 import type { TodoBack, TodoDone, TodoStore } from './store';
 
@@ -47,7 +47,7 @@ export function usePosternTodoStore(): TodoStore {
   const rows = useTodoRows();
   const now = useNow(LOOK_MS);
   const [dismissed, setDismissed] = useState<ReadonlySet<number>>(new Set());
-  const base = useMemo(() => (index ? todoListsFromView(index) : undefined), [index]);
+  const base = useMemo(() => (index ? todoListsFromView(index, now) : undefined), [index, now]);
   const stamp = useMemo(() => ({ seq: index?.view.seq, writtenAt: index?.view.written_at }), [index]);
   const judged = useMemo(
     () =>
@@ -59,8 +59,10 @@ export function usePosternTodoStore(): TodoStore {
   );
   const shown = useMemo(() => {
     const waiting: TodoChange[] = judged.filter((change) => change.state === 'waiting').map(({ row, action }) => ({ id: row.id as number, action }));
-    return base ? applyChanges(base, waiting) : { lists: undefined, notes: new Map<string, string>() };
-  }, [base, judged]);
+    if (!base) return { lists: undefined, notes: new Map<string, string>() };
+    const changed = applyChanges(base, waiting);
+    return { ...changed, lists: changed.lists.map((list) => ({ ...list, cards: orderCards(list.cards, now) })) };
+  }, [base, judged, now]);
   const settled = useMemo(() => {
     const counts = new Map<string, number>();
     for (const { action, state } of judged) if (action.action === 'todo_edit' && state === 'settled') counts.set(action.bead, (counts.get(action.bead) ?? 0) + 1);

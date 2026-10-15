@@ -56,6 +56,8 @@ export interface ViewBead {
   todo_rank?: number | string;
   /** A hitl:todo bead's due time (mw-ev7oyy.9), RFC 3339 UTC; absent when it has none. */
   todo_due?: string;
+  /** A hitl:todo bead the Governor has starred (mw-ev7oyy.15); absent when it is not. */
+  todo_important?: boolean;
   /** A hitl:todo epic's short name for its list's header (mw-ev7oyy.14); absent when it has none. */
   todo_name?: string;
 }
@@ -187,6 +189,7 @@ function decodeBead(value: unknown): ViewBead | undefined {
   const parent = str(raw.parent);
   const todoRank = rank(raw.todo_rank);
   const todoDue = typeof raw.todo_due === 'string' && !Number.isNaN(Date.parse(raw.todo_due)) ? raw.todo_due : undefined;
+  const todoImportant = raw.todo_important === true;
   const todoName = str(raw.todo_name).trim();
   return {
     id: raw.id,
@@ -209,6 +212,7 @@ function decodeBead(value: unknown): ViewBead | undefined {
     done_earlier: num(raw.done_earlier),
     ...(todoRank !== undefined ? { todo_rank: todoRank } : {}),
     ...(todoDue !== undefined ? { todo_due: todoDue } : {}),
+    ...(todoImportant ? { todo_important: true } : {}),
     ...(todoName ? { todo_name: todoName } : {}),
   };
 }

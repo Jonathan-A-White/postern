@@ -18,11 +18,13 @@ export interface TodoCardEdit {
   notes?: string;
   /** A UTC time to set, or '' to clear it. */
   due?: string;
+  /** Starred (true) or not (false). */
+  important?: boolean;
 }
 
 export type TodoAction =
   | { action: 'todo_add'; list: string; title: string; notes?: string }
-  | { action: 'todo_edit'; bead: string; title?: string; notes?: string; due?: string }
+  | { action: 'todo_edit'; bead: string; title?: string; notes?: string; due?: string; important?: boolean }
   | { action: 'todo_move'; bead: string; list?: string; before?: string; after?: string };
 
 /** One change that has been sent or is waiting to be, in the order made; `id` is its outbox row. */
@@ -63,6 +65,8 @@ export function applyChanges(lists: TodoList[], changes: TodoChange[]): { lists:
         const next: TodoCard = { ...card, title: action.title ?? card.title, pending: true };
         if (action.due) next.due = action.due;
         else if (action.due === '') delete next.due;
+        if (action.important) next.important = true;
+        else if (action.important === false) delete next.important;
         return next;
       });
       if (action.notes !== undefined) notes.set(action.bead, action.notes);

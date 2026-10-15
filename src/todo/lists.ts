@@ -3,6 +3,7 @@
 import { BEAD_ID, WORD_CHAR } from '../markdown/beadLinks';
 import { isClosed, type ViewIndex } from '../model/tree';
 import type { ViewBead } from '../model/view';
+import { dueMs, isDueSoon } from './due';
 import { parseOpenLinks, type OpenLink } from './links';
 
 export const TODO_LABEL = 'hitl:todo';
@@ -18,6 +19,8 @@ export interface TodoCard {
   rank?: number | string;
   /** When it is due, an RFC 3339 UTC time (the bead's todo_due), absent when it has none. */
   due?: string;
+  /** He has starred it (the bead's todo_important): it sorts above the cards that are neither starred nor due soon. */
+  important?: boolean;
   /** The links of the 'Open:' line of its notes, as far as the view's summary shows them; the board reads the whole notes when the summary is cut short (mw-ev7oyy.12). */
   links?: OpenLink[];
   /** The view's summary of the notes may have been cut short: the notes themselves may hold more links. */
@@ -67,6 +70,15 @@ export function cardOrder(a: TodoCard, b: TodoCard): number {
   return rankOrder(a, b) || a.priority - b.priority || a.created.localeCompare(b.created) || a.id.localeCompare(b.id, undefined, { numeric: true });
 }
 
+/** THE order a list shows its cards (mw-ev7oyy.15), given the cards in his own order (cardOrder, or the board as edited): the cards due within
+ * 48 hours or past due first, soonest first; then the important ones; then the rest. Each of the last two keeps the order it came in, so
+ * nothing else changes order. The cards given are not changed. */
+export function orderCards(cards: readonly TodoCard[], now: number): TodoCard[] {
+  const soon = cards.filter((card) => isDueSoon(card.due, now)).sort((a, b) => (dueMs(a.due) as number) - (dueMs(b.due) as number));
+  const rest = cards.filter((card) => !isDueSoon(card.due, now));
+  return [...soon, ...rest.filter((card) => card.important), ...rest.filter((card) => !card.important)];
+}
+
 /** How many runes of the notes the view's summary holds (docs/protocol.md §11). */
 const SUMMARY_RUNES = 280;
 
@@ -80,13 +92,13 @@ export function summaryMayBeCut(summary: string): boolean {
 
 function cardOf(bead: ViewBead): TodoCard {
   const links = openLinksOf(bead.summary);
-  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(links.length ? { links } : {}), ...(summaryMayBeCut(bead.summary) ? { summaryCut: true } : {}) };
+  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(links.length ? { links } : {}), ...(summaryMayBeCut(bead.summary) ? { summaryCut: true } : {}) };
 }
 
 /** The open hitl:todo beads of the view grouped under their parent epic: newest list first, Other last,
- * each list's cards in cardOrder. A hitl:todo epic is a list, never a card; closed beads, beads without
+ * each list's cards in cardOrder, then floated by orderCards. A hitl:todo epic is a list, never a card; closed beads, beads without
  * the label and epics with nothing open on them are left out. */
-export function todoListsFromView(index: ViewIndex): TodoList[] {
+export function todoListsFromView(index: ViewIndex, now: number): TodoList[] {
   const lists = new Map<string, TodoList>();
   for (const bead of index.view.beads) {
     if (!bead.labels.includes(TODO_LABEL) || isClosed(bead) || bead.type === 'epic') continue;
@@ -99,7 +111,7 @@ export function todoListsFromView(index: ViewIndex): TodoList[] {
     }
     list.cards.push(cardOf(bead));
   }
-  for (const list of lists.values()) list.cards.sort(cardOrder);
+  for (const list of lists.values()) list.cards = orderCards([...list.cards].sort(cardOrder), now);
   const newestFirst = (a: TodoList, b: TodoList) => b.created.localeCompare(a.created) || b.id.localeCompare(a.id, undefined, { numeric: true });
   const named = [...lists.values()].filter((list) => list.id !== OTHER_LIST).sort(newestFirst);
   const other = lists.get(OTHER_LIST);
@@ -108,7 +120,7 @@ export function todoListsFromView(index: ViewIndex): TodoList[] {
 
 /** How many open cards there are in all, the figure on the tab. */
 export function openTodoCount(index: ViewIndex): number {
-  return todoListsFromView(index).reduce((sum, list) => sum + list.cards.length, 0);
+  return todoListsFromView(index, 0).reduce((sum, list) => sum + list.cards.length, 0);
 }
 
 /** The beads a card's words name (mw-… ids), each once in the order met, not the card itself. */

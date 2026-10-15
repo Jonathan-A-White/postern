@@ -1,16 +1,20 @@
 // src/todo/due.ts — a To do card's due time (mw-ev7oyy.9), pure: how it reads on the card's face
 // ('Today 17:00', 'Tue 9:00'), when it is past, how it turns into and out of a date-time input's
-// value (the phone's own zone) and the UTC time a todo_edit carries, and the order 'Sort by due' gives.
+// value (the phone's own zone) and the UTC time a todo_edit carries, and the order 'Sort by due' gives. A card's face says its
+// due date in words (dueWords, mw-ev7oyy.15) and a card due within DUE_SOON_MS floats up its list (lists.ts orderCards).
 import type { TodoCard } from './lists';
 
 const DAY_MS = 86_400_000;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/** A card due within this long from now, or already past due, sorts above the cards that are not (mw-ev7oyy.15). */
+export const DUE_SOON_MS = 48 * 3_600_000;
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** A due time as milliseconds, or undefined when it is empty or no time. */
-function dueMs(due: string | undefined): number | undefined {
+export function dueMs(due: string | undefined): number | undefined {
   if (!due) return undefined;
   const ms = Date.parse(due);
   return Number.isNaN(ms) ? undefined : ms;
@@ -42,6 +46,36 @@ export function formatDue(due: string, now: number): string {
 export function isPastDue(due: string, now: number): boolean {
   const ms = dueMs(due);
   return ms !== undefined && ms <= now;
+}
+
+/** True when the card's due day is before today, in the phone's zone: a card due today is not yet overdue, whatever the hour. */
+export function isOverdue(due: string, now: number): boolean {
+  const ms = dueMs(due);
+  return ms !== undefined && daysFrom(now, new Date(ms)) < 0;
+}
+
+/** True when the due time is no more than DUE_SOON_MS ahead, or already past: the card floats up its list. */
+export function isDueSoon(due: string | undefined, now: number): boolean {
+  const ms = dueMs(due);
+  return ms !== undefined && ms - now <= DUE_SOON_MS;
+}
+
+/** The due date in words for a card's face, never in red: 'due today', 'due tomorrow', 'due Thu' (two to six days ahead), else 'due Oct 20'
+ * (with the year when it is not this year); a day or more gone it is 'overdue since yesterday', 'overdue since Tue' or 'overdue since Oct 6'.
+ * Empty when `due` is no time. */
+export function dueWords(due: string, now: number): string {
+  const ms = dueMs(due);
+  if (ms === undefined) return '';
+  const at = new Date(ms);
+  const days = daysFrom(now, at);
+  const year = at.getFullYear() === new Date(now).getFullYear() ? '' : ` ${at.getFullYear()}`;
+  const date = `${MONTHS[at.getMonth()]} ${at.getDate()}${year}`;
+  if (days === 0) return 'due today';
+  if (days === 1) return 'due tomorrow';
+  if (days >= 2 && days <= 6) return `due ${WEEKDAYS[at.getDay()]}`;
+  if (days > 6) return `due ${date}`;
+  if (days === -1) return 'overdue since yesterday';
+  return days >= -6 ? `overdue since ${WEEKDAYS[at.getDay()]}` : `overdue since ${date}`;
 }
 
 /** A due time as the value a datetime-local input takes ('2026-10-13T17:00', the phone's zone); '' for none. */

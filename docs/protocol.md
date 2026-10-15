@@ -688,8 +688,16 @@ parent chain up to the root, so the app can draw any level of the tree:
   list's cards by `todo_rank` (numbers, then strings, then the unranked), then `priority`, then the
   oldest first;
 - `todo_due` — optional, on a bead labelled `hitl:todo`: when the card is due, an RFC 3339 UTC time
-  (mw-ev7oyy.9; the host keeps it from `todo_edit`'s `due`). The card shows it on its face, red once it is
-  past, and a list can be sorted by it; a value that is not a time is read as none;
+  (mw-ev7oyy.9; the host keeps it from `todo_edit`'s `due`). The card says it on its face in words (`due today`,
+  `due tomorrow`, `due Thu`, `overdue since Tue`; never in red), a list can be sorted by it, and a card due within 48
+  hours of now, or already past due, floats above the cards that are not (below); a value that is not a time is read
+  as none;
+- `todo_important` — optional, on a bead labelled `hitl:todo` (mw-ev7oyy.15; the host keeps it from `todo_edit`'s
+  `important`): `true` when the Governor has starred the card. Absent, `false` or anything but `true` is not
+  important. The star is one tap on the card, a second clears it. **Order within a list** (the one function,
+  `orderCards` in `src/todo/lists.ts`): the list's own order (`todo_rank`, `priority`, oldest) is the base, then the
+  cards due within 48 hours or past due come first, soonest first, then the important cards, then the rest, the last
+  two groups each keeping the base order. A card due in 49 hours stays in the base order;
 - `todo_name` — optional, on an epic that is one of his To do lists: its short name (mw-ev7oyy.14). The
   board heads the list with it, on one line; without it the header is the epic's `title` cut at its first
   `:` (followed by a space) or ` (`. The whole title stays on the list's menu. Text only; blank is none;
@@ -863,6 +871,7 @@ list, not a card):
 ```json
 { "action": "todo_add", "list": "mw-abc", "title": "Buy bin bags", "notes": "The tall kind." }
 { "action": "todo_edit", "bead": "mw-abc.4", "title": "Buy bin bags and tape", "notes": "" }
+{ "action": "todo_edit", "bead": "mw-abc.4", "important": true }
 { "action": "todo_move", "bead": "mw-abc.4", "list": "mw-def", "before": "mw-def.2" }
 ```
 
@@ -870,9 +879,11 @@ list, not a card):
   and becomes the card's description. It has **no `bead` field**: the card does not exist yet, so the phone cannot
   name it, and cannot edit or move it until the view carries it (a card still being added is shown, marked pending,
   but is not draggable and has no back).
-- `todo_edit`: `title`, `notes` and/or `due` (at least one; `"notes": ""` clears them; a blank `title` is refused).
+- `todo_edit`: `title`, `notes`, `due` and/or `important` (at least one; `"notes": ""` clears them; a blank `title` is refused).
   `due` is a UTC time in RFC 3339 (`"2026-10-14T17:00:00.000Z"`, the phone having read the date-time field in its own
   zone), published on the view's bead as `todo_due` (§11); `"due": ""` clears it; a `due` that is neither is refused.
+  `important` is a boolean (mw-ev7oyy.15): `true` stars the card, `false` clears the star; published on the view's bead
+  as `todo_important` (§11); anything but a boolean is refused.
   The phone sends only what changed.
 - `todo_move`: `before` or `after` names a card on the target list (the card's own list when `list` is absent); with
   neither, the card goes to the end of `list`. A move that names no place (no `before`, `after` or other `list`), both

@@ -38,6 +38,16 @@ describe('applyChanges: the board before the Mayor has answered', () => {
     expect(cleared[0].cards[0].pending).toBe(true);
   });
 
+  it('shows a star put on or taken off at once (mw-ev7oyy.15)', () => {
+    const starred = lists();
+    starred[0].cards[0] = { ...starred[0].cards[0], important: true };
+    const on = applyChanges(lists(), [at({ action: 'todo_edit', bead: 'mw-a.2', important: true })]).lists;
+    expect(on[0].cards[1]).toMatchObject({ important: true, pending: true });
+    const off = applyChanges(starred, [at({ action: 'todo_edit', bead: 'mw-a.1', important: false })]).lists;
+    expect(off[0].cards[0].important).toBeUndefined();
+    expect(off[0].cards[0].pending).toBe(true);
+  });
+
   it('moves a card above another in its list', () => {
     const { lists: out } = applyChanges(lists(), [at({ action: 'todo_move', bead: 'mw-a.3', before: 'mw-a.1' })]);
     expect(ids(out[0])).toEqual(['mw-a.3', 'mw-a.1', 'mw-a.2']);

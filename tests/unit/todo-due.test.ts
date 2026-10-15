@@ -2,7 +2,7 @@
 // how the date-time input's value and the wire's UTC time turn into each other, and the order 'Sort by due' gives.
 // The suite runs with TZ=UTC, so a local time is a UTC time here.
 import { describe, expect, it } from 'vitest';
-import { byDue, dueToInput, formatDue, inputToDue, isPastDue, sortByDue } from '../../src/todo';
+import { byDue, dueToInput, dueWords, formatDue, inputToDue, isOverdue, isPastDue, sortByDue } from '../../src/todo';
 import type { TodoCard } from '../../src/todo';
 
 // Tuesday 2026-10-13, 12:00 UTC.
@@ -86,5 +86,44 @@ describe('Sort by due', () => {
 
   it('byDue ties are equal, so the sort keeps the list order', () => {
     expect(byDue(card('a', '2026-10-13T17:00:00Z'), card('b', '2026-10-13T17:00:00Z'))).toBe(0);
+  });
+});
+
+// mw-ev7oyy.15: the due date as words on the card's face, and when a card is overdue (a day before today, in the phone's zone).
+describe('dueWords: the due date as words, no red', () => {
+  it('says due today for any time today, even one already gone', () => {
+    expect(dueWords('2026-10-13T17:00:00Z', NOW)).toBe('due today');
+    expect(dueWords('2026-10-13T08:00:00Z', NOW)).toBe('due today');
+  });
+
+  it('says due tomorrow, and the weekday from two to six days ahead', () => {
+    expect(dueWords('2026-10-14T09:00:00Z', NOW)).toBe('due tomorrow');
+    expect(dueWords('2026-10-15T09:00:00Z', NOW)).toBe('due Thu');
+    expect(dueWords('2026-10-19T09:00:00Z', NOW)).toBe('due Mon');
+  });
+
+  it('gives the date beyond six days, with the year when it is not this year', () => {
+    expect(dueWords('2026-10-20T09:00:00Z', NOW)).toBe('due Oct 20');
+    expect(dueWords('2027-01-05T09:00:00Z', NOW)).toBe('due Jan 5 2027');
+  });
+
+  it('says overdue since yesterday, the weekday up to six days back, then the date', () => {
+    expect(dueWords('2026-10-12T18:30:00Z', NOW)).toBe('overdue since yesterday');
+    expect(dueWords('2026-10-11T09:00:00Z', NOW)).toBe('overdue since Sun');
+    expect(dueWords('2026-10-07T09:00:00Z', NOW)).toBe('overdue since Wed');
+    expect(dueWords('2026-10-06T09:00:00Z', NOW)).toBe('overdue since Oct 6');
+  });
+
+  it('reads a time that is no time as nothing', () => {
+    expect(dueWords('soon', NOW)).toBe('');
+  });
+});
+
+describe('isOverdue', () => {
+  it('is false all of the due day and true from the day after', () => {
+    expect(isOverdue('2026-10-13T08:00:00Z', NOW)).toBe(false);
+    expect(isOverdue('2026-10-14T09:00:00Z', NOW)).toBe(false);
+    expect(isOverdue('2026-10-12T23:59:00Z', NOW)).toBe(true);
+    expect(isOverdue('soon', NOW)).toBe(false);
   });
 });

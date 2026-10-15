@@ -2,7 +2,7 @@
 // one up; locked, unlock once for the day; then every place is a route
 // (src/nav/route.ts) inside the one shell, and the live connection
 // (src/services/live.ts) runs for as long as the key is unlocked.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { KeyVault } from './key';
 import { navigate, useRoute, useScreenSearch } from './router';
 import { vaultRepo } from './data/repositories';
@@ -12,7 +12,7 @@ import { startLive, stopLive } from './services/live';
 import { startOutbox } from './services/outbox';
 import { useUnlockedKey } from './cockpit/hooks';
 import { Shell, Screen } from './cockpit/Shell';
-import { Loading, Unlock, Welcome } from './cockpit/Gate';
+import { LaunchFailed, Loading, Unlock, Welcome } from './cockpit/Gate';
 import { UpdateBanner } from './cockpit/UpdateBanner';
 import { WhatsNewOnUpdate } from './cockpit/WhatsNew';
 import { NeedsScreen } from './cockpit/NeedsScreen';
@@ -37,6 +37,10 @@ import { settingsRepo } from './data/repositories';
 import type { Route } from './nav/route';
 import { saveLastRoute } from './nav/lastRoute';
 import { setVisibleInterval } from './ui/visibleInterval';
+import { clearDbTrouble, getDbTrouble, onDbTrouble } from './data/dbTrouble';
+import { tidyWhenIdle } from './data/tidy';
+
+const whyItFailed = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function Place({ route }: { route: Route }) {
   switch (route.view) {
@@ -93,17 +97,34 @@ export function App() {
   const key = useUnlockedKey();
   const [vault, setVault] = useState<VaultRow | null | undefined>(undefined);
   const [resumed, setResumed] = useState(false);
+  // What the launch could not read (mw-4gkijo.1): said on the door, never a padlock for ever.
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const dbTrouble = useSyncExternalStore(onDbTrouble, getDbTrouble, getDbTrouble);
 
   // Where he is, kept on every move, is where a bare open puts him back (src/nav/lastRoute.ts).
   useEffect(() => saveLastRoute(search), [search]);
 
   useEffect(() => {
-    void resumeSession().finally(() => setResumed(true));
+    resumeSession()
+      .catch((err: unknown) => setResumeError(whyItFailed(err)))
+      .finally(() => setResumed(true));
   }, []);
 
   useEffect(() => {
-    void vaultRepo.get().then((row) => setVault(row ?? null));
+    void vaultRepo.get().then(
+      (row) => {
+        clearDbTrouble();
+        setVaultError(null);
+        setVault(row ?? null);
+      },
+      (err: unknown) => setVaultError(whyItFailed(err)),
+    );
   }, [key, route.view]);
+
+  // The history-wide clean-ups wait until the door or the app is on screen (src/data/tidy.ts).
+  const shown = vault !== undefined;
+  useEffect(() => (shown ? tidyWhenIdle() : undefined), [shown]);
 
   useEffect(() => {
     if (key) startLive(key);
@@ -153,9 +174,9 @@ export function App() {
       if (data?.type === 'later' && data.ring_txid) void putOff(data.ring_txid);
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
-    void drain();
+    void drain().catch(() => undefined);
     // Not while the page is hidden; once on return (mw-xhtcup.1).
-    const stopRetry = setVisibleInterval(() => void drain(), 15_000);
+    const stopRetry = setVisibleInterval(() => void drain().catch(() => undefined), 15_000);
     return () => {
       navigator.serviceWorker.removeEventListener('message', onMessage);
       stopRetry();
@@ -168,9 +189,14 @@ export function App() {
   if (route.view === 'key') {
     door = !key;
     content = key ? <Shell route={route}><KeyPlace inShell /></Shell> : <KeyPlace inShell={false} />;
-  } else if (!resumed || vault === undefined) content = <Loading />;
-  else if (vault === null) content = <Welcome />;
-  else if (!key) content = <Unlock vault={vault} />;
+  } else if (dbTrouble === 'changed') {
+    content = <LaunchFailed message="Postern was updated in another window, so this one is reloading." />;
+  } else if (vault === undefined && vaultError) {
+    content = <LaunchFailed message="Postern could not open your vault." detail={vaultError} />;
+  } else if (!resumed || vault === undefined) {
+    content = dbTrouble === 'blocked' ? <Loading waiting="Another Postern window is holding the database. Close it, then tap Try again." known /> : <Loading />;
+  } else if (vault === null) content = <Welcome />;
+  else if (!key) content = <Unlock vault={vault} earlier={resumeError ? `Your earlier unlock could not be read (${resumeError}). Unlock again.` : undefined} />;
   else {
     door = false;
     content = (

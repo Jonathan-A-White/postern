@@ -1,12 +1,17 @@
 // src/cockpit/Gate.tsx — the door (plans/0021 decision 14): a phone with no key
 // yet is sent to set one up; a locked one asks for a fingerprint (or the recovery
 // phrase where the phone has no passkey PRF) once, and stays open for the day.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Icon } from '../ui';
 import type { VaultRow } from '../data/db';
 import { unlockWithPasskey, unlockWithPhrase } from '../services/unlock';
 import { formatRoute } from '../nav/route';
 import { APP_VERSION_STRING } from '../version';
+import { reloadPage } from '../nav/reload';
+
+/** How long Loading waits before it says what it waits on, and before it offers Try again (mw-4gkijo.1). */
+export const SAYS_AFTER_MS = 3000;
+export const TRY_AGAIN_AFTER_MS = 10_000;
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
@@ -38,17 +43,57 @@ export function Welcome() {
   );
 }
 
-export function Loading() {
+/**
+ * The padlock while the launch reads the phone. It paints at once; after 3 s it says what it waits on (`waiting`,
+ * 'Opening your vault…' unless the launch knows better), after 10 s it offers Try again, which reloads. `known`
+ * is a trouble already named (another window holds the database): said, with Try again, at once.
+ */
+export function Loading({ waiting = 'Opening your vault…', known = false }: { waiting?: string; known?: boolean }) {
+  const [slow, setSlow] = useState(false);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    const saysTimer = setTimeout(() => setSlow(true), SAYS_AFTER_MS);
+    const tryAgainTimer = setTimeout(() => setStuck(true), TRY_AGAIN_AFTER_MS);
+    return () => {
+      clearTimeout(saysTimer);
+      clearTimeout(tryAgainTimer);
+    };
+  }, []);
   return (
-    <main className="flex h-dvh items-center justify-center bg-canvas text-muted" aria-busy="true">
+    <main data-testid="loading" className="flex h-dvh flex-col items-center justify-center gap-5 bg-canvas px-6 text-center text-muted" aria-busy="true">
       <span className="flex h-14 w-14 animate-pulse items-center justify-center rounded-3xl bg-raised">
         <Icon name="key" size={26} />
       </span>
+      {(slow || known) && (
+        <p role="status" className="max-w-sm text-[14px]">
+          {waiting}
+        </p>
+      )}
+      {(stuck || known) && (
+        <Button variant="primary" size="lg" onClick={reloadPage}>
+          Try again
+        </Button>
+      )}
     </main>
   );
 }
 
-export function Unlock({ vault }: { vault: VaultRow }) {
+/** The launch could not read the phone: what went wrong, and Try again, instead of Loading for ever. */
+export function LaunchFailed({ message, detail }: { message: string; detail?: string }) {
+  return (
+    <Frame>
+      <p role="alert" className="text-[14px] text-danger">
+        {message}
+        {detail ? ` ${detail}` : ''}
+      </p>
+      <Button variant="primary" size="lg" onClick={reloadPage}>
+        Try again
+      </Button>
+    </Frame>
+  );
+}
+
+export function Unlock({ vault, earlier }: { vault: VaultRow; earlier?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [phrase, setPhrase] = useState('');
@@ -101,9 +146,9 @@ export function Unlock({ vault }: { vault: VaultRow }) {
           </Button>
         </form>
       )}
-      {error && (
+      {(error ?? earlier) && (
         <p role="alert" className="text-[13.5px] text-danger">
-          {error}
+          {error ?? earlier}
         </p>
       )}
       <p className="text-[12.5px] text-faint">Stays unlocked on this phone for a day, or until you lock it.</p>

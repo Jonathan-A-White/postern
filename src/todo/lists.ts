@@ -3,6 +3,7 @@
 import { BEAD_ID, WORD_CHAR } from '../markdown/beadLinks';
 import { isClosed, type ViewIndex } from '../model/tree';
 import type { ViewBead } from '../model/view';
+import { parseOpenLinks, type OpenLink } from './links';
 
 export const TODO_LABEL = 'hitl:todo';
 
@@ -17,6 +18,10 @@ export interface TodoCard {
   rank?: number | string;
   /** When it is due, an RFC 3339 UTC time (the bead's todo_due), absent when it has none. */
   due?: string;
+  /** The links of the 'Open:' line of its notes, as far as the view's summary shows them; the board reads the whole notes when the summary is cut short (mw-ev7oyy.12). */
+  links?: OpenLink[];
+  /** The view's summary of the notes may have been cut short: the notes themselves may hold more links. */
+  summaryCut?: boolean;
   /** A change of his to this card has gone and the view does not yet agree (edits.ts). */
   pending?: boolean;
   /** The card is one he has just added: the Mayor has not made it, so it has no id yet. */
@@ -48,8 +53,20 @@ export function cardOrder(a: TodoCard, b: TodoCard): number {
   return rankOrder(a, b) || a.priority - b.priority || a.created.localeCompare(b.created) || a.id.localeCompare(b.id, undefined, { numeric: true });
 }
 
+/** How many runes of the notes the view's summary holds (docs/protocol.md §11). */
+const SUMMARY_RUNES = 280;
+
+/** The 'Open:' line links of a bead's notes (links.ts), for a card's chips. */
+export const openLinksOf = parseOpenLinks;
+
+/** Whether the view's summary of a bead's notes (its first 280 runes) may have been cut, so that an 'Open:' line past it is not seen. */
+export function summaryMayBeCut(summary: string): boolean {
+  return [...summary].length >= SUMMARY_RUNES - 20;
+}
+
 function cardOf(bead: ViewBead): TodoCard {
-  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}) };
+  const links = openLinksOf(bead.summary);
+  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(links.length ? { links } : {}), ...(summaryMayBeCut(bead.summary) ? { summaryCut: true } : {}) };
 }
 
 /** The open hitl:todo beads of the view grouped under their parent epic: newest list first, Other last,

@@ -127,3 +127,38 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     And a card in the list "Title of mw-list" cannot be moved up or down while it is sorted by due
     When he chooses Sort by my order in the menu of the list "Title of mw-list"
     Then the list "Title of mw-list" is back to "Title of mw-list.1", "Title of mw-list.2" then "Title of mw-list.5"
+
+  Scenario: mw-ev7oyy.12 AC-1: a card whose notes end in an Open: line shows a chip for each link, and a tap opens the link, not the back
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Deep discipleship.\n\nOpen: [Kindle](kindle://book?action=open&asin=B0C74TJ712) · [Audible](https://www.audible.com/pd/B0CC36V9KG)"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows the chips "Kindle" and "Audible" under its title
+    And the card "Title of mw-list.1" has the chip links named "Open in Kindle" and "Open in Audible"
+    When he taps the chip "Open in Audible" on the card "Title of mw-list.1"
+    Then the chip "Open in Audible" opens "https://www.audible.com/pd/B0CC36V9KG" in a new tab
+    And the chip "Open in Kindle" opens "kindle://book?action=open&asin=B0C74TJ712" in the same tab
+    And the card "Title of mw-list.1" is still on its front, not done, with nothing waiting in the outbox
+
+  Scenario: mw-ev7oyy.12 AC-1: a card with no Open: line shows no chips
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "A plain note with https://example.com/bare in it."
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows no chips
+
+  Scenario: mw-ev7oyy.12 AC-1: an Open: line of five links shows the first four
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Open: [One](https://one.example/), [Two](https://two.example/), [Three](https://three.example/), [Four](https://four.example/), [Five](https://five.example/)"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows the chips "One", "Two", "Three" and "Four" under its title
+
+  Scenario: mw-ev7oyy.12 AC-1: an Open: line past the view's short summary of the notes still shows its chips
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has long notes, longer than the view's summary, ending "Open: [Kindle](kindle://book?action=open&asin=B0C74TJ712) · [Audible](https://www.audible.com/pd/B0CC36V9KG)"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows the chips "Kindle" and "Audible" under its title
+
+  Scenario: mw-ev7oyy.12 AC-6: a tel: chip opens in the same tab, for the phone's dialer
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Open: [Call the plumber](tel:+15555550123)"
+    When the To do tab opens
+    Then the chip "Open in Call the plumber" opens "tel:+15555550123" in the same tab

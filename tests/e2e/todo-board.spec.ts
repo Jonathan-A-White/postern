@@ -5,6 +5,7 @@
 // mw-ev7oyy.7: a card is added at a list's foot (the Mayor's host, simulated, applies it and echoes it), dragged above
 // another and its title edited: the outbox holds the three §13 actions with their shapes and the board shows the new order.
 // Shots: todo-board.png, todo-card-back.png, todo-board-hand-edits.png.
+// mw-ev7oyy.12: a card whose notes carry an 'Open:' line shows a chip per link under its title (todo-card-links.png).
 // mw-ev7oyy.9: a due time set on a card's back goes out as a todo_edit with due and shows on the card's face (todo-card-due.png, todo-board-due.png).
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
@@ -31,11 +32,11 @@ const BEADS: ViewBead[] = [
   bead('mw-5zz.2.1', { parent: 'mw-5zz.2', title: 'Check the TrueCrypt volume opens', labels: ['hitl', 'hitl:todo'] }),
 ];
 
-async function open(page: Page): Promise<{ posted: string[]; release: () => void }> {
+async function open(page: Page, beads: ViewBead[] = BEADS): Promise<{ posted: string[]; release: () => void }> {
   const mnemonic = createMnemonic();
   const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
   const { posted } = await stubBackend(page, governor, undefined, {
-    beads: BEADS,
+    beads,
     descriptions: { 'mw-6ww.114.1': 'The bin is by the garage door. Then see mw-6ww.114.2 for the recycling.' },
   });
   // A message sent waits here, so the close action is seen in the outbox before it goes.
@@ -268,4 +269,37 @@ test('mw-ev7oyy.9: a due time set on a card’s back is in the outbox as a todo_
   await expect(card.getByTestId('due')).toHaveText('Tomorrow 17:00');
   await expect(card.getByTestId('due')).toHaveAttribute('data-past', 'false');
   await shot(page, 'todo-board-due');
+});
+
+test('mw-ev7oyy.12: a card whose notes carry an Open: line shows its links as chips under the title, and a tap opens one without turning the card over', async ({ page }) => {
+  const summary = 'The first of the three books.\n\nOpen: [Kindle](kindle://book?action=open&asin=B0C74TJ712) · [Audible](https://www.audible.com/pd/B0CC36V9KG)';
+  await open(
+    page,
+    BEADS.map((b) => (b.id === 'mw-6ww.114.2' ? { ...b, title: 'You Are a Theologian', summary } : b)),
+  );
+  const card = page.getByTestId('todo-card').filter({ hasText: 'You Are a Theologian' });
+  const kindle = card.getByRole('link', { name: 'Open in Kindle' });
+  const audible = card.getByRole('link', { name: 'Open in Audible' });
+  await expect(kindle).toHaveText('Kindle');
+  await expect(audible).toHaveText('Audible');
+  await expect(kindle).toHaveAttribute('href', 'kindle://book?action=open&asin=B0C74TJ712');
+  await expect(audible).toHaveAttribute('target', '_blank');
+  // under the title, inside the card's width
+  const [title, chip, box] = await Promise.all([card.getByRole('button', { name: 'You Are a Theologian' }).boundingBox(), kindle.boundingBox(), card.boundingBox()]);
+  expect(chip!.y).toBeGreaterThan(title!.y + title!.height - 1);
+  expect(chip!.x + chip!.width).toBeLessThanOrEqual(box!.x + box!.width);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await shot(page, 'todo-card-links');
+  // a card with no Open: line has none
+  await expect(page.getByTestId('todo-card').filter({ hasText: 'Take the trash' }).getByRole('link')).toHaveCount(0);
+
+  // a tap on a chip opens its link (a new tab for Audible) and leaves the card on its front, not done
+  await page.context().route('https://www.audible.com/**', (route) => route.fulfill({ contentType: 'text/html', body: 'Audible' }));
+  const popup = page.waitForEvent('popup');
+  await audible.click();
+  const opened = await popup;
+  await opened.waitForLoadState();
+  expect(opened.url()).toBe('https://www.audible.com/pd/B0CC36V9KG');
+  await expect(page.getByRole('group', { name: /^Back of/ })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Done' })).toBeEnabled();
 });

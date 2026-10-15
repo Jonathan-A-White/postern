@@ -131,7 +131,11 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     beads.push(beadIn('mw-factory', { type: 'epic' }), beadIn('mw-factory.1', { parent: 'mw-factory' }));
   };
   const hasNotes = (_c: unknown, id: string, text: string) => {
-    notes.set(id, text);
+    const full = text.replaceAll('\\n', '\n');
+    notes.set(id, full);
+    // the view carries the notes' first 280 runes as the bead's summary, the whole of them only in the bead's detail
+    const bead = beads.find((b) => b.id === id);
+    if (bead) bead.summary = [...full].slice(0, 280).join('');
   };
   const tabOpens = async () => {
     await save();
@@ -473,5 +477,86 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     When('he chooses Sort by my order in the menu of the list {string}', chooseSort('Sort by my order'));
     Then('the list {string} is back to {string}, {string} then {string}', orderStep);
+  });
+
+  // mw-ev7oyy.12: link chips on a card's front, from the Open: line of its notes.
+  const SAME_GIVEN = 'a view with a list {string} holding two open cards, a closed card and a card that is not a to do';
+  const longNotesEnding = (_c: unknown, id: string, line: string) => hasNotes(_c, id, `${'Chapter notes for the class, written long. '.repeat(10)}\\n\\n${line}`);
+  const chipsOf = (el: HTMLElement) => within(el).queryAllByRole('link').map((link) => link.textContent);
+  const wordsOf = (...names: string[]) => names;
+  const chipsShown = (name: string, ...expected: string[]) =>
+    async () => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(chipsOf(el)).toEqual(expected));
+    };
+  const tapChip = async (_c: unknown, chip: string, name: string) => {
+    const el = await card(name.replace('Title of ', ''));
+    await userEvent.click(await within(el).findByRole('link', { name: chip }));
+  };
+  const chipOpens = (target: string | null) => async (_c: unknown, chip: string, url: string) => {
+    await screen.findByRole('link', { name: chip });
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: chip });
+      expect(link).toHaveAttribute('href', url);
+      if (target) expect(link).toHaveAttribute('target', target);
+      else expect(link).not.toHaveAttribute('target');
+    });
+  };
+
+  Scenario('mw-ev7oyy.12 AC-1: a card whose notes end in an Open: line shows a chip for each link, and a tap opens the link, not the back', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows the chips {string} and {string} under its title', async (_c, name: string, one: string, two: string) => chipsShown(name, one, two)());
+    And('the card {string} has the chip links named {string} and {string}', async (_c, name: string, one: string, two: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      expect(within(el).getByRole('link', { name: one })).toBeInTheDocument();
+      expect(within(el).getByRole('link', { name: two })).toBeInTheDocument();
+      // under the title: after the title's button in the card, before Done
+      const order = Array.from(el.querySelectorAll('button, a')).map((node) => node.textContent);
+      expect(order.indexOf('Kindle')).toBeGreaterThan(order.findIndex((text) => text?.startsWith('Title of')));
+      expect(order.indexOf('Kindle')).toBeLessThan(order.indexOf('Done'));
+    });
+    When('he taps the chip {string} on the card {string}', tapChip);
+    Then('the chip {string} opens {string} in a new tab', chipOpens('_blank'));
+    And('the chip {string} opens {string} in the same tab', chipOpens(null));
+    And('the card {string} is still on its front, not done, with nothing waiting in the outbox', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      expect(screen.queryByRole('group', { name: /^Back of/ })).toBeNull();
+      expect(within(el).getByRole('button', { name: 'Done' })).toBeEnabled();
+      expect(await db.outbox.count()).toBe(0);
+    });
+  });
+
+  Scenario('mw-ev7oyy.12 AC-1: a card with no Open: line shows no chips', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows no chips', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await within(el).findByRole('button', { name: 'Done' });
+      expect(chipsOf(el)).toEqual([]);
+    });
+  });
+
+  Scenario('mw-ev7oyy.12 AC-1: an Open: line of five links shows the first four', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows the chips {string}, {string}, {string} and {string} under its title', async (_c, name: string, ...chips: string[]) => chipsShown(name, ...wordsOf(...chips))());
+  });
+
+  Scenario("mw-ev7oyy.12 AC-1: an Open: line past the view's short summary of the notes still shows its chips", ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And("the card {string} has long notes, longer than the view's summary, ending {string}", longNotesEnding);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows the chips {string} and {string} under its title', async (_c, name: string, one: string, two: string) => chipsShown(name, one, two)());
+  });
+
+  Scenario("mw-ev7oyy.12 AC-6: a tel: chip opens in the same tab, for the phone's dialer", ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the chip {string} opens {string} in the same tab', chipOpens(null));
   });
 });

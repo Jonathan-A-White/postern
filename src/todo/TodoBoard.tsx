@@ -5,7 +5,8 @@
 // until the view drops it. A card is dragged (held, on a phone) to reorder it or move it to another
 // list; each list ends in 'Add a card'. A card with a due time shows it on its face (red once past), its back sets or
 // clears it with a date-time input, and a list's menu sorts its cards by due (mw-ev7oyy.9). Every change shows at once, marked pending, until the view agrees
-// (mw-ev7oyy.7). Draws only what a TodoStore gives it.
+// (mw-ev7oyy.7). A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
+// link and nothing else (mw-ev7oyy.12; links.ts says what each is). Draws only what a TodoStore gives it.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Button, Chip, EmptyState, Icon, IconButton, Spinner, cx } from '../ui';
 import { useNow } from '../ui/useNow';
@@ -14,6 +15,7 @@ import { Markdown } from '../markdown/Markdown';
 import { beadHref } from '../nav/route';
 import { dueToInput, formatDue, inputToDue, isPastDue, sortByDue } from './due';
 import { moveFor } from './edits';
+import { linkProps, parseOpenLinks, type OpenLink } from './links';
 import { beadsNamed, type TodoCard, type TodoList } from './lists';
 import { usePosternTodoStore } from './posternStore';
 import type { TodoDone, TodoStore } from './store';
@@ -87,6 +89,36 @@ function DueField({ card, onSet }: { card: TodoCard; onSet: (due: string) => voi
       )}
     </form>
   );
+}
+
+/** A card's links as chips under its title: each an anchor that opens the app it names (links.ts says how), named 'Open in <its text>' for a screen reader. */
+function LinkChips({ links }: { links: OpenLink[] }) {
+  if (links.length === 0) return null;
+  return (
+    <div data-nodrag data-testid="card-links" className="mt-1.5 flex flex-wrap gap-1.5">
+      {links.map((link, at) => (
+        <a
+          key={`${at}|${link.url}`}
+          {...linkProps(link)}
+          aria-label={`Open in ${link.text}`}
+          className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-md border border-line px-2 text-[12px] text-muted no-underline"
+        >
+          <Icon name="link" size={12} className="shrink-0" />
+          <span className="min-w-0 truncate">{link.text}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/** The chips of a card whose view summary may be cut short: the whole notes, once the store has them, decide (the summary's links stand in until then). */
+function FullNotesChips({ store, card }: { store: TodoStore; card: TodoCard }) {
+  const back = store.useBack(card.id);
+  return <LinkChips links={back.status === 'ready' ? parseOpenLinks(back.description) : (card.links ?? [])} />;
+}
+
+function CardLinks({ store, card }: { store: TodoStore; card: TodoCard }) {
+  return card.summaryCut ? <FullNotesChips store={store} card={card} /> : <LinkChips links={card.links ?? []} />;
 }
 
 function DoneControl({ state: { waiting, note, done } }: { state: TodoDone }) {
@@ -321,6 +353,7 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
             <Icon name="forward" size={16} className="mt-0.5 shrink-0 text-faint" />
           </button>
           {card.due && <DueLine due={card.due} />}
+          <CardLinks store={store} card={card} />
           <div data-nodrag>
             <DoneControl state={state} />
           </div>

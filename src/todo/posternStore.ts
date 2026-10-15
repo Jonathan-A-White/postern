@@ -12,7 +12,8 @@ import { FailedNote } from '../cockpit/OutboxMark';
 import { sendAction } from '../cockpit/send';
 import { useNow } from '../ui/useNow';
 import { NOTE_FOR_MS, applyChanges, describeChange, judge, todoActionOf, type TodoChange } from './edits';
-import { openTodoCount, orderCards, todoListsFromView } from './lists';
+import { keepTodayPick, readTodayPicks } from './kept';
+import { groupCards, openTodoCount, todoListsFromView, type TodayPicks } from './lists';
 import { RefusedNote } from './RefusedNote';
 import type { TodoBack, TodoDone, TodoStore } from './store';
 
@@ -47,6 +48,7 @@ export function usePosternTodoStore(): TodoStore {
   const rows = useTodoRows();
   const now = useNow(LOOK_MS);
   const [dismissed, setDismissed] = useState<ReadonlySet<number>>(new Set());
+  const [picks, setPicks] = useState<TodayPicks>(() => readTodayPicks());
   const base = useMemo(() => (index ? todoListsFromView(index, now) : undefined), [index, now]);
   const stamp = useMemo(() => ({ seq: index?.view.seq, writtenAt: index?.view.written_at }), [index]);
   const judged = useMemo(
@@ -61,8 +63,8 @@ export function usePosternTodoStore(): TodoStore {
     const waiting: TodoChange[] = judged.filter((change) => change.state === 'waiting').map(({ row, action }) => ({ id: row.id as number, action }));
     if (!base) return { lists: undefined, notes: new Map<string, string>() };
     const changed = applyChanges(base, waiting);
-    return { ...changed, lists: changed.lists.map((list) => ({ ...list, cards: orderCards(list.cards, now) })) };
-  }, [base, judged, now]);
+    return { ...changed, lists: changed.lists.map((list) => ({ ...list, cards: groupCards(list.cards, now, picks) })) };
+  }, [base, judged, now, picks]);
   const settled = useMemo(() => {
     const counts = new Map<string, number>();
     for (const { action, state } of judged) if (action.action === 'todo_edit' && state === 'settled') counts.set(action.bead, (counts.get(action.bead) ?? 0) + 1);
@@ -101,6 +103,7 @@ export function usePosternTodoStore(): TodoStore {
       add: async (list, title) => void (await sendAction({ action: 'todo_add', list, title })),
       edit: async (card, change) => void (await sendAction({ action: 'todo_edit', bead: card, ...change })),
       move: async (card, to) => void (await sendAction({ action: 'todo_move', bead: card, ...to })),
+      today: (card, into) => setPicks(keepTodayPick(card, into)),
       notices,
     }),
     [shown.lists, titleOf, useBackOf, notices],

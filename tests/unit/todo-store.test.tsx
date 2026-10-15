@@ -2,7 +2,7 @@
 // add / edit / move show at once in `lists` marked pending and queue the §13 todo_* action; a row the
 // backend refuses, or the Mayor never echoes, is rolled back with a notice; one the view has caught up with is settled.
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/data/db';
 import { outboxRepo, viewRepo } from '../../src/data/repositories';
 import { forgetOutboxState } from '../../src/services/outbox';
@@ -107,5 +107,45 @@ describe('the Postern TodoStore: hand edits', () => {
     await act(async () => saveView(9));
     await waitFor(() => expect(result.current.lists?.[0].cards[1]).toMatchObject({ title: 'Renamed by the Mayor' }));
     expect(result.current.lists?.[0].cards[1].pending).toBeUndefined();
+  });
+});
+
+// mw-ev7oyy.16: the store groups the cards (Today, Soon, Someday) and holds a tap into Today for the day it was made.
+describe('the Postern TodoStore: Today, Soon and Someday', () => {
+  afterEach(() => {
+    localStorage.clear();
+    vi.useRealTimers();
+  });
+
+  it('stamps each card with its group, and today() taps one into Today, kept on the phone', async () => {
+    localStorage.clear();
+    const { result, unmount } = await open();
+    expect(result.current.lists?.[0].cards.map((c) => [c.id, c.group])).toEqual([['mw-list.1', 'someday'], ['mw-list.2', 'someday']]);
+    act(() => result.current.today('mw-list.2', true));
+    await waitFor(() => expect(result.current.lists?.[0].cards.map((c) => [c.id, c.group, c.tapped])).toEqual([['mw-list.2', 'today', true], ['mw-list.1', 'someday', undefined]]));
+    unmount();
+    const again = await open();
+    expect(again.result.current.lists?.[0].cards.map((c) => c.group)).toEqual(['today', 'someday']);
+  });
+
+  it('puts a tapped card back in its own group the next day (a fake clock)', async () => {
+    localStorage.clear();
+    const { result, unmount } = await open();
+    act(() => result.current.today('mw-list.2', true));
+    await waitFor(() => expect(result.current.lists?.[0].cards[0].group).toBe('today'));
+    unmount();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now + 86_400_000);
+    const next = await open();
+    expect(next.result.current.lists?.[0].cards.map((c) => [c.id, c.group])).toEqual([['mw-list.1', 'someday'], ['mw-list.2', 'someday']]);
+  });
+
+  it('today(…, false) puts a tapped card back at once', async () => {
+    localStorage.clear();
+    const { result } = await open();
+    act(() => result.current.today('mw-list.2', true));
+    await waitFor(() => expect(result.current.lists?.[0].cards[0].group).toBe('today'));
+    act(() => result.current.today('mw-list.2', false));
+    await waitFor(() => expect(result.current.lists?.[0].cards.map((c) => c.group)).toEqual(['someday', 'someday']));
   });
 });

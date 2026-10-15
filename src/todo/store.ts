@@ -41,6 +41,8 @@ export interface TodoStore {
   edit: (card: string, change: TodoCardEdit) => Promise<void>;
   /** Moves a card: to another list, and/or before or after a card. */
   move: (card: string, to: TodoMove) => Promise<void>;
+  /** Taps a card into Today for today only (`into`), or puts it back in the group its own due time and star give it. */
+  today: (card: string, into: boolean) => void;
   /** Changes that were refused or did not go, oldest first, each as the line that tells him (with what he may do about it). */
   notices: { id: number; note: ReactNode }[];
 }

@@ -6,7 +6,8 @@
 // list; each list ends in 'Add a card'. A card with a due time says it in words on its face ('due Thu', 'overdue since Tue', never red), its back sets or
 // clears it with a date-time input, a star at its right marks it important (mw-ev7oyy.15; the store floats the due-soon and the important cards up), and a list's menu sorts its cards by due (mw-ev7oyy.9). Every change shows at once, marked pending, until the view agrees
 // (mw-ev7oyy.7). A card is one compact row (mw-ev7oyy.14): a small round check at its left for Done, the title, then its due
-// time and chips; a list's header is its short name. A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
+// time and chips; a list's header is its short name. A list's cards are grouped Today, Soon and Someday (mw-ev7oyy.16; lists.ts groupCards): Today is
+// open, the others folded to their count and opened with a tap, each list's choice kept on the phone (kept.ts); a card's back can tap it into Today for today. A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
 // link and nothing else (mw-ev7oyy.12; links.ts says what each is). Draws only what a TodoStore gives it.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Button, Chip, EmptyState, Icon, IconButton, Spinner, cx } from '../ui';
@@ -15,9 +16,10 @@ import { focusOnMount } from '../ui/focus';
 import { Markdown } from '../markdown/Markdown';
 import { beadHref } from '../nav/route';
 import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
-import { moveFor } from './edits';
+import { moveFor, realIndex } from './edits';
+import { isGroupOpen, keepGroupOpen, readGroupsOpen, type GroupsOpen } from './kept';
 import { linkProps, parseOpenLinks, type OpenLink } from './links';
-import { beadsNamed, type TodoCard, type TodoList } from './lists';
+import { beadsNamed, groupCounts, type TodoCard, type TodoGroup, type TodoList } from './lists';
 import { usePosternTodoStore } from './posternStore';
 import type { TodoDone, TodoStore } from './store';
 import { useCardDrag, type DragState } from './useDrag';
@@ -29,7 +31,11 @@ interface Place {
   index: number;
   /** The list is shown sorted by due, so a card's place in it is not its place in his order. */
   sorted: boolean;
+  /** Opens the list's Today group, so a card tapped into Today is seen to arrive. */
+  showToday: () => void;
 }
+
+const GROUP_NAMES: Record<TodoGroup, string> = { today: 'Today', soon: 'Soon', someday: 'Someday' };
 
 /** Where it is kept (localStorage) that he has swiped across the lists once: the hint for it then goes (mw-ev7oyy.14). */
 const SWIPED_KEY = 'postern.todo.swiped';
@@ -257,8 +263,22 @@ function MoveControls({ store, card, place }: { store: TodoStore; card: TodoCard
     const move = moveFor(lists, card.id, to, at);
     if (move) void store.move(card.id, move);
   };
+  const tapped = card.tapped === true;
   return (
     <div role="group" aria-label="Move this card" className="flex flex-wrap items-center gap-2 border-t border-line pt-2">
+      {(tapped || card.group !== 'today') && !card.adding && (
+        <Button
+          size="sm"
+          variant="secondary"
+          title={tapped ? 'Today only: the card is back in its own group tomorrow' : 'For today only: the card is back in its own group tomorrow'}
+          onClick={() => {
+            store.today(card.id, !tapped);
+            if (!tapped) place.showToday();
+          }}
+        >
+          {tapped ? 'Back to its own group' : 'Move to Today'}
+        </Button>
+      )}
       <Button size="sm" variant="secondary" disabled={place.sorted || index === 0} title={place.sorted ? 'Choose Sort by my order in the list menu to move cards' : undefined} onClick={() => send(list.id, index - 1)}>
         Move up
       </Button>
@@ -440,7 +460,7 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
   );
 }
 
-function AddCard({ store, list }: { store: TodoStore; list: TodoList }) {
+function AddCard({ store, list, onAdded }: { store: TodoStore; list: TodoList; onAdded: () => void }) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
   const trimmed = title.trim();
@@ -465,6 +485,7 @@ function AddCard({ store, list }: { store: TodoStore; list: TodoList }) {
         event.preventDefault();
         if (!trimmed) return;
         void store.add(list.id, trimmed);
+        onAdded();
         close();
       }}
     >
@@ -521,12 +542,35 @@ function ListMenu({ title, name, sorted, onSort }: { title: string; name: string
   );
 }
 
+/** A group's header in a list: its name and its count, one tap to fold or open it. Named for what a tap will do ('Open Soon, 3 cards'). */
+function GroupHeader({ group, count, open, onToggle }: { group: TodoGroup; count: number; open: boolean; onToggle: () => void }) {
+  const name = GROUP_NAMES[group];
+  return (
+    <li data-testid="todo-group" data-group={group} data-open={open} className="-mb-1 flex" data-nodrag>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={`${open ? 'Fold' : 'Open'} ${name}, ${count} ${count === 1 ? 'card' : 'cards'}`}
+        onClick={onToggle}
+        className="flex h-9 w-full items-center gap-1.5 rounded-lg px-1.5 text-left text-[13px] font-semibold text-muted hover:bg-raised"
+      >
+        <Icon name={open ? 'down' : 'forward'} size={14} />
+        <span className="flex-1">{name}</span>
+        <span className="rounded-full bg-raised px-2 text-[11px] font-normal tabular-nums">{count}</span>
+      </button>
+    </li>
+  );
+}
+
 function Column({
   store,
   lists,
   list,
   sorted,
   onSort,
+  open,
+  onToggle,
+  onAdded,
   drag,
   onPress,
   wasDragged,
@@ -536,6 +580,9 @@ function Column({
   list: TodoList;
   sorted: boolean;
   onSort: (sorted: boolean) => void;
+  open: (group: TodoGroup) => boolean;
+  onToggle: (group: TodoGroup, open: boolean) => void;
+  onAdded: () => void;
   drag?: DragState;
   onPress: (card: string, event: React.PointerEvent<HTMLElement>) => void;
   wasDragged: () => boolean;
@@ -544,12 +591,23 @@ function Column({
   const slot = !sorted && drag?.target?.list === list.id ? drag.target.index : undefined;
   const rows: React.ReactNode[] = [];
   let others = 0;
-  (sorted ? sortByDue(list.cards) : list.cards).forEach((card, index) => {
-    const held = drag?.card === card.id;
-    if (!held && slot === others) rows.push(<li key="drop" aria-hidden data-testid="drop-mark" className="-my-1 h-1 shrink-0 rounded-full bg-accent" />);
-    rows.push(<Card key={card.id} store={store} card={card} place={{ lists, list, index, sorted }} drag={drag} onPress={(event) => onPress(card.id, event)} wasDragged={wasDragged} />);
-    if (!held) others++;
-  });
+  const showToday = () => onToggle('today', true);
+  let at = 0;
+  for (const { group, count } of groupCounts(list.cards)) {
+    const isOpen = open(group);
+    rows.push(<GroupHeader key={`group-${group}`} group={group} count={count} open={isOpen} onToggle={() => onToggle(group, !isOpen)} />);
+    const members = list.cards.filter((card) => (card.group ?? 'today') === group);
+    const first = at;
+    at += members.length;
+    if (!isOpen) continue;
+    (sorted ? sortByDue(members) : members).forEach((card, within) => {
+      const held = drag?.card === card.id;
+      if (!held && slot === others) rows.push(<li key="drop" aria-hidden data-testid="drop-mark" className="-my-1 h-1 shrink-0 rounded-full bg-accent" />);
+      // a card's place in its list is its place in the groups' order, which the sort by due leaves in the group
+      rows.push(<Card key={card.id} store={store} card={card} place={{ lists, list, index: first + within, sorted, showToday }} drag={drag} onPress={(event) => onPress(card.id, event)} wasDragged={wasDragged} />);
+      if (!held) others++;
+    });
+  }
   if (slot !== undefined && slot >= others) rows.push(<li key="drop" aria-hidden data-testid="drop-mark" className="-my-1 h-1 shrink-0 rounded-full bg-accent" />);
   return (
     <section aria-label={list.name} data-list={list.id} className="flex max-h-full min-h-0 w-full shrink-0 snap-start flex-col rounded-2xl border border-line bg-canvas lg:w-80">
@@ -560,7 +618,7 @@ function Column({
         <ListMenu title={list.title} name={list.name} sorted={sorted} onSort={onSort} />
       </header>
       <ul className="scroll-thin flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">{rows}</ul>
-      {list.epic && <AddCard store={store} list={list} />}
+      {list.epic && <AddCard store={store} list={list} onAdded={onAdded} />}
     </section>
   );
 }
@@ -571,8 +629,12 @@ export function Board({ store }: { store: TodoStore }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [byDue, setByDue] = useState<ReadonlySet<string>>(new Set());
   const [swiped, setSwiped] = useState(hasSwiped);
+  const [opened, setOpened] = useState<GroupsOpen>(readGroupsOpen);
   const { drag, startDrag, wasDragged } = useCardDrag(scroller, (card, list, index) => {
-    const move = lists && !byDue.has(list) ? moveFor(lists, card, list, index) : undefined;
+    // the index counts the cards on screen; the cards in folded groups are not, so it is turned into a place among them all
+    const target = lists?.find((candidate) => candidate.id === list);
+    const real = target ? realIndex(target, card, index, (other) => isGroupOpen(opened, list, other.group ?? 'today')) : index;
+    const move = lists && !byDue.has(list) ? moveFor(lists, card, list, real) : undefined;
     if (move) void store.move(card, move);
   });
   if (!lists) {
@@ -618,6 +680,9 @@ export function Board({ store }: { store: TodoStore }) {
                 return next;
               })
             }
+            open={(group) => isGroupOpen(opened, list.id, group)}
+            onToggle={(group, open) => setOpened((was) => keepGroupOpen(was, list.id, group, open))}
+            onAdded={() => setOpened((was) => keepGroupOpen(was, list.id, 'someday', true))}
             drag={drag}
             onPress={startDrag}
             wasDragged={wasDragged}

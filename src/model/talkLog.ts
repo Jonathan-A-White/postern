@@ -45,7 +45,7 @@ function entryOf(talk: Accumulated, number: number): TalkLogEntry | undefined {
   const his = talk.his.get(number);
   if (!his) return undefined;
   const { turn, ts } = his;
-  const entry: TalkLogEntry = { turn: number, said: turn.text, cut: turn.cut === true, asked: turn.model, releasedAt: ts * 1000 };
+  const entry: TalkLogEntry = { turn: number, said: turn.text, cut: turn.cut === true, asked: turn.model, releasedAt: ts * 1000, ...(turn.attachment ? { attachment: turn.attachment } : {}) };
   const answer = talk.answers.get(number);
   if (!answer) return entry;
   entry.answer = answer.turn.text;

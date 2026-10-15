@@ -1,7 +1,7 @@
 {
-  "version": "0.6.27",
-  "commit": "b776ec6",
-  "published_at": "2026-10-15T16:02:07.249Z",
+  "version": "0.6.29",
+  "commit": "2f8db6e",
+  "published_at": "2026-10-15T21:24:04.526Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1493,6 +1493,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-board-float.png"
+    },
+    {
+      "name": "390x844/todo-board-groups.png",
+      "screen": "todo-board-groups",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-board-groups.png"
+    },
+    {
+      "name": "360x640/todo-board-groups.png",
+      "screen": "todo-board-groups",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-board-groups.png"
+    },
+    {
+      "name": "1280x800/todo-board-groups.png",
+      "screen": "todo-board-groups",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-board-groups.png"
     },
     {
       "name": "390x844/todo-board-hand-edits.png",

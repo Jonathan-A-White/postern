@@ -228,12 +228,19 @@ decrypted plaintext `ct` wraps, for two of the four classes (decided on `mw-f758
   plaintext MAY be UTF-8 JSON:
 
   ```json
-  { "bead": "mw-xyz12.3", "answer": "<option label, or free text>" }
+  { "bead": "mw-xyz12.3", "answer": "<option label, or free text>", "re": "<txid>" }
   ```
 
-  - `bead` — names which question this answers.
+  - `bead` — names which bead's question this answers.
   - `answer` — one of the question's `options` labels (a tap) or free text (typed
     or dictated).
+  - `re` — OPTIONAL: the txid of the question card (the `decision-needed` record) the
+    answer was given on (mw-1cfk7g.1). A bead can hold two open question cards; `re` is
+    what keeps one tap from reading as the answer to both. The app shows `Answered` on
+    the card `re` names and no other, whenever the answer was sent. An answer with no
+    `re` (an older record, or one given where no card was in hand, such as a Needs
+    card whose question post is not yet held) is matched as before: to the card its
+    bead asked before it, until the bead asked again.
 
 A decrypted plaintext that does not parse as a JSON object with a string `bead`
 field is plain text, exactly as today — an old message, or any `message` /

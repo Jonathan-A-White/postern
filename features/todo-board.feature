@@ -162,3 +162,34 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     And the card "mw-list.1" has the notes "Open: [Call the plumber](tel:+15555550123)"
     When the To do tab opens
     Then the chip "Open in Call the plumber" opens "tel:+15555550123" in the same tab
+
+  Scenario: mw-ev7oyy.14 AC-1: a list whose epic has a long title is headed by its short name, the whole title on its menu
+    Given a list "mw-long" whose epic title is "Governor's Discipleship Institute list (Deep Discipleship, Weeks 4-6): last week's unfinished work and this week's pre-work, due at the next group meeting"
+    When the To do tab opens
+    Then the board has a column named "Governor's Discipleship Institute list" whose header is one line, cut with an ellipsis
+    And the menu of the list "Governor's Discipleship Institute list" gives its whole title "Governor's Discipleship Institute list (Deep Discipleship, Weeks 4-6): last week's unfinished work and this week's pre-work, due at the next group meeting"
+
+  Scenario: mw-ev7oyy.14 AC-1: a list whose epic has a todo_name is headed by that name
+    Given a list "mw-long" whose epic title is "Governor's Discipleship Institute list (Deep Discipleship, Weeks 4-6): last week's unfinished work and this week's pre-work, due at the next group meeting"
+    And the epic "mw-long" has the todo_name "Deep Discipleship"
+    When the To do tab opens
+    Then the board has a column named "Deep Discipleship" whose header is one line, cut with an ellipsis
+
+  Scenario: mw-ev7oyy.14 AC-2: a card is one row with a small round check named Done and its title, and a tap on the check does what Done did
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    When the To do tab opens
+    Then the card "Title of mw-list.1" has the round check "Done: Title of mw-list.1" and no button named just Done
+    When he taps the round check of the card "Title of mw-list.1"
+    Then a close action for "mw-list.1" waits in the outbox
+    And the card "Title of mw-list.1" says "Done, waiting for the Mayor" and offers no Done button
+    And the card "Title of mw-list.2" still offers Done
+
+  Scenario: mw-ev7oyy.14 AC-1: the swipe hint shows until he has swiped once, and then not again
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And a second list "mw-other" holding one open card
+    When the To do tab opens
+    Then the board hints "Swipe sideways for the next list. Hold a card to move it."
+    When he swipes the lists sideways
+    Then the board shows no swipe hint
+    When the To do tab is opened again
+    Then the board still shows no swipe hint

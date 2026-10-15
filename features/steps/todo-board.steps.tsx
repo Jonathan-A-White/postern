@@ -40,9 +40,12 @@ async function fresh(): Promise<void> {
   forgetTaps();
   forgetOutboxState();
   await Promise.all([db.settings.clear(), db.view.clear(), db.answers.clear(), db.messages.clear(), db.beadDetails.clear(), db.outbox.clear(), db.events.clear()]);
+  localStorage.clear();
   window.history.replaceState(null, '', '/?v=todo');
 }
 
+/** A card's round check, named for a screen reader 'Done: <title>' (mw-ev7oyy.14). */
+const DONE = /^Done: /;
 const title = (id: string) => `Title of ${id}`;
 const cardTitled = async (text: string) => (await screen.findByText(text)).closest('[data-testid="todo-card"]') as HTMLElement;
 const card = async (id: string) => (await screen.findByText(title(id))).closest('[data-testid="todo-card"]') as HTMLElement;
@@ -152,7 +155,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   };
   const tapDone = async (_c: unknown, name: string) => {
     const el = await card(name.replace('Title of ', ''));
-    await userEvent.click(within(el).getByRole('button', { name: 'Done' }));
+    await userEvent.click(within(el).getByRole('button', { name: DONE }));
   };
   const countIs = async (_c: unknown, count: number) => {
     const nav = await screen.findByRole('navigation', { name: 'Places' });
@@ -189,12 +192,12 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the card {string} says {string} and offers no Done button', async (_c, name: string, words: string) => {
       const el = await card(name.replace('Title of ', ''));
       await waitFor(() => expect(within(el).getByText(words)).toBeInTheDocument());
-      expect(within(el).queryByRole('button', { name: 'Done' })).toBeNull();
+      expect(within(el).queryByRole('button', { name: DONE })).toBeNull();
       expect(el.className).toMatch(/opacity-/);
     });
     And('the card {string} still offers Done', async (_c, name: string) => {
       const el = await card(name.replace('Title of ', ''));
-      expect(within(el).getByRole('button', { name: 'Done' })).toBeEnabled();
+      expect(within(el).getByRole('button', { name: DONE })).toBeEnabled();
     });
     When('a newer view arrives without {string}', async (_c, id: string) => {
       beads = beads.filter((b) => b.id !== id);
@@ -512,10 +515,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       const el = await card(name.replace('Title of ', ''));
       expect(within(el).getByRole('link', { name: one })).toBeInTheDocument();
       expect(within(el).getByRole('link', { name: two })).toBeInTheDocument();
-      // under the title: after the title's button in the card, before Done
+      // under the title: after the title's button in the card
       const order = Array.from(el.querySelectorAll('button, a')).map((node) => node.textContent);
       expect(order.indexOf('Kindle')).toBeGreaterThan(order.findIndex((text) => text?.startsWith('Title of')));
-      expect(order.indexOf('Kindle')).toBeLessThan(order.indexOf('Done'));
     });
     When('he taps the chip {string} on the card {string}', tapChip);
     Then('the chip {string} opens {string} in a new tab', chipOpens('_blank'));
@@ -523,7 +525,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the card {string} is still on its front, not done, with nothing waiting in the outbox', async (_c, name: string) => {
       const el = await card(name.replace('Title of ', ''));
       expect(screen.queryByRole('group', { name: /^Back of/ })).toBeNull();
-      expect(within(el).getByRole('button', { name: 'Done' })).toBeEnabled();
+      expect(within(el).getByRole('button', { name: DONE })).toBeEnabled();
       expect(await db.outbox.count()).toBe(0);
     });
   });
@@ -534,7 +536,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('the To do tab opens', tabOpens);
     Then('the card {string} shows no chips', async (_c, name: string) => {
       const el = await card(name.replace('Title of ', ''));
-      await within(el).findByRole('button', { name: 'Done' });
+      await within(el).findByRole('button', { name: DONE });
       expect(chipsOf(el)).toEqual([]);
     });
   });
@@ -558,5 +560,94 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the card {string} has the notes {string}', hasNotes);
     When('the To do tab opens', tabOpens);
     Then('the chip {string} opens {string} in the same tab', chipOpens(null));
+  });
+  // mw-ev7oyy.14: a short list name, a one-row card with a round check, a hint shown till he has swiped once.
+  const longList = (_c: unknown, id: string, epicTitle: string) => {
+    beads.push(beadIn(id, { type: 'epic', labels: ['hitl'], title: epicTitle }), beadIn(`${id}.1`, { parent: id, labels: ['hitl', 'hitl:todo'] }));
+  };
+  const headerIsOneLine = async (_c: unknown, name: string) => {
+    const column = await screen.findByRole('region', { name });
+    const header = within(column).getByRole('heading', { level: 2 });
+    expect(header).toHaveTextContent(name);
+    expect(header.className).toMatch(/\btruncate\b/);
+    expect(header.className).not.toMatch(/wrap-anywhere/);
+  };
+  Scenario('mw-ev7oyy.14 AC-1: a list whose epic has a long title is headed by its short name, the whole title on its menu', ({ Given, When, Then, And }) => {
+    Given('a list {string} whose epic title is {string}', longList);
+    When('the To do tab opens', tabOpens);
+    Then('the board has a column named {string} whose header is one line, cut with an ellipsis', headerIsOneLine);
+    And('the menu of the list {string} gives its whole title {string}', async (_c, name: string, whole: string) => {
+      const column = await screen.findByRole('region', { name });
+      await userEvent.click(within(column).getByRole('button', { name: 'List menu' }));
+      expect(within(await screen.findByRole('menu', { name: 'List menu' })).getByText(whole)).toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-ev7oyy.14 AC-1: a list whose epic has a todo_name is headed by that name', ({ Given, When, Then, And }) => {
+    Given('a list {string} whose epic title is {string}', longList);
+    And('the epic {string} has the todo_name {string}', (_c, id: string, name: string) => {
+      (beads.find((b) => b.id === id) as ViewBead).todo_name = name;
+    });
+    When('the To do tab opens', tabOpens);
+    Then('the board has a column named {string} whose header is one line, cut with an ellipsis', headerIsOneLine);
+  });
+
+  Scenario('mw-ev7oyy.14 AC-2: a card is one row with a small round check named Done and its title, and a tap on the check does what Done did', ({ Given, When, Then, And }) => {
+    Given(SAME_GIVEN, aList);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} has the round check {string} and no button named just Done', async (_c, name: string, check: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      const round = await within(el).findByRole('button', { name: check });
+      expect(round.className).toMatch(/rounded-full/);
+      expect(within(el).queryByRole('button', { name: 'Done' })).toBeNull();
+    });
+    When('he taps the round check of the card {string}', tapDone);
+    Then('a close action for {string} waits in the outbox', async (_c, bead: string) => {
+      await waitFor(async () => expect(await db.outbox.toArray()).toMatchObject([{ kind: 'action', bead, payload: { action: { action: 'close', bead } } }]));
+    });
+    And('the card {string} says {string} and offers no Done button', async (_c, name: string, words: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(within(el).getByText(words)).toBeInTheDocument());
+      expect(within(el).queryByRole('button', { name: DONE })).toBeNull();
+      expect(el.className).toMatch(/opacity-/);
+    });
+    And('the card {string} still offers Done', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      expect(within(el).getByRole('button', { name: DONE })).toBeEnabled();
+    });
+  });
+
+  const HINT = 'Swipe sideways for the next list. Hold a card to move it.';
+  Scenario('mw-ev7oyy.14 AC-1: the swipe hint shows until he has swiped once, and then not again', ({ Given, When, Then, And }) => {
+    Given(SAME_GIVEN, aList);
+    And('a second list {string} holding one open card', secondList);
+    When('the To do tab opens', tabOpens);
+    Then('the board hints {string}', async (_c, words: string) => {
+      expect(words).toBe(HINT);
+      expect(await screen.findByText(HINT)).toBeInTheDocument();
+    });
+    When('he swipes the lists sideways', async () => {
+      const lists = await screen.findByTestId('todo-lists');
+      await act(async () => {
+        lists.scrollLeft = 300;
+        fireEvent.scroll(lists);
+      });
+    });
+    Then('the board shows no swipe hint', async () => {
+      await waitFor(() => expect(screen.queryByText(HINT)).toBeNull());
+    });
+    When('the To do tab is opened again', async () => {
+      cleanup();
+      render(
+        <Shell route={{ view: 'todo' }}>
+          <TodoScreen />
+        </Shell>,
+      );
+      await screen.findByTestId('todo-lists');
+    });
+    Then('the board still shows no swipe hint', async () => {
+      await screen.findByTestId('todo-lists');
+      expect(screen.queryByText(HINT)).toBeNull();
+    });
   });
 });

@@ -5,7 +5,8 @@
 // until the view drops it. A card is dragged (held, on a phone) to reorder it or move it to another
 // list; each list ends in 'Add a card'. A card with a due time shows it on its face (red once past), its back sets or
 // clears it with a date-time input, and a list's menu sorts its cards by due (mw-ev7oyy.9). Every change shows at once, marked pending, until the view agrees
-// (mw-ev7oyy.7). A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
+// (mw-ev7oyy.7). A card is one compact row (mw-ev7oyy.14): a small round check at its left for Done, the title, then its due
+// time and chips; a list's header is its short name. A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
 // link and nothing else (mw-ev7oyy.12; links.ts says what each is). Draws only what a TodoStore gives it.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Button, Chip, EmptyState, Icon, IconButton, Spinner, cx } from '../ui';
@@ -30,6 +31,25 @@ interface Place {
   sorted: boolean;
 }
 
+/** Where it is kept (localStorage) that he has swiped across the lists once: the hint for it then goes (mw-ev7oyy.14). */
+const SWIPED_KEY = 'postern.todo.swiped';
+
+function hasSwiped(): boolean {
+  try {
+    return localStorage.getItem(SWIPED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function keepSwiped(): void {
+  try {
+    localStorage.setItem(SWIPED_KEY, '1');
+  } catch {
+    // a phone that will not keep it shows the hint again, no harm
+  }
+}
+
 /** How often a due time is read against the clock again, to turn red the minute it passes. */
 const DUE_LOOK_MS = 30_000;
 
@@ -47,7 +67,7 @@ function DueLine({ due }: { due: string }) {
   const now = useNow(DUE_LOOK_MS);
   const past = isPastDue(due, now);
   return (
-    <p data-testid="due" data-past={past} className={cx('mt-1 flex items-center gap-1 text-[13px]', past ? 'font-medium text-danger' : 'text-muted')}>
+    <p data-testid="due" data-past={past} className={cx('mt-0.5 flex items-center gap-1 text-[12.5px]', past ? 'font-medium text-danger' : 'text-muted')}>
       <Icon name="clock" size={13} />
       {past && <span className="sr-only">Past due: </span>}
       {formatDue(due, now)}
@@ -95,7 +115,7 @@ function DueField({ card, onSet }: { card: TodoCard; onSet: (due: string) => voi
 function LinkChips({ links }: { links: OpenLink[] }) {
   if (links.length === 0) return null;
   return (
-    <div data-nodrag data-testid="card-links" className="mt-1.5 flex flex-wrap gap-1.5">
+    <div data-nodrag data-testid="card-links" className="mt-1 flex flex-wrap gap-1.5">
       {links.map((link, at) => (
         <a
           key={`${at}|${link.url}`}
@@ -121,6 +141,7 @@ function CardLinks({ store, card }: { store: TodoStore; card: TodoCard }) {
   return card.summaryCut ? <FullNotesChips store={store} card={card} /> : <LinkChips links={card.links ?? []} />;
 }
 
+/** The back's Done: a labelled button, as it was before the card's front became one row. */
 function DoneControl({ state: { waiting, note, done } }: { state: TodoDone }) {
   if (note) return <div className="mt-2">{note}</div>;
   if (waiting) {
@@ -137,6 +158,39 @@ function DoneControl({ state: { waiting, note, done } }: { state: TodoDone }) {
         Done
       </Button>
     </div>
+  );
+}
+
+/** The card's front Done: a 24 px round check at the row's left, named 'Done: <title>' for a screen reader (its tap area is wider than it looks).
+ * Waiting, it is a spinning ring and the row says why; when the tap came to grief it is a dead ring and the note says what to do. */
+function DoneCheck({ title, state: { waiting, note, done } }: { title: string; state: TodoDone }) {
+  if (waiting || note) {
+    return (
+      <span aria-hidden data-testid="done-check-dead" className={cx('mt-px flex size-6 shrink-0 items-center justify-center', note ? 'text-danger' : 'text-muted')}>
+        {waiting ? <Spinner size={24} /> : <span className="size-6 rounded-full border-2 border-current opacity-50" />}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-label={`Done: ${title}`}
+      onClick={done}
+      className="group relative mt-px flex size-6 shrink-0 items-center justify-center rounded-full border-2 border-muted text-transparent transition-colors before:absolute before:-inset-2.5 before:content-[''] hover:border-accent hover:text-accent focus-visible:border-accent focus-visible:text-accent"
+    >
+      <Icon name="check" size={14} />
+    </button>
+  );
+}
+
+/** What stands under a row once Done has been tapped: the words that it waits, or the note that it did not go. */
+function DoneStatus({ state: { waiting, note } }: { state: TodoDone }) {
+  if (note) return <div className="mt-1">{note}</div>;
+  if (!waiting) return null;
+  return (
+    <p role="status" className="mt-1 text-[12.5px] text-muted">
+      Done, waiting for the Mayor
+    </p>
   );
 }
 
@@ -216,7 +270,7 @@ function MoveControls({ store, card, place }: { store: TodoStore; card: TodoCard
             <option value="">a list…</option>
             {others.map((other) => (
               <option key={other.id} value={other.id}>
-                {other.title}
+                {other.name}
               </option>
             ))}
           </select>
@@ -330,7 +384,7 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
         if (wasDragged()) event.stopPropagation();
       }}
       onContextMenu={over ? undefined : (event) => event.preventDefault()}
-      className={cx('relative rounded-xl border border-line bg-surface p-3', !over && 'select-none', state.waiting && !over && 'opacity-60', held && 'opacity-40')}
+      className={cx('relative rounded-xl border border-line bg-surface px-3 py-2.5', !over && 'select-none', state.waiting && !over && 'opacity-60', held && 'opacity-40')}
     >
       {over ? (
         <CardBack store={store} card={card} place={place} onBack={() => setOver(false)} />
@@ -340,24 +394,28 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
           <PendingMark />
         </p>
       ) : (
-        <>
-          <button
-            type="button"
-            title="Turn the card over"
-            onClick={() => setOver(true)}
-            onKeyDown={onKeyDown}
-            className="flex w-full items-start gap-2 text-left text-[15px] leading-snug font-medium wrap-anywhere"
-          >
-            <span className="min-w-0 flex-1">{card.title}</span>
-            {card.pending && <PendingMark />}
-            <Icon name="forward" size={16} className="mt-0.5 shrink-0 text-faint" />
-          </button>
-          {card.due && <DueLine due={card.due} />}
-          <CardLinks store={store} card={card} />
-          <div data-nodrag>
-            <DoneControl state={state} />
+        <div className="flex items-start gap-2.5">
+          <div data-nodrag className="flex shrink-0">
+            <DoneCheck title={card.title} state={state} />
           </div>
-        </>
+          <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              title="Turn the card over"
+              onClick={() => setOver(true)}
+              onKeyDown={onKeyDown}
+              className="flex w-full items-start gap-2 text-left text-[15px] leading-snug font-medium wrap-anywhere"
+            >
+              <span className="line-clamp-2 min-w-0 flex-1">{card.title}</span>
+              {card.pending && <PendingMark />}
+            </button>
+            {card.due && <DueLine due={card.due} />}
+            <CardLinks store={store} card={card} />
+            <div data-nodrag>
+              <DoneStatus state={state} />
+            </div>
+          </div>
+        </div>
       )}
       {over && <DoneControl state={state} />}
     </li>
@@ -383,7 +441,7 @@ function AddCard({ store, list }: { store: TodoStore; list: TodoList }) {
   };
   return (
     <form
-      aria-label={`Add a card to ${list.title}`}
+      aria-label={`Add a card to ${list.name}`}
       className="flex flex-col gap-2 px-2 pb-3"
       onSubmit={(event) => {
         event.preventDefault();
@@ -405,8 +463,8 @@ function AddCard({ store, list }: { store: TodoStore; list: TodoList }) {
   );
 }
 
-/** A list's menu: today just how its cards are ordered, his own order or by due time. */
-function ListMenu({ sorted, onSort }: { sorted: boolean; onSort: (sorted: boolean) => void }) {
+/** A list's menu: how its cards are ordered, his own order or by due time, and (when the header is cut short) the list's whole title. */
+function ListMenu({ title, name, sorted, onSort }: { title: string; name: string; sorted: boolean; onSort: (sorted: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -426,7 +484,8 @@ function ListMenu({ sorted, onSort }: { sorted: boolean; onSort: (sorted: boolea
     <div ref={box} className="relative shrink-0" data-nodrag>
       <IconButton icon="more" label="List menu" size="sm" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((was) => !was)} />
       {open && (
-        <div role="menu" aria-label="List menu" className="absolute top-full right-0 z-20 mt-1 min-w-44 rounded-xl border border-line bg-surface p-1 shadow-lg">
+        <div role="menu" aria-label="List menu" className="absolute top-full right-0 z-20 mt-1 min-w-44 max-w-[min(18rem,80vw)] rounded-xl border border-line bg-surface p-1 shadow-lg">
+          {title !== name && <p className="px-3 py-2 text-[12.5px] leading-snug text-muted wrap-anywhere">{title}</p>}
           <button
             type="button"
             role="menuitem"
@@ -475,12 +534,12 @@ function Column({
   });
   if (slot !== undefined && slot >= others) rows.push(<li key="drop" aria-hidden data-testid="drop-mark" className="-my-1 h-1 shrink-0 rounded-full bg-accent" />);
   return (
-    <section aria-label={list.title} data-list={list.id} className="flex max-h-full min-h-0 w-full shrink-0 snap-start flex-col rounded-2xl border border-line bg-canvas lg:w-80">
+    <section aria-label={list.name} data-list={list.id} className="flex max-h-full min-h-0 w-full shrink-0 snap-start flex-col rounded-2xl border border-line bg-canvas lg:w-80">
       <header className="flex shrink-0 items-center gap-2 px-3 pt-3 pb-2">
-        <h2 className="min-w-0 flex-1 text-[15px] font-semibold wrap-anywhere">{list.epic ? <a href={beadHref(list.epic)}>{list.title}</a> : list.title}</h2>
+        <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold">{list.epic ? <a href={beadHref(list.epic)}>{list.name}</a> : list.name}</h2>
         {sorted && <span className="text-[11px] text-muted">by due</span>}
         <span className="rounded-full bg-raised px-2 text-[11px] text-muted tabular-nums">{list.cards.length}</span>
-        <ListMenu sorted={sorted} onSort={onSort} />
+        <ListMenu title={list.title} name={list.name} sorted={sorted} onSort={onSort} />
       </header>
       <ul className="scroll-thin flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">{rows}</ul>
       {list.epic && <AddCard store={store} list={list} />}
@@ -493,6 +552,7 @@ export function Board({ store }: { store: TodoStore }) {
   const lists = store.lists;
   const scroller = useRef<HTMLDivElement>(null);
   const [byDue, setByDue] = useState<ReadonlySet<string>>(new Set());
+  const [swiped, setSwiped] = useState(hasSwiped);
   const { drag, startDrag, wasDragged } = useCardDrag(scroller, (card, list, index) => {
     const move = lists && !byDue.has(list) ? moveFor(lists, card, list, index) : undefined;
     if (move) void store.move(card, move);
@@ -514,8 +574,17 @@ export function Board({ store }: { store: TodoStore }) {
           ))}
         </div>
       )}
-      {lists.length > 1 && <p className="shrink-0 px-4 pt-2 text-[12px] text-faint lg:hidden">Swipe sideways for the next list. Hold a card to move it.</p>}
-      <div ref={scroller} className={cx('scroll-thin flex min-h-0 flex-1 snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto p-4', drag && 'snap-none')}>
+      {lists.length > 1 && !swiped && <p className="shrink-0 px-4 pt-2 text-[12px] text-faint lg:hidden">Swipe sideways for the next list. Hold a card to move it.</p>}
+      <div
+        ref={scroller}
+        data-testid="todo-lists"
+        onScroll={(event) => {
+          if (swiped || event.currentTarget.scrollLeft < 1) return;
+          keepSwiped();
+          setSwiped(true);
+        }}
+        className={cx('scroll-thin flex min-h-0 flex-1 snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto p-4', drag && 'snap-none')}
+      >
         {lists.map((list) => (
           <Column
             key={list.id}

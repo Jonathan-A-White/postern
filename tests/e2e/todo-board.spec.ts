@@ -60,8 +60,8 @@ test('To do lists each epic as a column of its open cards; Done queues a close a
   const { release } = await open(page);
 
   const column = page.getByRole('region', { name: 'Governor’s list, this morning' });
-  await expect(column.getByRole('button', { name: 'Take the trash out of the garage' })).toBeVisible();
-  await expect(column.getByRole('button', { name: 'Do the recycling on the back deck' })).toBeVisible();
+  await expect(column.getByRole('button', { name: /^Take the trash out of the garage/ })).toBeVisible();
+  await expect(column.getByRole('button', { name: /^Do the recycling on the back deck/ })).toBeVisible();
   await expect(column.getByText('Already carried out')).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Later this week' })).toBeAttached();
   await expect(page.getByRole('link', { name: 'Governor’s list, this morning' })).toHaveAttribute('href', '?v=bead&id=mw-6ww.114');
@@ -70,12 +70,12 @@ test('To do lists each epic as a column of its open cards; Done queues a close a
   await shot(page, 'todo-board');
 
   const card = column.getByTestId('todo-card').filter({ hasText: 'Take the trash out of the garage' });
-  await card.getByRole('button', { name: 'Done' }).click();
+  await card.getByRole('button', { name: /^Done: / }).click();
   await expect(card.getByText('Done, waiting for the Mayor')).toBeVisible();
-  await expect(card.getByRole('button', { name: 'Done' })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: /^Done: / })).toHaveCount(0);
   await expect(card).toHaveCSS('opacity', '0.6');
   // The other card is untouched.
-  await expect(column.getByTestId('todo-card').filter({ hasText: 'Do the recycling' }).getByRole('button', { name: 'Done' })).toBeEnabled();
+  await expect(column.getByTestId('todo-card').filter({ hasText: 'Do the recycling' }).getByRole('button', { name: /^Done: / })).toBeEnabled();
 
   // The tap is in the outbox as a close for that bead (the send is held back until released).
   const rows = await page.evaluate(
@@ -96,14 +96,14 @@ test('To do lists each epic as a column of its open cards; Done queues a close a
 
 test('a tap on a card shows its back with its description, and Back returns', async ({ page }) => {
   await open(page);
-  await page.getByRole('button', { name: 'Take the trash out of the garage' }).click();
+  await page.getByRole('button', { name: /^Take the trash out of the garage/ }).click();
   const back = page.getByRole('group', { name: 'Back of Take the trash out of the garage' });
   await expect(back.getByText('The bin is by the garage door.')).toBeVisible();
   await expect(back.getByRole('link', { name: 'mw-6ww.114.2' }).first()).toHaveAttribute('href', '?v=bead&id=mw-6ww.114.2');
   await shot(page, 'todo-card-back');
   await back.getByRole('button', { name: 'Back' }).click();
   await expect(page.getByRole('group', { name: /^Back of/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Take the trash out of the garage' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Take the trash out of the garage/ })).toBeVisible();
 });
 
 test('the six tabs fit the width, none cut off or hidden', async ({ page }) => {
@@ -174,7 +174,7 @@ test('add a card, drag it above another, edit its title: the outbox holds the th
   await page.getByLabel('Recovery phrase').fill(mnemonic);
   await page.getByRole('button', { name: 'Unlock' }).click();
   const column = page.getByRole('region', { name: 'Governor’s list, this morning' });
-  await expect(column.getByRole('button', { name: FIRST })).toBeVisible();
+  await expect(column.getByRole('button', { name: new RegExp(`^${FIRST}`) })).toBeVisible();
 
   // 1. Add a card at the list's foot: it shows at once, last, marked pending.
   await column.getByRole('button', { name: 'Add a card' }).click();
@@ -188,14 +188,14 @@ test('add a card, drag it above another, edit its title: the outbox holds the th
   // The host applies it: the card is real once the view has reached the echo.
   applied = true;
   await page.reload();
-  await expect(column.getByRole('button', { name: 'Buy bin bags' })).toBeVisible({ timeout: 30_000 });
+  await expect(column.getByRole('button', { name: /^Buy bin bags/ })).toBeVisible({ timeout: 30_000 });
   await expect(column.getByTestId('todo-card').filter({ hasText: 'Buy bin bags' }).getByTestId('pending-mark')).toHaveCount(0);
 
   // 2. Drag it above the first card (a mouse picks a card up after a few pixels).
-  const grab = column.getByRole('button', { name: 'Buy bin bags' });
+  const grab = column.getByRole('button', { name: /^Buy bin bags/ });
   await grab.scrollIntoViewIfNeeded();
   const from = (await grab.boundingBox())!;
-  const above = (await column.getByRole('button', { name: FIRST }).boundingBox())!;
+  const above = (await column.getByRole('button', { name: new RegExp(`^${FIRST}`) }).boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await page.mouse.down();
   await page.mouse.move(from.x + from.width / 2 + 10, from.y + from.height / 2 - 10, { steps: 3 });
@@ -206,7 +206,7 @@ test('add a card, drag it above another, edit its title: the outbox holds the th
   await expect(column.getByTestId('todo-card').first().getByTestId('pending-mark')).toBeVisible();
 
   // 3. Edit its title on its back.
-  await column.getByRole('button', { name: 'Buy bin bags' }).click();
+  await column.getByRole('button', { name: /^Buy bin bags/ }).click();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Buy bin bags and tape');
   await page.getByRole('button', { name: 'Save' }).click();
@@ -243,7 +243,7 @@ test('mw-ev7oyy.9: a due time set on a card’s back is in the outbox as a todo_
   const pad = (n: number) => String(n).padStart(2, '0');
   const picked = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}T17:00`;
 
-  await page.getByRole('button', { name: 'Take the trash out of the garage' }).click();
+  await page.getByRole('button', { name: /^Take the trash out of the garage/ }).click();
   const back = page.getByRole('group', { name: 'Back of Take the trash out of the garage' });
   await expect(back.getByRole('button', { name: 'Set due' })).toBeDisabled();
   await back.getByLabel('Due', { exact: true }).fill(picked);
@@ -285,7 +285,7 @@ test('mw-ev7oyy.12: a card whose notes carry an Open: line shows its links as ch
   await expect(kindle).toHaveAttribute('href', 'kindle://book?action=open&asin=B0C74TJ712');
   await expect(audible).toHaveAttribute('target', '_blank');
   // under the title, inside the card's width
-  const [title, chip, box] = await Promise.all([card.getByRole('button', { name: 'You Are a Theologian' }).boundingBox(), kindle.boundingBox(), card.boundingBox()]);
+  const [title, chip, box] = await Promise.all([card.getByRole('button', { name: /^You Are a Theologian/ }).boundingBox(), kindle.boundingBox(), card.boundingBox()]);
   expect(chip!.y).toBeGreaterThan(title!.y + title!.height - 1);
   expect(chip!.x + chip!.width).toBeLessThanOrEqual(box!.x + box!.width);
   expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
@@ -301,5 +301,52 @@ test('mw-ev7oyy.12: a card whose notes carry an Open: line shows its links as ch
   await opened.waitForLoadState();
   expect(opened.url()).toBe('https://www.audible.com/pd/B0CC36V9KG');
   await expect(page.getByRole('group', { name: /^Back of/ })).toHaveCount(0);
-  await expect(card.getByRole('button', { name: 'Done' })).toBeEnabled();
+  await expect(card.getByRole('button', { name: /^Done: / })).toBeEnabled();
+});
+
+test('mw-ev7oyy.14: a list with a long epic title has a one-line header and a card is one compact row, so eight of twelve fit the phone', async ({ page }) => {
+  const EPIC = "Governor's Discipleship Institute list (Deep Discipleship, Weeks 4-6): last week's unfinished work and this week's pre-work, due at the next group meeting";
+  const TITLES = [
+    'Instructions',
+    'Discipleship: watch the Week 4 Closing Video (panel discussion), Deep Discipleship Resources | Lifeway',
+    'Discipleship: Christian Formation assignment: "Sovereignty of God and Sabbath" (Appendix p. 268)',
+    'Discipleship: read the Week 5 Formation Lead Reading (pp. 14-17) ahead of the group meeting on Thursday',
+    'Discipleship: Week 5 Christian Formation assignment: "The Sabbath as a Gift" (Appendix p. 271)',
+    'Discipleship: watch the Week 5 Closing Video (panel discussion), Deep Discipleship Resources | Lifeway',
+    'Discipleship: read the Week 6 Formation Lead Reading (pp. 18-22)',
+    'Discipleship: Week 6 Christian Formation assignment (Appendix p. 280)',
+    'Discipleship: watch the Week 6 Closing Video',
+    'Discipleship: write down one question for the group',
+    'Discipleship: bring last week’s unfinished work to the meeting',
+    'Discipleship: confirm the meeting place with the group',
+  ];
+  const cards = TITLES.map((title, at) => bead(`mw-dd.1.${at + 1}`, { parent: 'mw-dd.1', title, labels: ['hitl', 'hitl:todo'], created: new Date(Date.now() - (60 - at) * 60_000).toISOString() }));
+  await open(page, [bead('mw-dd.1', { type: 'epic', title: EPIC, labels: ['hitl'] }), ...cards]);
+
+  const column = page.getByRole('region', { name: "Governor's Discipleship Institute list" });
+  // The header is the short name, on one line (its height is under two lines of its own type), the whole title kept for the menu.
+  const header = column.getByRole('heading', { level: 2 });
+  await expect(header).toHaveText("Governor's Discipleship Institute list");
+  const oneLine = await header.evaluate((el) => el.getBoundingClientRect().height < parseFloat(getComputedStyle(el).fontSize) * 1.8);
+  expect(oneLine).toBe(true);
+  await column.getByRole('button', { name: 'List menu' }).click();
+  await expect(page.getByRole('menu', { name: 'List menu' }).getByText(EPIC)).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // A card is a row with a small round check at its left, named for a screen reader.
+  const first = column.getByTestId('todo-card').first();
+  const check = first.getByRole('button', { name: 'Done: Instructions' });
+  const checkBox = (await check.boundingBox())!;
+  expect(checkBox.width).toBeLessThanOrEqual(28);
+  expect(checkBox.height).toBeLessThanOrEqual(28);
+  expect(Math.abs(checkBox.width - checkBox.height)).toBeLessThan(1);
+  expect(await check.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).not.toBe('0px');
+
+  // At least eight of the twelve cards are wholly in view, in the list's own scroll area and on the screen (a 640 px tall phone shows fewer: five).
+  const area = (await column.locator('ul').first().boundingBox())!;
+  const screen = page.viewportSize()!;
+  const boxes = await Promise.all((await column.getByTestId('todo-card').all()).map((card) => card.boundingBox()));
+  const inView = boxes.filter((box) => box && box.y >= area.y && box.y + box.height <= area.y + area.height && box.y + box.height <= screen.height);
+  expect(inView.length).toBeGreaterThanOrEqual(screen.height >= 800 ? 8 : 5);
+  await shot(page, 'todo-board-compact');
 });

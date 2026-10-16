@@ -1,6 +1,7 @@
 // features/steps/view-throttle.steps.tsx — runs features/view-throttle.feature (mw-7dige5.4): the real
 // live.ts loop, view.ts and events.ts reading a stream this file writes to; only the network (apiFetch,
-// the message sync, /me) is a double, and the clock is fake.
+// the message sync, /me) is a double, and the clock is fake; the view's inflate, the one real-time piece, is held until
+// the clock stops (tests/support/held-inflate.ts).
 import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { PrivateKey, Utils } from '@bsv/sdk';
@@ -11,6 +12,7 @@ import { db } from '../../src/data/db';
 import { sealDocument } from '../../src/services/documents';
 import { refreshNow, startLive, stopLive } from '../../src/services/live';
 import { fixtureView, MAYOR } from '../../tests/support/cockpit-fixture';
+import { holdInflates, settle } from '../../tests/support/held-inflate';
 
 const net = vi.hoisted(() => ({
   stream: undefined as ReadableStreamDefaultController<Uint8Array> | undefined,
@@ -48,15 +50,18 @@ vi.mock('../../src/services/me', async (importOriginal) => ({
   reconcileMayorKey: vi.fn(async () => ({ pinned: net.mayor, offered: undefined })),
 }));
 
+holdInflates(); // the view's inflate takes real time: it comes back only when advance() has stopped the clock (mw-ev7oyy.18)
+
 const GOV = PrivateKey.fromHex('45'.repeat(32));
 const KEY = new Uint8Array(Utils.toArray(GOV.toHex(), 'hex'));
 const encoder = new TextEncoder();
 
-/** Moves the fake clock, and lets IndexedDB (which answers on the real setImmediate) catch up. */
+/** Moves the fake clock once all the work begun has settled, and lets what it set going settle before it returns. */
 async function advance(ms: number): Promise<void> {
   await act(async () => {
+    await settle();
     await vi.advanceTimersByTimeAsync(ms);
-    for (let i = 0; i < 20; i += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+    await settle();
   });
 }
 
@@ -98,6 +103,7 @@ afterAll(() => {
   cleanup();
   stopLive();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 const feature = await loadFeature('features/view-throttle.feature');

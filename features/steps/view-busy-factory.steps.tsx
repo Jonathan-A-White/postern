@@ -3,7 +3,8 @@
 // them on 2026-10-14 (a new bead about every minute, steps closing, a hold, a landing, a story closed, the home's
 // `view` event every 30 s, pushes and a return to the app). Only the network is a double: apiFetch (the stream,
 // GET /api/view), the message sync (which hands back the queued batches, as the real one does once it has
-// decrypted them) and /me; the clock is fake.
+// decrypted them) and /me; the clock is fake, and the view's inflate, the one real-time piece, is held until the clock
+// stops (tests/support/held-inflate.ts).
 import { act } from '@testing-library/react';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { afterAll, expect, vi } from 'vitest';
@@ -13,6 +14,7 @@ import type { EventBatch } from '../../src/model/events';
 import { sealDocument } from '../../src/services/documents';
 import { refreshNow, startLive, stopLive } from '../../src/services/live';
 import { fixtureView, MAYOR } from '../../tests/support/cockpit-fixture';
+import { holdInflates, settle } from '../../tests/support/held-inflate';
 
 const net = vi.hoisted(() => ({
   stream: undefined as ReadableStreamDefaultController<Uint8Array> | undefined,
@@ -61,16 +63,19 @@ vi.mock('../../src/services/me', async (importOriginal) => ({
   reconcileMayorKey: vi.fn(async () => ({ pinned: net.mayor, offered: undefined })),
 }));
 
+holdInflates(); // the view's inflate takes real time: it comes back only when advance() has stopped the clock (mw-ev7oyy.18)
+
 const GOV = PrivateKey.fromHex('45'.repeat(32));
 const KEY = new Uint8Array(Utils.toArray(GOV.toHex(), 'hex'));
 const encoder = new TextEncoder();
 const MINUTE = 60_000;
 
-/** Moves the fake clock, and lets IndexedDB (which answers on the real setImmediate) catch up. */
+/** Moves the fake clock once all the work begun has settled, and lets what it set going settle before it returns. */
 async function advance(ms: number): Promise<void> {
   await act(async () => {
+    await settle();
     await vi.advanceTimersByTimeAsync(ms);
-    for (let i = 0; i < 20; i += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+    await settle();
   });
 }
 
@@ -154,6 +159,7 @@ function wholeFetches(): { why: string | null; at: number }[] {
 afterAll(() => {
   stopLive();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 const feature = await loadFeature('features/view-busy-factory.feature');

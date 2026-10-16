@@ -3,7 +3,7 @@
 // keeps one key's Ideas only answer and a fake backend for GET /api/ideas-only/{key}; Date is frozen
 // (timers stay real).
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Utils } from '@bsv/sdk';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -22,8 +22,6 @@ import { publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { fixtureDetail, fixtureView } from '../../tests/support/cockpit-fixture';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
-
-configure({ asyncUtilTimeout: 5000 });
 
 vi.mock('../../src/services/beads', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/beads')>()),

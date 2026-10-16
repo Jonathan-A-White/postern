@@ -3,7 +3,7 @@
 // Map and status badge; only the backend (apiFetch, the sync's paging, /me, the view fetch),
 // WhatsOnChain (a faked anchor chain) are doubles, and the timers are fake.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
@@ -16,8 +16,6 @@ import { subscribeEvents } from '../../src/services/events';
 import { getLiveState, startLive, stopLive } from '../../src/services/live';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import { fakeAnchorChain, publicKeyOf, recordTransaction, type FakeAnchorChain } from '../../tests/support/chain-record';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const net = vi.hoisted(() => ({ up: false, page: [] as unknown[], viewCalls: 0 }));
 

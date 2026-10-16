@@ -4,8 +4,8 @@ import { SLOW_HOST_MS, waitForRoute } from '../support/wait-for-route';
 describe('waitForRoute (mw-xhtcup.17)', () => {
   afterEach(() => window.history.replaceState(null, '', '/'));
 
-  it('gives a slow host ten seconds, not waitFor\'s default second', () => {
-    expect(SLOW_HOST_MS).toBe(10_000);
+  it('gives a slow host twenty seconds, not waitFor\'s default second', () => {
+    expect(SLOW_HOST_MS).toBe(20_000);
   });
 
   it('resolves once the address bar names the route', async () => {

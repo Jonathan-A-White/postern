@@ -34,7 +34,7 @@ test('close and reopen keeps the scroll and unsent text of each channel, and Bac
   // the long thread, scrolled into the middle
   await page.getByRole('link', { name: 'Channels' }).click();
   await page.getByRole('link', { name: /long thread/i }).first().click();
-  await expect(page.getByText(/^Post 40:/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/^Post 40:/)).toBeVisible({ timeout: 20_000 });
   const scroller = scrollerOf(page.getByTestId('conversation'));
   await scroller.evaluate(
     (box) =>
@@ -64,7 +64,7 @@ test('close and reopen keeps the scroll and unsent text of each channel, and Bac
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Channels' })).toBeVisible();
   await page.goBack();
-  await expect(page.getByText(/Post \d+:/).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Post \d+:/).first()).toBeVisible({ timeout: 20_000 });
   const after = scrollerOf(page.getByTestId('conversation'));
   await expect.poll(() => after.evaluate((box) => box.scrollTop)).toBeGreaterThan(before - 40);
   expect(Math.abs((await after.evaluate((box) => box.scrollTop)) - before)).toBeLessThanOrEqual(40);

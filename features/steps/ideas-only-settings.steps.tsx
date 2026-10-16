@@ -2,7 +2,7 @@
 // (mw-8ifimx.3): the real Me screen against a fake backend that keeps one key's Ideas only
 // setting (GET and PUT /api/ideas-only/{key}) and a Dexie, with Date frozen (timers stay real).
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, within, configure } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Utils } from '@bsv/sdk';
 import { afterAll, expect, vi } from 'vitest';
@@ -15,8 +15,6 @@ import { settingsRepo } from '../../src/data/repositories';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import type { IdeasOnlyKept, IdeasOnlySetting, IdeasOnlyState } from '../../src/model/ideasOnly';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const HIM_KEY = new Uint8Array(Utils.toArray('45'.repeat(32), 'hex'));
 const HIM = publicKeyHexFromMasterKey(HIM_KEY);

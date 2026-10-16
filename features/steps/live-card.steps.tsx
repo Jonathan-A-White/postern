@@ -3,7 +3,7 @@
 // and Needs you, or a thread, shows the one live card; only the backend is a fetch double, and it
 // counts every GET /api/view so a scenario can say nothing was fetched again.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -18,8 +18,6 @@ import { encryptMessage, type MessageClass } from '../../src/services/messages';
 import { type View, type ViewBead } from '../../src/model/view';
 import { fixtureView, MAYOR } from '../../tests/support/cockpit-fixture';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const GOV = PrivateKey.fromHex('44'.repeat(32));
 const GOV_PUB = GOV.toPublicKey().toString();

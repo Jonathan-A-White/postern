@@ -1,7 +1,7 @@
 // features/steps/waiting-on-others.steps.tsx — runs features/waiting-on-others.feature (mw-xpy2ds):
 // Needs you's Waiting on others part and the chase need, against a seeded Dexie view, no network.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { act, render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { afterAll, expect, vi } from 'vitest';
@@ -25,8 +25,6 @@ vi.mock('../../src/services/live', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/live')>()),
   deliverOptions: () => ({ key: new Uint8Array(32), mayorKey: '02' + '11'.repeat(32), direct: true }),
 }));
-
-configure({ asyncUtilTimeout: 5000 });
 
 const TITLE = 'Write the permissions memo';
 const BEAD = 'mw-ask.1';

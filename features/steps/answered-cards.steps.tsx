@@ -2,7 +2,7 @@
 // a tapped question card goes dead at once and says what he answered; the bead's page drops
 // a question he has answered; a later question on the same bead is headed by its own words.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -13,8 +13,6 @@ import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import type { Need, ViewBead } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 vi.mock('../../src/cockpit/send', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/cockpit/send')>()),

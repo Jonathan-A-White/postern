@@ -2,7 +2,7 @@
 // a question card answered by words, whichever way they reached the factory (a reply typed in the
 // bead's thread or in Factory, or the ANSWER comment the factory wrote on the bead), goes dead like a tapped one.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { NeedCard } from '../../src/cockpit/NeedCard';
@@ -13,8 +13,6 @@ import { indexView } from '../../src/model/tree';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import type { Need, View } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const BEAD = 'mw-q';
 const ASKED = Date.parse('2026-10-01T12:00:00Z');

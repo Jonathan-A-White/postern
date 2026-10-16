@@ -2,7 +2,7 @@
 // Prompts screen against a stubbed GET /api/prompts and a Dexie, with a stand-in for
 // App's routing so Run and Edit land in the real Talk screen.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, within, configure } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Utils } from '@bsv/sdk';
 import { afterAll, expect, vi } from 'vitest';
@@ -17,8 +17,6 @@ import { db } from '../../src/data/db';
 import { messagesRepo, settingsRepo } from '../../src/data/repositories';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import type { Prompt } from '../../src/services/prompts';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const HIM_KEY = new Uint8Array(Utils.toArray('45'.repeat(32), 'hex'));
 

@@ -3,7 +3,7 @@
 // app (<App />) against a small stubbed backend serving tests/support/cockpit-fixture.ts.
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, expect, vi } from 'vitest';
-import { cleanup, configure, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -14,8 +14,6 @@ import { lock, setKey } from '../../src/services/keySession';
 import { stopLive } from '../../src/services/live';
 import { sealDocument } from '../../src/services/documents';
 import { MAYOR, fixtureRecords, fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const feature = await loadFeature('features/share-where.feature');
 

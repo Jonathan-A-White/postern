@@ -3,7 +3,7 @@
 // synthesis, vibration and wake lock, over a Dexie that holds the Mayor's answers;
 // and the Channels tab and button that lead to it.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, expect, vi, type MockInstance } from 'vitest';
 import type { FakeUtterance as Utterance } from 'bsv-kit/testing/speech';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -30,8 +30,6 @@ import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-wo
 import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { imageSeam } from '../../src/images/shrink';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const clock = vi.hoisted(() => ({ at: 1_000_000 }));
 vi.mock('../../src/services/clock', () => ({ now: () => clock.at }));

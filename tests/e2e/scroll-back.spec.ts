@@ -50,7 +50,7 @@ async function scrollTo(scroller: Locator, fraction: number): Promise<void> {
 async function openLongThread(page: Page): Promise<Locator> {
   await page.getByRole('link', { name: 'Channels' }).click();
   await page.getByRole('link', { name: /long thread/i }).first().click();
-  await expect(page.getByText(/^Post 40:/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/^Post 40:/)).toBeVisible({ timeout: 20_000 });
   return scrollerOf(page.getByTestId('conversation'));
 }
 
@@ -97,5 +97,5 @@ test('the tab bar brings him back to where he scrolled on a screen', async ({ pa
 test('a fresh open from a link still lands on the newest post of the thread', async ({ page }) => {
   await unlocked(page);
   await page.goto('/?v=talk&t=topic%3Along%20thread');
-  await expect(page.getByText(/^Post 40:/)).toBeInViewport({ timeout: 15_000 });
+  await expect(page.getByText(/^Post 40:/)).toBeInViewport({ timeout: 20_000 });
 });

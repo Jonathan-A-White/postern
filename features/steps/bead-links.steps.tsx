@@ -1,7 +1,7 @@
 // features/steps/bead-links.steps.tsx — runs features/bead-links.feature (mw-tbx1n.11):
 // the Talk screen over a seeded Dexie, one message whose text names beads.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, configure, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
@@ -10,8 +10,6 @@ import { db, type MessageRow } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
-
-configure({ asyncUtilTimeout: 5000 });
 
 let now = Date.now();
 let seeded: MessageRow[] = [];
@@ -127,7 +125,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
         const reading = within(conversation).queryByRole('button', { name: 'Stop reading' });
         fireEvent.click(reading ?? within(conversation).getByRole('button', { name: 'Read aloud' }));
         expect(spoken().at(-1)).toContain('A decision card');
-      });
+      }, { timeout: 20_000 }); // vi.waitFor's own default is 1 s
     });
     Then('the phone speaks aloud {string}', (_c, text: string) => {
       expect(spoken().at(-1)).toBe(text);

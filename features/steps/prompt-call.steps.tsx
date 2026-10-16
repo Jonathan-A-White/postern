@@ -2,7 +2,7 @@
 // the real Composer against a stubbed GET /api/prompts; sendToThread is a spy, so what the
 // scenario checks is the text the composer hands it.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, within, configure, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Utils } from '@bsv/sdk';
 import { afterAll, expect, vi } from 'vitest';
@@ -12,8 +12,6 @@ import { setKey, lock } from '../../src/services/keySession';
 import { db } from '../../src/data/db';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import type { Prompt } from '../../src/services/prompts';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const sent = vi.hoisted(() => ({ texts: [] as string[] }));
 

@@ -1,7 +1,7 @@
 // features/steps/verified-under-how-to.steps.tsx — runs features/verified-under-how-to.feature (mw-581qad.2):
 // the story's channel shows the Verified button under the newest post carrying HOW TO CHECK IT.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, within, fireEvent, act, configure } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within, fireEvent, act } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
@@ -12,8 +12,6 @@ import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { deliverThreaded } from '../../src/services/deliver';
 import { fixtureDetail, fixtureView } from '../../tests/support/cockpit-fixture';
 import type { BeadComment } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 vi.mock('../../src/services/beads', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/beads')>()),

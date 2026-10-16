@@ -3,7 +3,7 @@
 // with the real sync paging a sealed emergency record. Only the backend is a fetch double.
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, expect, vi } from 'vitest';
-import { cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { App } from '../../src/App';
@@ -18,8 +18,6 @@ import { subscribeEvents, syncMessagesAndEvents } from '../../src/services/event
 import { encryptMessage } from '../../src/services/messages';
 import { fixtureView, MAYOR } from '../../tests/support/cockpit-fixture';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const GOV = PrivateKey.fromHex('45'.repeat(32));
 const GOV_PUB = GOV.toPublicKey().toString();

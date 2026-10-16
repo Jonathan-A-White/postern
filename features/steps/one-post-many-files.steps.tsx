@@ -2,7 +2,7 @@
 // (mw-909ci.3): the real sendToThread, plaintext codec, Conversation and Talk
 // list; the upload, the delivery and the blob download are doubles.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, render, screen, waitFor, within, configure } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Conversation } from '../../src/cockpit/Conversation';
@@ -15,8 +15,6 @@ import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState, kickOutbox, settledOutbox } from '../../src/services/outbox';
 import { decodeThreadedMessage, encodeThreadedMessage, type ThreadedBody } from '../../src/services/threads';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const doubles = vi.hoisted(() => ({
   delivered: [] as { message: unknown }[],

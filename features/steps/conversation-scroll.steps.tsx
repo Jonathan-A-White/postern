@@ -4,13 +4,11 @@
 // layout, so the box's scrollHeight/clientHeight/scrollTop are faked: scrollTop clamps to the
 // content that is there, as a browser's does.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, act, configure, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Conversation } from '../../src/cockpit/Conversation';
 import type { ConversationItem } from '../../src/model/conversation';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const VIEW = 100;
 const ROW = 80;

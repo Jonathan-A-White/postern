@@ -2,7 +2,7 @@
 // the Shell around a bead's page and a thread, against a seeded Dexie view, with
 // window.matchMedia answering as a 390 px phone or a wide screen.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
@@ -11,8 +11,6 @@ import { Shell } from '../../src/cockpit/Shell';
 import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const BEAD = 'mw-f758y.30.4';
 

@@ -3,7 +3,7 @@
 // records (docs/protocol.md §22) including an emergency-lane one, and only the backend as a
 // fetch double.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, fireEvent, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey, Utils } from '@bsv/sdk';
@@ -17,8 +17,6 @@ import { subscribeEvents, syncMessagesAndEvents } from '../../src/services/event
 import { encryptMessage } from '../../src/services/messages';
 import { fixtureView, MAYOR } from '../../tests/support/cockpit-fixture';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const GOV = PrivateKey.fromHex('44'.repeat(32));
 const GOV_PUB = GOV.toPublicKey().toString();

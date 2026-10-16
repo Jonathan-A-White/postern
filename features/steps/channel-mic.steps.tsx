@@ -4,7 +4,7 @@
 // behave like Android Chrome's. Nothing of the hold is doubled: the speech recogniser, the voice recorder and
 // the microphone are the package's own. Only the delivery is a double.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
@@ -18,8 +18,6 @@ import { forgetSilentInputs } from 'bsv-kit/composer';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import type { Attachment } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
-
-configure({ asyncUtilTimeout: 8000 });
 
 const doubles = vi.hoisted(() => ({
   delivered: [] as { text: string; attachments?: Attachment[]; attachment?: Attachment }[],
@@ -104,7 +102,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       fireEvent.pointerDown(await screen.findByRole('button', { name: 'Hold to talk' }));
       await screen.findByRole('button', { name: 'Release to send' });
       // the clip plays in real time: the recogniser shows each word as it ends, the last one at the clip's end
-      await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(mic!.clip.transcript), { timeout: 8000 });
+      await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(mic!.clip.transcript));
     });
     Then('the live transcript reads {string}', (_c, words: string) => {
       expect(screen.getByTestId('live-transcript')).toHaveTextContent(words);

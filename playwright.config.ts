@@ -27,6 +27,8 @@ const browserEnv = existsSync(extraLibDir)
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60_000,
+  // expect()'s own wait is 5 s unless told: a loaded host outruns that (mw-40qzg4.1).
+  expect: { timeout: 20_000 },
   fullyParallel: false,
   reporter: 'list',
   use: {

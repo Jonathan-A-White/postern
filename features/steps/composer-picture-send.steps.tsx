@@ -2,7 +2,7 @@
 // (mw-jtzpw0.10): the real Composer, sendToThread, outbox and uploadAttachment (against a stubbed
 // fetch); the microphone and the delivery are doubles.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
@@ -15,8 +15,6 @@ import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import type { Attachment } from '../../src/services/threads';
 import { imageSeam } from '../../src/images/shrink';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const doubles = vi.hoisted(() => ({
   delivered: [] as { text: string; attachments?: Attachment[]; attachment?: Attachment }[],

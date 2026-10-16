@@ -2,7 +2,7 @@
 // the router's navigate plus what App's effect does with the new address (saveLastRoute); "closed and
 // opened again" is src/main.tsx's start-up (restoreLastRoute, restoreScrolls) on a fresh history entry.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, act, configure } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
@@ -13,8 +13,6 @@ import { formatRoute, parseRoute } from '../../src/nav/route';
 import { navigate, useScreenSearch } from '../../src/router';
 import { setKey, lock } from '../../src/services/keySession';
 import { fetchBeadDetail } from '../../src/services/beads';
-
-configure({ asyncUtilTimeout: 5000 });
 
 vi.mock('../../src/services/beads', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/beads')>()),

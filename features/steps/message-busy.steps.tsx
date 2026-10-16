@@ -2,7 +2,7 @@
 // direct delivery goes out as a transaction through /api/broadcast. The real outbox, deliver and send run; only the
 // network is doubled, and the broadcast answers what the backend would when WhatsOnChain is busy or refuses.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Transaction, PrivateKey } from '@bsv/sdk';
 import { afterAll, expect, vi } from 'vitest';
@@ -12,8 +12,6 @@ import { db } from '../../src/data/db';
 import { forgetOutboxState, settledOutbox, startOutbox } from '../../src/services/outbox';
 import { settledWrites } from '../../src/services/deliver';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const KEY = new Uint8Array(Array.from({ length: 32 }, () => 0x45));
 const MAYOR = PrivateKey.fromHex('77'.repeat(32)).toPublicKey().toString();

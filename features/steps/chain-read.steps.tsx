@@ -3,7 +3,7 @@
 // (apiFetch, the syncs, /me), WhatsOnChain (a faked anchor chain) and the browser's notification
 // and vibration are doubles, and the timers are fake.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
@@ -15,8 +15,6 @@ import { CHAIN_POLL_MS } from '../../src/services/chainRead';
 import { getLiveState, startLive, stopLive } from '../../src/services/live';
 import { dismissIncomingRing } from '../../src/services/ringIn';
 import { fakeAnchorChain, publicKeyOf, recordTransaction, type FakeAnchorChain } from '../../tests/support/chain-record';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const net = vi.hoisted(() => ({ eventsUp: false, attempts: 0 }));
 

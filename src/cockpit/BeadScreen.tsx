@@ -23,7 +23,7 @@ import { StaleChoice } from './StaleChoice';
 import { VerifiedButton } from './VerifiedButton';
 import { chain as chainDoor } from '../chain';
 import { howToCheckItemId } from '../model/verified';
-import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, epicStats, isEpic, type ViewIndex } from '../model/tree';
+import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, isEpic, isIced, releasableHeld, type ViewIndex } from '../model/tree';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { groupPosts } from '../model/postThreads';
 import { detailAsOf } from '../model/events';
@@ -95,8 +95,10 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
   const epic = bead && index ? isEpic(bead, index) : detail?.type === 'epic';
   const release = useOneTap(id, 'release');
   const hold = useOneTap(id, 'hold');
+  const thaw = useOneTap(id, 'thaw');
+  const iced = isIced({ labels: detail?.labels ?? bead?.labels ?? [] });
   // An epic's Release is the Map's Release N held, offered only while a story under it is held, whatever the epic's own status.
-  const held = bead && index && epic ? epicStats(id, index).counts.held : 0;
+  const held = bead && index && epic ? releasableHeld(id, index) : 0;
   // Release un-holds a bead for dispatch, which needs a rig and a target branch: no path, no Release.
   const canRelease = hasDispatchPath(detail?.path ?? bead?.path);
   const hasStories = (detail?.children.length ?? 0) > 0 || (index?.children.get(id)?.length ?? 0) > 0;
@@ -104,7 +106,17 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
   const stale = index?.needsByBead.get(id)?.some((need) => need.kind === 'stale');
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Actions">
+      {iced &&
+        status !== 'closed' &&
+        (thaw.waiting ? (
+          <WaitingNote />
+        ) : (
+          <Button size="sm" variant="primary" icon="release" busy={busy} onClick={() => void thaw.tap(() => sendAction({ action: 'thaw', bead: id }), `Thawed ${id}`)}>
+            Thaw
+          </Button>
+        ))}
       {!epic &&
+        !iced &&
         status === 'deferred' &&
         canRelease &&
         (release.waiting ? (
@@ -184,6 +196,8 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
   const children = detail?.children.length ? detail.children : (index?.children.get(id)?.map((b) => b.id) ?? []);
   const description = detail?.description ?? bead?.summary ?? '';
   const priority = detail?.priority ?? bead?.priority ?? 2;
+  const labels = detail?.labels ?? bead?.labels ?? [];
+  const iced = isIced({ labels });
 
   return (
     <div className="flex flex-col gap-5">
@@ -208,9 +222,9 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
         <div className="flex flex-wrap items-center gap-1.5">
           <Chip mono>{id}</Chip>
           <Chip icon={typeIcon(type)}>{type}</Chip>
-          {bucket ? <Chip tone={BUCKET_TONE[bucket]}>{BUCKET_LABEL[bucket]}</Chip> : <Chip>{statusWord(detail?.status ?? '')}</Chip>}
+          {iced ? <Chip tone="held">{statusWord(detail?.status ?? '', labels)}</Chip> : bucket ? <Chip tone={BUCKET_TONE[bucket]}>{BUCKET_LABEL[bucket]}</Chip> : <Chip>{statusWord(detail?.status ?? '', labels)}</Chip>}
           <Chip tone={priorityTone(priority)}>{priorityLabel(priority)}</Chip>
-          {(detail?.labels ?? bead?.labels ?? []).map((label) => (
+          {labels.map((label) => (
             <Chip key={label}>{label}</Chip>
           ))}
         </div>

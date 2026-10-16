@@ -1,8 +1,8 @@
-// src/cockpit/WhatsNew.tsx — Postern's What's new (mw-s061bg.3), on bsv-kit's packages/whats-new:
+// src/cockpit/WhatsNew.tsx — Postern's What's new (mw-s061bg.3), on pwa-kit's packages/whats-new:
 // the sheet shown once after an update, and the link to CHANGELOG.md on GitHub beside the version.
 // There is no Check for updates button and no list of versions in the app: the check runs by itself
 // (appUpdate.ts). The banner's summary is in UpdateBanner.tsx.
-import { WhatsNewSheet, useChangelog } from 'bsv-kit/whats-new';
+import { WhatsNewSheet, useChangelog } from 'pwa-kit/whats-new';
 import { Card, SectionTitle } from '../ui';
 import { APP_VERSION, CHANGELOG_URL, WHATS_NEW_STORAGE_KEY } from '../services/whatsNew';
 import { describeBuild } from '../services/buildLine';

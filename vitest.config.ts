@@ -44,7 +44,7 @@ export default defineConfig({
     expect: { poll: { timeout: 20_000 } },
     // voice-kit/composer is run through vite, not loaded by node on its own, so a test can vi.mock one of
     // its inner modules (the voice recorder) and the package's own hold sees the double (mw-jtzpw0.2).
-    server: { deps: { inline: ['voice-kit', 'bsv-kit'] } },
+    server: { deps: { inline: ['voice-kit', 'pwa-kit', 'bsv-kit'] } },
     projects: [
       { extends: true, test: { name: 'main', include: MAIN_INCLUDE, exclude: BUILD_FILES } },
       // The files that run a real vite build (~2 GB each: pwa-precache builds in its own worker, the

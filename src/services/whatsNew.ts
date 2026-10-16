@@ -1,4 +1,4 @@
-// src/services/whatsNew.ts — what Postern says about its releases (mw-s061bg.3), the facts bsv-kit's
+// src/services/whatsNew.ts — what Postern says about its releases (mw-s061bg.3), the facts pwa-kit's
 // whats-new package is given: the version this build is, where the last one seen is kept, and the
 // CHANGELOG.md on GitHub that What's new on GitHub links to.
 import { describeBuild } from './buildLine';

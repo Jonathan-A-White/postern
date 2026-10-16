@@ -6,6 +6,7 @@
 // another and its title edited: the outbox holds the three §13 actions with their shapes and the board shows the new order.
 // Shots: todo-board.png, todo-card-back.png, todo-board-hand-edits.png.
 // mw-ev7oyy.12: a card whose notes carry an 'Open:' line shows a chip per link under its title (todo-card-links.png).
+// mw-ev7oyy.17: a card with an Open: line per book names each chip by its book, at 360 px every chip inside the card (todo-card-links-books.png).
 // mw-ev7oyy.15: a list with one important card, one due tomorrow and one overdue shows them overdue, due, important, then the rest (todo-board-float.png).
 // mw-ev7oyy.16: a list of twelve cards is folded to Today plus two counts, and what he opens stays open across a reload (todo-board-groups.png).
 // The other tests open every group first (groupsOpen), the cards being undated and so in Someday, folded.
@@ -16,7 +17,7 @@ import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { encryptMessage } from '../../src/services/messages';
 import { sealDocument } from '../../src/services/documents';
 import { seedVault, stubBackend } from './cockpit-stub';
-import { shot } from './shot';
+import { shot, sized } from './shot';
 import { MAYOR, fixtureView } from '../support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
 
@@ -345,6 +346,32 @@ test('mw-ev7oyy.12: a card whose notes carry an Open: line shows its links as ch
   expect(opened.url()).toBe('https://www.audible.com/pd/B0CC36V9KG');
   await expect(page.getByRole('group', { name: /^Back of/ })).toHaveCount(0);
   await expect(card.getByRole('button', { name: /^Done: / })).toBeEnabled();
+});
+
+test.describe('mw-ev7oyy.17 at 360 px', () => {
+  test.use({ viewport: sized({ width: 360, height: 640 }) });
+
+  test('mw-ev7oyy.17: a card with an Open: line per book names each chip by its book, every chip inside the card', async ({ page }) => {
+    const summary = 'Open: Deep Discipleship [Kindle](kindle://book?action=open&asin=B0C74TJ712) · [Audible](https://audible.com/pd/B0CC36V9KG)\nOpen: You Are a Theologian, Invited [Kindle](kindle://book?action=open&asin=B07ZJZ1X3K) [Audible](https://audible.com/pd/B07ZJYQWXR)';
+    expect([...summary].length).toBeLessThan(260);
+    await open(
+      page,
+      BEADS.map((b) => (b.id === 'mw-6ww.114.2' ? { ...b, title: 'Week 5 reading', summary } : b)),
+    );
+    const card = page.getByTestId('todo-card').filter({ hasText: 'Week 5 reading' });
+    const chips = card.getByTestId('card-links').locator('a[data-kind="kindle"], a[data-kind="audible"]');
+    await expect(chips).toHaveText(['Kindle · Deep Discipleship', 'Audible · Deep Discipleship', 'Kindle · You Are a Theologian, Invited', 'Audible · You Are a Theologian, Invited']);
+    await expect(card.getByRole('link', { name: 'Open You Are a Theologian, Invited in Audible' })).toHaveAttribute('href', 'https://audible.com/pd/B07ZJYQWXR');
+    const box = (await card.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    for (const chip of await chips.all()) {
+      const edge = (await chip.boundingBox())!;
+      expect(edge.width).toBeLessThanOrEqual(box.width);
+      expect(edge.x).toBeGreaterThanOrEqual(box.x);
+      expect(edge.x + edge.width).toBeLessThanOrEqual(box.x + box.width);
+    }
+    await shot(page, 'todo-card-links-books');
+  });
 });
 
 test('mw-ev7oyy.14: a list with a long epic title has a one-line header and a card is one compact row, so eight of twelve fit the phone', async ({ page }) => {

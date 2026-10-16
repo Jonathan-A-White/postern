@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.35
+_2026-10-16_
+- New: A to-do can now have a Listen in Audible button that opens an audiobook, or a chapter of one, in the Audible app.
+
 ## 0.6.33
 _2026-10-16_
 - Fixed: on your Android phone the Text button on a to-do now opens Google Voice with the message typed, not the phone's own Messages app.

@@ -134,6 +134,14 @@ function FactoryLevel({ index, filter, setFilter }: { index: ViewIndex; filter: 
     <div className="flex flex-col gap-5">
       <FactoryPulse index={index} />
       <OpenLists index={index} />
+      <a
+        href={formatRoute({ view: 'roadmap' })}
+        className="flex h-11 w-full items-center gap-2.5 rounded-2xl border border-line bg-surface px-4 text-[14.5px] font-semibold text-muted hover:bg-raised"
+      >
+        <Icon name="map" size={16} />
+        <span className="flex-1">Roadmap</span>
+        <Icon name="forward" size={15} />
+      </a>
       <FilterBar filter={filter} onChange={setFilter} rigs={rigs} hosts={hosts} />
       {!isEmptyFilter(filter) ? (
         <section className="flex flex-col gap-2" aria-label="Matching work">

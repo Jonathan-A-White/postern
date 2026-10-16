@@ -3,7 +3,7 @@
 // Beneath it, once the waiting build's changelog is read, its version and what is in it, with a
 // What's new button that opens the lines (mw-s061bg.3); no changelog, no line.
 import { useState } from 'react';
-import { UpdateSummary, WhatsNewSheet, useChangelog } from 'bsv-kit/whats-new';
+import { UpdateSummary, WhatsNewSheet, useChangelog } from 'pwa-kit/whats-new';
 import { Icon } from '../ui';
 import { applyUpdate, useUpdateState } from '../services/appUpdate';
 import { APP_VERSION, WHATS_NEW_STORAGE_KEY } from '../services/whatsNew';

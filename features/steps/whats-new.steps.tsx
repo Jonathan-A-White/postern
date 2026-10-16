@@ -1,5 +1,5 @@
 // features/steps/whats-new.steps.tsx — runs features/whats-new.feature (mw-s061bg.3): the real banner, the
-// one-time sheet, the About and Me screens on bsv-kit's whats-new package, reading a fixture changelog.json.
+// one-time sheet, the About and Me screens on pwa-kit's whats-new package, reading a fixture changelog.json.
 import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';

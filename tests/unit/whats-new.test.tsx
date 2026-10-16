@@ -1,8 +1,8 @@
-// tests/unit/whats-new.test.tsx — mw-s061bg.3: What's new comes from bsv-kit's packages/whats-new, pinned at a commit
+// tests/unit/whats-new.test.tsx — mw-s061bg.3: What's new comes from pwa-kit's packages/whats-new, pinned at a commit
 // that holds it; the version Postern passes it is the package version; the link follows the repo's visibility.
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { summarise } from 'bsv-kit/whats-new';
+import { summarise } from 'pwa-kit/whats-new';
 import { MeScreen } from '../../src/cockpit/MeScreen';
 import { APP_VERSION, CHANGELOG_URL, REPO } from '../../src/services/whatsNew';
 import { changelogFixture, stubChangelog, WAITING_VERSION } from '../support/changelog-fixture';

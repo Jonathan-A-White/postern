@@ -20,7 +20,9 @@
 // direct road come back by themselves (mw-gq6.276). The events found
 // on the chain while the backend is out of reach go through the same projector (a
 // batch seen on both roads applies once, by seq); a gap on that road is tolerated
-// until the backend returns and the view is fetched.
+// until the backend returns and the view is fetched. No sync holds the line for good: one that has not finished in
+// SYNC_LIMIT_MS, that was under way when the page was hidden and the app comes back, or whose session has ended, is cut
+// off and the next goes on (mw-q6n8m0.15).
 import { useSyncExternalStore } from 'react';
 import { apiFetch } from './apiAuth';
 import { chain } from '../chain';
@@ -65,6 +67,12 @@ const STREAM_STALE_MS = 60_000;
 const STALE_CHECK_MS = 5_000;
 /** Two returns to the foreground closer than this are one. */
 const FOREGROUND_DEBOUNCE_MS = 3_000;
+/** The longest one sync may hold the queue (twice apiFetch's API_TIMEOUT_MS). Each request in it is bounded by apiFetch,
+ * but a storage read, a decrypt or an unzip is not, and Android can stall one for good when it freezes the page: past
+ * this the sync is cut off. */
+export const SYNC_LIMIT_MS = 60_000;
+/** What the line says when a sync was cut off. */
+const SYNC_CUT_OFF = 'A sync did not finish in time.';
 
 let state: LiveState = { status: 'idle', me: null, reconnects: 0, syncs: 0 };
 const listeners = new Set<() => void>();
@@ -76,6 +84,8 @@ let lastProjected = 0;
 let viewFresh = false;
 /** How many streams have said hello this session. */
 let hellos = 0;
+/** When the page was last hidden (ms), 0 before it was this session. */
+let hiddenAt = 0;
 
 function setState(patch: Partial<LiveState>): void {
   state = { ...state, ...patch };
@@ -180,11 +190,45 @@ export function noteBackendUnreachable(): void {
   current.interrupt?.abort();
 }
 
-let syncing: Promise<void> = Promise.resolve();
+let syncing: Promise<unknown> = Promise.resolve();
+/** Settles like `work`, or rejects once SYNC_LIMIT_MS have passed: for a storage read outside the queue. */
+function withinSyncLimit<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(SYNC_CUT_OFF)), SYNC_LIMIT_MS);
+  });
+  return Promise.race([work, expired]).finally(() => clearTimeout(timer));
+}
 
-function queue(task: () => Promise<void>): Promise<void> {
-  syncing = syncing.then(task, task);
-  return syncing;
+/** The sync holding the queue: when it began, and how to cut it off. */
+let running: { began: number; cut: AbortController } | null = null;
+
+/** Runs `task` once every task queued before it has finished or been cut off. A task is cut off after SYNC_LIMIT_MS,
+ * or sooner by cutStaleSync or stopLive: its signal aborts and the queue goes on without waiting for it, so one that
+ * never settles cannot hold back every sync after it (mw-q6n8m0.15). Resolves false when it was cut off. */
+function queue(task: (signal: AbortSignal) => Promise<void>): Promise<boolean> {
+  const turn = async (): Promise<boolean> => {
+    const cut = new AbortController();
+    const entry = { began: Date.now(), cut };
+    running = entry;
+    const timer = setTimeout(() => cut.abort(), SYNC_LIMIT_MS);
+    const cutOff = new Promise<boolean>((resolve) => cut.signal.addEventListener('abort', () => resolve(false), { once: true }));
+    try {
+      return await Promise.race([task(cut.signal).then(() => true, () => true), cutOff]);
+    } finally {
+      clearTimeout(timer);
+      if (running === entry) running = null;
+    }
+  };
+  const turned = syncing.then(turn, turn);
+  syncing = turned;
+  return turned;
+}
+
+/** The app is back on screen: a sync that was under way when the page was hidden may have been frozen for good
+ * mid-step (Android stalls storage and sockets in a frozen page), and the return's own sync brings all it would. */
+function cutStaleSync(): void {
+  if (running && running.began <= hiddenAt) running.cut.abort();
 }
 
 /** Whether the factory's events flow to this phone, so the stored view is kept by them and the whole view need not be fetched again. */
@@ -201,13 +245,14 @@ function syncMessagesKeepingView(key: Uint8Array): Promise<boolean> {
 
 /** Resolves true when every part of the sync succeeded. `view` says why the view is wanted, when it is. */
 async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: ViewWhy; force?: boolean }): Promise<boolean> {
+  const session = current;
   let ok = false;
-  await queue(async () => {
+  const finished = await queue(async (signal) => {
     const errors: string[] = [];
     let viewFetched = false;
     if (what.messages) {
       try {
-        const synced = await syncMessagesAndEvents({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key, mayorKey: state.mayorKey, live: hasFeature('view'), forceView: what.force });
+        const synced = await syncMessagesAndEvents({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key, mayorKey: state.mayorKey, live: hasFeature('view'), forceView: what.force, signal });
         if (synced.applied > 0) lastProjected = Date.now();
         viewFetched = synced.refetched;
         if (viewFetched) viewFresh = true;
@@ -222,11 +267,13 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: ViewW
         errors.push(err instanceof Error ? err.message : String(err));
       }
     }
+    if (signal.aborted) return; // cut off: the queue has gone on, and said so
     ok = errors.length === 0;
     const syncs = what.messages ? state.syncs + 1 : state.syncs;
     if (ok) setState({ lastHeard: Date.now(), error: undefined, syncs });
     else setState({ error: errors.join('; '), syncs });
   });
+  if (!finished && current === session) setState({ error: SYNC_CUT_OFF, syncs: what.messages ? state.syncs + 1 : state.syncs });
   return ok;
 }
 
@@ -258,7 +305,7 @@ async function onHello(key: Uint8Array, data: string): Promise<void> {
     await syncMessagesKeepingView(key);
     return;
   }
-  const held = (await viewRepo.get())?.etag;
+  const held = (await withinSyncLimit(viewRepo.get()).catch(() => undefined))?.etag;
   if (held === etag) viewFresh = true;
   await syncAll(key, { messages: true, view: held === etag ? undefined : reconnect ? 'reconnect' : 'hello' });
 }
@@ -368,7 +415,18 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
       setState({ status: 'offline', error: err instanceof Error ? err.message : String(err) });
     }
     if (signal.aborted) return false;
-    const keys = await reconcileMayorKey(me.mayor);
+    let keys: Awaited<ReturnType<typeof reconcileMayorKey>>;
+    try {
+      keys = await withinSyncLimit(reconcileMayorKey(me.mayor));
+    } catch {
+      if (signal.aborted) return false;
+      // The pinned key could not be read: asked again on the next turn of the loop, as an unanswered /api/me is.
+      known = false;
+      me = LEGACY;
+      setState({ status: 'offline', error: SYNC_CUT_OFF });
+      return true;
+    }
+    if (signal.aborted) return false;
     setState({ me, mayorKey: keys.pinned, offeredMayorKey: keys.offered });
     return true;
   };
@@ -433,6 +491,8 @@ export function startLive(key: Uint8Array): void {
 export function stopLive(): void {
   current?.abort.abort();
   current = null;
+  running?.cut.abort(); // the ended session's sync must not hold back the next session's
+  hiddenAt = 0;
   chainSeen.clear();
   lastForeground = 0;
   lastProjected = 0;
@@ -446,6 +506,7 @@ export function stopLive(): void {
 
 function onVisibilityChange(): void {
   if (document.visibilityState === 'visible') onForeground();
+  else hiddenAt = Date.now();
 }
 
 /** Whether the stream has stopped talking: an error state, or silence past the pings. */
@@ -466,6 +527,7 @@ function onForeground(): void {
   if (now - lastForeground < FOREGROUND_DEBOUNCE_MS) return;
   lastForeground = now;
   if (streamIsDead()) current.interrupt?.abort();
+  cutStaleSync();
   void syncMessagesKeepingView(current.key);
 }
 

@@ -21,3 +21,8 @@ Feature: A shots run never fails on a leftover preview server, and leaves none b
     Given the guard is running the preview server on the preview port
     When the run is interrupted with Ctrl+C
     Then nothing listens on the preview port
+
+  Scenario: AC-3: the steps leave no listener behind when they clean up (mw-gq6.489)
+    Given the guard is running the preview server on the preview port
+    When the steps clean up the processes they started
+    Then nothing listens on the preview port

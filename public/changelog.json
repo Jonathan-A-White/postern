@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.33",
+    "date": "2026-10-16",
+    "story": "mw-ev7oyy.23",
+    "kind": "fixed",
+    "text": "on your Android phone the Text button on a to-do now opens Google Voice with the message typed, not the phone's own Messages app."
+  },
+  {
     "version": "0.6.31",
     "date": "2026-10-16",
     "story": "mw-ev7oyy.22",

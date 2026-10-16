@@ -1,5 +1,6 @@
 // tests/unit/todo-text.test.ts — mw-ev7oyy.22: a to-do's 'Text:' line as a Text button that opens his texting app
 // (an sms: link, which Android hands to the default SMS app: Google Voice when he has made it the default).
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { linkKind, linkOpens, parseTextAction, textHref, textLabel } from '../../src/todo';
 
@@ -96,3 +97,14 @@ describe('the Text button: its href and its words', () => {
   });
 });
 
+describe("the Mayor's filing note in docs/protocol.md", () => {
+  it('has an example that reads as it says: a Text Dad button to his number, with the whole message', () => {
+    const doc = readFileSync('docs/protocol.md', 'utf8');
+    const block = /One example, as filed:\n\n {2}```text\n([\s\S]*?)\n {2}```/.exec(doc)?.[1];
+    expect(block).toBeDefined();
+    const action = parseTextAction((block ?? '').replace(/^ {2}/gm, ''));
+    expect(action).toEqual({ name: 'Dad', number: '+15165550123', draft: expect.stringMatching(/^Hi Dad, would you rather meet us on Long Island on Saturday .* rest\.$/) });
+    expect(textLabel(action!)).toBe('Text Dad');
+    expect(textHref(action!)).toMatch(/^sms:\+15165550123\?body=Hi%20Dad%2C%20would/);
+  });
+});

@@ -937,6 +937,52 @@ drag with a mouse; the keyboard's way is **Move up**, **Move down** and **Move t
 keys on the focused card. Each drop is one `todo_move` naming the card it landed before (or after, at a list's foot)
 and, for another list, that list.
 
+### A To do card's notes: the Open: and Text: lines (how the Mayor files them)
+
+A card's notes are the bead's description (Markdown, shown whole on the card's back). Two kinds of line in them put
+a control on the card's front, under its title (`src/todo/links.ts` reads both; a line may be a list item, a quote or
+have its word in bold, as `- **Text:** ...`). Anywhere in the notes; the view's 280-rune `summary` is enough when they
+are near the top, and the board reads the whole notes when it may have been cut.
+
+- **`Open:`** (mw-ev7oyy.12): markdown links, `Open: [Kindle](kindle://book?action=open&asin=B0C74TJ712) ·
+  [Call the plumber](tel:+15555550123)`. A chip per link, at most four, each opening its own url *exactly as written*:
+  the Mayor writes it already encoded (a space as `%20`, an `&` inside a value as `%26`). No `javascript:`, `data:`,
+  `vbscript:`, `file:`, `blob:` or `about:` link is ever a chip; bare urls and links on other lines are left out.
+- **`Text:`** (mw-ev7oyy.22): a text he is to send. One per card (the first counts). The card shows a **Text** button
+  that says who a tap texts (`Text Dad`; the number when there is no name; `Text` alone when neither) and opens his
+  texting app (Android's default for texts: Google Voice when he has made it so) with the person and the message
+  filled in, for him to read and send. The format:
+
+  ```text
+  Text: <name> <number> | <the message>
+  ```
+
+  - before the first `|`: who, a name and/or a phone number in any usual form (`+1 516-555-0123`, `(516) 555-0123`,
+    `Dad (+1 516 555 0123)`); the app keeps the number's digits and a leading `+`, and the rest is the name. Write
+    the number with its country code (`+1 ...`) when it is known. Leave who out (`Text: | <the message>`, or no bar
+    at all, `Text: <the message>`) when the number is not known: his texting app opens with the message only and he
+    picks the person;
+  - after it: the message as he would send it, plain words (no Markdown). It runs on to the end of its paragraph, a
+    line for a line, so it ends at the first blank line (or at an `Open:` or another `Text:` line): leave a blank
+    line after it. Any character is fine (`&`, `?`, `#`, an emoji): the app encodes it, so the whole message arrives.
+
+  The button's link is `sms:<number>?body=<the message, percent-encoded>` (`sms:?body=...` without a number;
+  `sms:<number>` with no message); a tap opens it in the same tab, which is how Android hands it to the app.
+
+  One example, as filed:
+
+  ```text
+  Ask Dad whether he would rather meet us on Long Island on Saturday, while he gets over his cold.
+
+  Text: Dad +1 516-555-0123 | Hi Dad, would you rather meet us on Long Island on Saturday instead of coming up today? It would give you a couple more days to rest.
+
+  Closes only on the Governor's word.
+  ```
+
+  The card shows a **Text Dad** button; a tap opens his texting app to `+15165550123` with "Hi Dad, would you rather
+  meet us on Long Island on Saturday instead of coming up today? It would give you a couple more days to rest." in
+  the message box.
+
 ## 14. Voice notes, files and transcripts
 
 §8's attachment `mime` is any type (mw-gq6.289): the file's type as the sender's

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.46",
+    "date": "2026-10-16",
+    "story": "mw-hgtlf5.2",
+    "kind": "fixed",
+    "text": "After Hold to talk fails, the button now says Try again, and the message names every way of listening that was tried."
+  },
+  {
     "version": "0.6.45",
     "date": "2026-10-16",
     "story": "mw-ev7oyy.17",

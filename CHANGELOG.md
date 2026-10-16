@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.46
+_2026-10-16_
+- Fixed: After Hold to talk fails, the button now says Try again, and the message names every way of listening that was tried.
+
 ## 0.6.45
 _2026-10-16_
 - Fixed: a to-do card with a line of links for each book now labels each button with its book, like "Kindle · Deep Discipleship", so you can tell which book it opens.

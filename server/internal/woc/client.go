@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,9 @@ const defaultMinSpacing = 350 * time.Millisecond
 // that accepts the connection and never answers fails the request instead of
 // hanging whoever waits on it (a licence walk holds a phone's request open).
 const defaultRequestTimeout = 10 * time.Second
+
+// maxRetryAfter caps how long a 429's Retry-After is waited out.
+const maxRetryAfter = 10 * time.Second
 
 const (
 	defaultMaxAttempts       = 5
@@ -321,7 +325,8 @@ func (c *Client) get(path string) ([]byte, error) {
 }
 
 // do performs one logical request, retrying a 429 or network error up to
-// maxAttempts times with exponential backoff, and pacing every attempt at
+// maxAttempts times with exponential backoff (a 429's Retry-After, capped at
+// maxRetryAfter, in place of the backoff), and pacing every attempt at
 // least minSpacing apart from the previous request this client made.
 func (c *Client) do(method, path string, body []byte) ([]byte, error) {
 	url := c.baseURL + path
@@ -369,7 +374,11 @@ func (c *Client) do(method, path string, body []byte) ([]byte, error) {
 			if attempt == c.maxAttempts {
 				return nil, lastErr
 			}
-			c.sleep(delay)
+			if wait, ok := retryAfter(resp.Header.Get("Retry-After")); ok {
+				c.sleep(wait)
+			} else {
+				c.sleep(delay)
+			}
 			delay *= 2
 			continue
 		}
@@ -382,6 +391,19 @@ func (c *Client) do(method, path string, body []byte) ([]byte, error) {
 	}
 
 	return nil, lastErr
+}
+
+// retryAfter reads a Retry-After given in seconds, capped at maxRetryAfter;
+// ok is false for a missing, unreadable or non-positive one.
+func retryAfter(header string) (wait time.Duration, ok bool) {
+	seconds, err := strconv.Atoi(strings.TrimSpace(header))
+	if err != nil || seconds <= 0 {
+		return 0, false
+	}
+	if seconds > int(maxRetryAfter/time.Second) {
+		return maxRetryAfter, true
+	}
+	return time.Duration(seconds) * time.Second, true
 }
 
 // waitForSlot blocks until at least minSpacing has passed since this

@@ -705,6 +705,14 @@ parent chain up to the root, so the app can draw any level of the tree:
   `orderCards` in `src/todo/lists.ts`): the list's own order (`todo_rank`, `priority`, oldest) is the base, then the
   cards due within 48 hours or past due come first, soonest first, then the important cards, then the rest, the last
   two groups each keeping the base order. A card due in 49 hours stays in the base order;
+- `todo_size` — optional, on a bead labelled `hitl:todo` (mw-ht6gsw.4; the host keeps it from `todo_edit`'s `size`):
+  how big the card is, one of `quick` (under 15 minutes), `hour` or `half-day`; absent when it has none, and anything
+  else is read as none. The card's back shows a Size row (Quick, an Hour, a Half day) with the chosen one marked, a tap
+  on another size setting it and a second tap on the chosen one clearing it; its front shows a small mark (`Q`, `1h`,
+  `half`) when set and nothing when not;
+- `todo_then` — optional, on a bead labelled `hitl:todo` (mw-ht6gsw.4; the host keeps it from `todo_edit`'s `then`):
+  the card's Then line, one line of text (at most 200 characters) naming what must follow it; absent when it has none.
+  The card's back shows it in a text field ("Then: what must follow") with a Save Then button;
   **Groups** (mw-ev7oyy.16, `groupCards` in `src/todo/lists.ts`; kept on the phone, nothing on the wire): a list shows
   its cards in three groups, in the order Today, Soon, Someday, an empty group left out, each group in `orderCards`'
   order. *Today*: due today (any hour) or overdue, or tapped into Today from the card's back ("Move to Today", for
@@ -838,7 +846,7 @@ and the Mayor is told afterwards. An action is an ordinary message (§1, class
 | `ask_done` | — | the answer **Done** to a `chase` need: the other side delivered; the host does what `mw ask done` does (clears `waiting:others`) |
 | `keep_waiting` | — | the answer **Keep waiting** to a `chase` need: no chase for another 3 working days |
 | `todo_add` | `list`, `title`, `notes`? (no `bead`) | files an open card on one of his To do lists (below) |
-| `todo_edit` | `title`?, `notes`?, `due`? | sets a To do card's title, notes and/or due time |
+| `todo_edit` | `title`?, `notes`?, `due`?, `important`?, `size`?, `then`? | sets a To do card's title, notes, due time, star, size and/or Then line |
 | `todo_move` | `list`?, `before`?, `after`? | moves a To do card within its list or to another list (below) |
 
 ```json
@@ -886,6 +894,7 @@ list, not a card):
 { "action": "todo_add", "list": "mw-abc", "title": "Buy bin bags", "notes": "The tall kind." }
 { "action": "todo_edit", "bead": "mw-abc.4", "title": "Buy bin bags and tape", "notes": "" }
 { "action": "todo_edit", "bead": "mw-abc.4", "important": true }
+{ "action": "todo_edit", "bead": "mw-abc.4", "size": "hour", "then": "Book the plumber" }
 { "action": "todo_move", "bead": "mw-abc.4", "list": "mw-def", "before": "mw-def.2" }
 ```
 
@@ -893,11 +902,14 @@ list, not a card):
   and becomes the card's description. It has **no `bead` field**: the card does not exist yet, so the phone cannot
   name it, and cannot edit or move it until the view carries it (a card still being added is shown, marked pending,
   but is not draggable and has no back).
-- `todo_edit`: `title`, `notes`, `due` and/or `important` (at least one; `"notes": ""` clears them; a blank `title` is refused).
+- `todo_edit`: `title`, `notes`, `due`, `important`, `size` and/or `then` (at least one; `"notes": ""` clears them; a blank `title` is refused).
   `due` is a UTC time in RFC 3339 (`"2026-10-14T17:00:00.000Z"`, the phone having read the date-time field in its own
   zone), published on the view's bead as `todo_due` (§11); `"due": ""` clears it; a `due` that is neither is refused.
   `important` is a boolean (mw-ev7oyy.15): `true` stars the card, `false` clears the star; published on the view's bead
   as `todo_important` (§11); anything but a boolean is refused.
+  `size` is `"quick"`, `"hour"` or `"half-day"` (mw-ht6gsw.4), published on the view's bead as `todo_size` (§11); `"size": ""`
+  clears it; anything else is refused. `then` is the card's Then line, text of at most 200 characters (the phone trims it),
+  published as `todo_then` (§11); `"then": ""` clears it; a longer line is refused.
   The phone sends only what changed.
 - `todo_move`: `before` or `after` names a card on the target list (the card's own list when `list` is absent); with
   neither, the card goes to the end of `list`. A move that names no place (no `before`, `after` or other `list`), both

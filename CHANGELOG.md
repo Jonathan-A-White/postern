@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.47
+_2026-10-16_
+- New: A To do card's back now shows how big it is (Quick, an Hour, a Half day) and a Then line for what must follow, each a tap to change, and the card shows a small size mark.
+
 ## 0.6.46
 _2026-10-16_
 - Fixed: After Hold to talk fails, the button now says Try again, and the message names every way of listening that was tried.

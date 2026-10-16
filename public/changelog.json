@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.47",
+    "date": "2026-10-16",
+    "story": "mw-ht6gsw.4",
+    "kind": "new",
+    "text": "A To do card's back now shows how big it is (Quick, an Hour, a Half day) and a Then line for what must follow, each a tap to change, and the card shows a small size mark."
+  },
+  {
     "version": "0.6.46",
     "date": "2026-10-16",
     "story": "mw-hgtlf5.2",

@@ -2,7 +2,7 @@
 // ('Today 17:00', 'Tue 9:00'), when it is past, how it turns into and out of a date-time input's
 // value (the phone's own zone) and the UTC time a todo_edit carries, and the order 'Sort by due' gives. A card's face says its
 // due date in words (dueWords, mw-ev7oyy.15) and a card due within DUE_SOON_MS floats up its list (lists.ts orderCards); dueDays and
-// dayKey say which calendar day a card is due and which day it is (lists.ts groupOf, mw-ev7oyy.16).
+// dayKey say which calendar day a card is due and which day it is (mw-ev7oyy.16).
 import type { TodoCard } from './lists';
 
 const DAY_MS = 86_400_000;
@@ -27,7 +27,7 @@ function daysFrom(now: number, at: Date): number {
   return Math.round((day(at) - day(new Date(now))) / DAY_MS);
 }
 
-/** The calendar day of `now` in the phone's zone, as '2026-10-13': the day a card was tapped into Today (lists.ts groupOf). */
+/** The calendar day of `now` in the phone's zone, as '2026-10-13': the day a card was tapped into Today (lists.ts pickCards). */
 export function dayKey(now: number): string {
   const at = new Date(now);
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;

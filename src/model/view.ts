@@ -62,6 +62,10 @@ export interface ViewBead {
   todo_size?: 'quick' | 'hour' | 'half-day';
   /** A hitl:todo bead's Then line (mw-ht6gsw.4): what must follow it, one line; absent when it has none. */
   todo_then?: string;
+  /** The row the nightly ranking pass put a hitl:todo bead in (mw-ht6gsw.5): 'now', 'make-time', 'later' or 'let-go'; absent when the pass has not run on it. */
+  todo_row?: 'now' | 'make-time' | 'later' | 'let-go';
+  /** The pass's one line on why the bead is in its row (mw-ht6gsw.5); absent when it has none. */
+  todo_row_why?: string;
   /** A hitl:todo epic's short name for its list's header (mw-ev7oyy.14); absent when it has none. */
   todo_name?: string;
 }
@@ -196,6 +200,8 @@ function decodeBead(value: unknown): ViewBead | undefined {
   const todoImportant = raw.todo_important === true;
   const todoSize = raw.todo_size === 'quick' || raw.todo_size === 'hour' || raw.todo_size === 'half-day' ? raw.todo_size : undefined;
   const todoThen = str(raw.todo_then).trim();
+  const todoRow = raw.todo_row === 'now' || raw.todo_row === 'make-time' || raw.todo_row === 'later' || raw.todo_row === 'let-go' ? raw.todo_row : undefined;
+  const todoRowWhy = str(raw.todo_row_why).trim();
   const todoName = str(raw.todo_name).trim();
   return {
     id: raw.id,
@@ -221,6 +227,8 @@ function decodeBead(value: unknown): ViewBead | undefined {
     ...(todoImportant ? { todo_important: true } : {}),
     ...(todoSize ? { todo_size: todoSize } : {}),
     ...(todoThen ? { todo_then: todoThen } : {}),
+    ...(todoRow ? { todo_row: todoRow } : {}),
+    ...(todoRowWhy ? { todo_row_why: todoRowWhy } : {}),
     ...(todoName ? { todo_name: todoName } : {}),
   };
 }

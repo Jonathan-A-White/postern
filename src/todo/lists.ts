@@ -3,7 +3,7 @@
 import { BEAD_ID, WORD_CHAR } from '../markdown/beadLinks';
 import { isClosed, type ViewIndex } from '../model/tree';
 import type { ViewBead } from '../model/view';
-import { dayKey, dueDays, dueMs, isDueSoon } from './due';
+import { dayKey, dueMs, isDueSoon } from './due';
 import { parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
 
 export const TODO_LABEL = 'hitl:todo';
@@ -13,6 +13,9 @@ export const OTHER_LIST = 'other';
 
 /** The sizes a card can have, smallest first (docs/protocol.md §11 todo_size). */
 export type TodoSize = 'quick' | 'hour' | 'half-day';
+
+/** The rows the nightly ranking pass puts a card in (docs/protocol.md §11 todo_row), in the order the board shows them (Later last but one). */
+export type TodoRow = 'now' | 'make-time' | 'later' | 'let-go';
 
 export interface TodoCard {
   id: string;
@@ -38,22 +41,17 @@ export interface TodoCard {
   listen?: ListenAction;
   /** The view's summary of the notes may have been cut short: the notes themselves may hold more links. */
   summaryCut?: boolean;
-  /** The group the card is shown in (groupCards stamps it): Today, Soon or Someday. */
-  group?: TodoGroup;
-  /** He tapped it into Today for today (groupCards stamps it only when that, and not its own due time, put it there). */
+  /** The row the pass put it in (the bead's todo_row), absent before the pass has run on it (mw-ht6gsw.5). */
+  row?: TodoRow;
+  /** The pass's one line on why it is in its row (the bead's todo_row_why). */
+  rowWhy?: string;
+  /** He tapped it into Today for today (pickCards stamps it): it comes first in its list's column under Later. */
   tapped?: boolean;
   /** A change of his to this card has gone and the view does not yet agree (edits.ts). */
   pending?: boolean;
   /** The card is one he has just added: the Mayor has not made it, so it has no id yet. */
   adding?: boolean;
 }
-
-/** A list's three groups (mw-ev7oyy.16), in the order they are shown. */
-export type TodoGroup = 'today' | 'soon' | 'someday';
-export const TODO_GROUPS: readonly TodoGroup[] = ['today', 'soon', 'someday'];
-
-/** A card due within this many days (or important) is Soon. */
-export const SOON_DAYS = 7;
 
 /** The cards tapped into Today, by card id: the calendar day (dayKey) the tap was made. A tap holds for that day only. */
 export type TodayPicks = Readonly<Record<string, string>>;
@@ -106,33 +104,47 @@ export function orderCards(cards: readonly TodoCard[], now: number): TodoCard[] 
   return [...soon, ...rest.filter((card) => card.important), ...rest.filter((card) => !card.important)];
 }
 
-/** The group a card belongs to by its own due time and star: Today when it is due today or overdue, Soon when it is due within SOON_DAYS days
- * or important, else Someday. */
-function ownGroup(card: TodoCard, now: number): TodoGroup {
-  const days = dueDays(card.due, now);
-  if (days !== undefined && days <= 0) return 'today';
-  if (days !== undefined && days <= SOON_DAYS) return 'soon';
-  return card.important ? 'soon' : 'someday';
+/** THE order of a list's cards with the Today taps (mw-ht6gsw.5): orderCards' order, the cards he has tapped into Today (for the day he tapped
+ * and no longer) first, each stamped `tapped`. The cards given are not changed. */
+export function pickCards(cards: readonly TodoCard[], now: number, picks: TodayPicks): TodoCard[] {
+  const ordered = orderCards(cards, now);
+  const tapped = (card: TodoCard) => picks[card.id] === dayKey(now);
+  return [...ordered.filter(tapped).map((card): TodoCard => ({ ...card, tapped: true })), ...ordered.filter((card) => !tapped(card))];
 }
 
-/** The group a card is shown in (mw-ev7oyy.16): Today also holds the cards he has tapped into Today, for the day he tapped and no longer. */
-export function groupOf(card: TodoCard, now: number, picks: TodayPicks): TodoGroup {
-  return picks[card.id] === dayKey(now) ? 'today' : ownGroup(card, now);
+/** How many cards each of Do now and Make time holds at most. A card past that goes to Later. */
+export const ROW_LIMIT = 3;
+
+/** A card on the board's rows, with the list it belongs to. */
+export interface RowCard {
+  card: TodoCard;
+  list: TodoList;
 }
 
-/** THE order of a list's cards with the groups (mw-ev7oyy.16): orderCards' order, then Today's cards, Soon's, Someday's, each group keeping that
- * order; each card is stamped with its group (and `tapped` when a pick put it in Today). The cards given are not changed. */
-export function groupCards(cards: readonly TodoCard[], now: number, picks: TodayPicks): TodoCard[] {
-  const stamped = orderCards(cards, now).map((card): TodoCard => {
-    const group = groupOf(card, now, picks);
-    return { ...card, group, ...(group === 'today' && ownGroup(card, now) !== 'today' ? { tapped: true } : {}) };
-  });
-  return TODO_GROUPS.flatMap((group) => stamped.filter((card) => card.group === group));
+/** Do now: the card due soonest first, then the starred ones, then the longest waiting. */
+function doNowOrder(a: RowCard, b: RowCard): number {
+  const due = (entry: RowCard) => dueMs(entry.card.due) ?? Infinity;
+  if (due(a) !== due(b)) return due(a) < due(b) ? -1 : 1;
+  return waitingOrder(a, b, true);
 }
 
-/** How many cards each group holds, in the order Today, Soon, Someday, an empty group left out. A card with no group counts in Today. */
-export function groupCounts(cards: readonly TodoCard[]): { group: TodoGroup; count: number }[] {
-  return TODO_GROUPS.map((group) => ({ group, count: cards.filter((card) => (card.group ?? 'today') === group).length })).filter(({ count }) => count > 0);
+/** The longest waiting first (the oldest bead), then the star first when asked; the id last so the order is whole. */
+function waitingOrder(a: RowCard, b: RowCard, starFirst = false): number {
+  if (starFirst && a.card.important !== b.card.important) return a.card.important ? -1 : 1;
+  return a.card.created.localeCompare(b.card.created) || a.card.id.localeCompare(b.card.id, undefined, { numeric: true });
+}
+
+/** The board's rows over every list (mw-ht6gsw.5): Do now and Make time hold the cards the pass put there, at most ROW_LIMIT each (the rest
+ * go to Later), Let go the cards it let go; every other card, one the pass has not run on included, is Later. `later` is the ids of the Later cards. */
+export function boardRows(lists: readonly TodoList[]): { doNow: RowCard[]; makeTime: RowCard[]; letGo: RowCard[]; later: Set<string>; laterCount: number } {
+  const all = lists.flatMap((list) => list.cards.filter((card) => !card.adding).map((card): RowCard => ({ card, list })));
+  const inRow = (row: TodoRow) => all.filter((entry) => entry.card.row === row);
+  const doNow = inRow('now').sort(doNowOrder).slice(0, ROW_LIMIT);
+  const makeTime = inRow('make-time').sort((a, b) => waitingOrder(a, b)).slice(0, ROW_LIMIT);
+  const letGo = inRow('let-go').sort((a, b) => waitingOrder(a, b));
+  const placed = new Set([...doNow, ...makeTime, ...letGo].map((entry) => entry.card.id));
+  const later = new Set(lists.flatMap((list) => list.cards.filter((card) => !placed.has(card.id)).map((card) => card.id)));
+  return { doNow, makeTime, letGo, later, laterCount: later.size };
 }
 
 /** How many runes of the notes the view's summary holds (docs/protocol.md §11). */
@@ -153,7 +165,7 @@ function cardOf(bead: ViewBead): TodoCard {
   const text = cut ? undefined : parseTextAction(bead.summary);
   const email = cut ? undefined : parseEmailAction(bead.summary);
   const listen = cut ? undefined : parseListenAction(bead.summary);
-  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(bead.todo_size ? { size: bead.todo_size } : {}), ...(bead.todo_then ? { then: bead.todo_then } : {}), ...(links.length ? { links } : {}), ...(text ? { text } : {}), ...(email ? { email } : {}), ...(listen ? { listen } : {}), ...(cut ? { summaryCut: true } : {}) };
+  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(bead.todo_row ? { row: bead.todo_row } : {}), ...(bead.todo_row_why ? { rowWhy: bead.todo_row_why } : {}), ...(bead.todo_size ? { size: bead.todo_size } : {}), ...(bead.todo_then ? { then: bead.todo_then } : {}), ...(links.length ? { links } : {}), ...(text ? { text } : {}), ...(email ? { email } : {}), ...(listen ? { listen } : {}), ...(cut ? { summaryCut: true } : {}) };
 }
 
 /** The open hitl:todo beads of the view grouped under their parent epic: newest list first, Other last,

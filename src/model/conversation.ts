@@ -27,6 +27,9 @@ export interface GovernorAction {
   due?: string;
   before?: string;
   after?: string;
+  /** A todo_edit's row (docs/protocol.md §13; 'later' is Keep), and a close's reason ('let-go' is Drop). */
+  row?: string;
+  reason?: string;
   /** docs/protocol.md §17: the hands step a `run` approves, its hash, when and his signature. */
   step?: string;
   sha256?: string;

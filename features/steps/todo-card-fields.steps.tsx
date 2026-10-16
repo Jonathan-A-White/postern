@@ -70,8 +70,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   };
   const tabOpens = async () => {
     await viewRepo.save({ plaintext: JSON.stringify({ ...fixtureView(now), needs: [], beads }), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
-    const open = { today: true, soon: true, someday: true };
-    localStorage.setItem('postern.todo.groups', JSON.stringify(Object.fromEntries([...beads.filter((b) => b.type === 'epic').map((b) => b.id), 'other'].map((id) => [id, open]))));
+    localStorage.setItem('postern.todo.folds', JSON.stringify({ later: true }));
     render(
       <Shell route={{ view: 'todo' }}>
         <TodoScreen />

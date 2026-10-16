@@ -1,14 +1,17 @@
-// src/todo/kept.ts — what the To do board keeps on the phone (localStorage), for lists.ts's groups (mw-ev7oyy.16): which groups of each list
-// he has opened or folded, and which cards he has tapped into Today (and on which day). Both survive a reload; a phone that will not keep
-// them shows the defaults (Today open, Soon and Someday folded; nothing tapped), no harm.
+// src/todo/kept.ts — what the To do board keeps on the phone (localStorage): whether he has opened Later and Let go (mw-ht6gsw.5), and which cards
+// he has tapped into Today (and on which day). Both survive a reload; a phone that will not keep them shows the defaults (Later and Let go
+// folded; nothing tapped), no harm.
 import { dayKey } from './due';
-import type { TodayPicks, TodoGroup } from './lists';
+import type { TodayPicks } from './lists';
 
-const GROUPS_KEY = 'postern.todo.groups';
+const FOLDS_KEY = 'postern.todo.folds';
 const TODAY_KEY = 'postern.todo.today';
 
-/** What he has chosen for each list's groups: true is open, false folded; a group not in it is at its default. */
-export type GroupsOpen = Readonly<Record<string, Partial<Record<TodoGroup, boolean>>>>;
+/** The two folded rows of the board. */
+export type FoldedRow = 'later' | 'let-go';
+
+/** What he has chosen for the folded rows: true is open, false folded; a row not in it is at its default (folded). */
+export type RowsOpen = Readonly<Partial<Record<FoldedRow, boolean>>>;
 
 function read(key: string): Record<string, unknown> {
   try {
@@ -27,29 +30,24 @@ function write(key: string, value: object): void {
   }
 }
 
-/** Today is open when he has not said; Soon and Someday are folded. */
-export function isGroupOpen(open: GroupsOpen, list: string, group: TodoGroup): boolean {
-  return open[list]?.[group] ?? group === 'today';
+/** Later and Let go are folded until he opens them. */
+export function isRowOpen(open: RowsOpen, row: FoldedRow): boolean {
+  return open[row] ?? false;
 }
 
-export function readGroupsOpen(): GroupsOpen {
-  const out: Record<string, Partial<Record<TodoGroup, boolean>>> = {};
-  for (const [list, groups] of Object.entries(read(GROUPS_KEY))) {
-    if (!groups || typeof groups !== 'object') continue;
-    const kept: Partial<Record<TodoGroup, boolean>> = {};
-    for (const group of ['today', 'soon', 'someday'] as const) {
-      const open = (groups as Record<string, unknown>)[group];
-      if (typeof open === 'boolean') kept[group] = open;
-    }
-    out[list] = kept;
+export function readRowsOpen(): RowsOpen {
+  const stored = read(FOLDS_KEY);
+  const out: Partial<Record<FoldedRow, boolean>> = {};
+  for (const row of ['later', 'let-go'] as const) {
+    if (typeof stored[row] === 'boolean') out[row] = stored[row];
   }
   return out;
 }
 
-/** The groups with one list's group set open or folded; kept on the phone. */
-export function keepGroupOpen(was: GroupsOpen, list: string, group: TodoGroup, open: boolean): GroupsOpen {
-  const next = { ...was, [list]: { ...was[list], [group]: open } };
-  write(GROUPS_KEY, next);
+/** The rows with one row set open or folded; kept on the phone. */
+export function keepRowOpen(was: RowsOpen, row: FoldedRow, open: boolean): RowsOpen {
+  const next = { ...was, [row]: open };
+  write(FOLDS_KEY, next);
   return next;
 }
 

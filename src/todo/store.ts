@@ -19,7 +19,7 @@ export interface TodoBack {
   comments: TodoNote[];
 }
 
-/** One card's Done: `waiting` once it has been tapped and the view has not yet dropped the card;
+/** One card's Done (or, with a reason, its close for that reason: Drop in Let go sends 'let-go'): `waiting` once it has been tapped and the view has not yet dropped the card;
  * `note` stands in for the waiting words when the tap came to grief (the store says how to recover). */
 export interface TodoDone {
   waiting: boolean;
@@ -33,7 +33,7 @@ export interface TodoStore {
   /** The title of a bead a card names, when the store knows it. */
   titleOf: (bead: string) => string | undefined;
   /** Hooks: called from components, once per card on screen. */
-  useDone: (card: string) => TodoDone;
+  useDone: (card: string, reason?: string) => TodoDone;
   useBack: (card: string) => TodoBack;
   /** Files a new card at the foot of a list (the epic's id). */
   add: (list: string, title: string) => Promise<void>;
@@ -41,7 +41,7 @@ export interface TodoStore {
   edit: (card: string, change: TodoCardEdit) => Promise<void>;
   /** Moves a card: to another list, and/or before or after a card. */
   move: (card: string, to: TodoMove) => Promise<void>;
-  /** Taps a card into Today for today only (`into`), or puts it back in the group its own due time and star give it. */
+  /** Taps a card into Today for today only (`into`), which puts it first in its list under Later, or puts it back in its place. */
   today: (card: string, into: boolean) => void;
   /** Changes that were refused or did not go, oldest first, each as the line that tells him (with what he may do about it). */
   notices: { id: number; note: ReactNode }[];

@@ -13,20 +13,20 @@ import { sendAction } from '../cockpit/send';
 import { useNow } from '../ui/useNow';
 import { NOTE_FOR_MS, applyChanges, describeChange, judge, todoActionOf, type TodoChange } from './edits';
 import { keepTodayPick, readTodayPicks } from './kept';
-import { groupCards, openTodoCount, todoListsFromView, type TodayPicks } from './lists';
+import { openTodoCount, pickCards, todoListsFromView, type TodayPicks } from './lists';
 import { RefusedNote } from './RefusedNote';
 import type { TodoBack, TodoDone, TodoStore } from './store';
 
 /** How often the board looks at the clock to call a change the Mayor has not echoed refused. */
 const LOOK_MS = 5_000;
 
-function useDone(bead: string): TodoDone {
+function useDone(bead: string, reason?: string): TodoDone {
   const tap = useOneTap(bead, 'close');
   const failed = tap.queued?.state === 'failed' ? tap.queued : undefined;
   return {
     waiting: tap.waiting && !failed,
     note: failed ? createElement(FailedNote, { id: failed.id as number, failure: failed.failure ?? 'The backend refused it.' }) : undefined,
-    done: () => void tap.tap(() => sendAction({ action: 'close', bead }), `Marked ${bead} done`),
+    done: () => void tap.tap(() => sendAction({ action: 'close', bead, ...(reason ? { reason } : {}) }), reason ? `Dropped ${bead}` : `Marked ${bead} done`),
   };
 }
 
@@ -63,7 +63,7 @@ export function usePosternTodoStore(): TodoStore {
     const waiting: TodoChange[] = judged.filter((change) => change.state === 'waiting').map(({ row, action }) => ({ id: row.id as number, action }));
     if (!base) return { lists: undefined, notes: new Map<string, string>() };
     const changed = applyChanges(base, waiting);
-    return { ...changed, lists: changed.lists.map((list) => ({ ...list, cards: groupCards(list.cards, now, picks) })) };
+    return { ...changed, lists: changed.lists.map((list) => ({ ...list, cards: pickCards(list.cards, now, picks) })) };
   }, [base, judged, now, picks]);
   const settled = useMemo(() => {
     const counts = new Map<string, number>();

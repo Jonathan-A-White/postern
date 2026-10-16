@@ -23,9 +23,7 @@ const BEADS: ViewBead[] = [
 ];
 
 async function open(page: Page): Promise<void> {
-  const open = { today: true, soon: true, someday: true };
-  const kept = Object.fromEntries(['mw-6ww.114', 'other'].map((id) => [id, open]));
-  await page.addInitScript(([key, value]) => localStorage.setItem(key, value), ['postern.todo.groups', JSON.stringify(kept)]);
+  await page.addInitScript(([key, value]) => localStorage.setItem(key, value), ['postern.todo.folds', JSON.stringify({ later: true })]);
   const mnemonic = createMnemonic();
   const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
   await stubBackend(page, governor, undefined, { beads: BEADS });

@@ -28,6 +28,14 @@ describe('applyChanges: the board before the Mayor has answered', () => {
     expect(notes.get('mw-a.2')).toBe('Fresh notes');
   });
 
+  it('moves a card to the row an edit names at once, and drops the pass\'s why for the old row', () => {
+    const letGo = lists();
+    letGo[0].cards[0] = { ...letGo[0].cards[0], row: 'let-go', rowWhy: 'Untouched 40 days' };
+    const out = applyChanges(letGo, [at({ action: 'todo_edit', bead: 'mw-a.1', row: 'later' })]).lists;
+    expect(out[0].cards[0]).toMatchObject({ row: 'later', pending: true });
+    expect(out[0].cards[0].rowWhy).toBeUndefined();
+  });
+
   it('shows an edited due time at once, and its removal', () => {
     const dated = lists();
     dated[0].cards[0] = { ...dated[0].cards[0], due: '2026-10-14T09:00:00Z' };
@@ -173,24 +181,24 @@ describe('judge: waiting, settled, refused or failed', () => {
   });
 });
 
-// mw-ev7oyy.16: a drop is counted among the cards on screen; the cards in folded groups are not on screen, so the place is turned into one among them all.
+// mw-ev7oyy.16, mw-ht6gsw.5: a drop is counted among the cards on screen; the cards in the rows (not under Later) are not in a column, so the place is turned into one among them all.
 describe('realIndex: a drop among the shown cards, placed among all of a list', () => {
-  const grouped = (): TodoList => ({ id: 'mw-a', title: 'A', name: 'A', epic: 'mw-a', created: '', cards: [
-    { ...card('t1'), group: 'today' }, { ...card('t2'), group: 'today' }, { ...card('s1'), group: 'soon' }, { ...card('s2'), group: 'soon' }, { ...card('z1'), group: 'someday' },
+  const rowed = (): TodoList => ({ id: 'mw-a', title: 'A', name: 'A', epic: 'mw-a', created: '', cards: [
+    { ...card('t1'), row: 'later' }, { ...card('t2'), row: 'later' }, { ...card('s1'), row: 'now' }, { ...card('s2'), row: 'now' }, { ...card('z1'), row: 'later' },
   ] });
-  const shownIfNotSoon = (other: { group?: string }) => other.group !== 'soon';
+  const shownIfNotSoon = (other: { row?: string }) => other.row !== 'now';
 
   it('counts every card when none are hidden', () => {
-    expect(realIndex(grouped(), 'z1', 2, () => true)).toBe(2);
+    expect(realIndex(rowed(), 'z1', 2, () => true)).toBe(2);
   });
 
   it('skips the hidden cards: the shown card the drop came before names the place', () => {
-    expect(realIndex(grouped(), 't1', 1, shownIfNotSoon)).toBe(3);
-    expect(realIndex(grouped(), 't1', 0, shownIfNotSoon)).toBe(0);
+    expect(realIndex(rowed(), 't1', 1, shownIfNotSoon)).toBe(3);
+    expect(realIndex(rowed(), 't1', 0, shownIfNotSoon)).toBe(0);
   });
 
   it('puts a drop below the last shown card after it, and at the foot when nothing is shown', () => {
-    expect(realIndex(grouped(), 't1', 9, shownIfNotSoon)).toBe(4);
-    expect(realIndex(grouped(), 't1', 0, () => false)).toBe(4);
+    expect(realIndex(rowed(), 't1', 9, shownIfNotSoon)).toBe(4);
+    expect(realIndex(rowed(), 't1', 0, () => false)).toBe(4);
   });
 });

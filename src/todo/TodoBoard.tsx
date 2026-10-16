@@ -6,13 +6,14 @@
 // list; each list ends in 'Add a card'. A card with a due time says it in words on its face ('due Thu', 'overdue since Tue', never red), its back sets or
 // clears it with a date-time input, a star at its right marks it important (mw-ev7oyy.15; the store floats the due-soon and the important cards up), and a list's menu sorts its cards by due (mw-ev7oyy.9). Every change shows at once, marked pending, until the view agrees
 // (mw-ev7oyy.7). A card is one compact row (mw-ev7oyy.14): a small round check at its left for Done, the title, then its due
-// time and chips; a list's header is its short name. A list's cards are grouped Today, Soon and Someday (mw-ev7oyy.16; lists.ts groupCards): Today is
-// open, the others folded to their count and opened with a tap, each list's choice kept on the phone (kept.ts); a card's back can tap it into Today for today. A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
+// time and chips; a list's header is its short name. The board opens on two rows across all the lists, Do now and Make time, the cards the nightly pass put there (its todo_row; three each at most), and under them Later,
+// folded to its count ('Later · 4') and opening to the column per list, and Let go, folded the same way and opening to cards each with Keep and Drop (mw-ht6gsw.5; lists.ts boardRows); what he
+// opens is kept on the phone (kept.ts); a card's back shows the pass's why and, under Later, can tap it to the top of its list for today. A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
 // link and nothing else (mw-ev7oyy.12; links.ts says what each is); one with an Audible book (an 'Audible:' or 'Listen:' line, or an audible.com/pd/ link) shows
 // a Listen in Audible button, its link built by audible-kit when tapped (mw-ev7oyy.24); one with a 'Text:' line shows a Text button first, which opens his
 // texting app to the person with the message filled in (mw-ev7oyy.22); one with an 'Email:' line shows an Email button after it, which opens his mail app to the
 // person with the subject and the draft filled in (mw-ev7oyy.26). A card's back has a Size row (Quick, an Hour, a Half day: a tap sets one, a second clears it) and a Then line, and its front a small size mark (Q, 1h, half) when set (mw-ht6gsw.4). Draws only what a TodoStore gives it.
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Button, Chip, EmptyState, Icon, IconButton, LengthNote, Spinner, cx, isTooLong } from '../ui';
 import { useNow } from '../ui/useNow';
 import { focusOnMount } from '../ui/focus';
@@ -20,9 +21,9 @@ import { Markdown } from '../markdown/Markdown';
 import { beadHref } from '../nav/route';
 import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
 import { moveFor, realIndex } from './edits';
-import { isGroupOpen, keepGroupOpen, readGroupsOpen, type GroupsOpen } from './kept';
+import { isRowOpen, keepRowOpen, readRowsOpen, type FoldedRow, type RowsOpen } from './kept';
 import { emailHref, emailLabel, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
-import { beadsNamed, groupCounts, type TodoCard, type TodoGroup, type TodoList, type TodoSize } from './lists';
+import { beadsNamed, boardRows, type RowCard, type TodoCard, type TodoList, type TodoSize } from './lists';
 import { usePosternTodoStore } from './posternStore';
 import type { TodoDone, TodoStore } from './store';
 import { useCardDrag, type DragState } from './useDrag';
@@ -31,14 +32,17 @@ import { useCardDrag, type DragState } from './useDrag';
 interface Place {
   lists: TodoList[];
   list: TodoList;
+  /** Its place among the cards its list's column shows (the Later ones); 0 for a card in a row. */
   index: number;
+  /** How many cards its list's column shows. */
+  shown: number;
+  /** Whether a card of the list is under Later (so its column shows it). */
+  isLater: (card: TodoCard) => boolean;
+  /** The card is in one of the rows (Do now, Make time, Let go), not in a list's column under Later: it is not dragged, and moves only to another list. */
+  inRow: boolean;
   /** The list is shown sorted by due, so a card's place in it is not its place in his order. */
   sorted: boolean;
-  /** Opens the list's Today group, so a card tapped into Today is seen to arrive. */
-  showToday: () => void;
 }
-
-const GROUP_NAMES: Record<TodoGroup, string> = { today: 'Today', soon: 'Soon', someday: 'Someday' };
 
 /** Where it is kept (localStorage) that he has swiped across the lists once: the hint for it then goes (mw-ev7oyy.14). */
 const SWIPED_KEY = 'postern.todo.swiped';
@@ -372,37 +376,39 @@ function MoveControls({ store, card, place }: { store: TodoStore; card: TodoCard
   const { lists, list, index } = place;
   const others = lists.filter((candidate) => candidate.epic && candidate.id !== list.id);
   const send = (to: string, at: number) => {
-    const move = moveFor(lists, card.id, to, at);
+    const target = lists.find((candidate) => candidate.id === to) ?? list;
+    const move = moveFor(lists, card.id, to, realIndex(target, card.id, at, place.isLater));
     if (move) void store.move(card.id, move);
   };
   const tapped = card.tapped === true;
   return (
     <div role="group" aria-label="Move this card" className="flex flex-wrap items-center gap-2 border-t border-line pt-2">
-      {(tapped || card.group !== 'today') && !card.adding && (
+      {!place.inRow && !card.adding && (
         <Button
           size="sm"
           variant="secondary"
-          title={tapped ? 'Today only: the card is back in its own group tomorrow' : 'For today only: the card is back in its own group tomorrow'}
-          onClick={() => {
-            store.today(card.id, !tapped);
-            if (!tapped) place.showToday();
-          }}
+          title={tapped ? 'Today only: the card is back in its own place tomorrow' : 'For today only: the card goes to the top of its list under Later, and is back in its own place tomorrow'}
+          onClick={() => store.today(card.id, !tapped)}
         >
-          {tapped ? 'Back to its own group' : 'Move to Today'}
+          {tapped ? 'Back to its own place' : 'Move to Today'}
         </Button>
       )}
-      <Button size="sm" variant="secondary" disabled={place.sorted || index === 0} title={place.sorted ? 'Choose Sort by my order in the list menu to move cards' : undefined} onClick={() => send(list.id, index - 1)}>
-        Move up
-      </Button>
-      <Button
-        size="sm"
-        variant="secondary"
-        disabled={place.sorted || index === list.cards.length - 1}
-        title={place.sorted ? 'Choose Sort by my order in the list menu to move cards' : undefined}
-        onClick={() => send(list.id, index + 1)}
-      >
-        Move down
-      </Button>
+      {!place.inRow && (
+        <Button size="sm" variant="secondary" disabled={place.sorted || index === 0} title={place.sorted ? 'Choose Sort by my order in the list menu to move cards' : undefined} onClick={() => send(list.id, index - 1)}>
+          Move up
+        </Button>
+      )}
+      {!place.inRow && (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={place.sorted || index === place.shown - 1}
+          title={place.sorted ? 'Choose Sort by my order in the list menu to move cards' : undefined}
+          onClick={() => send(list.id, index + 1)}
+        >
+          Move down
+        </Button>
+      )}
       {others.length > 0 && (
         <label className="flex items-center gap-1.5 text-[12.5px] text-muted">
           Move to
@@ -445,6 +451,11 @@ function CardBack({ store, card, place, onBack }: { store: TodoStore; card: Todo
         {card.title}
         {card.pending && <PendingMark />}
       </p>
+      {card.rowWhy && (
+        <p data-testid="row-why" className="-mt-1.5 text-[13.5px] leading-snug text-muted wrap-anywhere">
+          {card.rowWhy}
+        </p>
+      )}
       {editing && (
         <EditCard
           card={card}
@@ -503,17 +514,41 @@ function CardBack({ store, card, place, onBack }: { store: TodoStore; card: Todo
   );
 }
 
-function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoStore; card: TodoCard; place: Place; drag?: DragState; onPress: (event: React.PointerEvent<HTMLElement>) => void; wasDragged: () => boolean }) {
+/** Keep and Drop on a card in Let go: Keep sends it back to Later, Drop closes it with the reason let-go. Once Drop has gone the buttons give way to the words that it waits. */
+function LetGoActions({ card, state: { waiting, note, done }, onKeep }: { card: TodoCard; state: TodoDone; onKeep: () => void }) {
+  if (note) return <div className="mt-2">{note}</div>;
+  if (waiting) {
+    return (
+      <p role="status" className="mt-2 flex items-center gap-1.5 text-[13px] text-muted">
+        <Icon name="clock" size={15} />
+        Dropped, waiting for the Mayor
+      </p>
+    );
+  }
+  return (
+    <div data-nodrag className="mt-2 flex gap-2">
+      <Button size="sm" variant="secondary" aria-label={`Keep: ${card.title}`} title="Keep: send the card back to Later" onClick={onKeep}>
+        Keep
+      </Button>
+      <Button size="sm" variant="ghost" aria-label={`Drop: ${card.title}`} title="Drop: close the card for good" onClick={done}>
+        Drop
+      </Button>
+    </div>
+  );
+}
+
+function Card({ store, card, place, drag, onPress, wasDragged, showList, letGo }: { store: TodoStore; card: TodoCard; place: Place; drag?: DragState; onPress?: (event: React.PointerEvent<HTMLElement>) => void; wasDragged: () => boolean; showList?: boolean; letGo?: boolean }) {
   const [over, setOver] = useState(false);
-  const state = store.useDone(card.id);
+  const state = store.useDone(card.id, letGo ? 'let-go' : undefined);
   const held = drag?.card === card.id;
   const shift = (to: number, by: number) => {
-    const move = moveFor(place.lists, card.id, place.lists[to]?.id ?? place.list.id, by);
+    const target = place.lists[to] ?? place.list;
+    const move = moveFor(place.lists, card.id, target.id, realIndex(target, card.id, by, place.isLater));
     if (move) void store.move(card.id, move);
   };
   // Alt + arrow keys: the keyboard's drag. Up and down walk the list; left and right carry the card to the foot of the next list.
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (!event.altKey) return;
+    if (!event.altKey || place.inRow) return;
     const listAt = place.lists.indexOf(place.list);
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       if (place.sorted) return;
@@ -528,7 +563,7 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
     <li
       data-testid="todo-card"
       data-card={card.id}
-      onPointerDown={over || card.adding || place.sorted ? undefined : onPress}
+      onPointerDown={over || card.adding || place.sorted || !onPress ? undefined : onPress}
       onClickCapture={(event) => {
         if (wasDragged()) event.stopPropagation();
       }}
@@ -544,10 +579,17 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
         </p>
       ) : (
         <div className="flex items-start gap-2.5">
-          <div data-nodrag className="flex shrink-0">
-            <DoneCheck title={card.title} state={state} />
-          </div>
+          {!letGo && (
+            <div data-nodrag className="flex shrink-0">
+              <DoneCheck title={card.title} state={state} />
+            </div>
+          )}
           <div className="min-w-0 flex-1">
+            {showList && (
+              <p data-testid="card-list" className="truncate text-[11.5px] leading-4 text-faint">
+                {place.list.name}
+              </p>
+            )}
             <button
               type="button"
               title="Turn the card over"
@@ -565,21 +607,24 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
               </div>
             )}
             <CardLinks store={store} card={card} />
-            <div data-nodrag>
-              <DoneStatus state={state} />
-            </div>
+            {!letGo && (
+              <div data-nodrag>
+                <DoneStatus state={state} />
+              </div>
+            )}
           </div>
           <div data-nodrag className="flex shrink-0">
             <StarButton card={card} onToggle={(important) => void store.edit(card.id, { important })} />
           </div>
         </div>
       )}
-      {over && <DoneControl state={state} />}
+      {over && !letGo && <DoneControl state={state} />}
+      {letGo && !card.adding && <LetGoActions card={card} state={state} onKeep={() => void store.edit(card.id, { row: 'later' })} />}
     </li>
   );
 }
 
-function AddCard({ store, list, onAdded }: { store: TodoStore; list: TodoList; onAdded: () => void }) {
+function AddCard({ store, list }: { store: TodoStore; list: TodoList }) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
   const trimmed = title.trim();
@@ -604,7 +649,6 @@ function AddCard({ store, list, onAdded }: { store: TodoStore; list: TodoList; o
         event.preventDefault();
         if (!trimmed) return;
         void store.add(list.id, trimmed);
-        onAdded();
         close();
       }}
     >
@@ -661,23 +705,20 @@ function ListMenu({ title, name, sorted, onSort }: { title: string; name: string
   );
 }
 
-/** A group's header in a list: its name and its count, one tap to fold or open it. Named for what a tap will do ('Open Soon, 3 cards'). */
-function GroupHeader({ group, count, open, onToggle }: { group: TodoGroup; count: number; open: boolean; onToggle: () => void }) {
-  const name = GROUP_NAMES[group];
+/** The header of a folded row: its name and its count ('Later · 4'), one tap to fold or open it. Named for what a tap will do ('Open Later · 4'). */
+function FoldHeader({ name, count, open, onToggle }: { name: string; count: number; open: boolean; onToggle: () => void }) {
+  const label = `${name} · ${count}`;
   return (
-    <li data-testid="todo-group" data-group={group} data-open={open} className="-mb-1 flex" data-nodrag>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-label={`${open ? 'Fold' : 'Open'} ${name}, ${count} ${count === 1 ? 'card' : 'cards'}`}
-        onClick={onToggle}
-        className="flex h-9 w-full items-center gap-1.5 rounded-lg px-1.5 text-left text-[13px] font-semibold text-muted hover:bg-raised"
-      >
-        <Icon name={open ? 'down' : 'forward'} size={14} />
-        <span className="flex-1">{name}</span>
-        <span className="rounded-full bg-raised px-2 text-[11px] font-normal tabular-nums">{count}</span>
-      </button>
-    </li>
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={`${open ? 'Fold' : 'Open'} ${label}`}
+      onClick={onToggle}
+      className="flex h-10 w-full items-center gap-1.5 rounded-lg px-1.5 text-left text-[14px] font-semibold text-muted hover:bg-raised"
+    >
+      <Icon name={open ? 'down' : 'forward'} size={14} />
+      {label}
+    </button>
   );
 }
 
@@ -685,11 +726,9 @@ function Column({
   store,
   lists,
   list,
+  later,
   sorted,
   onSort,
-  open,
-  onToggle,
-  onAdded,
   drag,
   onPress,
   wasDragged,
@@ -697,47 +736,56 @@ function Column({
   store: TodoStore;
   lists: TodoList[];
   list: TodoList;
+  /** The ids of the cards under Later. */
+  later: ReadonlySet<string>;
   sorted: boolean;
   onSort: (sorted: boolean) => void;
-  open: (group: TodoGroup) => boolean;
-  onToggle: (group: TodoGroup, open: boolean) => void;
-  onAdded: () => void;
   drag?: DragState;
   onPress: (card: string, event: React.PointerEvent<HTMLElement>) => void;
   wasDragged: () => boolean;
 }) {
   // A card cannot be dropped into a list shown by due: where it lands there is not a place in his own order.
   const slot = !sorted && drag?.target?.list === list.id ? drag.target.index : undefined;
+  const isLater = (card: TodoCard) => later.has(card.id);
+  const members = list.cards.filter(isLater);
   const rows: React.ReactNode[] = [];
   let others = 0;
-  const showToday = () => onToggle('today', true);
-  let at = 0;
-  for (const { group, count } of groupCounts(list.cards)) {
-    const isOpen = open(group);
-    rows.push(<GroupHeader key={`group-${group}`} group={group} count={count} open={isOpen} onToggle={() => onToggle(group, !isOpen)} />);
-    const members = list.cards.filter((card) => (card.group ?? 'today') === group);
-    const first = at;
-    at += members.length;
-    if (!isOpen) continue;
-    (sorted ? sortByDue(members) : members).forEach((card, within) => {
-      const held = drag?.card === card.id;
-      if (!held && slot === others) rows.push(<li key="drop" aria-hidden data-testid="drop-mark" className="-my-1 h-1 shrink-0 rounded-full bg-accent" />);
-      // a card's place in its list is its place in the groups' order, which the sort by due leaves in the group
-      rows.push(<Card key={card.id} store={store} card={card} place={{ lists, list, index: first + within, sorted, showToday }} drag={drag} onPress={(event) => onPress(card.id, event)} wasDragged={wasDragged} />);
-      if (!held) others++;
-    });
-  }
+  const shown = sorted ? sortByDue(members) : members;
+  shown.forEach((card, within) => {
+    const held = drag?.card === card.id;
+    if (!held && slot === others) rows.push(<li key="drop" aria-hidden data-testid="drop-mark" className="-my-1 h-1 shrink-0 rounded-full bg-accent" />);
+    rows.push(<Card key={card.id} store={store} card={card} place={{ lists, list, index: within, shown: shown.length, isLater, inRow: false, sorted }} drag={drag} onPress={(event) => onPress(card.id, event)} wasDragged={wasDragged} />);
+    if (!held) others++;
+  });
   if (slot !== undefined && slot >= others) rows.push(<li key="drop" aria-hidden data-testid="drop-mark" className="-my-1 h-1 shrink-0 rounded-full bg-accent" />);
   return (
-    <section aria-label={list.name} data-list={list.id} className="flex max-h-full min-h-0 w-full shrink-0 snap-start flex-col rounded-2xl border border-line bg-canvas lg:w-80">
+    <section aria-label={list.name} data-list={list.id} className="flex min-h-0 w-full shrink-0 snap-start flex-col rounded-2xl border border-line bg-canvas lg:w-80">
       <header className="flex shrink-0 items-center gap-2 px-3 pt-3 pb-2">
         <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold">{list.epic ? <a href={beadHref(list.epic)}>{list.name}</a> : list.name}</h2>
         {sorted && <span className="text-[11px] text-muted">by due</span>}
-        <span className="rounded-full bg-raised px-2 text-[11px] text-muted tabular-nums">{list.cards.length}</span>
+        <span className="rounded-full bg-raised px-2 text-[11px] text-muted tabular-nums">{members.length}</span>
         <ListMenu title={list.title} name={list.name} sorted={sorted} onSort={onSort} />
       </header>
       <ul className="scroll-thin flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">{rows}</ul>
-      {list.epic && <AddCard store={store} list={list} onAdded={onAdded} />}
+      {list.epic && <AddCard store={store} list={list} />}
+    </section>
+  );
+}
+
+/** Do now or Make time: its name over its cards (each naming its list), or one quiet line when it holds none. */
+function CardRow({ store, lists, name, empty, entries, later, wasDragged }: { store: TodoStore; lists: TodoList[]; name: string; empty: string; entries: RowCard[]; later: ReadonlySet<string>; wasDragged: () => boolean }) {
+  return (
+    <section aria-label={name} className="flex flex-col gap-2">
+      <h2 className="px-1.5 text-[14px] font-semibold">{name}</h2>
+      {entries.length === 0 ? (
+        <p className="px-1.5 text-[13.5px] text-muted">{empty}</p>
+      ) : (
+        <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-3">
+          {entries.map(({ card, list }) => (
+            <Card key={card.id} store={store} card={card} place={{ lists, list, index: 0, shown: 0, isLater: (other) => later.has(other.id), inRow: true, sorted: false }} wasDragged={wasDragged} showList />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -748,11 +796,12 @@ export function Board({ store }: { store: TodoStore }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [byDue, setByDue] = useState<ReadonlySet<string>>(new Set());
   const [swiped, setSwiped] = useState(hasSwiped);
-  const [opened, setOpened] = useState<GroupsOpen>(readGroupsOpen);
+  const [opened, setOpened] = useState<RowsOpen>(readRowsOpen);
+  const rows = useMemo(() => boardRows(lists ?? []), [lists]);
   const { drag, startDrag, wasDragged } = useCardDrag(scroller, (card, list, index) => {
-    // the index counts the cards on screen; the cards in folded groups are not, so it is turned into a place among them all
+    // the index counts the cards on screen; the cards in the rows are not in a column, so it is turned into a place among them all
     const target = lists?.find((candidate) => candidate.id === list);
-    const real = target ? realIndex(target, card, index, (other) => isGroupOpen(opened, list, other.group ?? 'today')) : index;
+    const real = target ? realIndex(target, card, index, (other) => rows.later.has(other.id)) : index;
     const move = lists && !byDue.has(list) ? moveFor(lists, card, list, real) : undefined;
     if (move) void store.move(card, move);
   });
@@ -764,6 +813,9 @@ export function Board({ store }: { store: TodoStore }) {
     );
   }
   if (lists.length === 0) return <EmptyState icon="check" title="Nothing on your lists." />;
+  const toggle = (row: FoldedRow) => setOpened((was) => keepRowOpen(was, row, !isRowOpen(was, row)));
+  const laterOpen = isRowOpen(opened, 'later');
+  const letGoOpen = isRowOpen(opened, 'let-go');
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {store.notices.length > 0 && (
@@ -773,40 +825,59 @@ export function Board({ store }: { store: TodoStore }) {
           ))}
         </div>
       )}
-      {lists.length > 1 && !swiped && <p className="shrink-0 px-4 pt-2 text-[12px] text-faint lg:hidden">Swipe sideways for the next list. Hold a card to move it.</p>}
-      <div
-        ref={scroller}
-        data-testid="todo-lists"
-        onScroll={(event) => {
-          if (swiped || event.currentTarget.scrollLeft < 1) return;
-          keepSwiped();
-          setSwiped(true);
-        }}
-        className={cx('scroll-thin flex min-h-0 flex-1 snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto p-4', drag && 'snap-none')}
-      >
-        {lists.map((list) => (
-          <Column
-            key={list.id}
-            store={store}
-            lists={lists}
-            list={list}
-            sorted={byDue.has(list.id)}
-            onSort={(sorted) =>
-              setByDue((was) => {
-                const next = new Set(was);
-                if (sorted) next.add(list.id);
-                else next.delete(list.id);
-                return next;
-              })
-            }
-            open={(group) => isGroupOpen(opened, list.id, group)}
-            onToggle={(group, open) => setOpened((was) => keepGroupOpen(was, list.id, group, open))}
-            onAdded={() => setOpened((was) => keepGroupOpen(was, list.id, 'someday', true))}
-            drag={drag}
-            onPress={startDrag}
-            wasDragged={wasDragged}
-          />
-        ))}
+      <div data-testid="todo-board" className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+        <CardRow store={store} lists={lists} name="Do now" empty="Nothing due soon" entries={rows.doNow} later={rows.later} wasDragged={wasDragged} />
+        <CardRow store={store} lists={lists} name="Make time" empty="Nothing waiting" entries={rows.makeTime} later={rows.later} wasDragged={wasDragged} />
+        <section aria-label="Later" className="flex flex-col gap-2">
+          <FoldHeader name="Later" count={rows.laterCount} open={laterOpen} onToggle={() => toggle('later')} />
+          {laterOpen && lists.length > 1 && !swiped && <p className="px-1.5 text-[12px] text-faint lg:hidden">Swipe sideways for the next list. Hold a card to move it.</p>}
+          {laterOpen && (
+            <div
+              ref={scroller}
+              data-testid="todo-lists"
+              onScroll={(event) => {
+                if (swiped || event.currentTarget.scrollLeft < 1) return;
+                keepSwiped();
+                setSwiped(true);
+              }}
+              className={cx('scroll-thin flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto', drag && 'snap-none')}
+            >
+              {lists.map((list) => (
+                <Column
+                  key={list.id}
+                  store={store}
+                  lists={lists}
+                  list={list}
+                  later={rows.later}
+                  sorted={byDue.has(list.id)}
+                  onSort={(sorted) =>
+                    setByDue((was) => {
+                      const next = new Set(was);
+                      if (sorted) next.add(list.id);
+                      else next.delete(list.id);
+                      return next;
+                    })
+                  }
+                  drag={drag}
+                  onPress={startDrag}
+                  wasDragged={wasDragged}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+        {rows.letGo.length > 0 && (
+          <section aria-label="Let go" className="flex flex-col gap-2">
+            <FoldHeader name="Let go" count={rows.letGo.length} open={letGoOpen} onToggle={() => toggle('let-go')} />
+            {letGoOpen && (
+              <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-3">
+                {rows.letGo.map(({ card, list }) => (
+                  <Card key={card.id} store={store} card={card} place={{ lists, list, index: 0, shown: 0, isLater: (other) => rows.later.has(other.id), inRow: true, sorted: false }} wasDragged={wasDragged} showList letGo />
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
       </div>
       {drag && (
         <div

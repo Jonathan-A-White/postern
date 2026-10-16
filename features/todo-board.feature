@@ -153,7 +153,7 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     And a card "mw-list.7" that fell due yesterday at 18:30, made last
     And a card "mw-list.8" due in 5 days at 9:00, made last
     When the To do tab opens
-    Then the list "Title of mw-list" reads in order "Title of mw-list.7", "Title of mw-list.6", "Title of mw-list.5", "Title of mw-list.8", "Title of mw-list.1" then "Title of mw-list.2"
+    Then the list "Title of mw-list" reads in order "Title of mw-list.7", "Title of mw-list.6", "Title of mw-list.5", "Title of mw-list.1", "Title of mw-list.2" then "Title of mw-list.8"
 
   Scenario: mw-ev7oyy.12 AC-1: a card whose notes end in an Open: line shows a chip for each link, and a tap opens the link, not the back
     Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
@@ -230,64 +230,6 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     Then the board shows no swipe hint
     When the To do tab is opened again
     Then the board still shows no swipe hint
-
-  Scenario: mw-ev7oyy.16 AC-1: a list groups its cards into Today, Soon and Someday, each with its count, Today open and the others folded
-    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
-    And a card "mw-list.5" that is important, made last
-    And a card "mw-list.6" due in 5 days at 9:00, made last
-    And a card "mw-list.7" that fell due yesterday at 18:30, made last
-    And a card "mw-list.8" due today at 23:00, made last
-    When the To do tab opens with the groups as he first finds them
-    Then the list "Title of mw-list" has the groups "Fold Today, 2 cards / Open Soon, 2 cards / Open Someday, 2 cards"
-    And the list "Title of mw-list" shows only "Title of mw-list.7" then "Title of mw-list.8"
-
-  Scenario: mw-ev7oyy.16 AC-1: a group with no cards is not shown
-    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
-    When the To do tab opens with the groups as he first finds them
-    Then the list "Title of mw-list" has the groups "Open Someday, 2 cards"
-
-  Scenario: mw-ev7oyy.16 AC-2: a folded group opens with one tap, and each list keeps what he opened across a reload
-    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
-    And a card "mw-list.5" that is important, made last
-    And a second list "mw-other" holding one open card
-    When the To do tab opens with the groups as he first finds them
-    And he taps "Open Soon, 1 card" on the list "Title of mw-list"
-    Then the list "Title of mw-list" has the groups "Fold Soon, 1 card / Open Someday, 2 cards"
-    And the list "Title of mw-list" shows only "Title of mw-list.5"
-    When the To do tab is opened again
-    Then the list "Title of mw-list" still has the groups "Fold Soon, 1 card / Open Someday, 2 cards"
-    And the list "Title of mw-other" keeps the groups "Open Someday, 1 card"
-
-  Scenario: mw-ev7oyy.16 AC-3: a card's back moves it to Today for today only, and the next day it is back in its own group
-    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
-    When the To do tab opens with the groups as he first finds them
-    And he taps "Open Someday, 2 cards" on the list "Title of mw-list"
-    And he taps the card "Title of mw-list.1"
-    And he taps "Move to Today" on the card's back
-    And he taps Back on the card
-    Then the list "Title of mw-list" has the groups "Fold Today, 1 card / Fold Someday, 1 card"
-    And the list "Title of mw-list" shows only "Title of mw-list.1" then "Title of mw-list.2"
-    When it is the next day and the To do tab is opened again
-    Then the list "Title of mw-list" still has the groups "Fold Someday, 2 cards"
-    And the list "Title of mw-list" again shows only "Title of mw-list.1" then "Title of mw-list.2"
-
-  Scenario: mw-ev7oyy.16 AC-3: a card tapped into Today offers Back to its own group, and that puts it back
-    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
-    When the To do tab opens with the groups as he first finds them
-    And he taps "Open Someday, 2 cards" on the list "Title of mw-list"
-    And he taps the card "Title of mw-list.1"
-    And he taps "Move to Today" on the card's back
-    Then the card's back offers "Back to its own group" and not "Move to Today"
-    When he then taps "Back to its own group" on the card's back
-    Then the list "Title of mw-list" has the groups "Fold Someday, 2 cards"
-
-  Scenario: mw-ev7oyy.16 AC-1: a card added to a folded Someday is seen at once, pending
-    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
-    When the To do tab opens with the groups as he first finds them
-    And he adds the card "Buy bin bags" at the foot of the list "Title of mw-list"
-    Then a todo_add for the list "mw-list" titled "Buy bin bags" waits in the outbox
-    And the list "Title of mw-list" ends with the pending card "Buy bin bags"
-
 
   Scenario: mw-ev7oyy.22 AC-1: a card whose notes have a Text: line shows a Text button that opens his texting app to the person with the message filled in
     Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do

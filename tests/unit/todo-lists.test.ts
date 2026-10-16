@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { indexView } from '../../src/model/tree';
 import { decodeView } from '../../src/model/view';
-import { beadsNamed, dayKey, groupCards, groupCounts, groupOf, openLinkLabel, openTodoCount, orderCards, shortName, todoListsFromView, TODO_LABEL, OTHER_LIST } from '../../src/todo';
+import { beadsNamed, boardRows, dayKey, openLinkLabel, openTodoCount, orderCards, pickCards, shortName, todoListsFromView, TODO_LABEL, OTHER_LIST, ROW_LIMIT } from '../../src/todo';
 import type { TodoCard } from '../../src/todo';
 import { fixtureView } from '../support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
@@ -209,87 +209,88 @@ describe('the star on a card from the view', () => {
   });
 });
 
-// mw-ev7oyy.16: a list's cards fall into Today (due today or overdue, or tapped into Today for today), Soon (due within 7 days, or
-// important) and Someday (the rest). A fake clock (NOW, a Tuesday at noon, UTC) says which day each card is due.
-describe('groupOf and groupCards: Today, Soon and Someday', () => {
+// mw-ht6gsw.5: the Today tap keeps one job under Later: a card tapped into Today comes first in its list for the day it was tapped, and no longer.
+describe('pickCards: the Today tap', () => {
   const DAY = 86_400_000;
   const card = (id: string, extra: Partial<TodoCard> = {}): TodoCard => ({ id, title: id, priority: 2, created: '', ...extra });
-  const dueDay = (days: number, hour = 9) => new Date(Date.parse('2026-10-13T00:00:00Z') + days * DAY + hour * 3_600_000).toISOString();
   const ids = (cards: TodoCard[]) => cards.map((c) => c.id);
 
-  it('puts a card due today, even at a later hour, or overdue in Today', () => {
-    expect(groupOf(card('a', { due: dueDay(0, 23) }), NOW, {})).toBe('today');
-    expect(groupOf(card('b', { due: dueDay(0, 1) }), NOW, {})).toBe('today');
-    expect(groupOf(card('c', { due: dueDay(-9) }), NOW, {})).toBe('today');
+  it('puts a card tapped for today first and marks it tapped, the rest in the order orderCards gave', () => {
+    const picked = pickCards([card('a'), card('star', { important: true }), card('b')], NOW, { b: dayKey(NOW) });
+    expect(ids(picked)).toEqual(['b', 'star', 'a']);
+    expect(picked.map((c) => c.tapped)).toEqual([true, undefined, undefined]);
   });
 
-  it('puts a card due tomorrow through seven days ahead in Soon, and one due in eight days in Someday', () => {
-    expect(groupOf(card('a', { due: dueDay(1, 0) }), NOW, {})).toBe('soon');
-    expect(groupOf(card('b', { due: dueDay(7, 23) }), NOW, {})).toBe('soon');
-    expect(groupOf(card('c', { due: dueDay(8, 0) }), NOW, {})).toBe('someday');
-  });
-
-  it('puts an important card in Soon, however far off or undated, but a due-today one in Today', () => {
-    expect(groupOf(card('a', { important: true }), NOW, {})).toBe('soon');
-    expect(groupOf(card('b', { important: true, due: dueDay(30) }), NOW, {})).toBe('soon');
-    expect(groupOf(card('c', { important: true, due: dueDay(0) }), NOW, {})).toBe('today');
-  });
-
-  it('puts a card with no due time, or one that is no time, in Someday', () => {
-    expect(groupOf(card('a'), NOW, {})).toBe('someday');
-    expect(groupOf(card('b', { due: 'soon' }), NOW, {})).toBe('someday');
-  });
-
-  it('moves a card to Today for today only: the day it was tapped is the day it counts', () => {
+  it('counts the day it was tapped and no other', () => {
     const picks = { a: dayKey(NOW) };
-    expect(groupOf(card('a'), NOW, picks)).toBe('today');
-    expect(groupOf(card('a'), NOW + DAY, picks)).toBe('someday');
-    expect(groupOf(card('a', { important: true }), NOW + DAY, picks)).toBe('soon');
-    expect(groupOf(card('a', { due: dueDay(3) }), NOW + 2 * DAY, picks)).toBe('soon');
-  });
-
-  it('keeps a pick for yesterday from pulling a card into Today', () => {
-    expect(groupOf(card('a'), NOW, { a: '2026-10-12' })).toBe('someday');
-  });
-
-  it('puts the cards in Today, Soon, Someday order, each group in the order orderCards gave, and says the group on each', () => {
-    const cards = [card('s0'), card('star', { important: true }), card('late', { due: dueDay(-1) }), card('tmrw', { due: dueDay(1) }), card('s1'), card('today', { due: dueDay(0, 20) }), card('week', { due: dueDay(5) })];
-    const grouped = groupCards(cards, NOW, {});
-    expect(ids(grouped)).toEqual(['late', 'today', 'tmrw', 'star', 'week', 's0', 's1']);
-    expect(grouped.map((c) => c.group)).toEqual(['today', 'today', 'soon', 'soon', 'soon', 'someday', 'someday']);
-  });
-
-  it('uses the float inside a group: the due-soon ones first, then the important ones, then the rest in his order', () => {
-    const cards = [card('plain5', { due: dueDay(5) }), card('star', { important: true }), card('tmrw', { due: dueDay(1, 3) })];
-    expect(ids(groupCards(cards, NOW, {}))).toEqual(['tmrw', 'star', 'plain5']);
-  });
-
-  it('marks a card the pick put in Today as tapped, and does not mark one that is there by its own due time', () => {
-    const grouped = groupCards([card('a'), card('b', { due: dueDay(0) })], NOW, { a: dayKey(NOW), b: dayKey(NOW) });
-    expect(grouped.map((c) => [c.id, c.group, c.tapped])).toEqual([
-      ['b', 'today', undefined],
-      ['a', 'today', true],
-    ]);
+    expect(pickCards([card('b'), card('a')], NOW + DAY, picks).map((c) => [c.id, c.tapped])).toEqual([['b', undefined], ['a', undefined]]);
+    expect(ids(pickCards([card('b'), card('a')], NOW, { a: '2026-10-12' }))).toEqual(['b', 'a']);
   });
 
   it('does not change the cards given', () => {
     const cards = [card('a'), card('b', { important: true })];
-    groupCards(cards, NOW, { a: dayKey(NOW) });
+    pickCards(cards, NOW, { a: dayKey(NOW) });
     expect(cards).toEqual([card('a'), card('b', { important: true })]);
-  });
-
-  it('counts the cards of each group, leaving an empty group out, in the order Today, Soon, Someday', () => {
-    const grouped = groupCards([card('a'), card('b'), card('c', { due: dueDay(0) }), card('d', { important: true }), card('e')], NOW, {});
-    expect(groupCounts(grouped)).toEqual([
-      { group: 'today', count: 1 },
-      { group: 'soon', count: 1 },
-      { group: 'someday', count: 3 },
-    ]);
-    expect(groupCounts(groupCards([card('a')], NOW, {}))).toEqual([{ group: 'someday', count: 1 }]);
   });
 
   it('reads the day in the phone zone: a day key is the calendar date', () => {
     expect(dayKey(NOW)).toBe('2026-10-13');
+  });
+});
+
+// mw-ht6gsw.5: the pass's todo_row and todo_row_why come from the view onto the card, and boardRows lays the cards of every list into the rows.
+describe('the rows of the board', () => {
+  const ROWS = (id: string, row: string | undefined, extra: Partial<ViewBead> = {}) => todo(id, { parent: 'mw-a', ...(row ? { todo_row: row as never } : {}), ...extra });
+  const rows = (beads: ViewBead[]) => boardRows(listsOf([bead('mw-a', { type: 'epic' }), ...beads]));
+
+  it('reads todo_row and todo_row_why from the view, and anything else as none', () => {
+    const view = decodeView(JSON.stringify({ v: 2, beads: [{ id: 'mw-a', todo_row: 'make-time', todo_row_why: '  Waiting 3 weeks  ' }, { id: 'mw-b', todo_row: 'someday', todo_row_why: '' }, { id: 'mw-c' }] }));
+    expect(view.beads.map((b) => [b.todo_row, b.todo_row_why])).toEqual([['make-time', 'Waiting 3 weeks'], [undefined, undefined], [undefined, undefined]]);
+  });
+
+  it('carries them onto the card', () => {
+    const lists = listsOf([bead('mw-a', { type: 'epic' }), ROWS('mw-a.1', 'make-time', { todo_row_why: 'Waiting 3 weeks' }), ROWS('mw-a.2', undefined)]);
+    expect(lists[0].cards.map((c) => [c.id, c.row, c.rowWhy])).toEqual([['mw-a.1', 'make-time', 'Waiting 3 weeks'], ['mw-a.2', undefined, undefined]]);
+  });
+
+  it('puts the cards of each row in it, and a card with no row or the row later under Later', () => {
+    const laid = rows([ROWS('mw-a.1', 'now'), ROWS('mw-a.2', 'make-time'), ROWS('mw-a.3', 'later'), ROWS('mw-a.4', undefined), ROWS('mw-a.5', 'let-go')]);
+    expect(laid.doNow.map((e) => e.card.id)).toEqual(['mw-a.1']);
+    expect(laid.makeTime.map((e) => e.card.id)).toEqual(['mw-a.2']);
+    expect(laid.letGo.map((e) => e.card.id)).toEqual(['mw-a.5']);
+    expect([...laid.later].sort()).toEqual(['mw-a.3', 'mw-a.4']);
+    expect(laid.laterCount).toBe(2);
+  });
+
+  it('holds each of Do now and Make time to three, the rest going to Later', () => {
+    expect(ROW_LIMIT).toBe(3);
+    const laid = rows(['1', '2', '3', '4'].flatMap((n) => [ROWS(`mw-a.n${n}`, 'now'), ROWS(`mw-a.m${n}`, 'make-time')]));
+    expect(laid.doNow).toHaveLength(3);
+    expect(laid.makeTime).toHaveLength(3);
+    expect(laid.laterCount).toBe(2);
+  });
+
+  it('orders Do now by due time, then the star, then the oldest; Make time by the oldest first', () => {
+    const laid = rows([
+      ROWS('mw-a.1', 'now', { created: at(10) }),
+      ROWS('mw-a.2', 'now', { created: at(20), todo_important: true }),
+      ROWS('mw-a.3', 'now', { created: at(5), todo_due: new Date(NOW + 3_600_000).toISOString() }),
+      ROWS('mw-a.4', 'make-time', { created: at(5) }),
+      ROWS('mw-a.5', 'make-time', { created: at(500) }),
+    ]);
+    expect(laid.doNow.map((e) => e.card.id)).toEqual(['mw-a.3', 'mw-a.2', 'mw-a.1']);
+    expect(laid.makeTime.map((e) => e.card.id)).toEqual(['mw-a.5', 'mw-a.4']);
+  });
+
+  it('spans every list, naming the list each card belongs to', () => {
+    const lists = listsOf([bead('mw-a', { type: 'epic', created: at(100) }), bead('mw-b', { type: 'epic', created: at(50) }), todo('mw-a.1', { parent: 'mw-a', todo_row: 'now' }), todo('mw-b.1', { parent: 'mw-b', todo_row: 'now' })]);
+    expect(boardRows(lists).doNow.map((e) => [e.card.id, e.list.id]).sort()).toEqual([['mw-a.1', 'mw-a'], ['mw-b.1', 'mw-b']]);
+  });
+
+  it('keeps a card still being added under Later', () => {
+    const lists = listsOf([bead('mw-a', { type: 'epic' }), ROWS('mw-a.1', 'now')]);
+    lists[0].cards.push({ id: 'pending:1', title: 'New', priority: 2, created: '', adding: true, pending: true });
+    expect(boardRows(lists).later.has('pending:1')).toBe(true);
   });
 });
 

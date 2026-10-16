@@ -3,7 +3,7 @@
 // goes (dropPlace, moveFor), and when a change that was sent is still waiting, settled, or refused
 // (judge). No React, no storage; posternStore.ts reads the outbox and calls these.
 import type { OutboxRow } from '../data/db';
-import { OTHER_LIST, type TodoCard, type TodoList, type TodoSize } from './lists';
+import { OTHER_LIST, type TodoCard, type TodoList, type TodoRow, type TodoSize } from './lists';
 
 /** The place a card goes (docs/protocol.md §13 todo_move): another list, and/or before or after a card there. */
 export interface TodoMove {
@@ -24,11 +24,13 @@ export interface TodoCardEdit {
   size?: TodoSize | '';
   /** A Then line to set, or '' to clear it (mw-ht6gsw.4). */
   then?: string;
+  /** A row to put the card in (mw-ht6gsw.5): 'later', which is Keep on a card in Let go. */
+  row?: TodoRow;
 }
 
 export type TodoAction =
   | { action: 'todo_add'; list: string; title: string; notes?: string }
-  | { action: 'todo_edit'; bead: string; title?: string; notes?: string; due?: string; important?: boolean; size?: TodoSize | ''; then?: string }
+  | { action: 'todo_edit'; bead: string; title?: string; notes?: string; due?: string; important?: boolean; size?: TodoSize | ''; then?: string; row?: TodoRow }
   | { action: 'todo_move'; bead: string; list?: string; before?: string; after?: string };
 
 /** One change that has been sent or is waiting to be, in the order made; `id` is its outbox row. */
@@ -75,6 +77,10 @@ export function applyChanges(lists: TodoList[], changes: TodoChange[]): { lists:
         else if (action.size === '') delete next.size;
         if (action.then) next.then = action.then;
         else if (action.then === '') delete next.then;
+        if (action.row) {
+          next.row = action.row;
+          delete next.rowWhy;
+        }
         return next;
       });
       if (action.notes !== undefined) notes.set(action.bead, action.notes);

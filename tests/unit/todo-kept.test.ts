@@ -1,32 +1,32 @@
-// tests/unit/todo-kept.test.ts — mw-ev7oyy.16: what the To do board keeps on the phone: which groups of each list he has opened or folded,
+// tests/unit/todo-kept.test.ts — mw-ev7oyy.16, mw-ht6gsw.5: what the To do board keeps on the phone: whether he has opened Later and Let go,
 // and the cards he has tapped into Today (for that day only). The suite runs with TZ=UTC.
 import { beforeEach, describe, expect, it } from 'vitest';
-import { dayKey, isGroupOpen, keepGroupOpen, keepTodayPick, readGroupsOpen, readTodayPicks } from '../../src/todo';
+import { dayKey, isRowOpen, keepRowOpen, keepTodayPick, readRowsOpen, readTodayPicks } from '../../src/todo';
 
 const NOW = Date.parse('2026-10-13T12:00:00Z');
 const TOMORROW = NOW + 86_400_000;
 
 beforeEach(() => localStorage.clear());
 
-describe('the groups he has opened or folded', () => {
-  it('has Today open and Soon and Someday folded until he says', () => {
-    const open = readGroupsOpen();
-    expect(['today', 'soon', 'someday'].map((group) => isGroupOpen(open, 'mw-a', group as 'today'))).toEqual([true, false, false]);
+describe('the rows he has opened or folded', () => {
+  it('has Later and Let go folded until he says', () => {
+    const open = readRowsOpen();
+    expect([isRowOpen(open, 'later'), isRowOpen(open, 'let-go')]).toEqual([false, false]);
   });
 
-  it('keeps a choice per list, across a read', () => {
-    keepGroupOpen(keepGroupOpen(readGroupsOpen(), 'mw-a', 'soon', true), 'mw-a', 'today', false);
-    const open = readGroupsOpen();
-    expect(['today', 'soon', 'someday'].map((group) => isGroupOpen(open, 'mw-a', group as 'today'))).toEqual([false, true, false]);
-    expect(isGroupOpen(open, 'mw-b', 'soon')).toBe(false);
+  it('keeps a choice for each row, across a read', () => {
+    keepRowOpen(keepRowOpen(readRowsOpen(), 'later', true), 'let-go', true);
+    keepRowOpen(readRowsOpen(), 'let-go', false);
+    const open = readRowsOpen();
+    expect([isRowOpen(open, 'later'), isRowOpen(open, 'let-go')]).toEqual([true, false]);
   });
 
   it('reads damaged storage as the defaults', () => {
-    localStorage.setItem('postern.todo.groups', '[1,2');
-    expect(isGroupOpen(readGroupsOpen(), 'mw-a', 'today')).toBe(true);
-    localStorage.setItem('postern.todo.groups', JSON.stringify({ 'mw-a': { soon: 'yes', today: false }, 'mw-b': 3 }));
-    const open = readGroupsOpen();
-    expect([isGroupOpen(open, 'mw-a', 'soon'), isGroupOpen(open, 'mw-a', 'today'), isGroupOpen(open, 'mw-b', 'today')]).toEqual([false, false, true]);
+    localStorage.setItem('postern.todo.folds', '[1,2');
+    expect(isRowOpen(readRowsOpen(), 'later')).toBe(false);
+    localStorage.setItem('postern.todo.folds', JSON.stringify({ later: 'yes', 'let-go': true }));
+    const open = readRowsOpen();
+    expect([isRowOpen(open, 'later'), isRowOpen(open, 'let-go')]).toEqual([false, true]);
   });
 });
 

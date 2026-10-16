@@ -20,8 +20,6 @@ let now = Date.now();
 let beads: ViewBead[] = [];
 let viewSeq: number | undefined;
 const notes = new Map<string, string>();
-/** The groups of every list are opened (Soon and Someday start folded) unless a scenario is about the folding (mw-ev7oyy.16). */
-let groupsAsFound = false;
 
 function beadIn(id: string, extra: Partial<ViewBead>): ViewBead {
   const template = fixtureView(now).beads[0];
@@ -37,7 +35,6 @@ async function fresh(): Promise<void> {
   now = Date.now();
   beads = [];
   viewSeq = undefined;
-  groupsAsFound = false;
   notes.clear();
   forgetTaps();
   forgetOutboxState();
@@ -145,10 +142,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
   };
   const tabOpens = async () => {
     await save();
-    if (!groupsAsFound && !localStorage.getItem('postern.todo.groups')) {
-      const open = { today: true, soon: true, someday: true };
-      localStorage.setItem('postern.todo.groups', JSON.stringify(Object.fromEntries([...beads.filter((b) => b.type === 'epic').map((b) => b.id), 'other'].map((id) => [id, open]))));
-    }
+    // Later starts folded; the scenarios here are about the cards in the list columns, so it is opened first (the rows are in todo-rows.feature)
+    if (!localStorage.getItem('postern.todo.folds')) localStorage.setItem('postern.todo.folds', JSON.stringify({ later: true }));
     for (const [id, description] of notes) {
       const bead = beads.find((b) => b.id === id) as ViewBead;
       const detail: BeadDetail = { v: 2, ...bead, blocks: [], children: [], description, acceptance: '', comments: [{ at: new Date(now).toISOString(), author: 'mayor', text: 'Waiting on you.' }] };
@@ -875,119 +870,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     Then('the board still shows no swipe hint', async () => {
       await screen.findByTestId('todo-lists');
       expect(screen.queryByText(HINT)).toBeNull();
-    });
-  });
-
-  // mw-ev7oyy.16: Today, Soon and Someday. The groups start as he first finds them (Today open, the others folded) only when a scenario says so.
-  const asFound = async () => {
-    groupsAsFound = true;
-    await tabOpens();
-  };
-  const groupLabels = (column: HTMLElement) => within(column).queryAllByTestId('todo-group').map((group) => group.querySelector('button')?.getAttribute('aria-label'));
-  const hasGroups = async (_c: unknown, list: string, labels: string) => {
-    const column = await listNamed(list);
-    await waitFor(() => expect(groupLabels(column)).toEqual(labels.split(' / ')));
-  };
-  const showsOnly = async (_c: unknown, list: string, ...expected: string[]) => {
-    const column = await listNamed(list);
-    await waitFor(() => expect(namesIn(column)).toEqual(expected));
-  };
-  const tapGroup = async (_c: unknown, name: string, list: string) => {
-    await userEvent.click(within(await listNamed(list)).getByRole('button', { name }));
-  };
-  const tapOnBack = async (_c: unknown, name: string) => {
-    await userEvent.click(await screen.findByRole('button', { name }));
-  };
-  const reopen = async () => {
-    cleanup();
-    render(
-      <Shell route={{ view: 'todo' }}>
-        <TodoScreen />
-      </Shell>,
-    );
-    await screen.findByTestId('todo-lists');
-  };
-  const SOME = 'a view with a list {string} holding two open cards, a closed card and a card that is not a to do';
-  const dueTodayAt23 = (_c: unknown, id: string) => madeLast(id, { todo_due: dayAt(0, 23, 0).toISOString() });
-
-  Scenario('mw-ev7oyy.16 AC-1: a list groups its cards into Today, Soon and Someday, each with its count, Today open and the others folded', ({ Given, And, When, Then }) => {
-    Given(SOME, aList);
-    And('a card {string} that is important, made last', (_c, id: string) => madeLast(id, { todo_important: true }));
-    And('a card {string} due in 5 days at 9:00, made last', (_c, id: string) => madeLast(id, { todo_due: dayAt(5, 9, 0).toISOString() }));
-    And('a card {string} that fell due yesterday at 18:30, made last', (_c, id: string) => madeLast(id, { todo_due: dayAt(-1, 18, 30).toISOString() }));
-    And('a card {string} due today at 23:00, made last', dueTodayAt23);
-    When('the To do tab opens with the groups as he first finds them', asFound);
-    Then('the list {string} has the groups {string}', hasGroups);
-    And('the list {string} shows only {string} then {string}', showsOnly);
-  });
-
-  Scenario('mw-ev7oyy.16 AC-1: a group with no cards is not shown', ({ Given, When, Then }) => {
-    Given(SOME, aList);
-    When('the To do tab opens with the groups as he first finds them', asFound);
-    Then('the list {string} has the groups {string}', hasGroups);
-  });
-
-  Scenario('mw-ev7oyy.16 AC-2: a folded group opens with one tap, and each list keeps what he opened across a reload', ({ Given, And, When, Then }) => {
-    Given(SOME, aList);
-    And('a card {string} that is important, made last', (_c, id: string) => madeLast(id, { todo_important: true }));
-    And('a second list {string} holding one open card', secondList);
-    When('the To do tab opens with the groups as he first finds them', asFound);
-    And('he taps {string} on the list {string}', tapGroup);
-    Then('the list {string} has the groups {string}', hasGroups);
-    And('the list {string} shows only {string}', showsOnly);
-    When('the To do tab is opened again', reopen);
-    Then('the list {string} still has the groups {string}', hasGroups);
-    And('the list {string} keeps the groups {string}', hasGroups);
-  });
-
-  Scenario("mw-ev7oyy.16 AC-3: a card's back moves it to Today for today only, and the next day it is back in its own group", ({ Given, When, And, Then }) => {
-    Given(SOME, aList);
-    When('the To do tab opens with the groups as he first finds them', asFound);
-    And('he taps {string} on the list {string}', tapGroup);
-    And('he taps the card {string}', tapCard);
-    And("he taps {string} on the card's back", tapOnBack);
-    And('he taps Back on the card', tapBack);
-    Then('the list {string} has the groups {string}', hasGroups);
-    And('the list {string} shows only {string} then {string}', showsOnly);
-    When('it is the next day and the To do tab is opened again', async () => {
-      vi.useFakeTimers({ toFake: ['Date'] });
-      vi.setSystemTime(new Date(now + 86_400_000));
-      await reopen();
-    });
-    Then('the list {string} still has the groups {string}', hasGroups);
-    And('the list {string} again shows only {string} then {string}', showsOnly);
-  });
-
-  Scenario('mw-ev7oyy.16 AC-3: a card tapped into Today offers Back to its own group, and that puts it back', ({ Given, When, And, Then }) => {
-    Given(SOME, aList);
-    When('the To do tab opens with the groups as he first finds them', asFound);
-    And('he taps {string} on the list {string}', tapGroup);
-    And('he taps the card {string}', tapCard);
-    And("he taps {string} on the card's back", tapOnBack);
-    Then("the card's back offers {string} and not {string}", async (_c, offered: string, not: string) => {
-      expect(await screen.findByRole('button', { name: offered })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: not })).toBeNull();
-    });
-    When("he then taps {string} on the card's back", tapOnBack);
-    Then('the list {string} has the groups {string}', hasGroups);
-  });
-
-  Scenario('mw-ev7oyy.16 AC-1: a card added to a folded Someday is seen at once, pending', ({ Given, When, And, Then }) => {
-    Given(SOME, aList);
-    When('the To do tab opens with the groups as he first finds them', asFound);
-    And('he adds the card {string} at the foot of the list {string}', async (_c, title: string, list: string) => {
-      const column = await listNamed(list);
-      await userEvent.click(within(column).getByRole('button', { name: 'Add a card' }));
-      await userEvent.type(within(column).getByLabelText('Title of the new card'), title);
-      await userEvent.click(within(column).getByRole('button', { name: 'Add' }));
-    });
-    Then('a todo_add for the list {string} titled {string} waits in the outbox', async (_c, list: string, title: string) => {
-      await waitFor(async () => expect(await outboxActions()).toEqual([{ action: 'todo_add', list, title }]));
-    });
-    And('the list {string} ends with the pending card {string}', async (_c, list: string, title: string) => {
-      const column = await listNamed(list);
-      await waitFor(() => expect(within(column).getAllByTestId('todo-card').at(-1)).toHaveTextContent(title));
-      expect(pendingIn(within(column).getAllByTestId('todo-card').at(-1) as HTMLElement)).not.toBeNull();
     });
   });
 

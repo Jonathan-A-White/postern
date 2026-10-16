@@ -1,7 +1,7 @@
 {
-  "version": "0.6.38",
-  "commit": "3380b08",
-  "published_at": "2026-10-16T11:44:42.255Z",
+  "version": "0.6.39",
+  "commit": "93737dd",
+  "published_at": "2026-10-16T12:08:47.913Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -779,6 +779,48 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/long-tokens.png"
+    },
+    {
+      "name": "390x844/map-icebox.png",
+      "screen": "map-icebox",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/map-icebox.png"
+    },
+    {
+      "name": "360x640/map-icebox.png",
+      "screen": "map-icebox",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/map-icebox.png"
+    },
+    {
+      "name": "1280x800/map-icebox.png",
+      "screen": "map-icebox",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/map-icebox.png"
+    },
+    {
+      "name": "390x844/map-icebox-open.png",
+      "screen": "map-icebox-open",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/map-icebox-open.png"
+    },
+    {
+      "name": "360x640/map-icebox-open.png",
+      "screen": "map-icebox-open",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/map-icebox-open.png"
+    },
+    {
+      "name": "1280x800/map-icebox-open.png",
+      "screen": "map-icebox-open",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/map-icebox-open.png"
     },
     {
       "name": "390x844/message-busy.png",

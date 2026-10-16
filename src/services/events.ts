@@ -124,6 +124,8 @@ export interface SyncEventsOptions {
   fetchImpl?: typeof fetch;
   /** The view fetch goes through the throttle's window (a tap on a Refresh button). */
   forceView?: boolean;
+  /** Aborted when the sync is cut off (src/services/live.ts): its requests stop, and it projects nothing more. */
+  signal?: AbortSignal;
 }
 
 /** The message sync with its events projected: pages the records past the cursor,
@@ -132,8 +134,9 @@ export interface SyncEventsOptions {
  * VIEW_BEHIND_INTERVAL_MS of the last fetch when they name something only the home
  * builds or a detail could not be had. Resolves whether the view was fetched now. */
 export async function syncMessagesAndEvents(options: SyncEventsOptions): Promise<{ applied: number; refetched: boolean }> {
-  const { publicKeyHex, unlockedKey: key, mayorKey, live, apiBase, fetchImpl, forceView } = options;
-  const { events } = await syncMessages({ publicKeyHex, unlockedKey: key, mayorKey, apiBase, fetchImpl });
+  const { publicKeyHex, unlockedKey: key, mayorKey, live, apiBase, fetchImpl, forceView, signal } = options;
+  const { events } = await syncMessages({ publicKeyHex, unlockedKey: key, mayorKey, apiBase, fetchImpl, signal });
+  signal?.throwIfAborted();
   const projected = await projectBatches(events);
   const refetch = projected.refetch;
   let behind = projected.behind;

@@ -153,6 +153,8 @@ export interface SyncMessagesParams {
   mayorKey?: string;
   apiBase?: string;
   fetchImpl?: typeof fetch;
+  /** Aborted when the sync is cut off: the page in flight is dropped and the cursor is not moved. */
+  signal?: AbortSignal;
 }
 
 export interface SyncMessagesResult {
@@ -187,7 +189,8 @@ export async function syncMessages(params: SyncMessagesParams): Promise<SyncMess
 
   let since = ((await settingsRepo.get(CURSOR_SETTING_KEY)) as number | undefined) ?? 0;
   for (;;) {
-    const response = await apiFetch(`/messages?since=${since}&limit=${PAGE_LIMIT}`, undefined, {
+    params.signal?.throwIfAborted();
+    const response = await apiFetch(`/messages?since=${since}&limit=${PAGE_LIMIT}`, params.signal ? { signal: params.signal } : undefined, {
       unlockedKey: params.unlockedKey,
       apiBase: params.apiBase,
       fetchImpl: params.fetchImpl,
@@ -205,6 +208,7 @@ export async function syncMessages(params: SyncMessagesParams): Promise<SyncMess
       await storeRecord({ seq: record.seq, txid: record.txid, vout: record.vout, payload: record.payload }, params.publicKeyHex, unlockedKeyHex);
     }
 
+    params.signal?.throwIfAborted();
     await settingsRepo.set(CURSOR_SETTING_KEY, body.next);
     // A page that claims more but does not move the cursor on would be fetched again for ever.
     if (body.more !== true || body.next <= since) break;

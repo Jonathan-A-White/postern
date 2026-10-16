@@ -2,7 +2,7 @@
 // §11) current: a conditional GET /api/view, decrypted and checked against the
 // pinned Mayor, stored in Dexie so the cockpit opens instantly and offline. An old
 // backend without /api/view gets its §7 snapshot read and converted instead.
-import { apiFetch } from './apiAuth';
+import { API_TIMEOUT_MS, apiFetch, withTimeout } from './apiAuth';
 import { openDocument } from './documents';
 import { decryptSnapshotCiphertext } from './messages';
 import { decodeSnapshot } from './questions';
@@ -70,10 +70,13 @@ function looksLikeBase64Ciphertext(text: string): boolean {
 
 async function refreshFromSnapshot(options: RefreshViewOptions): Promise<ViewRefresh> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(options.snapshotUrl ?? SNAPSHOT_URL, { cache: 'no-store' });
+  // Not an /api call, so apiFetch's bound is given here: a snapshot that never answers would hold the sync for good (mw-q6n8m0.15).
+  const abort = new AbortController();
+  const giveUp = () => abort.abort();
+  const response = await withTimeout(fetchImpl(options.snapshotUrl ?? SNAPSHOT_URL, { cache: 'no-store', signal: abort.signal }), false, API_TIMEOUT_MS, giveUp);
   if (response.status === 404) return 'absent';
   if (!response.ok) throw new Error(`The snapshot answered ${response.status}.`);
-  const sealed = (await response.text()).trim();
+  const sealed = (await withTimeout(response.text(), false, API_TIMEOUT_MS, giveUp)).trim();
   if (!looksLikeBase64Ciphertext(sealed)) return 'absent';
   const snapshotPlaintext = decryptSnapshotCiphertext(sealed, Utils.toHex(Array.from(options.key)));
   const view = viewFromSnapshot(decodeSnapshot(snapshotPlaintext));

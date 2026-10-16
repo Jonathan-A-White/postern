@@ -336,6 +336,9 @@ const seamSpies: { mockRestore(): void }[] = [];
 
 async function fresh(): Promise<void> {
   cleanup();
+  shareDoubles.share.mockClear();
+  shareDoubles.writeText.mockClear();
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: shareDoubles.writeText }, configurable: true });
   stopSpeaking(); // a speech paused by a screen left in the last scenario must not be resumed by this one
   silentFor = 0;
   quiet.ms = undefined;
@@ -415,6 +418,26 @@ async function syncAnswer(text: string): Promise<void> {
     return new Response('not found', { status: 404 });
   };
   await syncMessagesAndEvents({ publicKeyHex: gov.toPublicKey().toString(), unlockedKey: new Uint8Array(Utils.toArray(gov.toHex(), 'hex')), mayorKey: MAYOR.toPublicKey().toString(), live: false, fetchImpl: backend });
+}
+
+// mw-q6n8m0.17: Share under a turn — navigator.share and the clipboard are doubles.
+const shareDoubles = { share: vi.fn().mockResolvedValue(undefined), writeText: vi.fn().mockResolvedValue(undefined) };
+function phoneShares(): void {
+  Object.defineProperty(navigator, 'share', { value: shareDoubles.share, configurable: true });
+}
+function phoneHasNoShare(): void {
+  Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
+}
+async function tapShareUnderHisTurn(): Promise<void> {
+  const his = (await screen.findByTestId('talk-said')).parentElement as HTMLElement;
+  await userEvent.click(within(his).getByRole('button', { name: 'Share' }));
+}
+async function tapShareUnderAnswer(): Promise<void> {
+  await userEvent.click(within(await screen.findByTestId('talk-answer')).getByRole('button', { name: 'Share' }));
+}
+async function expectShared(_c: unknown, text: string, title: string): Promise<void> {
+  await waitFor(() => expect(shareDoubles.share).toHaveBeenCalledWith({ title, text }));
+  shareDoubles.share.mockClear();
 }
 
 const feature = await loadFeature('features/talk-screen.feature');
@@ -2371,7 +2394,12 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     for (const button of within(bar).getAllByRole('button')) expect(button.className).toContain('bk-speech__button'); // 44 px: voice-kit's rule for that class, measured in tests/e2e/talk-line.spec.ts (jsdom has no layout)
   };
   // mw-q6n8m0.11: the Talk line's answer carries its own buttons (no bar): the speaker, Pause or Resume, and Restart while paused.
-  const answerButtons = () => within(screen.getByTestId('talk-answer')).getAllByRole('button').map((button) => button.getAttribute('aria-label'));
+  // the speech buttons wear an aria-label; Share (mw-q6n8m0.17) is named by its text and has its own scenarios
+  const answerButtons = () =>
+    within(screen.getByTestId('talk-answer'))
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label'))
+      .filter((label) => label !== null);
   const answerButtonsAre = async (_c: unknown, list: string) => {
     await waitFor(() => expect(answerButtons().join(', ')).toBe(list));
   };
@@ -2891,6 +2919,30 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('one turn was delivered saying {string} with role {string} and a JPEG picture named {string}', async (_c, words: string, role: string, name: string) => {
       await waitFor(() => expect(outbox.delivered).toHaveLength(1));
       expect(delivered()[0]).toMatchObject({ text: words, role, attachment: { mime: 'image/jpeg', name } });
+    });
+  });
+  Scenario("mw-q6n8m0.17 AC1: Share under his turn and under the Mayor's answer opens the phone's share sheet with that turn's words and the talk's title", ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('the phone has a share sheet', phoneShares);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And('he taps Share under his turn', tapShareUnderHisTurn);
+    Then('the share sheet gets {string} with the title {string}', expectShared);
+    When("he taps Share under the Mayor's answer", tapShareUnderAnswer);
+    Then('the share sheet is then given {string} with the title {string}', expectShared);
+  });
+
+  Scenario('mw-q6n8m0.17 AC2: Without a share sheet Share under a turn copies its words and says Copied', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('the phone has no share sheet', phoneHasNoShare);
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the Mayor answers {string} on model {string}', mayorAnswers);
+    And("he taps Share under the Mayor's answer", tapShareUnderAnswer);
+    Then('the clipboard holds {string}', async (_c, words: string) => {
+      await waitFor(() => expect(shareDoubles.writeText).toHaveBeenCalledWith(words));
+    });
+    And("the Share button under the Mayor's answer says Copied", async () => {
+      await waitFor(() => expect(within(screen.getByTestId('talk-answer')).getByRole('button', { name: 'Copied' })).toBeInTheDocument());
     });
   });
 });

@@ -995,3 +995,22 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he taps "Send"
     And the outbox has done its work
     Then one turn was delivered saying "" with role "turn" and a JPEG picture named "second.jpg"
+
+  Scenario: mw-q6n8m0.17 AC1: Share under his turn and under the Mayor's answer opens the phone's share sheet with that turn's words and the talk's title
+    Given the Talk line is open with a believable speech recogniser
+    And the phone has a share sheet
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet"
+    And he taps Share under his turn
+    Then the share sheet gets "What landed today?" with the title "Postern: Talk"
+    When he taps Share under the Mayor's answer
+    Then the share sheet is then given "Three things landed." with the title "Postern: Talk"
+
+  Scenario: mw-q6n8m0.17 AC2: Without a share sheet Share under a turn copies its words and says Copied
+    Given the Talk line is open with a believable speech recogniser
+    And the phone has no share sheet
+    When he holds the talk button and says "What landed today?" and lets go
+    And the Mayor answers "Three things landed." on model "sonnet"
+    And he taps Share under the Mayor's answer
+    Then the clipboard holds "Three things landed."
+    And the Share button under the Mayor's answer says Copied

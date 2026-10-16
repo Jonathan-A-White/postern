@@ -1,7 +1,7 @@
 {
-  "version": "0.7.1",
-  "commit": "c3d29ae",
-  "published_at": "2026-10-16T17:05:51.304Z",
+  "version": "0.7.2",
+  "commit": "f5a7cbe",
+  "published_at": "2026-10-16T17:58:58.783Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1577,6 +1577,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-board-hand-edits.png"
+    },
+    {
+      "name": "390x844/todo-calendar.png",
+      "screen": "todo-calendar",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-calendar.png"
+    },
+    {
+      "name": "360x640/todo-calendar.png",
+      "screen": "todo-calendar",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-calendar.png"
+    },
+    {
+      "name": "1280x800/todo-calendar.png",
+      "screen": "todo-calendar",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-calendar.png"
     },
     {
       "name": "390x844/todo-card-back.png",

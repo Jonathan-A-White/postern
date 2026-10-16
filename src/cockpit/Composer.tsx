@@ -54,9 +54,9 @@ const KEPT = 'Kept what you said: tap Send.';
 /** How long Send is held, while grey from a failed check, before it sends anyway. */
 const FORCE_SEND_MS = 600;
 
-/** What the hold-to-talk bar says a hold will do (or why it cannot be held now). */
-function barLabel(listening: boolean, micOpen: boolean): string {
-  if (!listening) return 'Hold to talk';
+/** What the hold-to-talk bar says a hold will do (or why it cannot be held now); after a hold that ended with a message it says Try again. */
+function barLabel(listening: boolean, micOpen: boolean, holdFailed: boolean): string {
+  if (!listening) return holdFailed ? 'Try again' : 'Hold to talk';
   return micOpen ? 'Release to send' : 'Starting the mic…';
 }
 
@@ -411,7 +411,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           </div>
           <div className="flex w-full max-w-xl items-center gap-2">
             <HoldToTalkBar
-              label={barLabel(holding, hold.mic === 'ready')}
+              label={barLabel(holding, hold.mic === 'ready', hold.notice !== undefined)}
               listening={holding}
               disabled={busy}
               onPress={press}

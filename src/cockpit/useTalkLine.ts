@@ -366,6 +366,8 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     earlier,
     transcript: hold.transcript,
     notice: hold.notice ?? line.error,
+    // a hold ended with a notice and nothing heard: the button says Try again, and a hold on it is a fresh one (mw-hgtlf5.2)
+    holdFailed: hold.notice !== undefined,
     canEnd: line.phase !== 'sending' && (line.talk !== undefined || hold.notice !== undefined || line.error !== undefined),
     mode: hold.mode,
     mic: hold.mic,

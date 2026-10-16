@@ -152,7 +152,7 @@ const hear = (text: string) =>
     recognizer?.onresult?.({ results: [[{ transcript: text }]] });
   });
 
-const bar = () => screen.getByRole('button', { name: /^(Hold to talk|Release to send|Let go to keep it unsent|Starting the mic…)$/ });
+const bar = () => screen.getByRole('button', { name: /^(Hold to talk|Try again|Release to send|Let go to keep it unsent|Starting the mic…)$/ });
 
 /** jsdom has no layout: the bar is 300 x 96 at the origin, so (10, 10) is on it and (600, 10) is off it. */
 const ON = { clientX: 10, clientY: 10 };
@@ -301,6 +301,14 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
   };
   const screenSays = async (_c: unknown, words: string) => {
     expect(await screen.findByText(words)).toBeInTheDocument();
+  };
+  /** The live route fails `routes` times, each failure handing the hold to the next route's recogniser. */
+  const failsOnEachRoute = async (_c: unknown, code: string, routes: number) => {
+    for (let i = 0; i < routes; i++) {
+      const failing = recognizers.at(-1);
+      await act(async () => failing?.onerror?.({ error: code }));
+      if (i < routes - 1) await waitFor(() => expect(recognizers.at(-1)).not.toBe(failing));
+    }
   };
   const letGoOnTheBar = async () => {
     fireEvent.pointerUp(bar(), ON);
@@ -557,7 +565,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
     And('he lifts his finger where the bar was', async () => {
       // the box took the bar's place when the hold ended: a lift on whatever is there sends nothing
-      const there = screen.queryByRole('button', { name: /^(Hold to talk|Release to send|Let go to keep it unsent|Starting the mic…)$/ });
+      const there = screen.queryByRole('button', { name: /^(Hold to talk|Try again|Release to send|Let go to keep it unsent|Starting the mic…)$/ });
       if (there) fireEvent.pointerUp(there, ON);
       await act(async () => settledOutbox());
     });
@@ -617,5 +625,41 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       expect(recognizers).toHaveLength(times);
     });
     And('one message is delivered with the words {string}', oneMessageWith);
+  });
+
+  Scenario('AC-18: a language-not-supported that every route fails with says what was tried, and the bar says Try again (mw-hgtlf5.2)', ({ Given, When, And, Then }) => {
+    Given('the composer is open', open);
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    And('the recogniser fails with {string} on each of {int} routes in turn', failsOnEachRoute);
+    Then('the screen says {string}', screenSays);
+    And('the bar reads {string}', async (_c, name: string) => {
+      expect(await screen.findByRole('button', { name })).toBeInTheDocument();
+    });
+    When('he presses and holds the bar that reads {string}', async (_c, name: string) => {
+      fireEvent.pointerDown(await screen.findByRole('button', { name }));
+    });
+    Then('a fresh recogniser is listening on-device', async () => {
+      await waitFor(() => expect(recognizers).toHaveLength(4));
+      expect(recognizers.at(-1)?.processLocally).toBe(true);
+    });
+    And('the bar now reads {string}', async (_c, name: string) => {
+      expect(await screen.findByRole('button', { name })).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-19: a language-not-supported that the next route recovers from shows no message (mw-hgtlf5.2)', ({ Given, When, And, Then }) => {
+    Given('the composer is open', open);
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    And('the recogniser fails with {string} on each of {int} routes in turn', failsOnEachRoute);
+    And('the recogniser hears {string}', async (_c, words: string) => {
+      await hear(words);
+    });
+    And('he lets go on the bar', letGoOnTheBar);
+    Then('one message is delivered with the words {string}', oneMessageWith);
+    And('the screen does not say {string}', (_c, words: string) => {
+      expect(screen.queryByText(new RegExp(words))).toBeNull();
+    });
   });
 });

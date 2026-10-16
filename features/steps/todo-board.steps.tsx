@@ -701,6 +701,74 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
     And('the Text button {string} opens {string} in the same tab', textOpens);
   });
+  // mw-ev7oyy.26: an Email button on a card's front, from the Email: line of its notes.
+  const emailButton = (el: HTMLElement) => within(el).queryByTestId('card-email');
+  const emailOpens = async (_c: unknown, name: string, href: string) => {
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name });
+      expect(link).toHaveAttribute('data-testid', 'card-email');
+      expect(link).toHaveAttribute('href', href);
+      expect(link).not.toHaveAttribute('target');
+    });
+  };
+  Scenario('mw-ev7oyy.26 AC-4: a card whose notes have an Email: line shows an Email button that opens his mail app to the person with the subject and the draft filled in', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows an Email button named {string} under its title', async (_c, name: string, button: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(emailButton(el)).toHaveTextContent(button));
+      expect(within(el).getByRole('link', { name: button })).toBe(emailButton(el));
+      const order = Array.from(el.querySelectorAll('button, a')).map((node) => node.textContent);
+      expect(order.indexOf(button)).toBeGreaterThan(order.findIndex((text) => text?.startsWith('Title of')));
+    });
+    And('the Email button {string} opens {string} in the same tab', emailOpens);
+    When('he taps the Email button {string} on the card {string}', async (_c, button: string, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await userEvent.click(within(el).getByRole('link', { name: button }));
+    });
+    Then('the card {string} is still on its front, not done, with nothing waiting in the outbox', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      expect(screen.queryByRole('group', { name: /^Back of/ })).toBeNull();
+      expect(within(el).getByRole('button', { name: DONE })).toBeEnabled();
+      expect(await db.outbox.count()).toBe(0);
+    });
+  });
+  Scenario('mw-ev7oyy.26 AC-2: a card with both a Text: and an Email: line shows both buttons, Text first', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows the buttons {string} then {string}', async (_c, name: string, first: string, second: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(emailButton(el)).not.toBeNull());
+      const links = within(el).getAllByRole('link');
+      expect(links.map((link) => link.textContent)).toEqual([first, second]);
+      expect(links.map((link) => link.dataset.testid)).toEqual(['card-text', 'card-email']);
+    });
+  });
+  Scenario('mw-ev7oyy.26 AC-3: an Email: line with no address shows no Email button, and the line stays as plain text on the back', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows no Email button', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      expect(emailButton(el)).toBeNull();
+    });
+    When('he taps the card {string}', async (_c, name: string) => {
+      await userEvent.click(await screen.findByRole('button', { name }));
+    });
+    Then('the back of the card shows the notes {string} and no Email button', async (_c, words: string) => {
+      const back = await screen.findByRole('group', { name: 'Back of Title of mw-list.1' });
+      await waitFor(() => expect(within(back).getAllByText(words).length).toBeGreaterThan(0));
+      expect(emailButton(back)).toBeNull();
+    });
+  });
+  Scenario("mw-ev7oyy.26 AC-4: an Email: line past the view's short summary of the notes still shows its Email button", ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And("the card {string} has long notes, longer than the view's summary, ending {string}", longNotesEnding);
+    When('the To do tab opens', tabOpens);
+    Then('the Email button {string} opens {string} in the same tab', emailOpens);
+  });
   // mw-ev7oyy.14: a short list name, a one-row card with a round check, a hint shown till he has swiped once.
   const longList = (_c: unknown, id: string, epicTitle: string) => {
     beads.push(beadIn(id, { type: 'epic', labels: ['hitl'], title: epicTitle }), beadIn(`${id}.1`, { parent: id, labels: ['hitl', 'hitl:todo'] }));

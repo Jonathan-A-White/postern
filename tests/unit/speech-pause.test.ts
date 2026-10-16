@@ -1,7 +1,7 @@
 // mw-q6n8m0.9: anything read aloud can be paused, resumed, restarted and stopped. The service
 // speaks sentence by sentence, keeps the sentence reached, and resumes by speaking on from it
 // (speechSynthesis.pause/resume are not honoured on Android Chrome). The synthesiser here is
-// bsv-kit's honest one (mw-it6qk5.4): it queues utterances, reports each one's start and end in time,
+// voice-kit's honest one (mw-it6qk5.4): it queues utterances, reports each one's start and end in time,
 // and reports a cancelled one as an error, as Chrome does.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installHonestSpeech, type HonestSpeech } from '../support/honest-speech';

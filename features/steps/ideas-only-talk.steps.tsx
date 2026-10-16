@@ -1,5 +1,5 @@
 // features/steps/ideas-only-talk.steps.tsx — runs features/ideas-only-talk.feature (mw-8ifimx.4): the real
-// Talk line with a fake speech recogniser and bsv-kit's honest speech synthesiser, over a Dexie that keeps the
+// Talk line with a fake speech recogniser and voice-kit's honest speech synthesiser, over a Dexie that keeps the
 // Ideas only answer. The delivery of a turn and of a Call me request are doubles; Date is frozen.
 import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -11,7 +11,7 @@ import { settingsRepo } from '../../src/data/repositories';
 import { lock, setKey } from '../../src/services/keySession';
 import { stop as stopSpeaking } from '../../src/services/speech';
 import { publicKeyHexFromMasterKey } from '../../src/services/vault';
-import { forgetSilentInputs } from 'bsv-kit/composer';
+import { forgetSilentInputs } from 'voice-kit/composer';
 import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import type { TalkTurn } from '../../src/model/talkLine';

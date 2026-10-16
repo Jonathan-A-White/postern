@@ -13,7 +13,7 @@ import { flushSync } from 'react-dom';
 import { Button, Chip, Icon, IconButton, cx, useAlive } from '../ui';
 import { focusQuietly } from '../ui/focus';
 import { useWide } from './hooks';
-import { HoldToTalkBar, formatDuration, isListenSupported, micName, useHold, type Recording } from 'bsv-kit/composer';
+import { HoldToTalkBar, formatDuration, isListenSupported, micName, useHold, type Recording } from 'voice-kit/composer';
 import { refuseFile, sendToThread, useSend, type OutgoingFile } from './send';
 import { toast } from '../ui/toastStore';
 import type { ThreadRef } from '../services/threads';

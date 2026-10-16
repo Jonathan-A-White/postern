@@ -24,7 +24,7 @@ import { useAlive } from '../ui/useAlive';
 import { useBeadTitles, useTalkTurns } from './hooks';
 import { useMayorHere } from './useMayorHere';
 import { useRecordedWords } from './useIdeasOnly';
-import { useHold } from 'bsv-kit/composer';
+import { useHold } from 'voice-kit/composer';
 import { APP_NAME } from './holdBar';
 
 function pageHidden(): boolean {

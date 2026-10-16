@@ -182,11 +182,20 @@ export const CREDIT_GROUPS: CreditGroup[] = [
       {
         name: 'bsv-kit',
         url: 'https://github.com/Jonathan-A-White/bsv-kit',
-        use: "The Governor's shared library: the hold-to-talk composer (the bar, the recogniser and its fallbacks, the voice recorder) that Postern's composer and Talk line are built on, What's new (the Update ready summary, the sheet after an update), and the honest speech and microphone fakes its tests run against.",
+        use: "The Governor's shared library: What's new (the Update ready summary, the sheet after an update).",
         ...MIT,
         licenceUrl: 'https://github.com/Jonathan-A-White/bsv-kit/blob/main/LICENSE',
         changes: AS_PUBLISHED,
         covers: ['bsv-kit'],
+      },
+      {
+        name: 'voice-kit',
+        url: 'https://github.com/Jonathan-A-White/voice-kit',
+        use: "The Governor's shared voice library: the hold-to-talk composer (the bar, the recogniser and its fallbacks, the voice recorder) that Postern's composer and Talk line are built on, the read-aloud engine and its speaking bar, and the honest speech and microphone fakes its tests run against.",
+        ...MIT,
+        licenceUrl: 'https://github.com/Jonathan-A-White/voice-kit/blob/main/LICENSE',
+        changes: AS_PUBLISHED,
+        covers: ['voice-kit'],
       },
       {
         name: 'audible-kit',

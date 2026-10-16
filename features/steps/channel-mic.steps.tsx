@@ -1,5 +1,5 @@
 // features/steps/channel-mic.steps.tsx — runs features/channel-mic.feature (mw-it6qk5.4): a channel's
-// composer, its Hold to talk bar and the real hold on bsv-kit's honest microphone (bsv-kit/testing/mic): its
+// composer, its Hold to talk bar and the real hold on voice-kit's honest microphone (voice-kit/testing/mic): its
 // recogniser opens after a moment and hears a recorded clip word by word, its getUserMedia and MediaRecorder
 // behave like Android Chrome's. Nothing of the hold is doubled: the speech recogniser, the voice recorder and
 // the microphone are the package's own. Only the delivery is a double.
@@ -8,13 +8,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
-import { installMic, clips, type MicFake } from 'bsv-kit/testing/mic';
+import { installMic, clips, type MicFake } from 'voice-kit/testing/mic';
 import { Composer } from '../../src/cockpit/Composer';
 import { ToastHost } from '../../src/ui/toast';
 import { dismissAllToasts } from '../../src/ui/toastStore';
 import { db } from '../../src/data/db';
 import { lock, setKey } from '../../src/services/keySession';
-import { forgetSilentInputs } from 'bsv-kit/composer';
+import { forgetSilentInputs } from 'voice-kit/composer';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import type { Attachment } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
@@ -82,7 +82,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   });
 
   Scenario("AC-1: a channel's Hold to talk on the honest microphone hears the clip and sends its words, with no capture of the page's own beside the recogniser (mw-f7gmps.2)", ({ Given, And, When, Then }) => {
-    Given("the phone's microphone is bsv-kit's honest one, hearing {string}", (_c, words: string) => {
+    Given("the phone's microphone is voice-kit's honest one, hearing {string}", (_c, words: string) => {
       mic = installMic(window, { clip: clips.english });
       expect(mic.clip.transcript).toBe(words);
     });

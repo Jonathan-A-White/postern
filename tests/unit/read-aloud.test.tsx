@@ -15,7 +15,7 @@ import type { Need } from '../../src/model/view';
 import { installHonestSpeech, type HonestSpeech } from '../support/honest-speech';
 import { fixtureView } from '../support/cockpit-fixture';
 
-// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
+// The phone's voice is voice-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
 let speech: HonestSpeech | null = null;
 let cancelFn = vi.fn();
 const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];

@@ -1,10 +1,10 @@
 // tests/e2e/talk-line.spec.ts — mw-j0f2d.8: the Talk line in a real browser with the
-// phone's speech recogniser, vibration and wake lock faked (its voice is bsv-kit's honest synthesiser): hold to
+// phone's speech recogniser, vibration and wake lock faked (its voice is voice-kit's honest synthesiser): hold to
 // talk, a buzz on hold and release, the Mayor's answer shown and spoken, a tap that
 // cuts it, and a long press on the Channels tab that opens the line.
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
-import { speechInitScript, type SpeechScriptOptions } from 'bsv-kit/testing/speech';
+import { speechInitScript, type SpeechScriptOptions } from 'voice-kit/testing/speech';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { encryptMessage } from '../../src/services/messages';
 import { encodeTurn } from '../../src/services/talk';
@@ -17,7 +17,7 @@ test.use({ serviceWorkers: 'block' });
 declare global {
   interface Window {
     __hear(text: string): void;
-    /** What was passed to speak(), in order: read off bsv-kit's honest synthesiser. */
+    /** What was passed to speak(), in order: read off voice-kit's honest synthesiser. */
     readonly __spoken: string[];
     __cancels: number;
     __bsvKitTesting: { speech: { log: { text: string }[]; synth: { cancel(): void } } };
@@ -53,7 +53,7 @@ async function fakeSpeech(page: Page, voice: SpeechScriptOptions = {}): Promise<
     define(window, 'SpeechRecognition', Recognizer);
     define(window, 'webkitSpeechRecognition', Recognizer);
     window.__hear = (text) => Recognizer.active?.onresult?.({ results: [[{ transcript: text }]] });
-    // The phone's voice is bsv-kit's honest synthesiser (speechInitScript, added first); these read and count its calls.
+    // The phone's voice is voice-kit's honest synthesiser (speechInitScript, added first); these read and count its calls.
     const { speech } = window.__bsvKitTesting;
     Object.defineProperty(window, '__spoken', { configurable: true, get: () => speech.log.map((entry) => entry.text) });
     window.__cancels = 0;
@@ -191,7 +191,7 @@ test("talk line: the answer's own buttons sit beside its speaker, 44 px, in 390 
   await expect(answer).toContainText('Not heard yet');
   await shot(page, 'talk-line-answer-paused-390');
 
-  // mw-m7v5kc.2: leaving the line, the Shell's bar (bsv-kit's, in Postern's colours) offers Resume, Restart and Stop, each 44 px high.
+  // mw-m7v5kc.2: leaving the line, the Shell's bar (voice-kit's, in Postern's colours) offers Resume, Restart and Stop, each 44 px high.
   await page.getByRole('navigation', { name: 'Places' }).getByRole('link', { name: /Channels$/ }).click();
   const bar = page.getByRole('region', { name: 'Speaking' });
   await expect(bar.getByRole('button')).toHaveText(['Resume', 'Restart', 'Stop']);

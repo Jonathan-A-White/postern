@@ -11,7 +11,7 @@ import { db } from '../../src/data/db';
 import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import type { Need } from '../../src/model/view';
 
-// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
+// The phone's voice is voice-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
 let speech: HonestSpeech | null = null;
 let cancelFn = vi.fn();
 const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];

@@ -6,7 +6,7 @@ import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi, type MockInstance } from 'vitest';
-import type { FakeUtterance as Utterance } from 'bsv-kit/testing/speech';
+import type { FakeUtterance as Utterance } from 'voice-kit/testing/speech';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Shell } from '../../src/cockpit/Shell';
 import { TalkLineScreen } from '../../src/cockpit/TalkLineScreen';
@@ -17,7 +17,7 @@ import { formatRoute, parseRoute, topViewOf } from '../../src/nav/route';
 import { navigate, useRoute } from '../../src/router';
 import { lock, setKey } from '../../src/services/keySession';
 import { getSpeech, stop as stopSpeaking, TALK_ANSWER_KEY } from '../../src/services/speech';
-import { forgetSilentInputs } from 'bsv-kit/composer';
+import { forgetSilentInputs } from 'voice-kit/composer';
 import { encodeTurn } from '../../src/services/talk';
 import { deliverCallRequest, encodeCall, type CallRecord } from '../../src/services/call';
 import { PrivateKey, Utils } from '@bsv/sdk';
@@ -133,7 +133,7 @@ class Recognizer implements FakeRecognizer {
     this.stopped = true;
   }
 }
-// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4): installBrowser puts it on the window and
+// The phone's voice is voice-kit's honest speech synthesiser (mw-it6qk5.4): installBrowser puts it on the window and
 // speak/cancel watch its calls (the real ones still run, so every start, word and end fires in time).
 let speech: HonestSpeech | null = null;
 let speak: MockInstance<(utterance: Utterance) => void> = vi.fn();
@@ -1380,7 +1380,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('AC-1: a language-not-supported error is retried once with en-US before the message shows (mw-j0f2d.24)', ({ Given, When, And, Then }) => {
+  Scenario('AC-1: a language-not-supported error is retried on every route, en-US among them, before the message shows (mw-j0f2d.24, mw-hgtlf5.1)', ({ Given, When, And, Then }) => {
     Given('the Talk line is open with a believable speech recogniser and the page language is {string}', async (_c, lang: string) => {
       document.documentElement.lang = lang;
       await lineOpen();
@@ -1392,10 +1392,15 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(recognizers).toHaveLength(3);
       expect(recognizers.at(-1)?.lang).toBe(lang);
     });
-    And('the screen does not say {string}', (_c, text: string) => {
-      expect(screen.queryByText(text)).toBeNull();
+    And('the screen does not say the speech service failed', () => {
+      expect(screen.queryByText(/speech service failed/)).toBeNull();
     });
     When('the recogniser fails once more with {string}', async (_c, code: string) => recogniserFails(code));
+    And('the recogniser fails yet again with {string}', async (_c, code: string) => recogniserFails(code));
+    Then('the screen does not say the speech service failed', () => {
+      expect(screen.queryByText(/speech service failed/)).toBeNull();
+    });
+    When('the recogniser fails for the last time with {string}', async (_c, code: string) => recogniserFails(code));
     Then('the screen says {string}', async (_c, text: string) => {
       expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
     });
@@ -1409,6 +1414,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('he presses and holds the talk button', holdsButton);
     And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
     And('the recogniser fails again with {string}', async (_c, code: string) => recogniserFails(code));
+    And('the recogniser fails once more with {string}', async (_c, code: string) => recogniserFails(code));
     Then('the screen says {string}', async (_c, text: string) => {
       expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
     });
@@ -2322,7 +2328,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   const barOffers = async (_c: unknown, a: string, b: string, c: string) => {
     const bar = await screen.findByRole('region', { name: 'Speaking' });
     await waitFor(() => expect(within(bar).getAllByRole('button').map((button) => button.textContent)).toEqual([a, b, c]));
-    for (const button of within(bar).getAllByRole('button')) expect(button.className).toContain('bk-speech__button'); // 44 px: bsv-kit's rule for that class, measured in tests/e2e/talk-line.spec.ts (jsdom has no layout)
+    for (const button of within(bar).getAllByRole('button')) expect(button.className).toContain('bk-speech__button'); // 44 px: voice-kit's rule for that class, measured in tests/e2e/talk-line.spec.ts (jsdom has no layout)
   };
   // mw-q6n8m0.11: the Talk line's answer carries its own buttons (no bar): the speaker, Pause or Resume, and Restart while paused.
   const answerButtons = () => within(screen.getByTestId('talk-answer')).getAllByRole('button').map((button) => button.getAttribute('aria-label'));

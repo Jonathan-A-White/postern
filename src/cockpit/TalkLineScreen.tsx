@@ -10,7 +10,7 @@ import type { IconName } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
-import { HoldToTalkBar, micName } from 'bsv-kit/composer';
+import { HoldToTalkBar, micName } from 'voice-kit/composer';
 import { HOLD_BAR_CLASS } from './holdBar';
 import { useSpeech } from './useSpeaking';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';

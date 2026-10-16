@@ -18,7 +18,7 @@ import type { Need } from '../../src/model/view';
 import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 
-// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
+// The phone's voice is voice-kit's honest speech synthesiser (mw-it6qk5.4), watched for its cancels.
 let speech: HonestSpeech | null = null;
 let cancelFn = vi.fn();
 const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];
@@ -190,7 +190,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   const bar = async (_c: unknown, a: string, b: string, c: string) => {
     await screen.findByRole('region', { name: 'Speaking' });
     expect(barButtons().map((button) => button.textContent)).toEqual([a, b, c]);
-    for (const button of barButtons()) expect(button.className).toContain('bk-speech__button'); // 44 px: bsv-kit's rule for that class, measured in tests/e2e/talk-line.spec.ts (jsdom has no layout)
+    for (const button of barButtons()) expect(button.className).toContain('bk-speech__button'); // 44 px: voice-kit's rule for that class, measured in tests/e2e/talk-line.spec.ts (jsdom has no layout)
   };
   const tapsInBar = async (_c: unknown, label: string) => {
     mark = spoken().length;

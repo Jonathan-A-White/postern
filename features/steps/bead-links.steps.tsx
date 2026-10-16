@@ -13,7 +13,7 @@ import { installHonestSpeech, type HonestSpeech } from '../../tests/support/hone
 
 let now = Date.now();
 let seeded: MessageRow[] = [];
-// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4).
+// The phone's voice is voice-kit's honest speech synthesiser (mw-it6qk5.4).
 let speech: HonestSpeech | null = null;
 const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];
 let extraBeads: Array<{ id: string; title: string }> = [];

@@ -267,7 +267,7 @@ html {
   --bk-whats-new-small-font-size: 12px;
 }
 
-/* bsv-kit's speaking bar (Pause/Resume, Restart, Stop) wears Postern's tokens, as the buttons did before it moved to the package. */
+/* voice-kit's speaking bar (Pause/Resume, Restart, Stop) wears Postern's tokens, as the buttons did before it moved to the package. */
 :root {
   --bk-speech-surface: var(--pc-surface);
   --bk-speech-fg: var(--pc-fg);

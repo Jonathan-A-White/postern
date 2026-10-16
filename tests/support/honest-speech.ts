@@ -1,7 +1,7 @@
-import { installSpeech, type Clock, type FakeVoice, type SpeechFake } from 'bsv-kit/testing/speech';
+import { installSpeech, type Clock, type FakeVoice, type SpeechFake } from 'voice-kit/testing/speech';
 
 /**
- * bsv-kit/testing's honest speech synthesiser for a test (mw-it6qk5.4): it queues, starts an utterance a moment after
+ * voice-kit/testing's honest speech synthesiser for a test (mw-it6qk5.4): it queues, starts an utterance a moment after
  * speak(), fires start, boundary and end after the time a spoken sentence takes, and reports a cancelled one as an error,
  * as Android Chrome does. It runs on a clock the test moves by hand, so real timers (Testing Library's waitFor, Dexie)
  * keep working. `advance(ms)` moves that clock; `finish()` lets what is speaking end and the next sentence begin.
@@ -56,7 +56,7 @@ export interface HonestSpeech extends SpeechFake {
 }
 
 export interface HonestSpeechOptions {
-  /** What the phone lists once its voices load. Default: bsv-kit's English and Greek voices. */
+  /** What the phone lists once its voices load. Default: voice-kit's English and Greek voices. */
   voices?: FakeVoice[];
   /** Leave the voice list empty (as a phone is just after the page opens); `loadVoices()` is `advance(50)`. Default: loaded at once. */
   voicesLate?: boolean;

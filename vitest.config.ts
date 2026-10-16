@@ -42,9 +42,9 @@ export default defineConfig({
     testTimeout: 40_000,
     // expect.poll waits 1 s unless told (the same loaded-host reason as asyncUtilTimeout).
     expect: { poll: { timeout: 20_000 } },
-    // bsv-kit/composer is run through vite, not loaded by node on its own, so a test can vi.mock one of
+    // voice-kit/composer is run through vite, not loaded by node on its own, so a test can vi.mock one of
     // its inner modules (the voice recorder) and the package's own hold sees the double (mw-jtzpw0.2).
-    server: { deps: { inline: ['bsv-kit'] } },
+    server: { deps: { inline: ['voice-kit', 'bsv-kit'] } },
     projects: [
       { extends: true, test: { name: 'main', include: MAIN_INCLUDE, exclude: BUILD_FILES } },
       // The files that run a real vite build (~2 GB each: pwa-precache builds in its own worker, the

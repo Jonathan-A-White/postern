@@ -1409,6 +1409,46 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario('AC-1: a language-not-supported that the next route recovers from shows no message (mw-hgtlf5.2)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', holdsButton);
+    And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
+    And('the recogniser hears {string}', async (_c, text: string) => hear(text));
+    Then('the live transcript reads {string}', async (_c, text: string) => {
+      expect(await screen.findByText(text)).toBeInTheDocument();
+    });
+    And('the screen does not say the speech service failed', () => {
+      expect(screen.queryByText(/speech service failed/)).toBeNull();
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC-1: the talk button says Try again under a message, and a hold on it starts afresh on the first route (mw-hgtlf5.2)', ({ Given, When, And, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he presses and holds the talk button', holdsButton);
+    And('the recogniser fails with {string}', async (_c, code: string) => recogniserFails(code));
+    And('the recogniser fails again with {string}', async (_c, code: string) => recogniserFails(code));
+    And('the recogniser fails once more with {string}', async (_c, code: string) => recogniserFails(code));
+    Then('the screen says {string}', async (_c, text: string) => {
+      expect(await within(await screen.findByRole('status')).findByText(text)).toBeInTheDocument();
+    });
+    And('the talk button reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+    When('he presses and holds the talk button that reads {string}', async (_c, name: string) => {
+      fireEvent.pointerDown(await talkButton(name));
+    });
+    Then('a fresh recogniser is listening on the device', async () => {
+      await waitFor(() => expect(recognizers).toHaveLength(4));
+      expect(recognizers.at(-1)?.processLocally).toBe(true);
+    });
+    And('the talk button now reads {string}', async (_c, name: string) => {
+      expect(await talkButton(name)).toBeInTheDocument();
+    });
+  });
+
   Scenario('AC-2: End talk is not greyed after a failed hold, and tapping it clears the message (mw-j0f2d.24)', ({ Given, When, And, Then }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     When('he presses and holds the talk button', holdsButton);

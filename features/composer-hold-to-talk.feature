@@ -168,3 +168,25 @@ Feature: The composer's mic is the Talk line's hold-to-talk (mw-q6n8m0.3)
     And he lets go on the bar
     Then the recogniser was started 3 times in the one hold
     And one message is delivered with the words "first the build then the tests then the landing"
+
+  Scenario: AC-18: a language-not-supported that every route fails with says what was tried, and the bar says Try again (mw-hgtlf5.2)
+    Given the composer is open
+    When he taps the mic beside Send
+    And he presses and holds the bar
+    And the recogniser fails with "language-not-supported" on each of 3 routes in turn
+    Then the screen says "The phone's speech service failed: language-not-supported (this language is not available for speech recognition). (tried: on-device en-US, cloud en-US, cloud default)"
+    And the bar reads "Try again"
+    When he presses and holds the bar that reads "Try again"
+    Then a fresh recogniser is listening on-device
+    And the bar now reads "Release to send"
+
+  Scenario: AC-19: a language-not-supported that the next route recovers from shows no message (mw-hgtlf5.2)
+    Given the composer is open
+    When he taps the mic beside Send
+    And he presses and holds the bar
+    And the recogniser fails with "language-not-supported" on each of 1 routes in turn
+    And the recogniser hears "the cloud heard me"
+    And he lets go on the bar
+    Then one message is delivered with the words "the cloud heard me"
+    And the screen does not say "language-not-supported"
+

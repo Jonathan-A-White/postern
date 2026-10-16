@@ -392,15 +392,18 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he presses and holds the talk button
     Then the recogniser was asked for "en-US"
 
-  Scenario: AC-1: a language-not-supported error is retried once with en-US before the message shows (mw-j0f2d.24)
+  Scenario: AC-1: a language-not-supported error is retried on every route, en-US among them, before the message shows (mw-j0f2d.24, mw-hgtlf5.1)
     Given the Talk line is open with a believable speech recogniser and the page language is "fr-FR"
     When he presses and holds the talk button
     And the recogniser fails with "language-not-supported"
     And the recogniser fails again with "language-not-supported"
     Then the latest recogniser was asked for "en-US"
-    And the screen does not say "The phone's speech service failed: language-not-supported (this language is not available for speech recognition)."
+    And the screen does not say the speech service failed
     When the recogniser fails once more with "language-not-supported"
-    Then the screen says "The phone's speech service failed: language-not-supported (this language is not available for speech recognition)."
+    And the recogniser fails yet again with "language-not-supported"
+    Then the screen does not say the speech service failed
+    When the recogniser fails for the last time with "language-not-supported"
+    Then the screen says "The phone's speech service failed: language-not-supported (this language is not available for speech recognition). (tried: on-device fr-FR, cloud fr-FR, on-device en-US, cloud en-US, cloud default)"
     And the talk button reads "Hold to talk"
 
   Scenario: AC-2: End talk is not greyed after a failed hold, and tapping it clears the message (mw-j0f2d.24)
@@ -408,7 +411,8 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When he presses and holds the talk button
     And the recogniser fails with "language-not-supported"
     And the recogniser fails again with "language-not-supported"
-    Then the screen says "The phone's speech service failed: language-not-supported (this language is not available for speech recognition)."
+    And the recogniser fails once more with "language-not-supported"
+    Then the screen says "The phone's speech service failed: language-not-supported (this language is not available for speech recognition). (tried: on-device en-US, cloud en-US, cloud default)"
     And the "End talk" button is not greyed
     When he taps "End talk"
     Then the screen now says "Hold the button and speak."

@@ -937,10 +937,10 @@ drag with a mouse; the keyboard's way is **Move up**, **Move down** and **Move t
 keys on the focused card. Each drop is one `todo_move` naming the card it landed before (or after, at a list's foot)
 and, for another list, that list.
 
-### A To do card's notes: the Open: and Text: lines (how the Mayor files them)
+### A To do card's notes: the Open:, Text: and Email: lines (how the Mayor files them)
 
-A card's notes are the bead's description (Markdown, shown whole on the card's back). Two kinds of line in them put
-a control on the card's front, under its title (`src/todo/links.ts` reads both; a line may be a list item, a quote or
+A card's notes are the bead's description (Markdown, shown whole on the card's back). Three kinds of line in them put
+a control on the card's front, under its title (`src/todo/links.ts` reads each; a line may be a list item, a quote or
 have its word in bold, as `- **Text:** ...`). Anywhere in the notes; the view's 280-rune `summary` is enough when they
 are near the top, and the board reads the whole notes when it may have been cut.
 
@@ -984,6 +984,42 @@ are near the top, and the board reads the whole notes when it may have been cut.
   The card shows a **Text Dad** button; a tap opens his texting app to `+15165550123` with "Hi Dad, would you rather
   meet us on Long Island on Saturday instead of coming up today? It would give you a couple more days to rest." in
   the message box.
+
+- **`Email:`** (mw-ev7oyy.26): an email he is to send. One per card (the first counts). The card shows an **Email**
+  button after the Text one that says who a tap writes to (`Email Luke`; the address when there is no name) and opens
+  his mail app (Android's default: Gmail) with the person, the subject and the draft filled in, for him to read and send.
+  The format:
+
+  ```text
+  Email: <name> <address> | <subject> | <the draft>
+  ```
+
+  - before the first `|`: who, a name and/or **an email address** (`Luke luke@example.com`, `Luke <luke@example.com>`).
+    The address is required: a line with no address is only text, and the card shows no button;
+  - between the bars: the subject (plain words; leave it empty, `||`, for none);
+  - after the second bar: the draft as he would send it, plain words (no Markdown; a link may be written out). It runs
+    on to the end of its paragraph, a line for a line, so it ends at the first blank line (or at an `Open:`, `Text:` or
+    another `Email:` line): leave a blank line after it. Any character is fine (`&`, `?`, `#`, an emoji, a `|`): the app
+    encodes it, so the whole draft arrives.
+
+  The button's link is `mailto:<address>?subject=<subject, percent-encoded>&body=<draft, percent-encoded>` (a field
+  left out when empty; line breaks as `%0D%0A`, as RFC 6068 asks); a tap opens it in the same tab, which Android hands
+  to his default mail app.
+
+  One email example, as filed:
+
+  ```text
+  Send Luke how Postern sends notifications to the phone.
+
+  Email: Luke luke@example.com | How Postern sends push notifications | Hi Luke,
+  Postern sends them as Web Push: the server holds the phone's subscription and the service worker shows them.
+  Thanks, Jonathan
+
+  Closes only on the Governor's word.
+  ```
+
+  The card shows an **Email Luke** button; a tap opens his mail app to `luke@example.com` with that subject and the
+  two-line draft in the message box.
 
 ## 14. Voice notes, files and transcripts
 

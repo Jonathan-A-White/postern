@@ -314,6 +314,35 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     Then the card "Title of mw-list.1" shows a Text button named "Text Dad" under its title
     And the Text button "Text Dad" opens "intent:?body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.sms_body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F;S.browser_fallback_url=sms%3A%3Fbody%3DHi%2520Dad%252C%2520would%2520Saturday%2520suit%2520you%253F;end" in the same tab
 
+  Scenario: mw-ev7oyy.26 AC-4: a card whose notes have an Email: line shows an Email button that opens his mail app to the person with the subject and the draft filled in
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Ask Luke.\n\nEmail: Luke luke@example.com | Push & alerts? #1 | Hi Luke,\nSee https://example.com/a?b=c&d=e\nThanks 👍"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows an Email button named "Email Luke" under its title
+    And the Email button "Email Luke" opens "mailto:luke@example.com?subject=Push%20%26%20alerts%3F%20%231&body=Hi%20Luke%2C%0D%0ASee%20https%3A%2F%2Fexample.com%2Fa%3Fb%3Dc%26d%3De%0D%0AThanks%20%F0%9F%91%8D" in the same tab
+    When he taps the Email button "Email Luke" on the card "Title of mw-list.1"
+    Then the card "Title of mw-list.1" is still on its front, not done, with nothing waiting in the outbox
+
+  Scenario: mw-ev7oyy.26 AC-2: a card with both a Text: and an Email: line shows both buttons, Text first
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Text: Dad +15165550123 | Hi Dad\n\nEmail: Luke luke@example.com | Hello | Hi Luke"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows the buttons "Text Dad" then "Email Luke"
+
+  Scenario: mw-ev7oyy.26 AC-3: an Email: line with no address shows no Email button, and the line stays as plain text on the back
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Email: Luke | Hello | Hi Luke"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows no Email button
+    When he taps the card "Title of mw-list.1"
+    Then the back of the card shows the notes "Email: Luke | Hello | Hi Luke" and no Email button
+
+  Scenario: mw-ev7oyy.26 AC-4: an Email: line past the view's short summary of the notes still shows its Email button
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has long notes, longer than the view's summary, ending "Email: Luke luke@example.com | Hello | Hi Luke"
+    When the To do tab opens
+    Then the Email button "Email Luke" opens "mailto:luke@example.com?subject=Hello&body=Hi%20Luke" in the same tab
+
   Scenario: mw-ev7oyy.24 AC-1: a card whose notes have an Audible: line shows a Listen in Audible button that opens the book in the Audible app
     Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
     And the card "mw-list.1" has the notes "Read this.\n\nAudible: B0CC36V9KG"

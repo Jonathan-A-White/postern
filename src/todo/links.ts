@@ -7,7 +7,8 @@
 // textHref() is the one place it is built. On Android it names Google Voice (mw-ev7oyy.23): a plain sms: link goes to
 // the phone's default texting app, and Voice is not his default. An 'Audible:' or a 'Listen:' line, or an audible.com/pd/ link, is
 // the card's listen action (mw-ev7oyy.24): a Listen in Audible button whose link audible-kit builds (listenHref), at a chapter's start
-// when the card names one.
+// when the card names one. An 'Email:' line is the card's email action (mw-ev7oyy.26): who to write to, a subject and a draft,
+// drawn as an Email button after the Text one, whose mailto: link (emailHref) Android hands to his default mail app (Gmail).
 import { BIBLE_BOOKS, WORD_OF_PROMISE_ASIN, audibleLink, wordOfPromiseStart } from 'audible-kit';
 
 /** A link of an 'Open:' line: its own words, which are the chip's label, and where it goes. */
@@ -39,6 +40,7 @@ export const LINK_KINDS: readonly LinkKind[] = [
   { kind: 'audible', matches: ({ scheme, host }) => isWeb(scheme) && onHost(host, 'audible.com') },
   { kind: 'call', matches: ({ scheme }) => scheme === 'tel' },
   { kind: 'text', matches: ({ scheme }) => scheme === 'sms' || scheme === 'smsto' },
+  { kind: 'email', matches: ({ scheme }) => scheme === 'mailto' },
   {
     kind: 'map',
     matches: ({ scheme, host, path }) => scheme === 'geo' || (isWeb(scheme) && (host === 'maps.app.goo.gl' || (host === 'goo.gl' && path.startsWith('/maps')) || (onHost(host, 'google.com') && path.startsWith('/maps')))),
@@ -129,6 +131,8 @@ export interface TextAction {
 
 /** A line that opens with 'Text:', set as the 'Open:' line may be (a list item, a quote, in bold). */
 const TEXT_LINE = /^[\s>*+-]*(?:\*\*|__)?Text:(?:\*\*|__)?(.*)$/;
+/** A line that opens with 'Email:', set the same way (mw-ev7oyy.26). Named here, for a Text: draft ends where an Email: line begins. */
+const EMAIL_LINE = /^[\s>*+-]*(?:\*\*|__)?Email:(?:\*\*|__)?(.*)$/;
 /** A phone number as it is written: an optional '+' and '(', then digits with spaces, dots, dashes and brackets between. */
 const PHONE = /\+?\(?\d[\d\s().-]*\d/;
 /** Edge punctuation left on a name once its number is taken out: 'Dad (+1 516 555 0123)' is 'Dad'. */
@@ -157,7 +161,7 @@ export function parseTextAction(description: string): TextAction | undefined {
   const who = bar < 0 ? {} : whoOf(rest.slice(0, bar));
   const draftLines = [(bar < 0 ? rest : rest.slice(bar + 1)).trim()];
   for (const line of lines.slice(at + 1)) {
-    if (!line.trim() || TEXT_LINE.test(line) || OPEN_LINE.test(line)) break;
+    if (!line.trim() || TEXT_LINE.test(line) || OPEN_LINE.test(line) || EMAIL_LINE.test(line)) break;
     draftLines.push(line.trim());
   }
   const draft = draftLines.join('\n').trim();
@@ -188,6 +192,60 @@ export function textHref(action: TextAction, userAgent: string): string {
 export function textLabel(action: TextAction): string {
   const who = action.name ?? action.number;
   return who ? `Text ${who}` : 'Text';
+}
+
+/** A card's email action, from the 'Email:' line of its notes (mw-ev7oyy.26): who a tap writes to, and the subject and
+ * draft filled in for him to send. */
+export interface EmailAction {
+  name?: string;
+  /** The one address the line names: without it there is no action. */
+  address: string;
+  /** Empty when the line gives none. */
+  subject: string;
+  /** Empty when the line gives none; line breaks kept. */
+  draft: string;
+}
+
+/** An address as it is written: a local part, '@', and a dotted domain. No quote, bracket, comma, colon, bar or space in it. */
+const ADDRESS = /[^\s<>()[\]{}"',;:|@]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/;
+/** Edge punctuation left on a name once its address is taken out: 'Luke <luke@x.com>' is 'Luke'. */
+const EMAIL_EDGES = /^[\s,;:()<>–—-]+|[\s,;:()<>–—-]+$/g;
+
+/** The email action of a description: its first 'Email:' line, 'Email: <name> <address> | <subject> | <draft>'. The name is
+ * optional, the address is not; the draft is whatever follows the second bar (bars in it are its own) and runs on, a line for a
+ * line, to the end of its paragraph: a blank line, or an 'Open:', 'Text:' or another 'Email:' line. None when there is no such
+ * line, or its first part holds no address (the line is then only text on the card's back). */
+export function parseEmailAction(description: string): EmailAction | undefined {
+  const lines = description.split(/\r?\n/);
+  const at = lines.findIndex((line) => EMAIL_LINE.test(line));
+  if (at < 0) return undefined;
+  const rest = EMAIL_LINE.exec(lines[at])?.[1] ?? '';
+  const [who, subject = '', ...more] = rest.split('|');
+  const address = ADDRESS.exec(who)?.[0];
+  if (!address) return undefined;
+  const name = who.replace(address, ' ').replace(/mailto:/gi, '').replace(EMAIL_EDGES, '').trim();
+  const draftLines = [more.join('|').trim()];
+  for (const line of lines.slice(at + 1)) {
+    if (!line.trim() || TEXT_LINE.test(line) || OPEN_LINE.test(line) || EMAIL_LINE.test(line)) break;
+    draftLines.push(line.trim());
+  }
+  return { ...(name ? { name } : {}), address, subject: subject.trim(), draft: draftLines.join('\n').trim() };
+}
+
+/** A mailto: field's value, percent-encoded whole (&, ?, #, '+', '%', a space, an emoji) so the mail app gets every character. A
+ * line break goes as %0D%0A, which RFC 6068 asks of a mailto: body. */
+const encodeMail = (text: string) => encodeURIComponent(text.replace(LONE_SURROGATE, '\uFFFD').replace(/\r?\n/g, '\r\n'));
+
+/** The Email button's link: mailto:<address>?subject=<subject>&body=<draft>, each field left out when empty. The address
+ * keeps its '@' and '+', which a mailto: link may carry as they are. Android hands the link to his default mail app (Gmail). */
+export function emailHref(action: EmailAction): string {
+  const fields = [action.subject && `subject=${encodeMail(action.subject)}`, action.draft && `body=${encodeMail(action.draft)}`].filter(Boolean);
+  return `mailto:${encodeURIComponent(action.address).replace(/%40/g, '@').replace(/%2B/g, '+')}${fields.length ? `?${fields.join('&')}` : ''}`;
+}
+
+/** What the Email button says: who a tap writes to, by name, else by address. */
+export function emailLabel(action: EmailAction): string {
+  return `Email ${action.name ?? action.address}`;
 }
 
 /** What a card's Listen in Audible button opens (mw-ev7oyy.24): an Audible book, and where in it. */

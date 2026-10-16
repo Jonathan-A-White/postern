@@ -65,6 +65,7 @@ const KINDS: { kind: string; url: string; newTab: boolean }[] = [
   { kind: 'audible', url: AUDIBLE, newTab: true },
   { kind: 'call', url: 'tel:+15555550123', newTab: false },
   { kind: 'text', url: 'sms:+15555550123?body=Hi', newTab: false },
+  { kind: 'email', url: 'mailto:luke@example.com?subject=Hi', newTab: false },
   { kind: 'map', url: 'https://maps.app.goo.gl/AbCd123', newTab: true },
   { kind: 'map', url: 'https://www.google.com/maps/place/Home', newTab: true },
   { kind: 'map', url: 'geo:37.78,-122.41', newTab: false },

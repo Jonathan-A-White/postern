@@ -10,7 +10,8 @@
 // open, the others folded to their count and opened with a tap, each list's choice kept on the phone (kept.ts); a card's back can tap it into Today for today. A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
 // link and nothing else (mw-ev7oyy.12; links.ts says what each is); one with an Audible book (an 'Audible:' or 'Listen:' line, or an audible.com/pd/ link) shows
 // a Listen in Audible button, its link built by audible-kit when tapped (mw-ev7oyy.24); one with a 'Text:' line shows a Text button first, which opens his
-// texting app to the person with the message filled in (mw-ev7oyy.22). Draws only what a TodoStore gives it.
+// texting app to the person with the message filled in (mw-ev7oyy.22); one with an 'Email:' line shows an Email button after it, which opens his mail app to the
+// person with the subject and the draft filled in (mw-ev7oyy.26). Draws only what a TodoStore gives it.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Button, Chip, EmptyState, Icon, IconButton, Spinner, cx } from '../ui';
 import { useNow } from '../ui/useNow';
@@ -20,7 +21,7 @@ import { beadHref } from '../nav/route';
 import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
 import { moveFor, realIndex } from './edits';
 import { isGroupOpen, keepGroupOpen, readGroupsOpen, type GroupsOpen } from './kept';
-import { linkProps, listenHref, parseListenAction, parseOpenLinks, parseTextAction, textHref, textLabel, type ListenAction, type OpenLink, type TextAction } from './links';
+import { emailHref, emailLabel, linkProps, listenHref, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
 import { beadsNamed, groupCounts, type TodoCard, type TodoGroup, type TodoList } from './lists';
 import { usePosternTodoStore } from './posternStore';
 import type { TodoDone, TodoStore } from './store';
@@ -135,9 +136,10 @@ function DueField({ card, onSet }: { card: TodoCard; onSet: (due: string) => voi
 }
 
 /** A card's links as chips under its title: each an anchor that opens the app it names (links.ts says how), named 'Open in <its text>' for a screen reader.
- * A text action comes first, as a Text button that says who a tap texts: opened in this tab, so the phone hands it to his texting app (Google Voice on Android). */
-function LinkChips({ links, text, listen }: { links: OpenLink[]; text?: TextAction; listen?: ListenAction }) {
-  if (links.length === 0 && !text && !listen) return null;
+ * A text action comes first, as a Text button that says who a tap texts: opened in this tab, so the phone hands it to his texting app (Google Voice on Android).
+ * An email action follows it, an Email button that says who a tap writes to: a mailto: link, opened in this tab, so the phone hands it to his mail app (Gmail). */
+function LinkChips({ links, text, email, listen }: { links: OpenLink[]; text?: TextAction; email?: EmailAction; listen?: ListenAction }) {
+  if (links.length === 0 && !text && !email && !listen) return null;
   return (
     <div data-nodrag data-testid="card-links" className="mt-1 flex flex-wrap gap-1.5">
       {text && (
@@ -149,6 +151,17 @@ function LinkChips({ links, text, listen }: { links: OpenLink[]; text?: TextActi
         >
           <Icon name="talk" size={12} className="shrink-0" />
           <span className="min-w-0 truncate">{textLabel(text)}</span>
+        </a>
+      )}
+      {email && (
+        <a
+          data-testid="card-email"
+          data-kind="email"
+          href={emailHref(email)}
+          className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-md border border-accent/60 bg-accent/15 px-2 text-[12px] font-medium text-fg no-underline"
+        >
+          <Icon name="mail" size={12} className="shrink-0" />
+          <span className="min-w-0 truncate">{emailLabel(email)}</span>
         </a>
       )}
       {listen && (
@@ -184,14 +197,14 @@ function LinkChips({ links, text, listen }: { links: OpenLink[]; text?: TextActi
 }
 
 /** The chips of a card whose view summary may be cut short: the whole notes, once the store has them, decide (the summary's links stand in until then;
- * the Text button waits for them, as a cut summary may have cut its draft). */
+ * the Text and Email buttons wait for them, as a cut summary may have cut its draft). */
 function FullNotesChips({ store, card }: { store: TodoStore; card: TodoCard }) {
   const back = store.useBack(card.id);
-  return back.status === 'ready' ? <LinkChips links={parseOpenLinks(back.description)} text={parseTextAction(back.description)} listen={parseListenAction(back.description)} /> : <LinkChips links={card.links ?? []} />;
+  return back.status === 'ready' ? <LinkChips links={parseOpenLinks(back.description)} text={parseTextAction(back.description)} email={parseEmailAction(back.description)} listen={parseListenAction(back.description)} /> : <LinkChips links={card.links ?? []} />;
 }
 
 function CardLinks({ store, card }: { store: TodoStore; card: TodoCard }) {
-  return card.summaryCut ? <FullNotesChips store={store} card={card} /> : <LinkChips links={card.links ?? []} text={card.text} listen={card.listen} />;
+  return card.summaryCut ? <FullNotesChips store={store} card={card} /> : <LinkChips links={card.links ?? []} text={card.text} email={card.email} listen={card.listen} />;
 }
 
 /** The back's Done: a labelled button, as it was before the card's front became one row. */

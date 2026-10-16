@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.7.0
+_2026-10-16_
+- New: To do now opens on the few things worth doing right now, with everything else folded away under Later and the cards the pass let go under Let go, each with Keep or Drop.
+
 ## 0.6.47
 _2026-10-16_
 - New: A To do card's back now shows how big it is (Quick, an Hour, a Half day) and a Then line for what must follow, each a tap to change, and the card shows a small size mark.
@@ -121,9 +125,6 @@ _2026-10-13_
 ## 0.6.0
 _2026-10-12_
 - New: While Ideas only is on, a banner at the top of every screen says until when, and everything you send says 'Recorded for after 21:00' at once; the Talk line says it aloud and is ready for your next turn.
-
-## 0.6.0
-_2026-10-12_
 - New: While Ideas only is on, a banner at the top of every screen says until when; everything you send says "Recorded for after 21:00" at once, the Talk line says it aloud and is ready for your next turn, and taps say it in place of "waiting".
 
 ## 0.5.43

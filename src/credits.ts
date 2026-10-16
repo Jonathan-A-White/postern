@@ -189,6 +189,15 @@ export const CREDIT_GROUPS: CreditGroup[] = [
         covers: ['bsv-kit'],
       },
       {
+        name: 'audible-kit',
+        url: 'https://github.com/Jonathan-A-White/audible-kit',
+        use: "The Governor's shared library for Audible: the link that opens a book in the Audible app, at a chapter's start when a to-do names one, and the chapter starts of The Word of Promise audio Bible.",
+        ...MIT,
+        licenceUrl: 'https://github.com/Jonathan-A-White/audible-kit/blob/main/LICENSE',
+        changes: AS_PUBLISHED,
+        covers: ['audible-kit'],
+      },
+      {
         name: 'scure-bip39',
         url: 'https://paulmillr.com/noble/#scure',
         use: "Paul Miller's audited BIP-39 library: makes and checks the recovery phrase.",

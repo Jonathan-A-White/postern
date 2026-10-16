@@ -2,7 +2,7 @@
 // message sync pages sealed `card`, `card-update`, `message` and `events` records, the clock is frozen
 // (Date only) and moved by hand, and Needs you, the archive or Me is opened at the hour a scenario names.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -18,8 +18,6 @@ import { type View, type ViewBead } from '../../src/model/view';
 import { fixtureView, MAYOR } from '../../tests/support/cockpit-fixture';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { freezeClock, thawClock, FIXTURE_NOW } from '../../tests/support/freeze-clock';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const HOUR = 3_600_000;
 const GOV = PrivateKey.fromHex('44'.repeat(32));

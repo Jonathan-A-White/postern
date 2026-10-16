@@ -2,7 +2,7 @@
 // the Map's factory level against a seeded Dexie view, no network. A bead's title
 // reads "Title of <id>" so a card is found by its title.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -11,8 +11,6 @@ import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 let now = Date.now();
 let beads: ViewBead[] = [];

@@ -2,7 +2,7 @@
 // a step for his hands whose bead waits on an open bead shows what it waits on and
 // offers nothing to tap, on the Needs screen and on the bead's page.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { NeedsScreen } from '../../src/cockpit/NeedsScreen';
@@ -11,8 +11,6 @@ import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { fixtureView, handsStep } from '../../tests/support/cockpit-fixture';
 import type { Need, ViewBead } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const BEAD = 'mw-h';
 const BLOCKER = 'mw-b';

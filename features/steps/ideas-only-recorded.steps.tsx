@@ -3,7 +3,7 @@
 // the kept Ideas only answer in a Dexie and Date frozen. The delivery is the double: what it takes in
 // is "the record reaches the backend".
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
@@ -26,8 +26,6 @@ import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import { ToastHost } from '../../src/ui/toast';
 import { dismissAllToasts } from '../../src/ui/toastStore';
 import type { GovernorAction } from '../../src/model/conversation';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const doubles = vi.hoisted(() => ({
   delivered: [] as { text: string }[],

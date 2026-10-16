@@ -4,7 +4,7 @@
 // tests/support/cockpit-fixture.ts, at phone width (jsdom has no matchMedia).
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, expect, vi } from 'vitest';
-import { cleanup, configure, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { App } from '../../src/App';
@@ -14,8 +14,6 @@ import { lock, setKey } from '../../src/services/keySession';
 import { stopLive } from '../../src/services/live';
 import { sealDocument } from '../../src/services/documents';
 import { MAYOR, fixtureRecords, fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const feature = await loadFeature('features/slack-words.feature');
 

@@ -2,7 +2,7 @@
 // (mw-gq6.158): the Talk list against a seeded Dexie (a view, messages and one
 // bead's stored detail holding a Mayor note), no network.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
@@ -10,8 +10,6 @@ import { db, type MessageRow } from '../../src/data/db';
 import { beadDetailsRepo, messagesRepo, viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const DAY = 86_400_000;
 const MINUTE = 60_000;

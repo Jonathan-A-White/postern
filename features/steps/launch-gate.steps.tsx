@@ -158,7 +158,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
     Then('the app is on its door, no longer on Loading', async () => {
       // The blocked database was a new one (the old tab held an upgrade-less copy), so the door is the one with no key yet.
-      await screen.findByRole('link', { name: 'Set up your key' }, { timeout: 10_000 });
+      await screen.findByRole('link', { name: 'Set up your key' });
       expect(document.querySelector('[aria-busy="true"]')).toBeNull();
       expect(reloadPage).toHaveBeenCalledTimes(1);
       expect(getDbTrouble()).toBeNull();

@@ -1,6 +1,6 @@
 // features/steps/bead-page-run.steps.tsx — runs features/bead-page-run.feature (mw-gq6.177).
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, configure } from '@testing-library/react';
+import { render, screen, cleanup, within } from '@testing-library/react';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
@@ -8,8 +8,6 @@ import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { fixtureView, handsStep } from '../../tests/support/cockpit-fixture';
 import type { Need } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const BEAD = 'mw-h';
 

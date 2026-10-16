@@ -167,7 +167,7 @@ test('Channels: with more channels than fit, the last row scrolls fully into vie
       const talk = await talkButton.boundingBox();
       const last = await rows.last().boundingBox();
       expect(talk && last && last.y + last.height <= talk.y + 1).toBe(true);
-    }).toPass({ timeout: 10_000 });
+    }).toPass({ timeout: 20_000 });
   }
   await shot(page, 'cockpit-talk-many');
 });

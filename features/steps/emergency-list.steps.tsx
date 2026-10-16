@@ -2,7 +2,7 @@
 // Emergencies row on Needs you, the Emergency screen it opens, and the speaker on each emergency.
 // Held events are seeded in Dexie; speech is a fake synth.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -14,8 +14,6 @@ import { db } from '../../src/data/db';
 import { eventsRepo, viewRepo } from '../../src/data/repositories';
 import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 // The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4).
 let speech: HonestSpeech | null = null;

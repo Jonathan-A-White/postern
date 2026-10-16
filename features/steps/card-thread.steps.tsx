@@ -4,7 +4,7 @@
 // reply's root is driven the same way, so the Thread never says "That post is not on this phone"
 // for one the phone holds.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
@@ -15,8 +15,6 @@ import { resolveTapUrl } from '../../src/push/tapTarget';
 import { encodeQuestion } from '../../src/services/questions';
 import { applyCardRow } from '../../src/services/cards';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const BASE = 1_760_000_000;
 let sequence = 0;

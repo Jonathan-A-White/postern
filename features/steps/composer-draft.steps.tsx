@@ -2,7 +2,7 @@
 // the real Composer over fake-indexeddb, timers faked, sendToThread a stub. The draft is read
 // straight from the settings row the Composer's repository writes.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, act, fireEvent, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Utils } from '@bsv/sdk';
@@ -12,8 +12,6 @@ import { db } from '../../src/data/db';
 import { draftsRepo } from '../../src/data/repositories';
 import { parseThreadKey } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
-
-configure({ asyncUtilTimeout: 5000 });
 
 vi.mock('../../src/cockpit/send', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/cockpit/send')>()),

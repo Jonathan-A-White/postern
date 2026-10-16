@@ -3,7 +3,7 @@
 // seeded Dexie view and a faked per-bead fetch. The fake saves the detail the way
 // the real fetchBeadDetail does, so the screen reads it back from Dexie.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { MapScreen } from '../../src/cockpit/MapScreen';
@@ -23,8 +23,6 @@ vi.mock('../../src/services/live', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/live')>()),
   refreshNow: vi.fn(async () => undefined),
 }));
-
-configure({ asyncUtilTimeout: 5000 });
 
 let now = Date.now();
 

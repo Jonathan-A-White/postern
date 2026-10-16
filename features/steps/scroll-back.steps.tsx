@@ -3,13 +3,11 @@
 // scrollHeight/clientHeight/scrollTop are faked: scrollTop clamps to the content that is there,
 // as a browser's does, and the content's ResizeObserver is driven by hand.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor, fireEvent, act, configure } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { navigate, useScreenSearch } from '../../src/router';
 import { forgetScrolls, useScrollMemory } from '../../src/nav/scrollMemory';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const VIEW = 100;
 let content = 1000;

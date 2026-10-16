@@ -3,7 +3,7 @@
 // uses (mw-gq6.199): his words naming an option, or the factory's ANSWER comment; a reply typed in the
 // card's own thread appears there.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -16,8 +16,6 @@ import { encodeQuestion } from '../../src/services/questions';
 import { encodeThreadedMessage } from '../../src/services/threads';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const BEAD = 'mw-q';
 const THREAD = `bead:${BEAD}`;

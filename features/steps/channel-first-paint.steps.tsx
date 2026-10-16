@@ -2,7 +2,7 @@
 // (mw-gq6.265): the Talk screen against a seeded Dexie, the channel read made slow so the
 // first paint of an opened channel is what the phone already held, never the empty state.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, act, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
@@ -10,8 +10,6 @@ import { navigate, useRoute } from '../../src/router';
 import { db, type MessageRow } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const EMPTY = 'Nothing said here yet';
 const SLOW_MS = 400;

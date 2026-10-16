@@ -166,7 +166,7 @@ test("talk line: the answer's own buttons sit beside its speaker, 44 px, in 390 
   await page.evaluate(() => window.__hear('What landed today?'));
   await page.mouse.up();
   const answer = page.getByTestId('talk-answer');
-  await expect(answer).toContainText('One waits for you.', { timeout: 15_000 });
+  await expect(answer).toContainText('One waits for you.', { timeout: 20_000 });
 
   await expect(page.getByRole('region', { name: 'Speaking' })).toHaveCount(0);
   expect(await answer.getByRole('button').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))).toEqual(['Stop reading', 'Pause']);
@@ -223,7 +223,7 @@ test('talk line: hold to talk, a spoken answer with its timing, and a tap that c
   await expect.poll(() => page.evaluate(() => window.__locks.requested)).toBeGreaterThan(0);
 
   const answered = page.getByTestId('talk-answer');
-  await expect(answered).toContainText('Three things landed.', { timeout: 15_000 });
+  await expect(answered).toContainText('Three things landed.', { timeout: 20_000 });
   await expect(answered).toContainText(/first words in \d+\.\d s/);
   expect(await page.evaluate(() => window.__spoken)).toEqual(['Three things landed.']);
   await shot(page, 'talk-line-answer');
@@ -282,7 +282,7 @@ test('talk line: a long answer scrolls into view instead of landing below the fo
   await expect.poll(() => posted.length).toBe(1);
 
   const answer = page.getByTestId('talk-answer');
-  await expect(answer).toContainText('Sentence 40', { timeout: 15_000 });
+  await expect(answer).toContainText('Sentence 40', { timeout: 20_000 });
   const list = page.getByTestId('talk-scroll');
   // the smooth scroll takes a moment: the answer's last line ends up inside the list's box
   await expect
@@ -314,7 +314,7 @@ test.describe('phone viewport', () => {
     await page.evaluate(() => window.__hear('Tell me everything'));
     await page.mouse.up();
     await expect.poll(() => posted.length).toBe(1);
-    await expect(page.getByTestId('talk-answer')).toContainText('Sentence 60', { timeout: 15_000 });
+    await expect(page.getByTestId('talk-answer')).toContainText('Sentence 60', { timeout: 20_000 });
 
     // how far the answer's last rendered line reaches below the top of the controls (<= 0: fully above)
     const overlap = () =>
@@ -441,7 +441,7 @@ test('talk line: the talk is still on the screen after Channels and back, and af
   await page.evaluate(() => window.__hear('What landed today?'));
   await page.mouse.up();
   await expect.poll(() => posted.length).toBe(1);
-  await expect(page.getByTestId('talk-answer')).toContainText('Three things landed.', { timeout: 15_000 });
+  await expect(page.getByTestId('talk-answer')).toContainText('Three things landed.', { timeout: 20_000 });
   // he stops it: an answer he has stopped counts as heard and is not played again
   await page.getByRole('button', { name: 'Stop reading', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(1);

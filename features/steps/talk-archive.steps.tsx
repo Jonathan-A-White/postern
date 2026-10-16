@@ -3,7 +3,7 @@
 // no network. Bead titles read "Title of <id>" so a row is found by its title; a
 // bead the view lacks shows its id.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -13,8 +13,6 @@ import { db, type MessageRow } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const DAY = 86_400_000;
 

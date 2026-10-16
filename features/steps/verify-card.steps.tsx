@@ -2,7 +2,7 @@
 // a verify card shows its steps under "How to check it" and a Verified button that asks first and then
 // sends one channel message beginning VERIFIED; the approve chip is "Release", the same word as its button.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure, act, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -12,8 +12,6 @@ import { db } from '../../src/data/db';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { deliverThreaded } from '../../src/services/deliver';
 import type { Need, NeedKind } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 vi.mock('../../src/services/deliver', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/deliver')>()),

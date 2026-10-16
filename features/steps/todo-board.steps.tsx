@@ -2,7 +2,7 @@
 // the To do tab inside the Shell against a seeded Dexie view, no network. A bead's title reads
 // "Title of <id>"; a tap on Done lands in the outbox as a close action.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure, act, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { thawClock } from '../../tests/support/freeze-clock';
@@ -15,8 +15,6 @@ import { viewRepo } from '../../src/data/repositories';
 import { forgetOutboxState } from '../../src/services/outbox';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import type { BeadDetail, ViewBead } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 let now = Date.now();
 let beads: ViewBead[] = [];

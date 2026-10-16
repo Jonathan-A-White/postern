@@ -1,7 +1,7 @@
 // features/steps/answer-names-card.steps.tsx — runs features/answer-names-card.feature (mw-1cfk7g.1):
 // the answer a card sends names that card (the reply record's `re`), and only that card reads answered.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -12,8 +12,6 @@ import { db } from '../../src/data/db';
 import type { ConversationItem } from '../../src/model/conversation';
 import type { MessageRow } from '../../src/data/db';
 import { encodeQuestion } from '../../src/services/questions';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const sendAnswer = vi.fn<(bead: string, answer: string, re?: string) => Promise<{ id: number }>>();
 vi.mock('../../src/cockpit/send', async (importOriginal) => ({

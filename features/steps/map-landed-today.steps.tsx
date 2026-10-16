@@ -3,7 +3,7 @@
 // The tile's own href is followed, so the count and the list it opens are compared
 // through the route, not through a copy of it.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { MapScreen } from '../../src/cockpit/MapScreen';
@@ -12,8 +12,6 @@ import { viewRepo } from '../../src/data/repositories';
 import { parseRoute } from '../../src/nav/route';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const HOUR = 3_600_000;
 let now = Date.now();

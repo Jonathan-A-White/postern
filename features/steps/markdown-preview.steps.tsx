@@ -1,15 +1,13 @@
 // features/steps/markdown-preview.steps.tsx — runs features/markdown-preview.feature
 // (mw-hy6f4.6): the Talk screen over a seeded Dexie, one message whose text is Markdown.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, configure } from '@testing-library/react';
+import { render, screen, cleanup, within } from '@testing-library/react';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
 import { db, type MessageRow } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 let now = Date.now();
 let seeded: MessageRow[] = [];

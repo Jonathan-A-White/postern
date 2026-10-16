@@ -3,7 +3,7 @@
 // per-message speaking hook are counting doubles: the first counts what is parsed, the second counts
 // every redraw of a message bubble (each bubble calls it once per render).
 import '@testing-library/react/dont-cleanup-after-each';
-import { cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { createElement } from 'react';
@@ -13,8 +13,6 @@ import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { encodeThreadedMessage } from '../../src/services/threads';
 import { encodeQuestion } from '../../src/services/questions';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const counts = vi.hoisted(() => ({ parsed: [] as string[], bubbles: 0 }));
 

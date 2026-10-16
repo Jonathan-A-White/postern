@@ -4,7 +4,7 @@
 // reply sends can be read back. A notification tap is resolved with the service
 // worker's own resolveTapUrl and the URL it gives opened in the same harness.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -17,8 +17,6 @@ import { threadKey, type ThreadRef } from '../../src/services/threads';
 import { db, type MessageRow } from '../../src/data/db';
 import { beadDetailsRepo, messagesRepo, viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const sendToThread = vi.fn();
 vi.mock('../../src/services/blobs', () => ({ openAttachment: async () => 'blob:image' }));

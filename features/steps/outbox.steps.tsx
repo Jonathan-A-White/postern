@@ -4,7 +4,7 @@
 import '@testing-library/react/dont-cleanup-after-each';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -19,8 +19,6 @@ import { outboxRepo } from '../../src/data/repositories';
 import { forgetOutboxState, kickOutbox, settledOutbox, startOutbox } from '../../src/services/outbox';
 import { settledWrites } from '../../src/services/deliver';
 import type { Need } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 // The backend: while it is out of reach every delivery fails as a dropped connection does.
 const backend = vi.hoisted(() => ({

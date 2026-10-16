@@ -4,9 +4,11 @@ import '@testing-library/jest-dom/vitest';
 // the step files' dont-cleanup-after-each import can switch that off.
 import { configure } from '@testing-library/dom';
 
-// waitFor/findBy default to 1 s, which the landing gate's loaded host outruns
-// (mw-gq6.204, .199, .205). vitest's testTimeout (20 s) stays well above this.
-configure({ asyncUtilTimeout: 5000 });
+// waitFor/findBy default to 1 s, which the landing gate's loaded host outruns (mw-gq6.204, .199, .205),
+// and a 5 s budget was outrun too: the cockpit's 'When the cockpit opens' step failed after 8.7 s
+// (mw-40qzg4.1). A wait spends its budget only when the thing never comes, so it is 20 s, and no step
+// file sets its own (tests/unit/test-setup.test.ts). vitest's testTimeout (40 s) stays above this.
+configure({ asyncUtilTimeout: 20_000 });
 
 // jsdom does not play media: the Talk line's silent loop (src/services/silentLoop.ts) calls these.
 if (typeof HTMLMediaElement !== 'undefined') {

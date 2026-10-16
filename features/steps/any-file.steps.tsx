@@ -2,7 +2,7 @@
 // Composer, sendToThread, outbox, uploadAttachment (against a stubbed fetch) and Conversation;
 // the delivery and the blob download are doubles.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
@@ -16,8 +16,6 @@ import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { encodeThreadedMessage, type Attachment } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const doubles = vi.hoisted(() => ({
   delivered: [] as { attachments?: Attachment[]; attachment?: Attachment }[],

@@ -2,7 +2,7 @@
 // a Talk button on a decision card, a hands step, a channel's header and a Prompts row opens
 // the Talk line about it; the first turn's record carries `about`; Clear drops it.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, render, screen, cleanup, waitFor, within, fireEvent, configure } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Utils } from '@bsv/sdk';
 import { afterAll, expect, vi } from 'vitest';
@@ -21,8 +21,6 @@ import { challengeResponse, isChallengeRequest } from '../../tests/support/chall
 import { handsStep } from '../../tests/support/cockpit-fixture';
 import type { Need } from '../../src/model/view';
 import type { TalkTurn } from '../../src/model/talkLine';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const HIM_KEY = new Uint8Array(Utils.toArray('45'.repeat(32), 'hex'));
 

@@ -2,7 +2,7 @@
 // features/answered-once.feature: a question is answered once, in the conversation and on a
 // Needs card; the answered state is read from the answers this phone sent, so it survives a reload.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -12,8 +12,6 @@ import { forgetTaps } from '../../src/cockpit/oneTap';
 import { db } from '../../src/data/db';
 import type { ConversationItem } from '../../src/model/conversation';
 import type { Need } from '../../src/model/view';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const sendAnswer = vi.fn<(bead: string, answer: string) => Promise<{ txid: string; channel: string }>>();
 vi.mock('../../src/cockpit/send', async (importOriginal) => ({

@@ -2,7 +2,7 @@
 // Talk line with a fake speech recogniser and bsv-kit's honest speech synthesiser, over a Dexie that keeps the
 // Ideas only answer. The delivery of a turn and of a Call me request are doubles; Date is frozen.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkLineScreen } from '../../src/cockpit/TalkLineScreen';
@@ -15,8 +15,6 @@ import { forgetSilentInputs } from 'bsv-kit/composer';
 import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import type { TalkTurn } from '../../src/model/talkLine';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const sendTurn = vi.fn();
 const sendCallRequest = vi.fn();

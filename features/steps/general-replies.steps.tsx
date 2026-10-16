@@ -2,7 +2,7 @@
 // (mw-hkg17.2): the Talk screen on General against a seeded Dexie, with sendToThread
 // stood in for so what a reply sends can be read back.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -11,8 +11,6 @@ import { useRoute } from '../../src/router';
 import { db, type MessageRow } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const sendToThread = vi.fn();
 vi.mock('../../src/cockpit/send', async (importOriginal) => ({

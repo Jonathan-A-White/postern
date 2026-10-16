@@ -5,7 +5,7 @@
 // the upload and the delivery are doubles, the rest of the send is real.
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, expect, vi } from 'vitest';
-import { cleanup, configure, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -17,8 +17,6 @@ import { stopLive } from '../../src/services/live';
 import { sealDocument } from '../../src/services/documents';
 import { encodeThreadedMessage, threadKey, type ThreadedBody } from '../../src/services/threads';
 import { MAYOR, fixtureRecords, fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const doubles = vi.hoisted(() => ({ delivered: [] as unknown[] }));
 

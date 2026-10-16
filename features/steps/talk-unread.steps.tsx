@@ -1,7 +1,7 @@
 // features/steps/talk-unread.steps.tsx — runs features/talk-unread.feature (mw-xhtcup.11):
 // the Talk list's unread against a seeded Dexie and a view, no network.
 import '@testing-library/react/dont-cleanup-after-each';
-import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Shell } from '../../src/cockpit/Shell';
@@ -15,8 +15,6 @@ import { indexView } from '../../src/model/tree';
 import { navigate, useRoute } from '../../src/router';
 import { markThreadSeen } from '../../src/services/seen';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const BEAD = 'mw-f758y.30.2';
 const BEAD_KEY = `bead:${BEAD}`;

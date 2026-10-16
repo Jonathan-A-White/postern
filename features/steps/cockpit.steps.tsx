@@ -4,7 +4,7 @@
 // Every POST /api/messages is decrypted with the Mayor's key so a scenario can
 // say exactly what reached him.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -22,10 +22,6 @@ import { decryptMessage, encryptMessage, type MessagePayload } from '../../src/s
 import { sealDocument } from '../../src/services/documents';
 import { MAYOR, STALE_FACTS_END, fixtureDetail, fixtureRecords, fixtureStaleNeed, fixtureView } from '../../tests/support/cockpit-fixture';
 import { approvalMessage, stepSha256 } from '../../src/model/hands';
-
-// The whole app syncs messages, the view and a bead's detail before a scenario's
-// words appear; on a loaded host that can take longer than the 1 s default.
-configure({ asyncUtilTimeout: 5000 });
 
 const HIM = PrivateKey.fromHex('5a'.repeat(32));
 const HIM_KEY = new Uint8Array(Utils.toArray(HIM.toHex(), 'hex'));
@@ -520,7 +516,7 @@ describeFeature(feature, ({ Scenario }) => {
       expect(screen.queryByText('The backend refused the message.')).toBeNull();
     });
     And('the release for "mw-f758y.31" goes out on the next try', async () => {
-      await waitFor(() => expect(delivered).toHaveLength(1), { timeout: 5000 });
+      await waitFor(() => expect(delivered).toHaveLength(1));
       expect(JSON.parse(delivered[0])).toEqual({ action: 'release', bead: 'mw-f758y.31' });
     });
   });
@@ -734,7 +730,7 @@ describeFeature(feature, ({ Scenario }) => {
       await userEvent.click(screen.getByRole('button', { name: 'Back' }));
     });
     Then('the Map is shown', async () => {
-      await waitFor(() => expect(window.location.search).toMatch(/^\?v=map/), { timeout: 3000 });
+      await waitFor(() => expect(window.location.search).toMatch(/^\?v=map/));
     });
   });
 
@@ -750,7 +746,7 @@ describeFeature(feature, ({ Scenario }) => {
       await userEvent.click(screen.getByRole('button', { name: 'Back' }));
     });
     Then("the Map is shown focused on that bead's parent", async () => {
-      await waitFor(() => expect(window.location.search).toBe('?v=map&focus=mw-f758y.30'), { timeout: 3000 });
+      await waitFor(() => expect(window.location.search).toBe('?v=map&focus=mw-f758y.30'));
     });
   });
 });

@@ -4,7 +4,7 @@
 // double that counts every GET /api/beads/<id>, so a scenario can say the detail was not
 // fetched again.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey, Utils } from '@bsv/sdk';
@@ -21,8 +21,6 @@ import type { BeadComment, BeadDetail, Need, View, ViewBead } from '../../src/mo
 import { fixtureView, handsStep, MAYOR } from '../../tests/support/cockpit-fixture';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
-
-configure({ asyncUtilTimeout: 5000 });
 
 const GOV = PrivateKey.fromHex('44'.repeat(32));
 const GOV_PUB = GOV.toPublicKey().toString();

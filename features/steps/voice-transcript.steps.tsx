@@ -3,7 +3,7 @@
 // transcript record (docs/protocol.md §14) arriving as a row beside it. jsdom has no
 // layout, so the clamp's measurements are stood in for through the prototype.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor, configure } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -12,8 +12,6 @@ import { db, type MessageRow } from '../../src/data/db';
 import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { lock, setKey } from '../../src/services/keySession';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
-
-configure({ asyncUtilTimeout: 5000 });
 
 vi.mock('../../src/services/blobs', () => ({ openAttachment: async () => 'blob:audio' }));
 

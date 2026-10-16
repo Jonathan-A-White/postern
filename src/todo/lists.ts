@@ -11,6 +11,9 @@ export const TODO_LABEL = 'hitl:todo';
 /** The column for cards whose bead has no epic in the view. */
 export const OTHER_LIST = 'other';
 
+/** The sizes a card can have, smallest first (docs/protocol.md §11 todo_size). */
+export type TodoSize = 'quick' | 'hour' | 'half-day';
+
 export interface TodoCard {
   id: string;
   title: string;
@@ -21,6 +24,10 @@ export interface TodoCard {
   due?: string;
   /** He has starred it (the bead's todo_important): it sorts above the cards that are neither starred nor due soon. */
   important?: boolean;
+  /** How big it is (the bead's todo_size), absent when it has none (mw-ht6gsw.4). */
+  size?: TodoSize;
+  /** What must follow it (the bead's todo_then), absent when it has none (mw-ht6gsw.4). */
+  then?: string;
   /** The links of the 'Open:' line of its notes, as far as the view's summary shows them; the board reads the whole notes when the summary is cut short (mw-ev7oyy.12). */
   links?: OpenLink[];
   /** The 'Text:' line of its notes, when the view's summary holds it whole (not cut short): its Text button (mw-ev7oyy.22). */
@@ -146,7 +153,7 @@ function cardOf(bead: ViewBead): TodoCard {
   const text = cut ? undefined : parseTextAction(bead.summary);
   const email = cut ? undefined : parseEmailAction(bead.summary);
   const listen = cut ? undefined : parseListenAction(bead.summary);
-  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(links.length ? { links } : {}), ...(text ? { text } : {}), ...(email ? { email } : {}), ...(listen ? { listen } : {}), ...(cut ? { summaryCut: true } : {}) };
+  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(bead.todo_size ? { size: bead.todo_size } : {}), ...(bead.todo_then ? { then: bead.todo_then } : {}), ...(links.length ? { links } : {}), ...(text ? { text } : {}), ...(email ? { email } : {}), ...(listen ? { listen } : {}), ...(cut ? { summaryCut: true } : {}) };
 }
 
 /** The open hitl:todo beads of the view grouped under their parent epic: newest list first, Other last,

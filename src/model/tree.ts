@@ -21,6 +21,8 @@ export const BUCKET_TONE: Record<Bucket, Tone> = Object.fromEntries(BUCKETS.map(
 export const BUCKET_LABEL: Record<Bucket, string> = Object.fromEntries(BUCKETS.map((b) => [b.bucket, b.label])) as Record<Bucket, string>;
 
 export const MAP_LABEL = 'wayfinder:map';
+/** The triage ices a bead nobody will touch soon with this label (and holds it at P4). */
+export const ICEBOX_LABEL = 'icebox';
 
 export interface ViewIndex {
   view: View;
@@ -85,6 +87,11 @@ export function isEpic(bead: ViewBead, index?: ViewIndex): boolean {
 
 export function isMap(bead: ViewBead): boolean {
   return bead.labels.includes(MAP_LABEL);
+}
+
+/** Iced: labelled icebox, whatever its status. */
+export function isIced(bead: { labels: string[] }): boolean {
+  return bead.labels.includes(ICEBOX_LABEL);
 }
 
 /** Which board column a bead belongs in: anything waiting on the Governor first,
@@ -166,6 +173,11 @@ export function epicStats(epicId: string, index: ViewIndex): EpicStats {
   const done = counts.done + doneEarlier;
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0) + doneEarlier;
   return { total, done, counts, needs, lastActivity, rigs: [...rigs].sort() };
+}
+
+/** How many stories under an epic a Release would let go: the held ones, not the iced. */
+export function releasableHeld(epicId: string, index: ViewIndex): number {
+  return descendants(epicId, index).filter((bead) => !isEpic(bead, index) && !isIced(bead) && bucketOf(bead, index) === 'held').length;
 }
 
 /** The rig a bead is worked in: its own path's, else the first one found below it. */

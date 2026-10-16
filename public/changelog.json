@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.43",
+    "date": "2026-10-16",
+    "story": "mw-q6n8m0.15",
+    "kind": "fixed",
+    "text": "Postern no longer gets stuck on 'Connecting…' after you come back to it; a sync that hangs is given up on and the next one goes out at once."
+  },
+  {
     "version": "0.6.40",
     "date": "2026-10-16",
     "story": "mw-ev7oyy.26",

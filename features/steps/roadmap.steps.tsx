@@ -1,9 +1,10 @@
 // features/steps/roadmap.steps.tsx — runs features/roadmap.feature (mw-njb33n.3): the Roadmap's lanes by app.
 import '@testing-library/react/dont-cleanup-after-each';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
-import { afterAll, expect } from 'vitest';
+import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { Roadmap } from '../../src/cockpit/RoadmapScreen';
+import { Roadmap, RoadmapScreen } from '../../src/cockpit/RoadmapScreen';
+import { LANE_COLOURS, pictureModel } from '../../src/cockpit/roadmapPicture';
 import { indexView } from '../../src/model/tree';
 import type { ViewBead } from '../../src/model/view';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
@@ -14,11 +15,33 @@ afterAll(() => {
 
 const feature = await loadFeature('features/roadmap.feature');
 
+// RoadmapScreen reads the live view from here; a scenario sets what it holds.
+let liveBeads: ViewBead[] = [];
+vi.mock('../../src/cockpit/hooks', async (orig) => {
+  const real = await orig<typeof import('../../src/cockpit/hooks')>();
+  return { ...real, useViewIndex: () => ({ index: indexView({ ...fixtureView(), needs: [], beads: liveBeads }) }) };
+});
+
+// A GL that records and draws nothing, for a phone that has WebGL.
+function fakeGl(): RenderingContext {
+  return new Proxy(
+    {},
+    {
+      get: (_t, key) => {
+        if (typeof key !== 'string') return undefined;
+        if (/^[A-Z][A-Z0-9_]*$/.test(key)) return 1;
+        return () => ({});
+      },
+    },
+  ) as unknown as RenderingContext;
+}
+
 describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   let beads: ViewBead[];
 
   BeforeEachScenario(() => {
     cleanup();
+    vi.restoreAllMocks();
     beads = [];
   });
 
@@ -69,6 +92,54 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       const now = screen.getByRole('region', { name: 'Now' });
       expect(within(now).getByRole('link', { name: /lampas story l\.2/ }).getAttribute('href')).toContain('l.2');
       expect(within(now).getByRole('link', { name: /lampas story l\.1/ }).getAttribute('href')).toContain('l.1');
+    });
+  });
+
+  const epicView = () => {
+    const epic = (id: string, rig: string) => story(id, rig, 2, { type: 'epic', title: `${rig} epic ${id}` });
+    return [
+      epic('big', 'lampas'),
+      story('big.1', 'lampas', 0, { parent: 'big' }),
+      story('big.2', 'lampas', 2, { parent: 'big' }),
+      epic('small', 'postern'),
+      story('small.1', 'postern', 3, { parent: 'small' }),
+    ];
+  };
+
+  Scenario("mw-njb33n.6 AC1: the Picture shows each epic as a node, sized by open work and coloured by lane", ({ Given, When, Then }) => {
+    Given('a view with epics holding open stories in several lanes', () => {
+      liveBeads = epicView();
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(fakeGl());
+    });
+    When("the Roadmap's Picture is opened", () => {
+      render(<RoadmapScreen />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
+    });
+    Then('there is a node per epic, the epic with more open stories is bigger, and each is coloured by its lane', () => {
+      expect(screen.getByTestId('roadmap-picture')).toBeInTheDocument();
+      const model = pictureModel(indexView({ ...fixtureView(), needs: [], beads: liveBeads }));
+      const big = model.nodes.find((n) => n.id === 'big')!;
+      const small = model.nodes.find((n) => n.id === 'small')!;
+      expect(model.nodes).toHaveLength(2);
+      expect(big.r).toBeGreaterThan(small.r);
+      expect(big.colour).toEqual(LANE_COLOURS.now);
+      expect(small.colour).toEqual(LANE_COLOURS.later);
+    });
+  });
+
+  Scenario('mw-njb33n.6 AC3: without WebGL the Picture gives way to the lanes', ({ Given, When, Then }) => {
+    Given('a phone that has no WebGL', () => {
+      liveBeads = epicView();
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    });
+    When("the Roadmap's Picture is opened", () => {
+      render(<RoadmapScreen />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Picture' }));
+    });
+    Then('the lanes show and the Picture says it is not available', () => {
+      expect(screen.getByTestId('roadmap')).toBeInTheDocument();
+      expect(screen.queryByTestId('roadmap-picture')).toBeNull();
+      expect(screen.getByRole('status')).toHaveTextContent(/WebGL/);
     });
   });
 });

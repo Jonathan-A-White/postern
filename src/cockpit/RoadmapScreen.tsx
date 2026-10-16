@@ -1,13 +1,15 @@
 // src/cockpit/RoadmapScreen.tsx — the Roadmap (mw-njb33n.3): four calm lanes, Now (P0-P1), Next (P2),
 // Later (P3) and Icebox, each a row per app with its count and its top title. A tap opens an app to
-// its titles, each a link to its bead. Phone-first and nothing animated.
-import { useMemo, useState } from 'react';
-import { Chip, EmptyState, Icon, Spinner } from '../ui';
+// its titles, each a link to its bead. Phone-first and nothing animated. Beside the lanes, a Picture
+// (mw-njb33n.6: RoadmapPicture): lanes stay the default, and a phone with no WebGL stays on them.
+import { useCallback, useMemo, useState } from 'react';
+import { Chip, EmptyState, Icon, Segmented, Spinner } from '../ui';
 import { Screen } from './Shell';
 import { useViewIndex } from './hooks';
 import { roadmap, type RoadmapApp, type RoadmapLane } from '../model/roadmap';
 import type { ViewIndex } from '../model/tree';
 import { beadHref } from '../nav/route';
+import { RoadmapPicture } from './RoadmapPicture';
 
 function AppRow({ entry, open, onToggle }: { entry: RoadmapApp; open: boolean; onToggle: () => void }) {
   return (
@@ -109,7 +111,36 @@ export function RoadmapScreen() {
   }
   return (
     <Screen title="Roadmap" subtitle="Now · Next · Later · Icebox" back={back}>
-      <Roadmap index={index} />
+      <LanesOrPicture index={index} />
     </Screen>
+  );
+}
+
+type Mode = 'lanes' | 'picture';
+
+/** The lanes, or the Picture beside them when he asks and this phone can draw it. */
+function LanesOrPicture({ index }: { index: ViewIndex }) {
+  const [mode, setMode] = useState<Mode>('lanes');
+  const [noWebgl, setNoWebgl] = useState(false);
+  const unavailable = useCallback(() => setNoWebgl(true), []);
+  const shown: Mode = mode === 'picture' && !noWebgl ? 'picture' : 'lanes';
+  return (
+    <div className="flex flex-col gap-4">
+      <Segmented<Mode>
+        label="Roadmap view"
+        value={shown}
+        onChange={setMode}
+        options={[
+          { value: 'lanes', label: 'Lanes' },
+          { value: 'picture', label: 'Picture' },
+        ]}
+      />
+      {noWebgl && mode === 'picture' && (
+        <p role="status" className="px-1 text-[13px] text-muted">
+          This phone cannot draw the Picture (it needs WebGL), so the lanes are shown.
+        </p>
+      )}
+      {shown === 'picture' ? <RoadmapPicture index={index} onUnavailable={unavailable} /> : <Roadmap index={index} />}
+    </div>
   );
 }

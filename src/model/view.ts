@@ -58,6 +58,10 @@ export interface ViewBead {
   todo_due?: string;
   /** A hitl:todo bead the Governor has starred (mw-ev7oyy.15); absent when it is not. */
   todo_important?: boolean;
+  /** A hitl:todo bead's size (mw-ht6gsw.4): 'quick', 'hour' or 'half-day'; absent when it has none. */
+  todo_size?: 'quick' | 'hour' | 'half-day';
+  /** A hitl:todo bead's Then line (mw-ht6gsw.4): what must follow it, one line; absent when it has none. */
+  todo_then?: string;
   /** A hitl:todo epic's short name for its list's header (mw-ev7oyy.14); absent when it has none. */
   todo_name?: string;
 }
@@ -190,6 +194,8 @@ function decodeBead(value: unknown): ViewBead | undefined {
   const todoRank = rank(raw.todo_rank);
   const todoDue = typeof raw.todo_due === 'string' && !Number.isNaN(Date.parse(raw.todo_due)) ? raw.todo_due : undefined;
   const todoImportant = raw.todo_important === true;
+  const todoSize = raw.todo_size === 'quick' || raw.todo_size === 'hour' || raw.todo_size === 'half-day' ? raw.todo_size : undefined;
+  const todoThen = str(raw.todo_then).trim();
   const todoName = str(raw.todo_name).trim();
   return {
     id: raw.id,
@@ -213,6 +219,8 @@ function decodeBead(value: unknown): ViewBead | undefined {
     ...(todoRank !== undefined ? { todo_rank: todoRank } : {}),
     ...(todoDue !== undefined ? { todo_due: todoDue } : {}),
     ...(todoImportant ? { todo_important: true } : {}),
+    ...(todoSize ? { todo_size: todoSize } : {}),
+    ...(todoThen ? { todo_then: todoThen } : {}),
     ...(todoName ? { todo_name: todoName } : {}),
   };
 }

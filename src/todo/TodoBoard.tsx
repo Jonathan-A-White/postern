@@ -11,9 +11,9 @@
 // link and nothing else (mw-ev7oyy.12; links.ts says what each is); one with an Audible book (an 'Audible:' or 'Listen:' line, or an audible.com/pd/ link) shows
 // a Listen in Audible button, its link built by audible-kit when tapped (mw-ev7oyy.24); one with a 'Text:' line shows a Text button first, which opens his
 // texting app to the person with the message filled in (mw-ev7oyy.22); one with an 'Email:' line shows an Email button after it, which opens his mail app to the
-// person with the subject and the draft filled in (mw-ev7oyy.26). Draws only what a TodoStore gives it.
+// person with the subject and the draft filled in (mw-ev7oyy.26). A card's back has a Size row (Quick, an Hour, a Half day: a tap sets one, a second clears it) and a Then line, and its front a small size mark (Q, 1h, half) when set (mw-ht6gsw.4). Draws only what a TodoStore gives it.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Button, Chip, EmptyState, Icon, IconButton, Spinner, cx } from '../ui';
+import { Button, Chip, EmptyState, Icon, IconButton, LengthNote, Spinner, cx, isTooLong } from '../ui';
 import { useNow } from '../ui/useNow';
 import { focusOnMount } from '../ui/focus';
 import { Markdown } from '../markdown/Markdown';
@@ -22,7 +22,7 @@ import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
 import { moveFor, realIndex } from './edits';
 import { isGroupOpen, keepGroupOpen, readGroupsOpen, type GroupsOpen } from './kept';
 import { emailHref, emailLabel, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
-import { beadsNamed, groupCounts, type TodoCard, type TodoGroup, type TodoList } from './lists';
+import { beadsNamed, groupCounts, type TodoCard, type TodoGroup, type TodoList, type TodoSize } from './lists';
 import { usePosternTodoStore } from './posternStore';
 import type { TodoDone, TodoStore } from './store';
 import { useCardDrag, type DragState } from './useDrag';
@@ -96,6 +96,72 @@ function StarButton({ card, onToggle }: { card: TodoCard; onToggle: (important: 
     >
       <Icon name="star" size={18} className={on ? 'fill-current' : undefined} />
     </button>
+  );
+}
+
+/** The sizes a card can have, in the words of its back's Size row and the small mark on its front (mw-ht6gsw.4). */
+const SIZES: { size: TodoSize; label: string; mark: string }[] = [
+  { size: 'quick', label: 'Quick', mark: 'Q' },
+  { size: 'hour', label: 'an Hour', mark: '1h' },
+  { size: 'half-day', label: 'a Half day', mark: 'half' },
+];
+
+/** A card's size on its face, small: Q, 1h or half; nothing for a card without one. */
+function SizeMark({ size }: { size: TodoSize }) {
+  const named = SIZES.find((candidate) => candidate.size === size);
+  if (!named) return null;
+  return (
+    <span data-testid="size-mark" title={named.label} className="mt-0.5 inline-flex items-center rounded-full border border-line px-1.5 text-[11px] leading-4 font-medium text-muted">
+      {named.mark}
+    </span>
+  );
+}
+
+/** The Size row of a card's back: Quick, an Hour, a Half day. The chosen one is marked (pressed); a tap on another sets it, a second tap on the chosen one clears it. */
+function SizeField({ card, onSet }: { card: TodoCard; onSet: (size: TodoSize | '') => void }) {
+  return (
+    <div role="group" aria-label="Size" className="flex flex-wrap items-center gap-2">
+      <span className="text-[12.5px] text-muted">Size</span>
+      {SIZES.map(({ size, label }) => {
+        const on = card.size === size;
+        return (
+          <Button key={size} size="sm" variant={on ? 'primary' : 'secondary'} aria-pressed={on} title={on ? `Tap to clear the size (now ${label})` : undefined} onClick={() => onSet(on ? '' : size)}>
+            {label}
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The longest Then line the host keeps, in characters (docs/protocol.md §13 todo_edit). */
+const THEN_MAX = 200;
+const THEN_LENGTH_ID = 'then-length';
+
+/** The Then row of a card's back: one line of text, what must follow the card. Its button (dead until the line differs from the card's, and while it is too long, the count saying so) says what a tap does: Save Then, or Clear Then once the line is empty. */
+function ThenField({ card, onSet }: { card: TodoCard; onSet: (then: string) => void }) {
+  const current = card.then ?? '';
+  const [value, setValue] = useState(current);
+  const trimmed = value.trim();
+  const tooLong = isTooLong(value, THEN_MAX);
+  const changed = trimmed !== current && !tooLong;
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (changed) onSet(trimmed);
+      }}
+    >
+      <label className="flex min-w-0 flex-1 flex-col gap-1 text-[12.5px] text-muted">
+        Then
+        <input value={value} placeholder="Then: what must follow" aria-describedby={tooLong ? THEN_LENGTH_ID : undefined} onChange={(event) => setValue(event.target.value)} className="h-10 w-full text-[14px] text-text" />
+      </label>
+      <Button size="sm" variant="secondary" type="submit" disabled={!changed}>
+        {!trimmed && current ? 'Clear Then' : 'Save Then'}
+      </Button>
+      <LengthNote id={THEN_LENGTH_ID} text={value} max={THEN_MAX} what="Then line" className="basis-full" />
+    </form>
   );
 }
 
@@ -407,7 +473,9 @@ function CardBack({ store, card, place, onBack }: { store: TodoStore; card: Todo
           </Button>
         </div>
       )}
-      {!editing && <DueField key={card.due ?? ''} card={card} onSet={(due) => void store.edit(card.id, { due })} />}
+      {!editing && <DueField key={`due|${card.due ?? ''}`} card={card} onSet={(due) => void store.edit(card.id, { due })} />}
+      {!editing && <SizeField card={card} onSet={(size) => void store.edit(card.id, { size })} />}
+      {!editing && <ThenField key={`then|${card.then ?? ''}`} card={card} onSet={(then) => void store.edit(card.id, { then })} />}
       <MoveControls store={store} card={card} place={place} />
       {back.comments.length > 0 && (
         <section aria-label="Comments" className="flex flex-col gap-2 border-t border-line pt-2">
@@ -490,7 +558,12 @@ function Card({ store, card, place, drag, onPress, wasDragged }: { store: TodoSt
               <span className="line-clamp-2 min-w-0 flex-1">{card.title}</span>
               {card.pending && <PendingMark />}
             </button>
-            {card.due && <DueLine due={card.due} />}
+            {(card.due || card.size) && (
+              <div className="flex flex-wrap items-center gap-x-2">
+                {card.due && <DueLine due={card.due} />}
+                {card.size && <SizeMark size={card.size} />}
+              </div>
+            )}
             <CardLinks store={store} card={card} />
             <div data-nodrag>
               <DoneStatus state={state} />

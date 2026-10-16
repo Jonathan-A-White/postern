@@ -22,6 +22,7 @@ import { beadHref } from '../nav/route';
 import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
 import { moveFor, realIndex } from './edits';
 import { isRowOpen, keepRowOpen, readRowsOpen, type FoldedRow, type RowsOpen } from './kept';
+import { googleCalendarHref, icsHref, parseWhen, type When } from './calendar';
 import { emailHref, emailLabel, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
 import { beadsNamed, boardRows, type RowCard, type TodoCard, type TodoList, type TodoSize } from './lists';
 import { usePosternTodoStore } from './posternStore';
@@ -205,12 +206,40 @@ function DueField({ card, onSet }: { card: TodoCard; onSet: (due: string) => voi
   );
 }
 
+/** The card a calendar entry is for, with what its 'When:' line made. */
+interface CalendarOf {
+  id: string;
+  title: string;
+  when?: When;
+}
+
+/** The two taps of a card with a 'When:' line (mw-ev7oyy.32): Add to Google Calendar opens Google's new-event page (a new tab) with the title, the time and the card's link
+ * filled in; Download .ics saves a calendar file the phone opens in its calendar. Floating local time both ways (calendar.ts). */
+function CalendarTaps({ when, card }: { when: Extract<When, { kind: 'ok' }>; card: CalendarOf }) {
+  const entry = { title: card.title, id: card.id, link: new URL(beadHref(card.id), window.location.origin).href };
+  const className = 'inline-flex min-h-8 max-w-full items-center gap-1 rounded-md border border-accent/60 bg-accent/15 px-2 text-[12px] font-medium text-fg no-underline';
+  return (
+    <>
+      <a data-testid="card-calendar" data-kind="calendar" href={googleCalendarHref(when, entry)} target="_blank" rel="noopener noreferrer" className={className}>
+        <Icon name="clock" size={12} className="shrink-0" />
+        <span className="min-w-0 truncate">Add to Google Calendar</span>
+      </a>
+      <a data-testid="card-ics" data-kind="ics" href={icsHref(when, entry)} download={`${card.id}.ics`} className={className}>
+        <Icon name="save" size={12} className="shrink-0" />
+        <span className="min-w-0 truncate">Download .ics</span>
+      </a>
+    </>
+  );
+}
+
 /** A card's links as chips under its title: each an anchor that opens the app it names (links.ts says how), named 'Open in <its text>' for a screen reader;
  * with an 'Open:' line per book, each chip names its book too ('Kindle · Deep Discipleship', 'Open Deep Discipleship in Kindle'; openLinkLabel, openLinkName).
  * A text action comes first, as a Text button that says who a tap texts: opened in this tab, so the phone hands it to his texting app (Google Voice on Android).
- * An email action follows it, an Email button that says who a tap writes to: a mailto: link, opened in this tab, so the phone hands it to his mail app (Gmail). */
-function LinkChips({ links, text, email, listen }: { links: OpenLink[]; text?: TextAction; email?: EmailAction; listen?: ListenAction }) {
-  if (links.length === 0 && !text && !email && !listen) return null;
+ * An email action follows it, an Email button that says who a tap writes to: a mailto: link, opened in this tab, so the phone hands it to his mail app (Gmail).
+ * A 'When:' line gives the two calendar taps after the Listen button (CalendarTaps), or, when it does not read, a one-line note (mw-ev7oyy.32). */
+function LinkChips({ links, text, email, listen, calendar }: { links: OpenLink[]; text?: TextAction; email?: EmailAction; listen?: ListenAction; calendar?: CalendarOf }) {
+  const when = calendar?.when;
+  if (links.length === 0 && !text && !email && !listen && !when) return null;
   return (
     <div data-nodrag data-testid="card-links" className="mt-1 flex flex-wrap gap-1.5">
       {text && (
@@ -252,6 +281,12 @@ function LinkChips({ links, text, email, listen }: { links: OpenLink[]; text?: T
           <span className="min-w-0 truncate">Listen in Audible</span>
         </a>
       )}
+      {calendar && when?.kind === 'ok' && <CalendarTaps when={when} card={calendar} />}
+      {when?.kind === 'bad' && (
+        <p data-testid="card-when-note" className="basis-full text-[12px] leading-snug text-muted wrap-anywhere">
+          The When: line did not read as a date and time (like 2026-10-23 07:30), so there is no calendar entry.
+        </p>
+      )}
       {links.map((link, at) => (
         <a
           key={`${at}|${link.url}`}
@@ -271,11 +306,15 @@ function LinkChips({ links, text, email, listen }: { links: OpenLink[]; text?: T
  * the Text and Email buttons wait for them, as a cut summary may have cut its draft). */
 function FullNotesChips({ store, card }: { store: TodoStore; card: TodoCard }) {
   const back = store.useBack(card.id);
-  return back.status === 'ready' ? <LinkChips links={parseOpenLinks(back.description)} text={parseTextAction(back.description)} email={parseEmailAction(back.description)} listen={parseListenAction(back.description)} /> : <LinkChips links={card.links ?? []} />;
+  return back.status === 'ready' ? (
+    <LinkChips links={parseOpenLinks(back.description)} text={parseTextAction(back.description)} email={parseEmailAction(back.description)} listen={parseListenAction(back.description)} calendar={{ id: card.id, title: card.title, when: parseWhen(back.description) }} />
+  ) : (
+    <LinkChips links={card.links ?? []} />
+  );
 }
 
 function CardLinks({ store, card }: { store: TodoStore; card: TodoCard }) {
-  return card.summaryCut ? <FullNotesChips store={store} card={card} /> : <LinkChips links={card.links ?? []} text={card.text} email={card.email} listen={card.listen} />;
+  return card.summaryCut ? <FullNotesChips store={store} card={card} /> : <LinkChips links={card.links ?? []} text={card.text} email={card.email} listen={card.listen} calendar={{ id: card.id, title: card.title, when: card.when }} />;
 }
 
 /** The back's Done: a labelled button, as it was before the card's front became one row. */
@@ -477,6 +516,7 @@ function CardBack({ store, card, place, onBack }: { store: TodoStore; card: Todo
       {!editing && back.status === 'error' && <p className="text-[13px] text-danger">The notes could not be fetched. Turn the card over again to retry.</p>}
       {!editing && back.status === 'missing' && <p className="text-[13px] text-muted">The notes are not available.</p>}
       {!editing && back.status === 'ready' && (back.description.trim() ? <Markdown text={back.description} wrap /> : <p className="text-[13px] text-muted">No notes.</p>)}
+      {!editing && back.status === 'ready' && <LinkChips links={[]} calendar={{ id: card.id, title: card.title, when: parseWhen(back.description) }} />}
       {!editing && (
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" disabled={back.status === 'loading'} title={back.status === 'loading' ? 'Edit is ready once the notes have loaded' : undefined} onClick={() => setEditing(true)}>

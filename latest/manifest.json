@@ -1,7 +1,7 @@
 {
-  "version": "0.6.40",
-  "commit": "5d6ce21",
-  "published_at": "2026-10-16T12:16:52.707Z",
+  "version": "0.6.45",
+  "commit": "b178446",
+  "published_at": "2026-10-16T13:21:40.987Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1661,6 +1661,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-card-links.png"
+    },
+    {
+      "name": "390x844/todo-card-links-books.png",
+      "screen": "todo-card-links-books",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-card-links-books.png"
+    },
+    {
+      "name": "360x640/todo-card-links-books.png",
+      "screen": "todo-card-links-books",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-card-links-books.png"
+    },
+    {
+      "name": "1280x800/todo-card-links-books.png",
+      "screen": "todo-card-links-books",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-card-links-books.png"
     },
     {
       "name": "390x844/update-banner.png",

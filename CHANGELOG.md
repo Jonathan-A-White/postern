@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.39
+_2026-10-16_
+- New: iced stories now read Iced, fold into one Icebox row on their epic, and can be thawed with a tap.
+
 ## 0.6.37
 _2026-10-16_
 - Fixed: pasting a long note into Call me no longer cuts it off quietly at 500 characters; it keeps all of it, shows the count in red and says why Send is off.

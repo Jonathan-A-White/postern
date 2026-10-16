@@ -713,13 +713,20 @@ parent chain up to the root, so the app can draw any level of the tree:
 - `todo_then` — optional, on a bead labelled `hitl:todo` (mw-ht6gsw.4; the host keeps it from `todo_edit`'s `then`):
   the card's Then line, one line of text (at most 200 characters) naming what must follow it; absent when it has none.
   The card's back shows it in a text field ("Then: what must follow") with a Save Then button;
-  **Groups** (mw-ev7oyy.16, `groupCards` in `src/todo/lists.ts`; kept on the phone, nothing on the wire): a list shows
-  its cards in three groups, in the order Today, Soon, Someday, an empty group left out, each group in `orderCards`'
-  order. *Today*: due today (any hour) or overdue, or tapped into Today from the card's back ("Move to Today", for
-  that calendar day of the phone's zone only: the next day the card is back in its own group). *Soon*: due within the
-  next 7 calendar days, or important. *Someday*: the rest, undated cards included. Today is open and Soon and Someday
-  folded to their count until he opens them; what he opens or folds is kept per list on the phone. A list's header
-  count and the tab's count are the sum of the groups, every open card;
+- `todo_row` — optional, on a bead labelled `hitl:todo` (mw-ht6gsw.5; written by the host's nightly ranking pass, `mw todo rank`): the
+  row the pass put the card in, one of `now`, `make-time`, `later` or `let-go`; absent when the pass has not run on it, and anything
+  else is read as none. `todo_row_why` — optional, beside it: the pass's one line (under 80 characters) on why the card is in its row,
+  shown on the card's back under its title. **Rows** (`boardRows` in `src/todo/lists.ts`; the Groups of mw-ev7oyy.16, Today, Soon and
+  Someday, are gone): the To do board opens on two rows across all his lists, *Do now* (`todo_row` `now`) and *Make time* (`make-time`),
+  at most three cards each (a fourth goes to Later). Do now shows the card due soonest first, then the starred ones, then the oldest;
+  Make time the oldest first (the longest waiting). A card there names its list, small, above its title, and shows its star, due time and
+  size mark; an empty row shows one quiet line (`Nothing due soon`, `Nothing waiting`). Under them *Later* is one folded line, `Later · N`,
+  that opens to the column per list (the cards with `todo_row` `later`, with none, or past a full row), each list's cards in `orderCards`'
+  order; dragging a card and the "Move to Today" tap on its back (for that calendar day of the phone's zone only: the card goes first in
+  its list's column, and is back in its own place the next day) work there and nowhere else. Under Later, *Let go* (`let-go`) is folded
+  the same way (`Let go · N`, absent when none) and opens to its cards, each with **Keep** (a `todo_edit` with `row` `later`) and **Drop**
+  (a `close` with `reason` `let-go`). Later and Let go are folded until he opens them; what he opens or folds is kept on the phone
+  (nothing on the wire). The tab's count is every open card;
 - `todo_name` — optional, on an epic that is one of his To do lists: its short name (mw-ev7oyy.14). The
   board heads the list with it, on one line; without it the header is the epic's `title` cut at its first
   `:` (followed by a space) or ` (`. The whole title stays on the list's menu. Text only; blank is none;
@@ -841,17 +848,18 @@ and the Mayor is told afterwards. An action is an ordinary message (§1, class
 | `verified` | — | comments `VERIFIED by the Governor via postern (<txid>)` on the story. The app no longer sends this action: its Verified button sends the Verify word as a channel message to the bead, `VERIFIED (tapped Verified <where>)`, naming where it was tapped |
 | `run` | `step`, `sha256`, `approved_at`, `sig` | runs a hands step he approved (§17) |
 | `keep` | `"days": n` (default 30) | keeps a stale bead (§11) for `days` more days, so it is not raised as `stale` again until they pass |
-| `close` | — | closes the bead; on an epic or a map it closes the held (`deferred`) children first, then the epic |
+| `close` | `reason`? | closes the bead (`"reason": "let-go"` is Drop on a card in Let go); on an epic or a map it closes the held (`deferred`) children first, then the epic |
 | `chase` | — | the answer **Chase** to a `chase` need (§11): he is chasing the person now; the bead's wait starts again from now, so the next chase falls due 3 working days on |
 | `ask_done` | — | the answer **Done** to a `chase` need: the other side delivered; the host does what `mw ask done` does (clears `waiting:others`) |
 | `keep_waiting` | — | the answer **Keep waiting** to a `chase` need: no chase for another 3 working days |
 | `todo_add` | `list`, `title`, `notes`? (no `bead`) | files an open card on one of his To do lists (below) |
-| `todo_edit` | `title`?, `notes`?, `due`?, `important`?, `size`?, `then`? | sets a To do card's title, notes, due time, star, size and/or Then line |
+| `todo_edit` | `title`?, `notes`?, `due`?, `important`?, `size`?, `then`?, `row`? | sets a To do card's title, notes, due time, star, size, Then line and/or row |
 | `todo_move` | `list`?, `before`?, `after`? | moves a To do card within its list or to another list (below) |
 
 ```json
 { "action": "keep", "bead": "mw-abc.3", "days": 30 }
 { "action": "close", "bead": "mw-abc" }
+{ "action": "close", "bead": "mw-abc.3", "reason": "let-go" }
 { "action": "chase", "bead": "mw-abc.3" }
 ```
 
@@ -895,6 +903,7 @@ list, not a card):
 { "action": "todo_edit", "bead": "mw-abc.4", "title": "Buy bin bags and tape", "notes": "" }
 { "action": "todo_edit", "bead": "mw-abc.4", "important": true }
 { "action": "todo_edit", "bead": "mw-abc.4", "size": "hour", "then": "Book the plumber" }
+{ "action": "todo_edit", "bead": "mw-abc.4", "row": "later" }
 { "action": "todo_move", "bead": "mw-abc.4", "list": "mw-def", "before": "mw-def.2" }
 ```
 
@@ -902,7 +911,7 @@ list, not a card):
   and becomes the card's description. It has **no `bead` field**: the card does not exist yet, so the phone cannot
   name it, and cannot edit or move it until the view carries it (a card still being added is shown, marked pending,
   but is not draggable and has no back).
-- `todo_edit`: `title`, `notes`, `due`, `important`, `size` and/or `then` (at least one; `"notes": ""` clears them; a blank `title` is refused).
+- `todo_edit`: `title`, `notes`, `due`, `important`, `size`, `then` and/or `row` (at least one; `"notes": ""` clears them; a blank `title` is refused).
   `due` is a UTC time in RFC 3339 (`"2026-10-14T17:00:00.000Z"`, the phone having read the date-time field in its own
   zone), published on the view's bead as `todo_due` (§11); `"due": ""` clears it; a `due` that is neither is refused.
   `important` is a boolean (mw-ev7oyy.15): `true` stars the card, `false` clears the star; published on the view's bead
@@ -910,6 +919,8 @@ list, not a card):
   `size` is `"quick"`, `"hour"` or `"half-day"` (mw-ht6gsw.4), published on the view's bead as `todo_size` (§11); `"size": ""`
   clears it; anything else is refused. `then` is the card's Then line, text of at most 200 characters (the phone trims it),
   published as `todo_then` (§11); `"then": ""` clears it; a longer line is refused.
+  `row` is `"later"` (mw-ht6gsw.5), the **Keep** on a card in Let go: the host sets the bead's `todo_row` to `later` and treats the
+  edit as a touch of the card (it is not left untouched for the pass to let go again); published as `todo_row` (§11).
   The phone sends only what changed.
 - `todo_move`: `before` or `after` names a card on the target list (the card's own list when `list` is absent); with
   neither, the card goes to the end of `list`. A move that names no place (no `before`, `after` or other `list`), both

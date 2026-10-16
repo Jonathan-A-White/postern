@@ -23,6 +23,7 @@ import { recordedNoteNow } from '../services/ideasOnly';
 import type { TalkTurn } from '../model/talkLine';
 import { threadKey, type ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
+import { useAlive } from '../ui/useAlive';
 import { navigate } from '../router';
 import type { Route } from '../nav/route';
 
@@ -129,6 +130,7 @@ export interface SuccessToast {
 /** Runs a send, reporting success or failure as a toast; `busy` while it runs. */
 export function useSend() {
   const [busy, setBusy] = useState(false);
+  const alive = useAlive();
   async function run<T>(task: () => Promise<T>, success?: string | SuccessToast): Promise<T | undefined> {
     setBusy(true);
     try {
@@ -140,7 +142,7 @@ export function useSend() {
       toast(describeSendError(err), 'error', err instanceof ApiTimeoutError ? 10_000 : 6000);
       return undefined;
     } finally {
-      setBusy(false);
+      if (alive()) setBusy(false);
     }
   }
   return { busy, run };

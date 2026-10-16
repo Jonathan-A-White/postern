@@ -5,7 +5,7 @@
 // Save puts the picture, its own bytes at full size, on the phone (savePicture.ts, mw-jtzpw0.7).
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon } from '../ui';
+import { Icon, useAlive } from '../ui';
 import { focusQuietly } from '../ui/focus';
 import { savePicture, type Saved } from './savePicture';
 import type { ShownPicture } from './useViewer';
@@ -23,6 +23,7 @@ export function ImageViewer({ src, name, type, onClose }: ShownPicture & { onClo
   const [view, setView] = useState({ scale: MIN_SCALE, x: 0, y: 0 });
   // Save: not tapped, under way, or what it did (and so dead, unless he backed out of the share sheet)
   const [save, setSave] = useState<{ state: 'idle' | 'saving' | Saved; said: string }>({ state: 'idle', said: '' });
+  const alive = useAlive();
   const surface = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const fingers = useRef(new Map<number, Point>());
@@ -90,7 +91,9 @@ export function ImageViewer({ src, name, type, onClose }: ShownPicture & { onClo
 
   function onSave() {
     setSave({ state: 'saving', said: '' });
-    void savePicture(src, name, type).then(({ saved, file }) => setSave({ state: saved === 'cancelled' ? 'idle' : saved, said: saidAfter(saved, file) }));
+    void savePicture(src, name, type).then(({ saved, file }) => {
+      if (alive()) setSave({ state: saved === 'cancelled' ? 'idle' : saved, said: saidAfter(saved, file) });
+    });
   }
 
   const saveLabel = save.state === 'saving' ? 'Saving…' : save.state === 'downloaded' || save.state === 'shared' ? 'Saved' : save.state === 'failed' ? 'Not saved' : 'Save';

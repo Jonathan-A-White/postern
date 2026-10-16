@@ -4,7 +4,7 @@
 // says Copied. Backing out of the sheet is not a failure and says nothing.
 import { useEffect, useRef, useState } from 'react';
 import { copyText } from '../ui/copyText';
-import { Icon, cx } from '../ui';
+import { Icon, cx, useAlive } from '../ui';
 
 type ShareState = 'idle' | 'copied' | 'failed';
 
@@ -24,8 +24,11 @@ export function ShareButton({ title, text, className }: { title: string; text: s
   const [state, setState] = useState<ShareState>('idle');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
+  const alive = useAlive();
 
   function say(next: ShareState) {
+    // the share sheet or the copy can answer after the screen has closed (mw-ev7oyy.21)
+    if (!alive()) return;
     setState(next);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setState('idle'), 2000);

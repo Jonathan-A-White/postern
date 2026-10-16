@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { copyText } from './copyText';
 import { cx } from './tokens';
+import { useAlive } from './useAlive';
 
 type CopyState = 'idle' | 'copied' | 'failed';
 
@@ -18,9 +19,11 @@ export function CodeBlock({ text, className, children }: CodeBlockProps) {
   const [state, setState] = useState<CopyState>('idle');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
+  const alive = useAlive();
 
   function copy() {
     void copyText(text).then((ok) => {
+      if (!alive()) return;
       setState(ok ? 'copied' : 'failed');
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setState('idle'), 2000);

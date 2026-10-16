@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.37
+_2026-10-16_
+- Fixed: pasting a long note into Call me no longer cuts it off quietly at 500 characters; it keeps all of it, shows the count in red and says why Send is off.
+
 ## 0.6.35
 _2026-10-16_
 - New: A to-do can now have a Listen in Audible button that opens an audiobook, or a chapter of one, in the Audible app.

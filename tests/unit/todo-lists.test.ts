@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { indexView } from '../../src/model/tree';
 import { decodeView } from '../../src/model/view';
-import { beadsNamed, dayKey, groupCards, groupCounts, groupOf, openTodoCount, orderCards, shortName, todoListsFromView, TODO_LABEL, OTHER_LIST } from '../../src/todo';
+import { beadsNamed, dayKey, groupCards, groupCounts, groupOf, openLinkLabel, openTodoCount, orderCards, shortName, todoListsFromView, TODO_LABEL, OTHER_LIST } from '../../src/todo';
 import type { TodoCard } from '../../src/todo';
 import { fixtureView } from '../support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
@@ -305,5 +305,15 @@ describe("a card's text action from the view's summary (mw-ev7oyy.22)", () => {
     const cut = `${'x'.repeat(250)}\n\nText: Dad +15165550123 | Hi Dad, would Saturday`;
     expect(cardOf(cut).summaryCut).toBe(true);
     expect(cardOf(cut).text).toBeUndefined();
+  });
+});
+
+describe("a card's chips from the view's summary (mw-ev7oyy.17)", () => {
+  const cardOf = (summary: string) => listsOf([bead('mw-l', { type: 'epic' }), todo('mw-l.1', { parent: 'mw-l', summary })])[0].cards[0];
+
+  it('names each chip by its book when the notes hold an Open: line per book, and keeps the app alone for one line', () => {
+    const two = 'Open: Deep Discipleship [Kindle](kindle://a) · [Audible](https://www.audible.com/pd/B0CC36V9KG)\nOpen: You Are a Theologian [Kindle](kindle://b) · [Audible](https://www.audible.com/pd/B07ZJYQWXR)';
+    expect(cardOf(two).links?.map(openLinkLabel)).toEqual(['Kindle · Deep Discipleship', 'Audible · Deep Discipleship', 'Kindle · You Are a Theologian', 'Audible · You Are a Theologian']);
+    expect(cardOf('Open: Deep Discipleship [Kindle](kindle://a) · [Audible](https://www.audible.com/pd/B0CC36V9KG)').links?.map(openLinkLabel)).toEqual(['Kindle', 'Audible']);
   });
 });

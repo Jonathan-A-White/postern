@@ -948,6 +948,10 @@ are near the top, and the board reads the whole notes when it may have been cut.
   [Call the plumber](tel:+15555550123)`. A chip per link, at most four, each opening its own url *exactly as written*:
   the Mayor writes it already encoded (a space as `%20`, an `&` inside a value as `%26`). No `javascript:`, `data:`,
   `vbscript:`, `file:`, `blob:` or `about:` link is ever a chip; bare urls and links on other lines are left out.
+  Several `Open:` lines (one per book, mw-ev7oyy.17) are all read, and each chip then names its line by the words before
+  that line's links: `Open: Deep Discipleship [Kindle](…) · [Audible](…)` gives `Kindle · Deep Discipleship` (cut with
+  an ellipsis to fit the card). So the Mayor puts the book's short name before its links; a line with none is named by
+  its link text alone. With one `Open:` line a chip says only its link text.
 - **`Text:`** (mw-ev7oyy.22): a text he is to send. One per card (the first counts). The card shows a **Text** button
   that says who a tap texts (`Text Dad`; the number when there is no name; `Text` alone when neither) and opens his
   texting app (Android's default for texts: Google Voice when he has made it so) with the person and the message

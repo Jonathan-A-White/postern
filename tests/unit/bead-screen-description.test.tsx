@@ -70,6 +70,20 @@ describe('the bead page: description', () => {
     expect(await within(section).findByText('No description.')).toBeInTheDocument();
     expect(within(section).queryByRole('list')).toBeNull();
   });
+
+  it("shows a To do card's Open: line per book whole, each book's name beside its own links (mw-ev7oyy.17 sweep)", async () => {
+    const card = bead('mw-d.3', 'Week 5 reading', 2);
+    const notes = 'Open: Deep Discipleship [Kindle](kindle://book?asin=B0C74TJ712) · [Audible](https://www.audible.com/pd/B0CC36V9KG)\nOpen: You Are a Theologian [Kindle](kindle://book?asin=B07ZJZ1X3K) · [Audible](https://www.audible.com/pd/B07ZJYQWXR)';
+    await store([card], card.id, { description: notes });
+    render(<BeadScreen id={card.id} />);
+
+    const section = await description();
+    await within(section).findAllByRole('link', { name: 'Audible' });
+    const text = section.textContent?.replace(/\s+/g, ' ');
+    expect(text).toContain('Open: Deep Discipleship Kindle · Audible');
+    expect(text).toContain('Open: You Are a Theologian Kindle · Audible');
+    expect(within(section).getAllByRole('link', { name: 'Audible' }).map((link) => link.getAttribute('href'))).toEqual(['https://www.audible.com/pd/B0CC36V9KG', 'https://www.audible.com/pd/B07ZJYQWXR']);
+  });
 });
 
 describe('the bead page: the beads inside it', () => {

@@ -21,7 +21,7 @@ import { beadHref } from '../nav/route';
 import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
 import { moveFor, realIndex } from './edits';
 import { isGroupOpen, keepGroupOpen, readGroupsOpen, type GroupsOpen } from './kept';
-import { emailHref, emailLabel, linkProps, listenHref, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
+import { emailHref, emailLabel, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
 import { beadsNamed, groupCounts, type TodoCard, type TodoGroup, type TodoList } from './lists';
 import { usePosternTodoStore } from './posternStore';
 import type { TodoDone, TodoStore } from './store';
@@ -135,7 +135,8 @@ function DueField({ card, onSet }: { card: TodoCard; onSet: (due: string) => voi
   );
 }
 
-/** A card's links as chips under its title: each an anchor that opens the app it names (links.ts says how), named 'Open in <its text>' for a screen reader.
+/** A card's links as chips under its title: each an anchor that opens the app it names (links.ts says how), named 'Open in <its text>' for a screen reader;
+ * with an 'Open:' line per book, each chip names its book too ('Kindle · Deep Discipleship', 'Open Deep Discipleship in Kindle'; openLinkLabel, openLinkName).
  * A text action comes first, as a Text button that says who a tap texts: opened in this tab, so the phone hands it to his texting app (Google Voice on Android).
  * An email action follows it, an Email button that says who a tap writes to: a mailto: link, opened in this tab, so the phone hands it to his mail app (Gmail). */
 function LinkChips({ links, text, email, listen }: { links: OpenLink[]; text?: TextAction; email?: EmailAction; listen?: ListenAction }) {
@@ -185,11 +186,11 @@ function LinkChips({ links, text, email, listen }: { links: OpenLink[]; text?: T
         <a
           key={`${at}|${link.url}`}
           {...linkProps(link, navigator.userAgent)}
-          aria-label={`Open in ${link.text}`}
+          aria-label={openLinkName(link)}
           className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-md border border-line px-2 text-[12px] text-muted no-underline"
         >
           <Icon name="link" size={12} className="shrink-0" />
-          <span className="min-w-0 truncate">{link.text}</span>
+          <span className="min-w-0 truncate">{openLinkLabel(link)}</span>
         </a>
       ))}
     </div>

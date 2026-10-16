@@ -190,6 +190,16 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     When the To do tab opens
     Then the chip "Open in Call the plumber" opens "tel:+15555550123" in the same tab
 
+  Scenario: mw-ev7oyy.17 AC-2: a card with an Open: line per book names each chip's book, and its back shows each line whole
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Week 5.\n\nOpen: Deep Discipleship [Kindle](kindle://book?action=open&asin=B0C74TJ712) · [Audible](https://www.audible.com/pd/B0CC36V9KG)\nOpen: You Are a Theologian — [Kindle](kindle://book?action=open&asin=B07ZJZ1X3K) · [Audible](https://www.audible.com/pd/B07ZJYQWXR)"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows the chips "Kindle · Deep Discipleship", "Audible · Deep Discipleship", "Kindle · You Are a Theologian" and "Audible · You Are a Theologian" under its title
+    And the chip "Open Deep Discipleship in Kindle" opens "kindle://book?action=open&asin=B0C74TJ712" in the same tab
+    And the chip "Open You Are a Theologian in Audible" opens "https://www.audible.com/pd/B07ZJYQWXR" in a new tab
+    When he taps the card "Title of mw-list.1"
+    Then the back of the card shows the lines "Open: Deep Discipleship Kindle · Audible" and "Open: You Are a Theologian — Kindle · Audible", each book beside its own links
+
   Scenario: mw-ev7oyy.14 AC-1: a list whose epic has a long title is headed by its short name, the whole title on its menu
     Given a list "mw-long" whose epic title is "Governor's Discipleship Institute list (Deep Discipleship, Weeks 4-6): last week's unfinished work and this week's pre-work, due at the next group meeting"
     When the To do tab opens

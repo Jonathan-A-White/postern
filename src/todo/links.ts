@@ -9,12 +9,16 @@
 // the card's listen action (mw-ev7oyy.24): a Listen in Audible button whose link audible-kit builds (listenHref), at a chapter's start
 // when the card names one. An 'Email:' line is the card's email action (mw-ev7oyy.26): who to write to, a subject and a draft,
 // drawn as an Email button after the Text one, whose mailto: link (emailHref) Android hands to his default mail app (Gmail).
+// Notes with an 'Open:' line per book name each chip by its line (mw-ev7oyy.17): openLinkLabel and openLinkName are the one rule for it.
 import { BIBLE_BOOKS, WORD_OF_PROMISE_ASIN, audibleLink, wordOfPromiseStart } from 'audible-kit';
 
 /** A link of an 'Open:' line: its own words, which are the chip's label, and where it goes. */
 export interface OpenLink {
   text: string;
   url: string;
+  /** The short name of its line, when the notes hold more than one 'Open:' line (mw-ev7oyy.17): the words before the line's links,
+   * 'Deep Discipleship' in 'Open: Deep Discipleship [Kindle](…) · [Audible](…)'. Absent with one line, or a line with no words before its links. */
+  line?: string;
 }
 
 export type LinkOpens = 'same-tab' | 'new-tab';
@@ -104,20 +108,40 @@ const MARKDOWN_LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 /** Schemes that run or read something instead of opening an app: never a chip. */
 const NEVER = new Set(['javascript', 'data', 'vbscript', 'file', 'blob', 'about']);
 
-/** The markdown links of the 'Open:' lines of a description, in order, at most MAX_OPEN_LINKS. Bare urls and links on other lines are left out. */
+/** Emphasis marks, and the punctuation left at the edges of a line's name: 'Open: **Theologian** — [Kindle](…)' is 'Theologian'. */
+const NAME_MARKS = /[*_`]/g;
+const LINE_NAME_EDGES = /^[\s:·|,;–—-]+|[\s:·|,;–—-]+$/g;
+
+/** The markdown links of the 'Open:' lines of a description, in order, at most MAX_OPEN_LINKS. Bare urls and links on other lines are left out.
+ * When more than one line gives a chip, each link carries its line's name (mw-ev7oyy.17). */
 export function parseOpenLinks(description: string): OpenLink[] {
-  const found: OpenLink[] = [];
+  const lines: { name: string; links: OpenLink[] }[] = [];
   for (const line of description.split(/\r?\n/)) {
     const rest = OPEN_LINE.exec(line)?.[1];
     if (rest === undefined) continue;
-    for (const [, text, url] of rest.matchAll(MARKDOWN_LINK)) {
+    const links: OpenLink[] = [];
+    let first: number | undefined;
+    for (const match of rest.matchAll(MARKDOWN_LINK)) {
+      const [, text, url] = match;
+      first ??= match.index;
       const scheme = describe(url).scheme;
       if (!scheme || NEVER.has(scheme) || !text.trim()) continue;
-      found.push({ text: text.trim(), url });
-      if (found.length === MAX_OPEN_LINKS) return found;
+      links.push({ text: text.trim(), url });
     }
+    if (links.length) lines.push({ name: rest.slice(0, first).replace(NAME_MARKS, '').replace(LINE_NAME_EDGES, '').trim(), links });
   }
-  return found;
+  const named = lines.length > 1;
+  return lines.flatMap(({ name, links }) => links.map((link) => (named && name ? { ...link, line: name } : link))).slice(0, MAX_OPEN_LINKS);
+}
+
+/** What a chip says: the link's own words, then its line's name when it has one ('Kindle · Deep Discipleship'). */
+export function openLinkLabel(link: OpenLink): string {
+  return link.line ? `${link.text} · ${link.line}` : link.text;
+}
+
+/** What a chip is named for a screen reader: what a tap opens, and in what ('Open Deep Discipleship in Kindle', else 'Open in Kindle'). */
+export function openLinkName(link: OpenLink): string {
+  return link.line ? `Open ${link.line} in ${link.text}` : `Open in ${link.text}`;
 }
 
 /** A card's text action, from the 'Text:' line of its notes: who a tap texts (a name and/or a number, either may be

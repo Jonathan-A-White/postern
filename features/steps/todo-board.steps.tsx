@@ -629,6 +629,25 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     When('the To do tab opens', tabOpens);
     Then('the chip {string} opens {string} in the same tab', chipOpens(null));
   });
+
+  Scenario("mw-ev7oyy.17 AC-2: a card with an Open: line per book names each chip's book, and its back shows each line whole", ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows the chips {string}, {string}, {string} and {string} under its title', async (_c, name: string, ...chips: string[]) => chipsShown(name, ...wordsOf(...chips))());
+    And('the chip {string} opens {string} in the same tab', chipOpens(null));
+    And('the chip {string} opens {string} in a new tab', chipOpens('_blank'));
+    When('he taps the card {string}', async (_c, name: string) => {
+      await userEvent.click(await screen.findByRole('button', { name }));
+    });
+    Then('the back of the card shows the lines {string} and {string}, each book beside its own links', async (_c, one: string, two: string) => {
+      const back = await screen.findByRole('group', { name: 'Back of Title of mw-list.1' });
+      // the notes as Markdown: each Open: line keeps its book's name before its own two links (the card's back and the bead page share the renderer)
+      await waitFor(() => expect(back.textContent?.replace(/\s+/g, ' ')).toContain(one));
+      expect(back.textContent?.replace(/\s+/g, ' ')).toContain(two);
+      expect(within(back).getAllByRole('link', { name: 'Audible' }).map((link) => link.getAttribute('href'))).toEqual(['https://www.audible.com/pd/B0CC36V9KG', 'https://www.audible.com/pd/B07ZJYQWXR']);
+    });
+  });
   // mw-ev7oyy.22: a Text button on a card's front, from the Text: line of its notes.
   const textButton = (el: HTMLElement) => within(el).queryByTestId('card-text');
   const textOpens = async (_c: unknown, name: string, href: string) => {

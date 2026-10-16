@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.0
+_2026-10-16_
+- New: Needs you and Map now show 'Up next: 3', the next stories the factory will start, and a tap lists them and opens any one.
+
 ## 0.7.2
 _2026-10-16_
 - New: A To do card with a date and time in it now has Add to Google Calendar and Download .ics buttons, so a one-off appointment lands on your calendar in two taps.

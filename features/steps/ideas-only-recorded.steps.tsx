@@ -16,7 +16,7 @@ import { beadDetailsRepo, settingsRepo, viewRepo } from '../../src/data/reposito
 import { indexView } from '../../src/model/tree';
 import type { Need } from '../../src/model/view';
 import { lock, setKey } from '../../src/services/keySession';
-import { forgetSilentInputs } from 'bsv-kit/composer';
+import { forgetSilentInputs } from 'voice-kit/composer';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { settledWrites } from '../../src/services/deliver';
 import { publicKeyHexFromMasterKey } from '../../src/services/vault';
@@ -59,9 +59,9 @@ vi.mock('../../src/services/beads', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/beads')>()),
   fetchBeadDetail: vi.fn(async () => ({ status: 'ok' as const })),
 }));
-// the recorder the package's hold uses (bsv-kit/composer's own module; vitest.config.ts runs the package through vite)
-vi.mock('../../node_modules/bsv-kit/packages/composer/dist/recorder.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../node_modules/bsv-kit/packages/composer/dist/recorder.js')>()),
+// the recorder the package's hold uses (voice-kit/composer's own module; vitest.config.ts runs the package through vite)
+vi.mock('../../node_modules/voice-kit/packages/composer/dist/recorder.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../node_modules/voice-kit/packages/composer/dist/recorder.js')>()),
   canRecord: () => true,
   VoiceRecorder: class {
     async start() {}

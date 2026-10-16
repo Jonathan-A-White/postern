@@ -1,11 +1,11 @@
-// tests/unit/speech-from-kit.test.ts — mw-m7v5kc.2: the read-aloud engine, the hook and the bar come from bsv-kit's
+// tests/unit/speech-from-kit.test.ts — mw-m7v5kc.2: the read-aloud engine, the hook and the bar come from voice-kit's
 // packages/speech, as the composer came from packages/composer (mw-jtzpw0.2). Postern keeps only what is its own: the Talk
 // line's key, bead ids said as titles, and the bar's colours. The package makes the utterances.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as kit from 'bsv-kit/speech';
-import * as kitReact from 'bsv-kit/speech/react';
+import * as kit from 'voice-kit/speech';
+import * as kitReact from 'voice-kit/speech/react';
 import * as engine from '../../src/services/speech';
 import * as hook from '../../src/cockpit/useSpeaking';
 import { SpeakingBar } from '../../src/cockpit/SpeakingBar';
@@ -17,7 +17,7 @@ function filesUnder(dir: string): string[] {
   });
 }
 
-describe('read-aloud comes from bsv-kit/speech', () => {
+describe('read-aloud comes from voice-kit/speech', () => {
   it('makes no utterance in src: the package does', () => {
     const made = filesUnder('src')
       .filter((file) => /\.(ts|tsx)$/.test(file))

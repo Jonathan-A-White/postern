@@ -1,9 +1,9 @@
 // src/services/speech.ts — mw-tfne4.6's Play control: reads a message or question aloud with the phone's own
 // speechSynthesis. The engine (sentence queue, Pause/Resume/Restart/Stop that keep the place, the language and voice of
-// each utterance) is bsv-kit's packages/speech (mw-m7v5kc.2); this file is what is Postern's own: the Talk line's key and
+// each utterance) is voice-kit's packages/speech (mw-m7v5kc.2); this file is what is Postern's own: the Talk line's key and
 // a bead id said as its title. Nothing here reaches the network — the text is only ever spoken locally.
 import { useSyncExternalStore } from 'react';
-import { isSupported, speak as speakAloud, type SpeakOptions as KitSpeakOptions } from 'bsv-kit/speech';
+import { isSupported, speak as speakAloud, type SpeakOptions as KitSpeakOptions } from 'voice-kit/speech';
 import { BEAD_ID, WORD_CHAR } from '../markdown/beadLinks';
 
 export {
@@ -22,7 +22,7 @@ export {
   whenDone,
   type SpeechState,
   type SpeechStatus,
-} from 'bsv-kit/speech';
+} from 'voice-kit/speech';
 
 // What is spoken is not what is shown (mw-gq6.223): a bead id reads aloud letter by letter
 // and a bare URL is noise on a train, so both are changed before speaking; the screen keeps

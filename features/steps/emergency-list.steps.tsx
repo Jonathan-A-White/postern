@@ -15,7 +15,7 @@ import { eventsRepo, viewRepo } from '../../src/data/repositories';
 import { installHonestSpeech, type HonestSpeech } from '../../tests/support/honest-speech';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 
-// The phone's voice is bsv-kit's honest speech synthesiser (mw-it6qk5.4).
+// The phone's voice is voice-kit's honest speech synthesiser (mw-it6qk5.4).
 let speech: HonestSpeech | null = null;
 const spoken = (): string[] => speech?.log.map((entry) => entry.text) ?? [];
 

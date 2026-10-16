@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { isSpeaking, isSupported, speak, speechText, stop, subscribe } from '../../src/services/speech';
 import { installHonestSpeech, voiceOf, type HonestSpeech } from '../support/honest-speech';
 
-// The synthesiser is bsv-kit's honest one (mw-it6qk5.4): it queues, starts an utterance after speak(), fires
+// The synthesiser is voice-kit's honest one (mw-it6qk5.4): it queues, starts an utterance after speak(), fires
 // start/boundary/end in time and reports a cancelled one as an error. `installSynthesis` puts it on the window.
 let speech: HonestSpeech | null = null;
 

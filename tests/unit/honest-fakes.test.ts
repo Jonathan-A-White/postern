@@ -1,4 +1,4 @@
-// tests/unit/honest-fakes.test.ts — mw-it6qk5.4: the tests' speech synthesiser and microphone are bsv-kit/testing's
+// tests/unit/honest-fakes.test.ts — mw-it6qk5.4: the tests' speech synthesiser and microphone are voice-kit/testing's
 // honest ones (they fire every event the real ones fire, after the time the real ones take), not hand-made fakes
 // that record speak() and never end it. A hand-made fake let the 'channel mic' bug (mw-f7gmps.2) reach his phone.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -12,10 +12,10 @@ function filesUnder(dir: string): string[] {
   });
 }
 
-describe('the tests use bsv-kit/testing for speech and the microphone', () => {
-  it('pins a bsv-kit that contains bsv-kit/testing/speech and bsv-kit/testing/mic', async () => {
-    const speech = await import('bsv-kit/testing/speech');
-    const mic = await import('bsv-kit/testing/mic');
+describe('the tests use voice-kit/testing for speech and the microphone', () => {
+  it('pins a voice-kit that contains voice-kit/testing/speech and voice-kit/testing/mic', async () => {
+    const speech = await import('voice-kit/testing/speech');
+    const mic = await import('voice-kit/testing/mic');
     expect(typeof speech.installSpeech).toBe('function');
     expect(typeof speech.speechInitScript).toBe('function');
     expect(typeof mic.installMic).toBe('function');

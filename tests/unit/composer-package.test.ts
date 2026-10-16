@@ -1,4 +1,4 @@
-// tests/unit/composer-package.test.ts — mw-jtzpw0.2: the hold-to-talk composer comes from bsv-kit's
+// tests/unit/composer-package.test.ts — mw-jtzpw0.2: the hold-to-talk composer comes from voice-kit's
 // packages/composer, pinned at a commit, not from a copy in this repo. Postern keeps what is its own
 // (drafts, saved prompts, quotes, shared-in files, the Talk line) and passes its theme in.
 import { existsSync, readFileSync } from 'node:fs';
@@ -7,13 +7,13 @@ import { describe, expect, it } from 'vitest';
 const pkg = JSON.parse(readFileSync('package.json', 'utf-8')) as { dependencies: Record<string, string> };
 const source = (path: string) => readFileSync(path, 'utf-8');
 
-describe('the composer comes from bsv-kit/composer', () => {
-  it('pins bsv-kit at a full commit, as Lampas does', () => {
-    expect(pkg.dependencies['bsv-kit']).toMatch(/^github:Jonathan-A-White\/bsv-kit#[0-9a-f]{40}$/);
+describe('the composer comes from voice-kit/composer', () => {
+  it('pins voice-kit at a full commit, as Lampas does', () => {
+    expect(pkg.dependencies['voice-kit']).toMatch(/^github:Jonathan-A-White\/voice-kit#[0-9a-f]{40}$/);
   });
 
   it('pins a commit that contains packages/composer', async () => {
-    const composer = await import('bsv-kit/composer');
+    const composer = await import('voice-kit/composer');
     expect(typeof composer.Composer).toBe('function');
     expect(typeof composer.HoldToTalkBar).toBe('function');
     expect(typeof composer.useHold).toBe('function');
@@ -23,7 +23,7 @@ describe('the composer comes from bsv-kit/composer', () => {
 
   it('draws the composer and the Talk line from the package', () => {
     for (const file of ['src/cockpit/Composer.tsx', 'src/cockpit/TalkLineScreen.tsx', 'src/cockpit/useTalkLine.ts']) {
-      expect(source(file), file).toMatch(/from 'bsv-kit\/composer'/);
+      expect(source(file), file).toMatch(/from 'voice-kit\/composer'/);
     }
   });
 

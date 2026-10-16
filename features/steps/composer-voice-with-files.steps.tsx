@@ -39,9 +39,9 @@ vi.mock('../../src/services/deliver', async (importOriginal) => ({
     return { txid: 'ef'.repeat(32), channel: 'direct' };
   },
 }));
-// the recorder the package's hold uses (bsv-kit/composer's own module; vitest.config.ts runs the package through vite)
-vi.mock('../../node_modules/bsv-kit/packages/composer/dist/recorder.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../node_modules/bsv-kit/packages/composer/dist/recorder.js')>()),
+// the recorder the package's hold uses (voice-kit/composer's own module; vitest.config.ts runs the package through vite)
+vi.mock('../../node_modules/voice-kit/packages/composer/dist/recorder.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../node_modules/voice-kit/packages/composer/dist/recorder.js')>()),
   canRecord: () => true,
   VoiceRecorder: class {
     async start() {}

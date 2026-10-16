@@ -1,4 +1,4 @@
-// src/cockpit/holdBar.ts — Postern's theme for the hold-to-talk bar that comes from bsv-kit/composer
+// src/cockpit/holdBar.ts — Postern's theme for the hold-to-talk bar that comes from voice-kit/composer
 // (mw-jtzpw0.2). The package draws the bar with class names and data-state only; these are Postern's
 // colours and sizes for it, so a hold looks the same in the composer and on the Talk line as it did
 // when the bar lived in this repo.

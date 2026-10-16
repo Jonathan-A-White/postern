@@ -1,4 +1,4 @@
-Feature: A picture sends with one tap, no typing (mw-jtzpw0.10; the Send arrow comes from bsv-kit's composer 0.2.0, Hold to talk stays the big button)
+Feature: A picture sends with one tap, no typing (mw-jtzpw0.10; the Send arrow comes from voice-kit's composer 0.2.0, Hold to talk stays the big button)
 
   Scenario: AC-1: with the bar out and a picture attached, a Send arrow stands beside Hold to talk
     Given the composer is open

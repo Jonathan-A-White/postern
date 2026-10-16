@@ -134,7 +134,7 @@ function DueField({ card, onSet }: { card: TodoCard; onSet: (due: string) => voi
 }
 
 /** A card's links as chips under its title: each an anchor that opens the app it names (links.ts says how), named 'Open in <its text>' for a screen reader.
- * A text action comes first, as a Text button that says who a tap texts: an sms: link, opened in this tab so Android hands it to his texting app. */
+ * A text action comes first, as a Text button that says who a tap texts: opened in this tab, so the phone hands it to his texting app (Google Voice on Android). */
 function LinkChips({ links, text }: { links: OpenLink[]; text?: TextAction }) {
   if (links.length === 0 && !text) return null;
   return (
@@ -143,7 +143,7 @@ function LinkChips({ links, text }: { links: OpenLink[]; text?: TextAction }) {
         <a
           data-testid="card-text"
           data-kind="text"
-          href={textHref(text)}
+          href={textHref(text, navigator.userAgent)}
           className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-md border border-accent/60 bg-accent/15 px-2 text-[12px] font-medium text-fg no-underline"
         >
           <Icon name="talk" size={12} className="shrink-0" />
@@ -153,7 +153,7 @@ function LinkChips({ links, text }: { links: OpenLink[]; text?: TextAction }) {
       {links.map((link, at) => (
         <a
           key={`${at}|${link.url}`}
-          {...linkProps(link)}
+          {...linkProps(link, navigator.userAgent)}
           aria-label={`Open in ${link.text}`}
           className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-md border border-line px-2 text-[12px] text-muted no-underline"
         >

@@ -51,7 +51,7 @@ describe('the Open: line parser', () => {
       { text: 'Café', url: MAP },
       { text: 'Call', url: 'tel:+1-516-555-0123' },
     ]);
-    expect(linkProps({ text: 'Café', url: MAP }).href).toBe(MAP);
+    expect(linkProps({ text: 'Café', url: MAP }, '').href).toBe(MAP);
   });
 
   it('is what lists.ts hands a card', () => {
@@ -74,6 +74,26 @@ const KINDS: { kind: string; url: string; newTab: boolean }[] = [
   { kind: 'web', url: 'https://example.com/page', newTab: true },
   { kind: 'app', url: 'logosres:biblia;ref=John3', newTab: false },
 ];
+
+describe('an Open: chip on Android (mw-ev7oyy.23 sweep)', () => {
+  const ANDROID = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36';
+  const COMPUTER = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
+
+  it('opens an sms: or smsto: link in Google Voice by name, not the default texting app, falling back to the link itself', () => {
+    expect(linkProps({ text: 'Text Dad', url: 'sms:+15555550123?body=Hi%20Dad' }, ANDROID)).toEqual({
+      href: `intent:+15555550123?body=Hi%20Dad#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.browser_fallback_url=${encodeURIComponent('sms:+15555550123?body=Hi%20Dad')};end`,
+      'data-kind': 'text',
+    });
+    expect(linkProps({ text: 'Text Dad', url: 'SMSTO:+15555550123' }, ANDROID).href).toBe(
+      `intent:+15555550123#Intent;scheme=smsto;package=com.google.android.apps.googlevoice;S.browser_fallback_url=${encodeURIComponent('SMSTO:+15555550123')};end`,
+    );
+  });
+
+  it('leaves an sms: link as it is elsewhere, and every other kind as it is on Android too', () => {
+    expect(linkProps({ text: 'Text Dad', url: 'sms:+15555550123?body=Hi' }, COMPUTER).href).toBe('sms:+15555550123?body=Hi');
+    for (const { url } of KINDS.filter(({ kind }) => kind !== 'text')) expect(linkProps({ text: 'x', url }, ANDROID).href).toBe(url);
+  });
+});
 
 describe('the table of link kinds', () => {
   it.each(KINDS)('$url is $kind', ({ kind, url, newTab }) => {

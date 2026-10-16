@@ -305,3 +305,11 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     And the card "mw-list.1" has long notes, longer than the view's summary, ending "Text: Dad +15165550123 | Hi Dad"
     When the To do tab opens
     Then the Text button "Text Dad" opens "sms:+15165550123?body=Hi%20Dad" in the same tab
+
+  Scenario: mw-ev7oyy.23 AC-2: on Android the Text button opens Google Voice by name, not the phone's default texting app
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the phone is an Android phone running Chrome
+    And the card "mw-list.1" has the notes "Text: Dad | Hi Dad, would Saturday suit you?"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows a Text button named "Text Dad" under its title
+    And the Text button "Text Dad" opens "intent:?body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.sms_body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F;S.browser_fallback_url=sms%3A%3Fbody%3DHi%2520Dad%252C%2520would%2520Saturday%2520suit%2520you%253F;end" in the same tab

@@ -686,6 +686,19 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     When('the To do tab opens', tabOpens);
     Then('the Text button {string} opens {string} in the same tab', textOpens);
   });
+  Scenario("mw-ev7oyy.23 AC-2: on Android the Text button opens Google Voice by name, not the phone's default texting app", ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the phone is an Android phone running Chrome', () => {
+      vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36');
+    });
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows a Text button named {string} under its title', async (_c, name: string, button: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(textButton(el)).toHaveTextContent(button));
+    });
+    And('the Text button {string} opens {string} in the same tab', textOpens);
+  });
   // mw-ev7oyy.14: a short list name, a one-row card with a round check, a hint shown till he has swiped once.
   const longList = (_c: unknown, id: string, epicTitle: string) => {
     beads.push(beadIn(id, { type: 'epic', labels: ['hitl'], title: epicTitle }), beadIn(`${id}.1`, { parent: id, labels: ['hitl', 'hitl:todo'] }));

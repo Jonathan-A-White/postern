@@ -3,8 +3,9 @@
 // no React. This is the one place that knows what a link is: LINK_KINDS is a table, a row per kind with how
 // a url is recognised and how it opens; a new kind is one row here and one case in tests/unit/todo-links.test.ts.
 // The board draws only what linkProps() gives it. A 'Text:' line is the card's text action (mw-ev7oyy.22): who to
-// text and a draft, drawn as a Text button whose sms: link Android hands to his texting app (Google Voice, when it
-// is the phone's default for texts) with the person and the message filled in; textHref() is the one place it is built.
+// text and a draft, drawn as a Text button that opens his texting app with the person and the message filled in;
+// textHref() is the one place it is built. On Android it names Google Voice (mw-ev7oyy.23): a plain sms: link goes to
+// the phone's default texting app, and Voice is not his default.
 
 /** A link of an 'Open:' line: its own words, which are the chip's label, and where it goes. */
 export interface OpenLink {
@@ -70,9 +71,26 @@ export function linkOpens(url: string): LinkOpens {
   return row.opens ?? (isWeb(scheme) ? 'new-tab' : 'same-tab');
 }
 
-/** The attributes of the anchor that opens a link: what the board spreads onto its <a>. */
-export function linkProps(link: OpenLink): { href: string; 'data-kind': string; target?: '_blank'; rel?: string } {
-  return { href: link.url, 'data-kind': linkKind(link.url), ...(linkOpens(link.url) === 'new-tab' ? { target: '_blank' as const, rel: 'noopener noreferrer' } : {}) };
+/** Google Voice's Android package: the app he texts from. */
+const GOOGLE_VOICE = 'com.google.android.apps.googlevoice';
+
+const onAndroid = (userAgent: string) => /\bAndroid\b/i.test(userAgent);
+
+/** An sms: or smsto: link as a Chrome intent: link naming Google Voice (mw-ev7oyy.23): on Android a plain one goes to the
+ * phone's default texting app, and Voice is not his default. intent:<the link after its scheme>#Intent;scheme=<its
+ * scheme>;package=<Voice>;<extras>S.browser_fallback_url=<the link>;end: Android's Intent.parseUri swaps 'intent:' for the
+ * scheme, so Voice is handed the very link Chrome would open ('intent://' would make it sms://). Chrome takes only an
+ * http(s) fallback, so the link as fallback serves other browsers. */
+function voiceIntent(url: string, scheme: string, extras = ''): string {
+  return `intent:${url.slice(scheme.length + 1)}#Intent;scheme=${scheme};package=${GOOGLE_VOICE};${extras}S.browser_fallback_url=${encodeURIComponent(url)};end`;
+}
+
+/** The attributes of the anchor that opens a link on a phone with this user agent: what the board spreads onto its <a>.
+ * A text link on Android opens Google Voice by name. */
+export function linkProps(link: OpenLink, userAgent: string): { href: string; 'data-kind': string; target?: '_blank'; rel?: string } {
+  const { row, scheme } = rowOf(link.url);
+  const href = row.kind === 'text' && onAndroid(userAgent) ? voiceIntent(link.url, scheme) : link.url;
+  return { href, 'data-kind': row.kind, ...(linkOpens(link.url) === 'new-tab' ? { target: '_blank' as const, rel: 'noopener noreferrer' } : {}) };
 }
 
 /** A line that opens with 'Open:' (as a list item, a quote or in bold, too) and what follows it. */
@@ -147,11 +165,20 @@ export function parseTextAction(description: string): TextAction | undefined {
 /** A lone half of a surrogate pair, which encodeURIComponent will not take. */
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
-/** The Text button's link: sms:<number>?body=<draft>, the number left out when there is none and the body when the
- * draft is empty. The draft is percent-encoded whole (&, ?, #, a newline, '+', an emoji), so the app gets every word. */
-export function textHref(action: TextAction): string {
-  const body = action.draft ? `?body=${encodeURIComponent(action.draft.replace(LONE_SURROGATE, '\uFFFD'))}` : '';
-  return `sms:${action.number ?? ''}${body}`;
+const encodeDraft = (draft: string) => encodeURIComponent(draft.replace(LONE_SURROGATE, '\uFFFD'));
+
+/** Today's link everywhere but Android: sms:<number>?body=<draft>, the number left out when there is none and the body
+ * when the draft is empty. The draft is percent-encoded whole (&, ?, #, a newline, '+', an emoji), so the app gets every word. */
+function smsHref(action: TextAction): string {
+  return `sms:${action.number ?? ''}${action.draft ? `?body=${encodeDraft(action.draft)}` : ''}`;
+}
+
+/** The Text button's link for a phone with this user agent. On Android, the sms: link as an intent: link naming Google
+ * Voice (voiceIntent), the draft also in the sms_body extra (Android's documented field for it), whichever Voice reads.
+ * Anywhere else, today's sms: link. */
+export function textHref(action: TextAction, userAgent: string): string {
+  const sms = smsHref(action);
+  return onAndroid(userAgent) ? voiceIntent(sms, 'sms', action.draft ? `S.sms_body=${encodeDraft(action.draft)};` : '') : sms;
 }
 
 /** What the Text button says: who a tap texts, by name, else by number, else only 'Text'. */

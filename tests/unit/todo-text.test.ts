@@ -1,11 +1,29 @@
 // tests/unit/todo-text.test.ts — mw-ev7oyy.22: a to-do's 'Text:' line as a Text button that opens his texting app
 // (an sms: link, which Android hands to the default SMS app: Google Voice when he has made it the default).
+// mw-ev7oyy.23: Voice was not his default, so on Android the button is an intent: link naming Google Voice.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { linkKind, linkOpens, parseTextAction, textHref, textLabel } from '../../src/todo';
 
 /** The draft back out of an href, as the SMS app reads it: what follows ?body=, percent-decoded. */
 const bodyOf = (href: string) => decodeURIComponent(href.slice(href.indexOf('?body=') + '?body='.length));
+
+/** Chrome on Android (its reduced user agent), an iPhone and a computer. */
+const ANDROID = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36';
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+const COMPUTER = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
+
+/** An intent: link read as Android's Intent.parseUri reads it: the data before '#Intent;' with 'intent:' swapped for
+ * the scheme, and each 'key=value' after it, the value percent-decoded. */
+function parseIntent(href: string): { data: string; fields: Record<string, string> } {
+  const at = href.lastIndexOf('#Intent;');
+  const fields: Record<string, string> = {};
+  for (const part of href.slice(at + '#Intent;'.length).split(';')) {
+    const eq = part.indexOf('=');
+    if (eq > 0) fields[part.slice(0, eq)] = decodeURIComponent(part.slice(eq + 1));
+  }
+  return { data: `${fields.scheme}:${href.slice('intent:'.length, at)}`, fields };
+}
 
 describe("the Text: line parser", () => {
   it('reads who to text, their number and the draft from a Text: line', () => {
@@ -58,13 +76,13 @@ describe("the Text: line parser", () => {
 
 describe('the Text button: its href and its words', () => {
   it('is sms:<number>?body=<encoded draft> with a number, sms:?body=<encoded draft> without', () => {
-    expect(textHref({ number: '+15165550123', draft: 'Hi Dad' })).toBe('sms:+15165550123?body=Hi%20Dad');
-    expect(textHref({ draft: 'Hi Dad' })).toBe('sms:?body=Hi%20Dad');
+    expect(textHref({ number: '+15165550123', draft: 'Hi Dad' }, COMPUTER)).toBe('sms:+15165550123?body=Hi%20Dad');
+    expect(textHref({ draft: 'Hi Dad' }, COMPUTER)).toBe('sms:?body=Hi%20Dad');
   });
 
   it('encodes &, ?, #, a newline, a plus, a percent and an emoji, so the draft arrives whole', () => {
     const draft = 'Fish & chips? Table #4.\nSee you at 7 + 1 = 8, 100% 👍';
-    const href = textHref({ number: '+15165550123', draft });
+    const href = textHref({ number: '+15165550123', draft }, COMPUTER);
     expect(href.startsWith('sms:+15165550123?body=')).toBe(true);
     expect(href).not.toMatch(/[&#\n ]|\?.*\?/);
     expect(href).toContain('%26');
@@ -78,11 +96,11 @@ describe('the Text button: its href and its words', () => {
   });
 
   it('never throws on a broken character in the draft: it goes as a replacement mark', () => {
-    expect(bodyOf(textHref({ draft: `a${'\uD83D'}b` }))).toBe('a�b');
+    expect(bodyOf(textHref({ draft: `a${'\uD83D'}b` }, COMPUTER))).toBe('a�b');
   });
 
   it('with a number and no draft, opens a text to them with nothing filled in', () => {
-    expect(textHref({ number: '+15165550123', draft: '' })).toBe('sms:+15165550123');
+    expect(textHref({ number: '+15165550123', draft: '' }, COMPUTER)).toBe('sms:+15165550123');
   });
 
   it('says on the button who a tap will text', () => {
@@ -97,6 +115,49 @@ describe('the Text button: its href and its words', () => {
   });
 });
 
+describe('the Text button on Android: Google Voice, by name (mw-ev7oyy.23)', () => {
+  const draft = 'Fish & chips? Table #4.\nSee you at 7 + 1 = 8, 100% 👍';
+
+  it('is an intent: link naming Google Voice, which Chrome turns into the sms: link it would open, handed to Voice alone', () => {
+    const href = textHref({ name: 'Dad', number: '+15165550123', draft }, ANDROID);
+    expect(href.startsWith('intent:+15165550123?body=')).toBe(true);
+    expect(href.endsWith(';end')).toBe(true);
+    const { data, fields } = parseIntent(href);
+    expect(fields.package).toBe('com.google.android.apps.googlevoice');
+    expect(fields.scheme).toBe('sms');
+    expect(data).toBe(textHref({ number: '+15165550123', draft }, COMPUTER));
+  });
+
+  it('carries the whole draft percent-encoded, in the link and as the sms_body extra, so no & ? # newline + or emoji is lost', () => {
+    const href = textHref({ number: '+15165550123', draft }, ANDROID);
+    const before = href.slice(0, href.lastIndexOf('#Intent;'));
+    expect(before).not.toMatch(/[&#;\n ]|\?.*\?/);
+    for (const code of ['%26', '%3F', '%23', '%0A', '%2B', '%25', '%F0%9F%91%8D']) expect(before).toContain(code);
+    expect(bodyOf(before)).toBe(draft);
+    expect(parseIntent(href).fields['S.sms_body']).toBe(draft);
+    expect(href.match(/#/g)).toHaveLength(1);
+  });
+
+  it("falls back to today's sms: link, for a browser that takes a fallback when Voice is not there", () => {
+    const action = { number: '+15165550123', draft };
+    expect(parseIntent(textHref(action, ANDROID)).fields['S.browser_fallback_url']).toBe(textHref(action, COMPUTER));
+  });
+
+  it('without a number, opens Voice with the draft for him to pick the person; without a draft, opens a text to them, empty', () => {
+    expect(parseIntent(textHref({ name: 'Dad', draft: 'Hi Dad' }, ANDROID)).data).toBe('sms:?body=Hi%20Dad');
+    const empty = parseIntent(textHref({ number: '+15165550123', draft: '' }, ANDROID));
+    expect(empty.data).toBe('sms:+15165550123');
+    expect(empty.fields).not.toHaveProperty('S.sms_body');
+    expect(empty.fields.package).toBe('com.google.android.apps.googlevoice');
+  });
+
+  it("on an iPhone or a computer is today's sms: link, unchanged", () => {
+    expect(textHref({ number: '+15165550123', draft: 'Hi Dad' }, IPHONE)).toBe('sms:+15165550123?body=Hi%20Dad');
+    expect(textHref({ number: '+15165550123', draft: 'Hi Dad' }, COMPUTER)).toBe('sms:+15165550123?body=Hi%20Dad');
+    expect(textHref({ draft: 'Hi Dad' }, '')).toBe('sms:?body=Hi%20Dad');
+  });
+});
+
 describe("the Mayor's filing note in docs/protocol.md", () => {
   it('has an example that reads as it says: a Text Dad button to his number, with the whole message', () => {
     const doc = readFileSync('docs/protocol.md', 'utf8');
@@ -105,6 +166,6 @@ describe("the Mayor's filing note in docs/protocol.md", () => {
     const action = parseTextAction((block ?? '').replace(/^ {2}/gm, ''));
     expect(action).toEqual({ name: 'Dad', number: '+15165550123', draft: expect.stringMatching(/^Hi Dad, would you rather meet us on Long Island on Saturday .* rest\.$/) });
     expect(textLabel(action!)).toBe('Text Dad');
-    expect(textHref(action!)).toMatch(/^sms:\+15165550123\?body=Hi%20Dad%2C%20would/);
+    expect(textHref(action!, COMPUTER)).toMatch(/^sms:\+15165550123\?body=Hi%20Dad%2C%20would/);
   });
 });

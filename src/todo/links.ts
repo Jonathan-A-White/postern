@@ -2,7 +2,9 @@
 // line of its notes, each a chip that opens the app it names (Kindle, Audible, the dialer, a map…). Pure:
 // no React. This is the one place that knows what a link is: LINK_KINDS is a table, a row per kind with how
 // a url is recognised and how it opens; a new kind is one row here and one case in tests/unit/todo-links.test.ts.
-// The board draws only what linkProps() gives it.
+// The board draws only what linkProps() gives it. A 'Text:' line is the card's text action (mw-ev7oyy.22): who to
+// text and a draft, drawn as a Text button whose sms: link Android hands to his texting app (Google Voice, when it
+// is the phone's default for texts) with the person and the message filled in; textHref() is the one place it is built.
 
 /** A link of an 'Open:' line: its own words, which are the chip's label, and where it goes. */
 export interface OpenLink {
@@ -13,7 +15,7 @@ export interface OpenLink {
 export type LinkOpens = 'same-tab' | 'new-tab';
 
 export interface LinkKind {
-  /** The kind's name, for a test or a style: kindle, audible, call, map, podcast, web, app. */
+  /** The kind's name, for a test or a style: kindle, audible, call, text, map, podcast, web, app. */
   kind: string;
   /** Whether this row recognises the url (a lower-cased scheme and host come with it). The first row to say yes owns the link. */
   matches: (link: { url: string; scheme: string; host: string; path: string }) => boolean;
@@ -32,6 +34,7 @@ export const LINK_KINDS: readonly LinkKind[] = [
   { kind: 'kindle', matches: ({ scheme }) => scheme === 'kindle' },
   { kind: 'audible', matches: ({ scheme, host }) => isWeb(scheme) && onHost(host, 'audible.com') },
   { kind: 'call', matches: ({ scheme }) => scheme === 'tel' },
+  { kind: 'text', matches: ({ scheme }) => scheme === 'sms' || scheme === 'smsto' },
   {
     kind: 'map',
     matches: ({ scheme, host, path }) => scheme === 'geo' || (isWeb(scheme) && (host === 'maps.app.goo.gl' || (host === 'goo.gl' && path.startsWith('/maps')) || (onHost(host, 'google.com') && path.startsWith('/maps')))),
@@ -92,4 +95,67 @@ export function parseOpenLinks(description: string): OpenLink[] {
     }
   }
   return found;
+}
+
+/** A card's text action, from the 'Text:' line of its notes: who a tap texts (a name and/or a number, either may be
+ * absent) and the message filled in for him to send. */
+export interface TextAction {
+  name?: string;
+  /** Only digits and a leading '+'. Absent, the texting app opens with the message and he picks the person. */
+  number?: string;
+  draft: string;
+}
+
+/** A line that opens with 'Text:', set as the 'Open:' line may be (a list item, a quote, in bold). */
+const TEXT_LINE = /^[\s>*+-]*(?:\*\*|__)?Text:(?:\*\*|__)?(.*)$/;
+/** A phone number as it is written: an optional '+' and '(', then digits with spaces, dots, dashes and brackets between. */
+const PHONE = /\+?\(?\d[\d\s().-]*\d/;
+/** Edge punctuation left on a name once its number is taken out: 'Dad (+1 516 555 0123)' is 'Dad'. */
+const NAME_EDGES = /^[\s,;:()–—-]+|[\s,;:()–—-]+$/g;
+
+function whoOf(who: string): { name?: string; number?: string } {
+  const written = PHONE.exec(who)?.[0];
+  const digits = written?.replace(/\D/g, '') ?? '';
+  if (!written || digits.length < 3) {
+    const name = who.trim();
+    return name ? { name } : {};
+  }
+  const name = who.replace(written, ' ').replace(/\(\s*\)/g, ' ').replace(NAME_EDGES, '').trim();
+  return { ...(name ? { name } : {}), number: `${written.trim().startsWith('+') ? '+' : ''}${digits}` };
+}
+
+/** The text action of a description: its first 'Text:' line, 'Text: <name and/or number> | <draft>' or 'Text: <draft>'
+ * (no bar, no one named). The draft runs on, a line for a line, to the end of its paragraph: a blank line, or an
+ * 'Open:' or another 'Text:' line. None when there is no such line, or it names no number and holds no draft. */
+export function parseTextAction(description: string): TextAction | undefined {
+  const lines = description.split(/\r?\n/);
+  const at = lines.findIndex((line) => TEXT_LINE.test(line));
+  if (at < 0) return undefined;
+  const rest = TEXT_LINE.exec(lines[at])?.[1] ?? '';
+  const bar = rest.indexOf('|');
+  const who = bar < 0 ? {} : whoOf(rest.slice(0, bar));
+  const draftLines = [(bar < 0 ? rest : rest.slice(bar + 1)).trim()];
+  for (const line of lines.slice(at + 1)) {
+    if (!line.trim() || TEXT_LINE.test(line) || OPEN_LINE.test(line)) break;
+    draftLines.push(line.trim());
+  }
+  const draft = draftLines.join('\n').trim();
+  if (!draft && !who.number) return undefined;
+  return { ...who, draft };
+}
+
+/** A lone half of a surrogate pair, which encodeURIComponent will not take. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/** The Text button's link: sms:<number>?body=<draft>, the number left out when there is none and the body when the
+ * draft is empty. The draft is percent-encoded whole (&, ?, #, a newline, '+', an emoji), so the app gets every word. */
+export function textHref(action: TextAction): string {
+  const body = action.draft ? `?body=${encodeURIComponent(action.draft.replace(LONE_SURROGATE, '\uFFFD'))}` : '';
+  return `sms:${action.number ?? ''}${body}`;
+}
+
+/** What the Text button says: who a tap texts, by name, else by number, else only 'Text'. */
+export function textLabel(action: TextAction): string {
+  const who = action.name ?? action.number;
+  return who ? `Text ${who}` : 'Text';
 }

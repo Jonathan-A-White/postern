@@ -1,7 +1,7 @@
 // tests/unit/todo-links.test.ts — mw-ev7oyy.12: the 'Open:' line of a card's description as link chips.
 // src/todo/links.ts holds the table of link kinds; a new kind is one row there and one case in KINDS below.
 import { describe, expect, it } from 'vitest';
-import { LINK_KINDS, MAX_OPEN_LINKS, linkKind, linkOpens, openLinksOf, parseOpenLinks } from '../../src/todo';
+import { LINK_KINDS, MAX_OPEN_LINKS, linkKind, linkOpens, linkProps, openLinksOf, parseOpenLinks } from '../../src/todo';
 
 const KINDLE = 'kindle://book?action=open&asin=B0C74TJ712';
 const AUDIBLE = 'https://www.audible.com/pd/B0CC36V9KG';
@@ -45,6 +45,15 @@ describe('the Open: line parser', () => {
     expect(parseOpenLinks('Open: [x](javascript:alert(1)) [y](data:text/html,hi) [z](file:///etc/passwd) [ok](https://ok.example/)')).toEqual([{ text: 'ok', url: 'https://ok.example/' }]);
   });
 
+  it('keeps a url exactly as written, already encoded by the Mayor, never encoded again (mw-ev7oyy.22 sweep)', () => {
+    const MAP = 'https://www.google.com/maps/search/?api=1&query=Caf%C3%A9%20Roma%20%26%20Bar';
+    expect(parseOpenLinks(`Open: [Café](${MAP}) [Call](tel:+1-516-555-0123)`)).toEqual([
+      { text: 'Café', url: MAP },
+      { text: 'Call', url: 'tel:+1-516-555-0123' },
+    ]);
+    expect(linkProps({ text: 'Café', url: MAP }).href).toBe(MAP);
+  });
+
   it('is what lists.ts hands a card', () => {
     expect(openLinksOf(`Open: [Kindle](${KINDLE})`)).toEqual([{ text: 'Kindle', url: KINDLE }]);
   });
@@ -55,6 +64,7 @@ const KINDS: { kind: string; url: string; newTab: boolean }[] = [
   { kind: 'kindle', url: KINDLE, newTab: false },
   { kind: 'audible', url: AUDIBLE, newTab: true },
   { kind: 'call', url: 'tel:+15555550123', newTab: false },
+  { kind: 'text', url: 'sms:+15555550123?body=Hi', newTab: false },
   { kind: 'map', url: 'https://maps.app.goo.gl/AbCd123', newTab: true },
   { kind: 'map', url: 'https://www.google.com/maps/place/Home', newTab: true },
   { kind: 'map', url: 'geo:37.78,-122.41', newTab: false },

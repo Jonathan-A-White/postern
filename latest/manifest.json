@@ -1,7 +1,7 @@
 {
-  "version": "0.8.1",
-  "commit": "1db81db",
-  "published_at": "2026-10-16T19:21:40.062Z",
+  "version": "0.8.3",
+  "commit": "56648ab",
+  "published_at": "2026-10-16T22:07:42.361Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1094,6 +1094,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/roadmap-open.png"
+    },
+    {
+      "name": "390x844/roadmap-picture.png",
+      "screen": "roadmap-picture",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/roadmap-picture.png"
+    },
+    {
+      "name": "360x640/roadmap-picture.png",
+      "screen": "roadmap-picture",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/roadmap-picture.png"
+    },
+    {
+      "name": "1280x800/roadmap-picture.png",
+      "screen": "roadmap-picture",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/roadmap-picture.png"
     },
     {
       "name": "390x844/screen-stays-put.png",

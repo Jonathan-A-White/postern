@@ -3,7 +3,7 @@
 // most blocking first, then anything new from the Mayor he has not read. This
 // replaces the old Inbox and Projects' "Needs you" (decision 10).
 import { useEffect, useMemo, useState } from 'react';
-import { Banner, Button, EmptyState, Icon, IconButton, SectionTitle, Segmented, Spinner, TimeAgo } from '../ui';
+import { Banner, Button, EmptyState, Icon, IconButton, SectionTitle, Segmented, Spinner, TimeAgo, useAlive } from '../ui';
 import { Screen } from './Shell';
 import { FactoryPulse } from './FactoryPulse';
 import { OpenLists } from './OpenLists';
@@ -86,8 +86,15 @@ function EmergenciesRow() {
 function NotifyPrompt() {
   const key = useUnlockedKey();
   const [state, setState] = useState<'unknown' | 'on' | 'off' | 'busy'>('unknown');
+  const alive = useAlive();
   useEffect(() => {
-    void isPushSubscribed().then((on) => setState(on ? 'on' : 'off'));
+    let cancelled = false;
+    void isPushSubscribed().then((on) => {
+      if (!cancelled) setState(on ? 'on' : 'off');
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
   if (!pushSupported() || state !== 'off' || !key) return null;
   async function enable() {
@@ -96,10 +103,10 @@ function NotifyPrompt() {
     try {
       await subscribeToPush({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key });
       await rememberPushSubscribed();
-      setState('on');
+      if (alive()) setState('on');
       toast('Notifications are on');
     } catch (err) {
-      setState('off');
+      if (alive()) setState('off');
       toast(err instanceof Error ? err.message : String(err), 'error');
     }
   }
@@ -210,6 +217,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
   const live = useLive();
   const answers = useAnswers();
   const [refreshing, setRefreshing] = useState(false);
+  const alive = useAlive();
   const index = view?.index;
   const apart = useMemo(() => splitFolded(index ? unsettledNeeds(index.view.needs, answers) : []), [index, answers]);
   const split = useMemo(() => needsByWaiter(apart.open), [apart]);
@@ -224,7 +232,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
   async function refresh() {
     setRefreshing(true);
     await refreshNow({ force: true });
-    setRefreshing(false);
+    if (alive()) setRefreshing(false);
   }
 
   return (

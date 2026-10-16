@@ -105,21 +105,37 @@ export function App() {
   // Where he is, kept on every move, is where a bare open puts him back (src/nav/lastRoute.ts).
   useEffect(() => saveLastRoute(search), [search]);
 
+  // A read that answers after the app has closed, or after a newer read, sets nothing (mw-ev7oyy.21).
   useEffect(() => {
+    let cancelled = false;
     resumeSession()
-      .catch((err: unknown) => setResumeError(whyItFailed(err)))
-      .finally(() => setResumed(true));
+      .catch((err: unknown) => {
+        if (!cancelled) setResumeError(whyItFailed(err));
+      })
+      .finally(() => {
+        if (!cancelled) setResumed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     void vaultRepo.get().then(
       (row) => {
         clearDbTrouble();
+        if (cancelled) return;
         setVaultError(null);
         setVault(row ?? null);
       },
-      (err: unknown) => setVaultError(whyItFailed(err)),
+      (err: unknown) => {
+        if (!cancelled) setVaultError(whyItFailed(err));
+      },
     );
+    return () => {
+      cancelled = true;
+    };
   }, [key, route.view]);
 
   // The history-wide clean-ups wait until the door or the app is on screen (src/data/tidy.ts).

@@ -101,11 +101,23 @@ export function ShareScreen({ id }: { id?: string }) {
   );
 
   useEffect(() => {
-    void (id ? sharesRepo.get(id) : sharesRepo.latest()).then((row) => setShare(row ?? null));
+    let cancelled = false;
+    void (id ? sharesRepo.get(id) : sharesRepo.latest()).then((row) => {
+      if (!cancelled) setShare(row ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
-    void settingsRepo.get('lastShareThread').then((value) => setLastKey(typeof value === 'string' ? value : null));
+    let cancelled = false;
+    void settingsRepo.get('lastShareThread').then((value) => {
+      if (!cancelled) setLastKey(typeof value === 'string' ? value : null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function sendTo(threadKey: string, root?: string) {

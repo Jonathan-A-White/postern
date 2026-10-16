@@ -10,7 +10,7 @@
 // words heard so far in the box, unsent, saying 'Kept what you said: tap Send.' (mw-f7gmps.3).
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
-import { Button, Chip, Icon, IconButton, cx } from '../ui';
+import { Button, Chip, Icon, IconButton, cx, useAlive } from '../ui';
 import { focusQuietly } from '../ui/focus';
 import { useWide } from './hooks';
 import { HoldToTalkBar, formatDuration, isListenSupported, micName, useHold, type Recording } from 'bsv-kit/composer';
@@ -100,6 +100,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const picker = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const { busy, run } = useSend();
+  const alive = useAlive();
   const viewer = useViewer();
   const hold = useHold({
     appName: APP_NAME,
@@ -134,12 +135,17 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   useEffect(() => {
     const shared = takePendingShare();
     if (!shared) return;
+    let cancelled = false;
     void Promise.all(shared.files.map((file) => toPending(new Blob([file.bytes], { type: file.type }), file.name))).then((pending) => {
+      if (cancelled) return;
       setFiles((current) => [...current, ...pending]);
       if (shared.text) setText((current) => current || shared.text || '');
       // a file shared in with no words: the bar is ready, one hold sends the file with what he says
       else if (isListenSupported()) setVoice(true);
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -159,7 +165,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
       }
       accepted.push(await toPending(file, file.name));
     }
-    setFiles((current) => [...current, ...accepted]);
+    if (alive()) setFiles((current) => [...current, ...accepted]);
   }
 
   function press() {
@@ -180,15 +186,17 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     setHolding(false);
     const released = await hold.finish();
     if (released.status === 'kept') {
-      keep(released.text, released.recording ? await voiceFile(released.recording) : undefined);
+      const voiceNote = released.recording ? await voiceFile(released.recording) : undefined;
+      if (alive()) keep(released.text, voiceNote);
       return;
     }
     if (released.status !== 'heard') return;
     const body = `${quote ? quoteBlock(quote) : ''}${released.text.trim()}`;
     const voiceNote = released.recording ? await voiceFile(released.recording) : undefined;
     const sent = await run(() => sendToThread(thread, body, voiceNote ? [...files, voiceNote] : files, re));
+    if (sent) files.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
+    if (!alive()) return;
     if (sent) {
-      files.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
       setFiles([]);
       onClearQuote?.();
     } else {
@@ -270,6 +278,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     if (sent) {
       files.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
       draft.discard();
+      if (!alive()) return;
       setText('');
       setKept(false);
       setFiles([]);

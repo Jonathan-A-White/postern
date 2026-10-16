@@ -3,7 +3,7 @@
 // and Play resumes from the same place), with how far along it is. The native
 // controls are left off so the button is the same on every phone.
 import { useEffect, useRef, useState } from 'react';
-import { IconButton } from '../ui';
+import { IconButton, useAlive } from '../ui';
 
 function clock(seconds: number): string {
   const whole = Math.max(0, Math.floor(seconds));
@@ -15,6 +15,7 @@ export function VoicePlayer({ src }: { src: string }) {
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
+  const alive = useAlive();
 
   useEffect(() => {
     const element = audio.current;
@@ -32,7 +33,10 @@ export function VoicePlayer({ src }: { src: string }) {
   function toggle() {
     const element = audio.current;
     if (!element) return;
-    if (element.paused) void element.play().catch(() => setPlaying(false));
+    if (element.paused)
+      void element.play().catch(() => {
+        if (alive()) setPlaying(false);
+      });
     else element.pause();
   }
 

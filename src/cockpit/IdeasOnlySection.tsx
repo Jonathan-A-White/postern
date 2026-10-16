@@ -3,7 +3,7 @@
 // The backend keeps it per key (src/services/ideasOnly.ts); every control says what a tap does and
 // goes dead, saying Saving…, while a change is on its way.
 import { useState } from 'react';
-import { Button, Card, SectionTitle } from '../ui';
+import { Button, Card, SectionTitle, useAlive } from '../ui';
 import { useNow } from '../ui/useNow';
 import {
   DAY_LABELS,
@@ -46,6 +46,7 @@ export function IdeasOnlySection() {
   const [pickedValue, setPickedValue] = useState('');
   const [pickedProblem, setPickedProblem] = useState<string>();
   const [edit, setEdit] = useState<ScheduleDraft | null>(null);
+  const alive = useAlive();
 
   const setting = baseSetting(kept);
   const state = kept ? stateAt(kept.state, now) : undefined;
@@ -60,7 +61,7 @@ export function IdeasOnlySection() {
   const how = !older && state?.on ? (state.by === 'schedule' ? 'by the schedule' : state.by === 'until' ? 'by the time you set' : '') : '';
 
   async function setUntil(until: number) {
-    if (await save({ ...setting, until })) {
+    if ((await save({ ...setting, until })) && alive()) {
       setPicking(false);
       setPickedValue('');
     }
@@ -162,12 +163,12 @@ export function IdeasOnlySection() {
               size="sm"
               variant="primary"
               disabled={dead || !edit || !!problem}
-              onClick={() => void save(withSchedule(setting, draft)).then((saved) => saved && setEdit(null))}
+              onClick={() => void save(withSchedule(setting, draft)).then((saved) => saved && alive() && setEdit(null))}
             >
               Save schedule
             </Button>
             {hasSchedule && (
-              <Button size="sm" variant="ghost" disabled={dead} onClick={() => void save(withoutSchedule(setting)).then((saved) => saved && setEdit(null))}>
+              <Button size="sm" variant="ghost" disabled={dead} onClick={() => void save(withoutSchedule(setting)).then((saved) => saved && alive() && setEdit(null))}>
                 Turn schedule off
               </Button>
             )}

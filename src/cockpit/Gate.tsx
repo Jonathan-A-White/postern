@@ -2,7 +2,7 @@
 // yet is sent to set one up; a locked one asks for a fingerprint (or the recovery
 // phrase where the phone has no passkey PRF) once, and stays open for the day.
 import { useEffect, useState } from 'react';
-import { Button, Icon } from '../ui';
+import { Button, Icon, useAlive } from '../ui';
 import type { VaultRow } from '../data/db';
 import { unlockWithPasskey, unlockWithPhrase } from '../services/unlock';
 import { formatRoute } from '../nav/route';
@@ -97,6 +97,7 @@ export function Unlock({ vault, earlier }: { vault: VaultRow; earlier?: string }
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [phrase, setPhrase] = useState('');
+  const alive = useAlive();
 
   async function withPasskey() {
     setBusy(true);
@@ -104,9 +105,10 @@ export function Unlock({ vault, earlier }: { vault: VaultRow; earlier?: string }
     try {
       await unlockWithPasskey(vault);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false);
+      // an unlock closes the door: nothing is left to set
+      if (alive()) setBusy(false);
     }
   }
 
@@ -115,11 +117,11 @@ export function Unlock({ vault, earlier }: { vault: VaultRow; earlier?: string }
     setError(null);
     try {
       await unlockWithPhrase(vault, phrase);
-      setPhrase('');
+      if (alive()) setPhrase('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false);
+      if (alive()) setBusy(false);
     }
   }
 

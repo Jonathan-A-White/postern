@@ -4,7 +4,7 @@
 // its answers tappable in place, a voice note playable with what was heard in
 // it, an image shown, a file openable, and the Mayor's words readable aloud.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Button, Chip, Icon, IconButton, cx } from '../ui';
+import { Button, Chip, Icon, IconButton, cx, useAlive } from '../ui';
 import { Markdown } from '../markdown';
 import { answersGiven, askedAgainAt, attachmentLabel, type ConversationItem, type GivenAnswer } from '../model/conversation';
 import { answeredQuestion, needOfQuestion } from '../model/needs';
@@ -81,6 +81,7 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
   const autoRetried = useRef(false);
   const failed = useRef(false);
   const seenReconnects = useRef(reconnects);
+  const alive = useAlive();
 
   useEffect(() => {
     if (!key || !inline || !near) return;
@@ -136,7 +137,7 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
       else openFile(opened, attachment.mime, attachment.name);
     } catch (err) {
       failed.current = true;
-      setError(err instanceof Error ? err.message : String(err));
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -217,6 +218,7 @@ function OptionLabel({ option }: { option: string }) {
 function QuestionBlock({ item, given, until }: { item: ConversationItem; given?: GivenAnswer; until?: number }) {
   const question = item.question;
   const tapped = useOneTap(question?.bead ?? '', `answer:${item.id}`);
+  const alive = useAlive();
   const [failed, setFailed] = useState(false);
   const outbox = useOutbox();
   const asks = question !== undefined && question.bead !== '';
@@ -243,7 +245,7 @@ function QuestionBlock({ item, given, until }: { item: ConversationItem; given?:
     if (dead) return;
     setFailed(false);
     const sent = await tapped.tap(() => sendAnswer(question!.bead, option, ...(item.txid !== undefined ? [item.txid] : [])), `Answered: ${option}`, option);
-    if (sent === undefined) setFailed(true);
+    if (sent === undefined && alive()) setFailed(true);
   }
 
   return (

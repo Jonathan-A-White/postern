@@ -5,7 +5,7 @@
 // Mayor. What ran says so, with its exit code. A step whose bead waits on an open
 // bead offers neither: it says what it waits on, each a link to that bead.
 import { useState } from 'react';
-import { Button, Chip, CodeBlock, Icon, IconButton, TimeAgo, cx } from '../ui';
+import { Button, Chip, CodeBlock, Icon, IconButton, TimeAgo, cx, useAlive } from '../ui';
 import { navigate } from '../router';
 import type { HandsStep } from '../model/hands';
 import type { WaitsOn } from '../model/needs';
@@ -19,6 +19,7 @@ export function StepRun({ bead, step, waitsOn, approvedAt, onApproved }: { bead:
   const { busy, run } = useSend();
   const [confirming, setConfirming] = useState(false);
   const [approvedHere, setApprovedHere] = useState<number>();
+  const alive = useAlive();
   const approvedAtNow = approvedAt ?? approvedHere;
   const root = step.as === 'root';
   const ranOk = step.ran && step.ran.exit === 0;
@@ -26,6 +27,7 @@ export function StepRun({ bead, step, waitsOn, approvedAt, onApproved }: { bead:
 
   async function approve() {
     const sent = await run(() => approveHandsStep(bead, step), `Approved — ${step.id} runs ${where}`);
+    if (!alive()) return;
     setConfirming(false);
     if (sent) {
       const at = Date.now();

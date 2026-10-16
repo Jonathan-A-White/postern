@@ -4,7 +4,7 @@
 // verification is an action applied at once (§13), a step for his hands or a
 // demo is acknowledged on the bead's thread, and anything can be discussed.
 import { useMemo, useState } from 'react';
-import { Button, Chip, Icon, IconButton, TimeAgo, cx } from '../ui';
+import { Button, Chip, Icon, IconButton, TimeAgo, cx, useAlive } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Markdown } from '../markdown';
 import { NEED_META } from './labels';
@@ -122,6 +122,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const [notSent, setNotSent] = useState(false);
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
+  const alive = useAlive();
   const [expanded, setExpanded] = useState(false);
 
   // A card waiting on the Mayor or the factory offers him nothing to tap but Reply and Open.
@@ -147,7 +148,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   async function choose(option: string) {
     if (asks) {
       setNotSent(false);
-      if ((await answerTap.tap(() => sendAnswer(need.bead, option, cardTxid), { text: `Answered ${need.bead}: ${option}`, open: openThread }, option)) === undefined) setNotSent(true);
+      if ((await answerTap.tap(() => sendAnswer(need.bead, option, cardTxid), { text: `Answered ${need.bead}: ${option}`, open: openThread }, option)) === undefined && alive()) setNotSent(true);
     }
     else if (need.kind === 'question') await run(() => sendAnswer(need.bead, option, cardTxid), { text: `Answered ${need.bead}: ${option}`, open: openThread });
     else if (need.kind === 'approve') await oneTap.tap(() => sendAction({ action: 'release', bead: need.bead }), `Released ${need.bead}`);
@@ -162,6 +163,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
       need.kind === 'question'
         ? await (asks ? answerTap.tap(() => sendAnswer(need.bead, text, cardTxid), { text: `Answered ${need.bead}`, open: openThread }, text) : run(() => sendAnswer(need.bead, text, cardTxid), { text: `Answered ${need.bead}`, open: openThread }))
         : await run(() => sendToThread(thread, text), { text: `Sent to the Mayor in ${threadName}`, open: openThread });
+    if (!alive()) return;
     if (asks && sent === undefined) setNotSent(true);
     if (sent) {
       setReply('');

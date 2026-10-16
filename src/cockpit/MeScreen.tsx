@@ -3,7 +3,7 @@
 // (and any different key the backend has offered), the live connection and what
 // the backend can do, notifications per kind of message, and the version.
 import { useEffect, useState } from 'react';
-import { Banner, Button, Card, Chip, Dot, Icon, SectionTitle, TimeAgo } from '../ui';
+import { Banner, Button, Card, Chip, Dot, Icon, SectionTitle, TimeAgo, useAlive } from '../ui';
 import { Screen } from './Shell';
 import { Row } from './MeRow';
 import { IdeasOnlySection } from './IdeasOnlySection';
@@ -56,6 +56,7 @@ function Notifications() {
   };
   const [subscribed, setSubscribed] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const alive = useAlive();
 
   useEffect(() => {
     // A read that lands after the screen is gone must set no state (mw-j0f2d.42).
@@ -77,12 +78,12 @@ function Notifications() {
     try {
       await subscribeToPush({ publicKeyHex: publicKeyHexFromMasterKey(key), unlockedKey: key });
       await rememberPushSubscribed();
-      setSubscribed(true);
+      if (alive()) setSubscribed(true);
       toast('Notifications are on');
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
-      setBusy(false);
+      if (alive()) setBusy(false);
     }
   }
 

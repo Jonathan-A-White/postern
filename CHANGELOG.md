@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.45
+_2026-10-16_
+- Fixed: a to-do card with a line of links for each book now labels each button with its book, like "Kindle · Deep Discipleship", so you can tell which book it opens.
+
 ## 0.6.44
 _2026-10-16_
 - Fixed: A busy moment at the chain provider no longer locks a licensed key out of the backend for an hour; it is retried within half a minute.

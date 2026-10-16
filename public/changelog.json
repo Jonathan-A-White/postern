@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.45",
+    "date": "2026-10-16",
+    "story": "mw-ev7oyy.17",
+    "kind": "fixed",
+    "text": "a to-do card with a line of links for each book now labels each button with its book, like \"Kindle · Deep Discipleship\", so you can tell which book it opens."
+  },
+  {
     "version": "0.6.44",
     "date": "2026-10-16",
     "story": "mw-ev7oyy.30",

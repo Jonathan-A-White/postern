@@ -1,7 +1,7 @@
 {
-  "version": "0.6.48",
-  "commit": "4e6a675",
-  "published_at": "2026-10-16T15:45:14.527Z",
+  "version": "0.7.1",
+  "commit": "c3d29ae",
+  "published_at": "2026-10-16T17:05:51.304Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1558,27 +1558,6 @@
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-board-float.png"
     },
     {
-      "name": "390x844/todo-board-groups.png",
-      "screen": "todo-board-groups",
-      "width": 390,
-      "height": 844,
-      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-board-groups.png"
-    },
-    {
-      "name": "360x640/todo-board-groups.png",
-      "screen": "todo-board-groups",
-      "width": 360,
-      "height": 640,
-      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-board-groups.png"
-    },
-    {
-      "name": "1280x800/todo-board-groups.png",
-      "screen": "todo-board-groups",
-      "width": 1280,
-      "height": 800,
-      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-board-groups.png"
-    },
-    {
       "name": "390x844/todo-board-hand-edits.png",
       "screen": "todo-board-hand-edits",
       "width": 390,
@@ -1703,6 +1682,69 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-card-links-books.png"
+    },
+    {
+      "name": "390x844/todo-rows-later.png",
+      "screen": "todo-rows-later",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-rows-later.png"
+    },
+    {
+      "name": "360x640/todo-rows-later.png",
+      "screen": "todo-rows-later",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-rows-later.png"
+    },
+    {
+      "name": "1280x800/todo-rows-later.png",
+      "screen": "todo-rows-later",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-rows-later.png"
+    },
+    {
+      "name": "390x844/todo-rows-let-go.png",
+      "screen": "todo-rows-let-go",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-rows-let-go.png"
+    },
+    {
+      "name": "360x640/todo-rows-let-go.png",
+      "screen": "todo-rows-let-go",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-rows-let-go.png"
+    },
+    {
+      "name": "1280x800/todo-rows-let-go.png",
+      "screen": "todo-rows-let-go",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-rows-let-go.png"
+    },
+    {
+      "name": "390x844/todo-rows-morning.png",
+      "screen": "todo-rows-morning",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-rows-morning.png"
+    },
+    {
+      "name": "360x640/todo-rows-morning.png",
+      "screen": "todo-rows-morning",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-rows-morning.png"
+    },
+    {
+      "name": "1280x800/todo-rows-morning.png",
+      "screen": "todo-rows-morning",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-rows-morning.png"
     },
     {
       "name": "390x844/update-banner.png",

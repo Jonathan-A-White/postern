@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.31",
+    "date": "2026-10-16",
+    "story": "mw-ev7oyy.22",
+    "kind": "new",
+    "text": "a texting to-do has a Text button that opens your texting app to the person with the message already written."
+  },
+  {
     "version": "0.6.30",
     "date": "2026-10-15",
     "story": "mw-4gkijo.1",

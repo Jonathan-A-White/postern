@@ -2,21 +2,19 @@
 // in scripts/preview-guard.mjs that Playwright's webServer command goes through. The steps use real
 // processes: a stand-in listener whose command line reads `vite preview` (it only listens), and the
 // guard CLI wrapped round another.
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { afterAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { findListenerPids, stopLeftoverPreview } from '../../scripts/preview-guard.mjs';
+import { killSpawned, spawnTracked } from '../../tests/support/spawned-processes';
 
 const feature = await loadFeature('features/preview-guard.feature');
 
 const LISTEN = "require('net').createServer().listen(Number(process.argv[1]))";
 const SLOW = 6000;
 
-const spawned: ChildProcess[] = [];
-afterAll(() => {
-  for (const child of spawned) child.kill('SIGKILL');
-});
+afterAll(killSpawned);
 
 async function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -30,9 +28,11 @@ async function freePort(): Promise<number> {
 
 function listener(port: number, ...tail: string[]): ChildProcess {
   // node -e <code> <port> vite preview: argv reads like a leftover `vite preview` for this checkout
-  const child = spawn(process.execPath, ['-e', LISTEN, String(port), ...tail], { stdio: 'ignore' });
-  spawned.push(child);
-  return child;
+  return spawnTracked(process.execPath, ['-e', LISTEN, String(port), ...tail]);
+}
+
+function startGuard(port: number): ChildProcess {
+  return spawnTracked(process.execPath, ['scripts/preview-guard.mjs', String(port), '--', process.execPath, '-e', LISTEN, String(port)]);
 }
 
 async function until(check: () => boolean, ms = SLOW): Promise<boolean> {
@@ -47,19 +47,19 @@ async function until(check: () => boolean, ms = SLOW): Promise<boolean> {
 const listening = (port: number) => findListenerPids(port).length > 0;
 const exited = (child: ChildProcess) => child.exitCode !== null || child.signalCode !== null;
 
-describeFeature(feature, ({ Scenario }) => {
+describeFeature(feature, ({ Scenario, AfterEachScenario }) => {
+  AfterEachScenario(killSpawned);
+
   Scenario('AC-1: a leftover vite preview from this checkout on the preview port is stopped, then the server starts', ({ Given, When, Then, And }) => {
     let port = 0;
     let leftover: ChildProcess;
-    let guard: ChildProcess;
     Given('a leftover "vite preview" from this checkout is listening on the preview port', async () => {
       port = await freePort();
       leftover = listener(port, 'vite', 'preview');
       expect(await until(() => listening(port))).toBe(true);
     });
     When('the guard starts the preview server for that port', () => {
-      guard = spawn(process.execPath, ['scripts/preview-guard.mjs', String(port), '--', process.execPath, '-e', LISTEN, String(port)], { stdio: 'ignore' });
-      spawned.push(guard);
+      startGuard(port);
     });
     Then('the leftover is gone', async () => {
       expect(await until(() => exited(leftover))).toBe(true);
@@ -96,8 +96,7 @@ describeFeature(feature, ({ Scenario }) => {
     let guard: ChildProcess;
     Given('the guard is running the preview server on the preview port', async () => {
       port = await freePort();
-      guard = spawn(process.execPath, ['scripts/preview-guard.mjs', String(port), '--', process.execPath, '-e', LISTEN, String(port)], { stdio: 'ignore' });
-      spawned.push(guard);
+      guard = startGuard(port);
       expect(await until(() => listening(port))).toBe(true);
     });
     When('the run ends', async () => {
@@ -115,13 +114,27 @@ describeFeature(feature, ({ Scenario }) => {
     let guard: ChildProcess;
     Given('the guard is running the preview server on the preview port', async () => {
       port = await freePort();
-      guard = spawn(process.execPath, ['scripts/preview-guard.mjs', String(port), '--', process.execPath, '-e', LISTEN, String(port)], { stdio: 'ignore' });
-      spawned.push(guard);
+      guard = startGuard(port);
       expect(await until(() => listening(port))).toBe(true);
     });
     When('the run is interrupted with Ctrl+C', async () => {
       guard.kill('SIGINT');
       expect(await until(() => exited(guard))).toBe(true);
+    });
+    Then('nothing listens on the preview port', async () => {
+      expect(await until(() => !listening(port))).toBe(true);
+    });
+  });
+
+  Scenario('AC-3: the steps leave no listener behind when they clean up (mw-gq6.489)', ({ Given, When, Then }) => {
+    let port = 0;
+    Given('the guard is running the preview server on the preview port', async () => {
+      port = await freePort();
+      startGuard(port);
+      expect(await until(() => listening(port))).toBe(true);
+    });
+    When('the steps clean up the processes they started', () => {
+      killSpawned();
     });
     Then('nothing listens on the preview port', async () => {
       expect(await until(() => !listening(port))).toBe(true);

@@ -7,7 +7,8 @@ import { afterAll, beforeAll, expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
 
 const run = promisify(execFile);
@@ -62,11 +63,9 @@ beforeAll(() => bothBuilds(), 280_000);
 
 const bytes = (b: Built, file: string) => readFileSync(path.join(b.dir, 'assets', file), 'utf-8');
 
-describeFeature(feature, ({ Scenario, AfterAllScenarios }) => {
-  AfterAllScenarios(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-  afterAll(() => rmSync(tmp, { recursive: true, force: true }));
+describeFeature(feature, ({ Scenario }) => {
+  // Two dist/ trees: on a loaded host a synchronous delete outran the default 10 s hook timeout and failed the gate.
+  afterAll(() => rm(tmp, { recursive: true, force: true }), 120_000);
 
   Scenario('AC-1: two builds of the same commit at different times give the same main chunk and the same library chunk', ({ Given, Then, And, But }) => {
     Given('the app is built at one time and again at another time from the same code', async () => {

@@ -147,11 +147,13 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       expect(getDbTrouble()).toBe('blocked');
     });
     When('the other window lets go and Try again is tapped', async () => {
+      // The old window lets go as the tap reloads: closed before the tap, the blocked open completes on its own and
+      // under load the door can replace Try again before the click lands, so reloadPage is never called.
       vi.mocked(reloadPage).mockImplementation(() => {
+        older.close();
         cleanup();
         openApp();
       });
-      older.close();
       await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     });
     Then('the app is on its door, no longer on Loading', async () => {

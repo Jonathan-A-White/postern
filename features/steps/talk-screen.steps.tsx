@@ -4,6 +4,7 @@
 // and the Channels tab and button that lead to it.
 import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi, type MockInstance } from 'vitest';
 import type { FakeUtterance as Utterance } from 'bsv-kit/testing/speech';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -1809,6 +1810,56 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the call field is gone', () => {
       expect(screen.queryByRole('textbox', { name: 'What to tell the Mayor' })).not.toBeInTheDocument();
+    });
+  });
+  // mw-gq6.464: the call field keeps a long paste whole; past 500 it counts in red and Send is off with the reason.
+  Scenario('mw-gq6.464 AC-3: a call request pasted past 500 characters is kept whole, counted in red, and Send is off with the reason', ({ Given, When, Then, And }) => {
+    const pasted = Array.from({ length: 620 }, (_, i) => 'abcdefghij'[i % 10]).join('');
+    const callField = () => screen.getByRole('textbox', { name: 'What to tell the Mayor' });
+    const sendButton = () => within(screen.getByTestId('call-me-form')).getByRole('button', { name: 'Send' });
+    Given('the time is 14:05 and the Talk line is open with a believable speech recogniser', async () => {
+      clock.at = at1405 * 1000;
+      await lineOpen();
+      setKey(new Uint8Array(32));
+    });
+    When('he taps the {string} button', async (_c, name: string) => {
+      fireEvent.click(await talkButton(name));
+    });
+    And('he clears the call field and pastes {int} characters into it', async (_c, count: number) => {
+      const field = await screen.findByRole('textbox', { name: 'What to tell the Mayor' });
+      await userEvent.clear(field);
+      await userEvent.paste(pasted.slice(0, count));
+    });
+    Then('the call field holds all {int} characters', async (_c, count: number) => {
+      await waitFor(() => expect(callField()).toHaveValue(pasted.slice(0, count)));
+    });
+    And('under it a red line reads {string}', async (_c, words: string) => {
+      await waitFor(() => expect(screen.getByTestId('call-length')).toHaveTextContent(words));
+      expect(screen.getByTestId('call-length')).toHaveClass('text-danger');
+    });
+    And('the {string} button is off and says why', async (_c, name: string) => {
+      const button = within(screen.getByTestId('call-me-form')).getByRole('button', { name });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAccessibleDescription(/the call request is too long to send\. Shorten it; nothing has been cut\./);
+    });
+    When('he deletes the last {int} characters', (_c, count: number) => {
+      const field = callField() as HTMLInputElement;
+      fireEvent.change(field, { target: { value: field.value.slice(0, field.value.length - count) } });
+    });
+    Then('the line under it turns grey and reads {string}', async (_c, words: string) => {
+      await waitFor(() => expect(screen.getByTestId('call-length')).toHaveTextContent(new RegExp(`^${words}$`)));
+      expect(screen.getByTestId('call-length')).not.toHaveClass('text-danger');
+    });
+    And('the {string} button is on again', async (_c, name: string) => {
+      await waitFor(() => expect(within(screen.getByTestId('call-me-form')).getByRole('button', { name })).toBeEnabled());
+      expect(sendButton()).not.toHaveAccessibleDescription(/too long/);
+    });
+    When('he then taps the {string} button', (_c, name: string) => {
+      fireEvent.click(within(screen.getByTestId('call-me-form')).getByRole('button', { name }));
+    });
+    Then('one call request with all {int} characters was sent', async (_c, count: number) => {
+      await waitFor(() => expect(sendCallRequest).toHaveBeenCalledTimes(1));
+      expect(sendCallRequest).toHaveBeenCalledWith(pasted.slice(0, count), at1405);
     });
   });
   // mw-am3yjh.1: the open talk is rebuilt from its stored rows.

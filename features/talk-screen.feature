@@ -490,6 +490,20 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the call went to WhatsOnChain as one broadcast
     And the call field is gone
 
+  # mw-gq6.464: a long paste into the call field is kept whole, never cut at a maxLength.
+  Scenario: mw-gq6.464 AC-3: a call request pasted past 500 characters is kept whole, counted in red, and Send is off with the reason
+    Given the time is 14:05 and the Talk line is open with a believable speech recogniser
+    When he taps the "Call me" button
+    And he clears the call field and pastes 620 characters into it
+    Then the call field holds all 620 characters
+    And under it a red line reads "620 of 500: the call request is too long to send. Shorten it; nothing has been cut."
+    And the "Send" button is off and says why
+    When he deletes the last 140 characters
+    Then the line under it turns grey and reads "480 of 500"
+    And the "Send" button is on again
+    When he then taps the "Send" button
+    Then one call request with all 480 characters was sent
+
   # mw-a0ih0.3: the Mayor's ring.
   Scenario: AC-4: a ring shows the Mayor's reason (mw-a0ih0.3)
     Given the Mayor rang at 14:06 saying "Back now: two landings." and the Talk line is opened from its Answer tap

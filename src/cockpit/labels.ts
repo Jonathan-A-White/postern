@@ -2,6 +2,7 @@
 // need and each bead type, in one place so every screen says the same thing.
 import type { IconName, Tone } from '../ui';
 import type { NeedKind } from '../model/view';
+import { isIced } from '../model/tree';
 
 export const NEED_META: Record<NeedKind, { label: string; icon: IconName; tone: Tone; verb: string }> = {
   question: { label: 'Question', icon: 'talk', tone: 'needs', verb: 'The Mayor asks' },
@@ -39,7 +40,8 @@ export function priorityTone(priority: number): Tone {
   return priority <= 0 ? 'danger' : priority === 1 ? 'needs' : 'neutral';
 }
 
-export function statusWord(status: string): string {
+export function statusWord(status: string, labels: string[] = []): string {
+  if (isIced({ labels })) return 'Iced';
   switch (status) {
     case 'in_progress':
       return 'In progress';

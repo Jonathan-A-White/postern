@@ -15,7 +15,7 @@ import { twinsToDrop } from './twins';
 export type Speaker = 'you' | 'mayor' | 'builder' | 'factory' | 'other';
 
 export interface GovernorAction {
-  action: 'release' | 'hold' | 'priority' | 'verified' | 'run' | string;
+  action: 'release' | 'hold' | 'thaw' | 'priority' | 'verified' | 'run' | string;
   /** The bead it is on; a todo_add names a `list` instead and has none. */
   bead?: string;
   priority?: number;
@@ -118,6 +118,8 @@ export function describeAction(action: GovernorAction): string {
       return `Released ${action.bead}`;
     case 'hold':
       return `Held ${action.bead}`;
+    case 'thaw':
+      return `Thawed ${action.bead}`;
     case 'priority':
       return `Set ${action.bead} to P${action.priority ?? '?'}`;
     case 'verified':

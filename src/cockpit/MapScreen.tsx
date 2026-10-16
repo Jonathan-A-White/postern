@@ -13,7 +13,7 @@ import { Graph } from './Graph';
 import { FilterBar } from './FilterBar';
 import { loadSavedFilters } from './savedFilters';
 import { useBeadDetail, useViewIndex, useWide } from './hooks';
-import { ancestors, BUCKETS, bucketOf, epicStats, isEpic, isMap, splitTopLevel, type Bucket, type ViewIndex } from '../model/tree';
+import { ancestors, BUCKETS, bucketOf, epicStats, isEpic, isIced, isMap, releasableHeld, splitTopLevel, type Bucket, type ViewIndex } from '../model/tree';
 import { EMPTY_FILTER, facets, isEmptyFilter, matchesFilter, newestFirst, type BeadFilter } from '../model/filter';
 import type { ViewBead } from '../model/view';
 import { beadHref, formatRoute, type MapLens } from '../nav/route';
@@ -77,6 +77,27 @@ function List({ beads, index }: { beads: ViewBead[]; index: ViewIndex }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** An epic's iced beads folded into one closed row, 'Icebox (n)', that opens to list them. */
+function Icebox({ beads, index }: { beads: ViewBead[]; index: ViewIndex }) {
+  const [open, setOpen] = useState(false);
+  if (beads.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-2" aria-label="Icebox">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+        className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-left text-sm text-muted hover:border-line-strong"
+      >
+        <Icon name="hold" size={16} />
+        <span className="flex-1">Icebox ({beads.length})</span>
+        <Icon name={open ? 'down' : 'forward'} size={15} />
+      </button>
+      {open && <List beads={newestFirst(beads)} index={index} />}
+    </section>
   );
 }
 
@@ -172,11 +193,13 @@ function EpicLevel({ epic, index, lens, filter, setFilter }: { epic: ViewBead; i
   const { busy } = useSend();
   const release = useOneTap(epic.id, 'release');
   const children = index.children.get(epic.id) ?? [];
-  const childEpics = children.filter((bead) => isEpic(bead, index));
-  const work = children.filter((bead) => !isEpic(bead, index) && matchesFilter(bead, index, filter));
+  // Iced beads leave the board, graph and list for one Icebox row.
+  const iced = children.filter((bead) => isIced(bead) && matchesFilter(bead, index, filter));
+  const childEpics = children.filter((bead) => isEpic(bead, index) && !isIced(bead));
+  const work = children.filter((bead) => !isEpic(bead, index) && !isIced(bead) && matchesFilter(bead, index, filter));
   const stats = epicStats(epic.id, index);
   const { rigs, hosts } = useMemo(() => facets(index), [index]);
-  const held = stats.counts.held;
+  const held = releasableHeld(epic.id, index);
   const setLens = (next: MapLens) => navigate(formatRoute({ view: 'map', focus: epic.id, lens: next }), { replace: true });
 
   return (
@@ -246,7 +269,7 @@ function EpicLevel({ epic, index, lens, filter, setFilter }: { epic: ViewBead; i
         </div>
         <FilterBar filter={filter} onChange={setFilter} rigs={rigs} hosts={hosts} placeholder="Filter this epic…" />
         {work.length === 0 ? (
-          <EmptyState icon="board" title={children.length ? 'Nothing matches' : 'No work filed yet'} />
+          iced.length === 0 && <EmptyState icon="board" title={children.length ? 'Nothing matches' : 'No work filed yet'} />
         ) : lens === 'graph' ? (
           <Graph beads={work} index={index} />
         ) : lens === 'list' ? (
@@ -254,6 +277,7 @@ function EpicLevel({ epic, index, lens, filter, setFilter }: { epic: ViewBead; i
         ) : (
           <Board beads={work} index={index} />
         )}
+        <Icebox beads={iced} index={index} />
       </section>
     </div>
   );

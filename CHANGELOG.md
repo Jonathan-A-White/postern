@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.7.1
+_2026-10-16_
+- New: Every message on the Talk line, yours and the Mayor's, now has a Share button to copy it or send it on.
+
 ## 0.7.0
 _2026-10-16_
 - New: To do now opens on the few things worth doing right now, with everything else folded away under Later and the cards the pass let go under Let go, each with Keep or Drop.

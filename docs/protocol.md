@@ -960,9 +960,9 @@ drag with a mouse; the keyboard's way is **Move up**, **Move down** and **Move t
 keys on the focused card. Each drop is one `todo_move` naming the card it landed before (or after, at a list's foot)
 and, for another list, that list.
 
-### A To do card's notes: the Open:, Text: and Email: lines (how the Mayor files them)
+### A To do card's notes: the Open:, Text:, Email: and When: lines (how the Mayor files them)
 
-A card's notes are the bead's description (Markdown, shown whole on the card's back). Three kinds of line in them put
+A card's notes are the bead's description (Markdown, shown whole on the card's back). Four kinds of line in them put
 a control on the card's front, under its title (`src/todo/links.ts` reads each; a line may be a list item, a quote or
 have its word in bold, as `- **Text:** ...`). Anywhere in the notes; the view's 280-rune `summary` is enough when they
 are near the top, and the board reads the whole notes when it may have been cut.
@@ -1047,6 +1047,21 @@ are near the top, and the board reads the whole notes when it may have been cut.
 
   The card shows an **Email Luke** button; a tap opens his mail app to `luke@example.com` with that subject and the
   two-line draft in the message box.
+
+- **`When:`** (mw-ev7oyy.32): a time to put on his calendar. One per card (the first counts):
+
+  ```
+  When: 2026-10-23 07:30 (his local time)
+  When: 2026-10-23 07:30-08:15
+  ```
+
+  `YYYY-MM-DD HH:MM`, the `(his local time)` after it optional, an end `-HH:MM` (the same day, after the start)
+  optional; with no end the entry runs 30 minutes. The card shows **Add to Google Calendar** (a
+  `calendar.google.com/calendar/render?action=TEMPLATE` link, in a new tab) and **Download .ics** (a `text/calendar`
+  file). Both are in floating local time (no `Z`, no zone), so the entry lands at that wall-clock time in his own
+  calendar; the title is the card's, and the details/description hold the bead id and the card's Postern link. The
+  same two taps are on the card's back. A `When:` line that is not a real date and time gives neither tap and a
+  one-line note on the card.
 
 ## 14. Voice notes, files and transcripts
 

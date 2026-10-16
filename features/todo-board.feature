@@ -334,3 +334,36 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     And the card "mw-list.1" has long notes, longer than the view's summary, ending "Audible: B0CC36V9KG"
     When the To do tab opens
     Then the Listen in Audible button opens Audible's link for the book "B0CC36V9KG" in a new tab
+
+  Scenario: mw-ev7oyy.32 AC-1: a card whose notes have a When: line shows Add to Google Calendar and Download .ics, in floating local time
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Get it done.\n\nWhen: 2026-10-23 07:30 (his local time)"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows the calendar taps "Add to Google Calendar" then "Download .ics" under its title
+    And the Add to Google Calendar tap opens Google's new event for "Title of mw-list.1" from "20261023T073000" to "20261023T080000" naming the bead "mw-list.1" in a new tab
+    And the Download .ics tap saves "mw-list.1.ics" as a calendar from "20261023T073000" to "20261023T080000" titled "Title of mw-list.1" naming the bead "mw-list.1"
+
+  Scenario: mw-ev7oyy.32 AC-1: a card with no When: line shows neither calendar tap
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Just do it. Call him when: it suits."
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows no calendar taps and no note about a When: line
+
+  Scenario: mw-ev7oyy.32 AC-3: a When: line with a bad date shows neither calendar tap and a one-line note
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "When: 2026-02-30 07:30"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows no calendar taps but a note that the When: line did not read
+
+  Scenario: mw-ev7oyy.32 AC-4: the back of the card shows the same two calendar taps
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "When: 2026-10-23 07:30-08:15"
+    When the To do tab opens
+    And he taps the card "Title of mw-list.1"
+    Then the back of the card shows the calendar taps "Add to Google Calendar" then "Download .ics", the first ending at "20261023T081500"
+
+  Scenario: mw-ev7oyy.32 AC-4: a When: line past the view's short summary of the notes still shows its calendar taps
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has long notes, longer than the view's summary, ending "When: 2026-10-23 07:30"
+    When the To do tab opens
+    Then the Add to Google Calendar tap opens Google's new event for "Title of mw-list.1" from "20261023T073000" to "20261023T080000" naming the bead "mw-list.1" in a new tab

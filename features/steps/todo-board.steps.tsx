@@ -984,4 +984,89 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       await waitFor(async () => expect((await listenParams()).url.searchParams.get('asin')).toBe(asin));
     });
   });
+
+  // mw-ev7oyy.32: Add to Google Calendar and Download .ics on a card, from the When: line of its notes.
+  const calendarTap = (el: HTMLElement) => within(el).queryByTestId('card-calendar');
+  const icsTap = (el: HTMLElement) => within(el).queryByTestId('card-ics');
+  const googleOpens = async (_c: unknown, name: string, start: string, end: string, id: string) => {
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: 'Add to Google Calendar' });
+      const url = new URL(link.getAttribute('href') ?? '');
+      expect(url.origin + url.pathname).toBe('https://calendar.google.com/calendar/render');
+      expect(url.searchParams.get('action')).toBe('TEMPLATE');
+      expect(url.searchParams.get('text')).toBe(name);
+      expect(url.searchParams.get('dates')).toBe(`${start}/${end}`);
+      expect(url.searchParams.get('details')).toContain(id);
+      expect(url.searchParams.get('details')).toContain(`${window.location.origin}/?v=bead&id=${id}`);
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+  };
+  const icsSaves = async (_c: unknown, file: string, start: string, end: string, name: string, id: string) => {
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: 'Download .ics' });
+      expect(link).toHaveAttribute('download', file);
+      const href = link.getAttribute('href') ?? '';
+      expect(href.startsWith('data:text/calendar')).toBe(true);
+      const lines = decodeURIComponent(href.slice(href.indexOf(',') + 1)).split('\r\n');
+      expect(lines).toContain(`DTSTART:${start}`);
+      expect(lines).toContain(`DTEND:${end}`);
+      expect(lines).toContain(`SUMMARY:${name}`);
+      expect(lines.find((line) => line.startsWith('DESCRIPTION:'))).toContain(id);
+    });
+  };
+  Scenario('mw-ev7oyy.32 AC-1: a card whose notes have a When: line shows Add to Google Calendar and Download .ics, in floating local time', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows the calendar taps {string} then {string} under its title', async (_c, name: string, first: string, second: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(calendarTap(el)).not.toBeNull());
+      const links = within(el).getAllByRole('link');
+      expect(links.map((link) => link.textContent)).toEqual([first, second]);
+      const order = Array.from(el.querySelectorAll('button, a')).map((node) => node.textContent);
+      expect(order.indexOf(first)).toBeGreaterThan(order.findIndex((text) => text?.startsWith('Title of')));
+    });
+    And("the Add to Google Calendar tap opens Google's new event for {string} from {string} to {string} naming the bead {string} in a new tab", googleOpens);
+    And('the Download .ics tap saves {string} as a calendar from {string} to {string} titled {string} naming the bead {string}', icsSaves);
+  });
+  Scenario('mw-ev7oyy.32 AC-1: a card with no When: line shows neither calendar tap', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows no calendar taps and no note about a When: line', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      expect(calendarTap(el)).toBeNull();
+      expect(icsTap(el)).toBeNull();
+      expect(within(el).queryByTestId('card-when-note')).toBeNull();
+    });
+  });
+  Scenario('mw-ev7oyy.32 AC-3: a When: line with a bad date shows neither calendar tap and a one-line note', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows no calendar taps but a note that the When: line did not read', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(within(el).getByTestId('card-when-note')).toHaveTextContent(/When: line did not read/));
+      expect(calendarTap(el)).toBeNull();
+      expect(icsTap(el)).toBeNull();
+    });
+  });
+  Scenario('mw-ev7oyy.32 AC-4: the back of the card shows the same two calendar taps', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    And('he taps the card {string}', tapCard);
+    Then('the back of the card shows the calendar taps {string} then {string}, the first ending at {string}', async (_c, first: string, second: string, end: string) => {
+      const back = await screen.findByRole('group', { name: 'Back of Title of mw-list.1' });
+      await waitFor(() => expect(calendarTap(back)).not.toBeNull());
+      expect(within(back).getAllByRole('link').filter((link) => link.dataset.testid === 'card-calendar' || link.dataset.testid === 'card-ics').map((link) => link.textContent)).toEqual([first, second]);
+      expect(new URL(calendarTap(back)!.getAttribute('href') ?? '').searchParams.get('dates')).toBe(`20261023T073000/${end}`);
+    });
+  });
+  Scenario("mw-ev7oyy.32 AC-4: a When: line past the view's short summary of the notes still shows its calendar taps", ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And("the card {string} has long notes, longer than the view's summary, ending {string}", longNotesEnding);
+    When('the To do tab opens', tabOpens);
+    Then("the Add to Google Calendar tap opens Google's new event for {string} from {string} to {string} naming the bead {string} in a new tab", googleOpens);
+  });
 });

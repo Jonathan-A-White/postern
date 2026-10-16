@@ -4,6 +4,7 @@ import { BEAD_ID, WORD_CHAR } from '../markdown/beadLinks';
 import { isClosed, type ViewIndex } from '../model/tree';
 import type { ViewBead } from '../model/view';
 import { dayKey, dueMs, isDueSoon } from './due';
+import { parseWhen, type When } from './calendar';
 import { parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
 
 export const TODO_LABEL = 'hitl:todo';
@@ -39,6 +40,8 @@ export interface TodoCard {
   email?: EmailAction;
   /** The Audible book (and chapter) of its notes, when the view's summary holds them whole (not cut short): its Listen in Audible button (mw-ev7oyy.24). */
   listen?: ListenAction;
+  /** The 'When:' line of its notes, when the view's summary holds it whole (not cut short): its Add to Google Calendar and Download .ics taps, or a note that the line did not read (mw-ev7oyy.32). */
+  when?: When;
   /** The view's summary of the notes may have been cut short: the notes themselves may hold more links. */
   summaryCut?: boolean;
   /** The row the pass put it in (the bead's todo_row), absent before the pass has run on it (mw-ht6gsw.5). */
@@ -165,7 +168,8 @@ function cardOf(bead: ViewBead): TodoCard {
   const text = cut ? undefined : parseTextAction(bead.summary);
   const email = cut ? undefined : parseEmailAction(bead.summary);
   const listen = cut ? undefined : parseListenAction(bead.summary);
-  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(bead.todo_row ? { row: bead.todo_row } : {}), ...(bead.todo_row_why ? { rowWhy: bead.todo_row_why } : {}), ...(bead.todo_size ? { size: bead.todo_size } : {}), ...(bead.todo_then ? { then: bead.todo_then } : {}), ...(links.length ? { links } : {}), ...(text ? { text } : {}), ...(email ? { email } : {}), ...(listen ? { listen } : {}), ...(cut ? { summaryCut: true } : {}) };
+  const when = cut ? undefined : parseWhen(bead.summary);
+  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(bead.todo_row ? { row: bead.todo_row } : {}), ...(bead.todo_row_why ? { rowWhy: bead.todo_row_why } : {}), ...(bead.todo_size ? { size: bead.todo_size } : {}), ...(bead.todo_then ? { then: bead.todo_then } : {}), ...(links.length ? { links } : {}), ...(text ? { text } : {}), ...(email ? { email } : {}), ...(listen ? { listen } : {}), ...(when ? { when } : {}), ...(cut ? { summaryCut: true } : {}) };
 }
 
 /** The open hitl:todo beads of the view grouped under their parent epic: newest list first, Other last,

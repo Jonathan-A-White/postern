@@ -8,7 +8,8 @@
 // (mw-ev7oyy.7). A card is one compact row (mw-ev7oyy.14): a small round check at its left for Done, the title, then its due
 // time and chips; a list's header is its short name. A list's cards are grouped Today, Soon and Someday (mw-ev7oyy.16; lists.ts groupCards): Today is
 // open, the others folded to their count and opened with a tap, each list's choice kept on the phone (kept.ts); a card's back can tap it into Today for today. A card whose notes have an 'Open:' line shows a chip per link under its title, a tap opening the
-// link and nothing else (mw-ev7oyy.12; links.ts says what each is). Draws only what a TodoStore gives it.
+// link and nothing else (mw-ev7oyy.12; links.ts says what each is); one with a 'Text:' line shows a Text button first, which opens his
+// texting app to the person with the message filled in (mw-ev7oyy.22). Draws only what a TodoStore gives it.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Button, Chip, EmptyState, Icon, IconButton, Spinner, cx } from '../ui';
 import { useNow } from '../ui/useNow';
@@ -18,7 +19,7 @@ import { beadHref } from '../nav/route';
 import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
 import { moveFor, realIndex } from './edits';
 import { isGroupOpen, keepGroupOpen, readGroupsOpen, type GroupsOpen } from './kept';
-import { linkProps, parseOpenLinks, type OpenLink } from './links';
+import { linkProps, parseOpenLinks, parseTextAction, textHref, textLabel, type OpenLink, type TextAction } from './links';
 import { beadsNamed, groupCounts, type TodoCard, type TodoGroup, type TodoList } from './lists';
 import { usePosternTodoStore } from './posternStore';
 import type { TodoDone, TodoStore } from './store';
@@ -132,11 +133,23 @@ function DueField({ card, onSet }: { card: TodoCard; onSet: (due: string) => voi
   );
 }
 
-/** A card's links as chips under its title: each an anchor that opens the app it names (links.ts says how), named 'Open in <its text>' for a screen reader. */
-function LinkChips({ links }: { links: OpenLink[] }) {
-  if (links.length === 0) return null;
+/** A card's links as chips under its title: each an anchor that opens the app it names (links.ts says how), named 'Open in <its text>' for a screen reader.
+ * A text action comes first, as a Text button that says who a tap texts: an sms: link, opened in this tab so Android hands it to his texting app. */
+function LinkChips({ links, text }: { links: OpenLink[]; text?: TextAction }) {
+  if (links.length === 0 && !text) return null;
   return (
     <div data-nodrag data-testid="card-links" className="mt-1 flex flex-wrap gap-1.5">
+      {text && (
+        <a
+          data-testid="card-text"
+          data-kind="text"
+          href={textHref(text)}
+          className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-md border border-accent/60 bg-accent/15 px-2 text-[12px] font-medium text-fg no-underline"
+        >
+          <Icon name="talk" size={12} className="shrink-0" />
+          <span className="min-w-0 truncate">{textLabel(text)}</span>
+        </a>
+      )}
       {links.map((link, at) => (
         <a
           key={`${at}|${link.url}`}
@@ -152,14 +165,15 @@ function LinkChips({ links }: { links: OpenLink[] }) {
   );
 }
 
-/** The chips of a card whose view summary may be cut short: the whole notes, once the store has them, decide (the summary's links stand in until then). */
+/** The chips of a card whose view summary may be cut short: the whole notes, once the store has them, decide (the summary's links stand in until then;
+ * the Text button waits for them, as a cut summary may have cut its draft). */
 function FullNotesChips({ store, card }: { store: TodoStore; card: TodoCard }) {
   const back = store.useBack(card.id);
-  return <LinkChips links={back.status === 'ready' ? parseOpenLinks(back.description) : (card.links ?? [])} />;
+  return back.status === 'ready' ? <LinkChips links={parseOpenLinks(back.description)} text={parseTextAction(back.description)} /> : <LinkChips links={card.links ?? []} />;
 }
 
 function CardLinks({ store, card }: { store: TodoStore; card: TodoCard }) {
-  return card.summaryCut ? <FullNotesChips store={store} card={card} /> : <LinkChips links={card.links ?? []} />;
+  return card.summaryCut ? <FullNotesChips store={store} card={card} /> : <LinkChips links={card.links ?? []} text={card.text} />;
 }
 
 /** The back's Done: a labelled button, as it was before the card's front became one row. */

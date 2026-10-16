@@ -627,6 +627,65 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     When('the To do tab opens', tabOpens);
     Then('the chip {string} opens {string} in the same tab', chipOpens(null));
   });
+  // mw-ev7oyy.22: a Text button on a card's front, from the Text: line of its notes.
+  const textButton = (el: HTMLElement) => within(el).queryByTestId('card-text');
+  const textOpens = async (_c: unknown, name: string, href: string) => {
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name });
+      expect(link).toHaveAttribute('data-testid', 'card-text');
+      expect(link).toHaveAttribute('href', href);
+      expect(link).not.toHaveAttribute('target');
+    });
+  };
+
+  Scenario('mw-ev7oyy.22 AC-1: a card whose notes have a Text: line shows a Text button that opens his texting app to the person with the message filled in', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows a Text button named {string} under its title', async (_c, name: string, button: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(textButton(el)).toHaveTextContent(button));
+      expect(within(el).getByRole('link', { name: button })).toBe(textButton(el));
+      const order = Array.from(el.querySelectorAll('button, a')).map((node) => node.textContent);
+      expect(order.indexOf(button)).toBeGreaterThan(order.findIndex((text) => text?.startsWith('Title of')));
+    });
+    And('the Text button {string} opens {string} in the same tab', textOpens);
+    When('he taps the Text button {string} on the card {string}', async (_c, button: string, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await userEvent.click(within(el).getByRole('link', { name: button }));
+    });
+    Then('the card {string} is still on its front, not done, with nothing waiting in the outbox', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      expect(screen.queryByRole('group', { name: /^Back of/ })).toBeNull();
+      expect(within(el).getByRole('button', { name: DONE })).toBeEnabled();
+      expect(await db.outbox.count()).toBe(0);
+    });
+  });
+
+  Scenario('mw-ev7oyy.22 AC-1: a Text: line with no number opens his texting app with the message only, for him to pick the person', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the Text button {string} opens {string} in the same tab', textOpens);
+  });
+
+  Scenario('mw-ev7oyy.22 AC-2: a card with no Text: line shows no Text button', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows the chip {string} and no Text button', async (_c, name: string, chip: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(chipsOf(el)).toEqual([chip]));
+      expect(textButton(el)).toBeNull();
+    });
+  });
+
+  Scenario("mw-ev7oyy.22 AC-1: a Text: line past the view's short summary of the notes still shows its Text button", ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And("the card {string} has long notes, longer than the view's summary, ending {string}", longNotesEnding);
+    When('the To do tab opens', tabOpens);
+    Then('the Text button {string} opens {string} in the same tab', textOpens);
+  });
   // mw-ev7oyy.14: a short list name, a one-row card with a round check, a hint shown till he has swiped once.
   const longList = (_c: unknown, id: string, epicTitle: string) => {
     beads.push(beadIn(id, { type: 'epic', labels: ['hitl'], title: epicTitle }), beadIn(`${id}.1`, { parent: id, labels: ['hitl', 'hitl:todo'] }));

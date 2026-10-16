@@ -292,3 +292,18 @@ describe('groupOf and groupCards: Today, Soon and Someday', () => {
     expect(dayKey(NOW)).toBe('2026-10-13');
   });
 });
+
+describe("a card's text action from the view's summary (mw-ev7oyy.22)", () => {
+  const cardOf = (summary: string) => listsOf([bead('mw-l', { type: 'epic' }), todo('mw-l.1', { parent: 'mw-l', summary })])[0].cards[0];
+
+  it("carries the Text: line of a whole summary", () => {
+    expect(cardOf('Ask about Saturday.\n\nText: Dad +15165550123 | Hi Dad').text).toEqual({ name: 'Dad', number: '+15165550123', draft: 'Hi Dad' });
+    expect(cardOf('No text here.').text).toBeUndefined();
+  });
+
+  it('carries none from a summary that may be cut short, whose draft may be cut too: the board reads the whole notes', () => {
+    const cut = `${'x'.repeat(250)}\n\nText: Dad +15165550123 | Hi Dad, would Saturday`;
+    expect(cardOf(cut).summaryCut).toBe(true);
+    expect(cardOf(cut).text).toBeUndefined();
+  });
+});

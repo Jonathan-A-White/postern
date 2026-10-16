@@ -278,3 +278,30 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     Then a todo_add for the list "mw-list" titled "Buy bin bags" waits in the outbox
     And the list "Title of mw-list" ends with the pending card "Buy bin bags"
 
+
+  Scenario: mw-ev7oyy.22 AC-1: a card whose notes have a Text: line shows a Text button that opens his texting app to the person with the message filled in
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Ask Dad about Saturday.\n\nText: Dad +1 516-555-0123 | Hi Dad & Mum? Saturday #1\nLove 👍"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows a Text button named "Text Dad" under its title
+    And the Text button "Text Dad" opens "sms:+15165550123?body=Hi%20Dad%20%26%20Mum%3F%20Saturday%20%231%0ALove%20%F0%9F%91%8D" in the same tab
+    When he taps the Text button "Text Dad" on the card "Title of mw-list.1"
+    Then the card "Title of mw-list.1" is still on its front, not done, with nothing waiting in the outbox
+
+  Scenario: mw-ev7oyy.22 AC-1: a Text: line with no number opens his texting app with the message only, for him to pick the person
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Text: Running late & sorry, there by 7?"
+    When the To do tab opens
+    Then the Text button "Text" opens "sms:?body=Running%20late%20%26%20sorry%2C%20there%20by%207%3F" in the same tab
+
+  Scenario: mw-ev7oyy.22 AC-2: a card with no Text: line shows no Text button
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Text Dad about Saturday.\n\nOpen: [Call Dad](tel:+15165550123)"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows the chip "Call Dad" and no Text button
+
+  Scenario: mw-ev7oyy.22 AC-1: a Text: line past the view's short summary of the notes still shows its Text button
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has long notes, longer than the view's summary, ending "Text: Dad +15165550123 | Hi Dad"
+    When the To do tab opens
+    Then the Text button "Text Dad" opens "sms:+15165550123?body=Hi%20Dad" in the same tab

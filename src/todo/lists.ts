@@ -4,7 +4,7 @@ import { BEAD_ID, WORD_CHAR } from '../markdown/beadLinks';
 import { isClosed, type ViewIndex } from '../model/tree';
 import type { ViewBead } from '../model/view';
 import { dayKey, dueDays, dueMs, isDueSoon } from './due';
-import { parseOpenLinks, type OpenLink } from './links';
+import { parseOpenLinks, parseTextAction, type OpenLink, type TextAction } from './links';
 
 export const TODO_LABEL = 'hitl:todo';
 
@@ -23,6 +23,8 @@ export interface TodoCard {
   important?: boolean;
   /** The links of the 'Open:' line of its notes, as far as the view's summary shows them; the board reads the whole notes when the summary is cut short (mw-ev7oyy.12). */
   links?: OpenLink[];
+  /** The 'Text:' line of its notes, when the view's summary holds it whole (not cut short): its Text button (mw-ev7oyy.22). */
+  text?: TextAction;
   /** The view's summary of the notes may have been cut short: the notes themselves may hold more links. */
   summaryCut?: boolean;
   /** The group the card is shown in (groupCards stamps it): Today, Soon or Someday. */
@@ -135,7 +137,10 @@ export function summaryMayBeCut(summary: string): boolean {
 
 function cardOf(bead: ViewBead): TodoCard {
   const links = openLinksOf(bead.summary);
-  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(links.length ? { links } : {}), ...(summaryMayBeCut(bead.summary) ? { summaryCut: true } : {}) };
+  const cut = summaryMayBeCut(bead.summary);
+  // a summary cut short may have cut the draft short too: the board reads the whole notes for it then
+  const text = cut ? undefined : parseTextAction(bead.summary);
+  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(links.length ? { links } : {}), ...(text ? { text } : {}), ...(cut ? { summaryCut: true } : {}) };
 }
 
 /** The open hitl:todo beads of the view grouped under their parent epic: newest list first, Other last,

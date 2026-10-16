@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.2",
+    "date": "2026-10-16",
+    "story": "mw-njb33n.6",
+    "kind": "new",
+    "text": "The Roadmap has a Picture view beside the lanes, showing every app and its epics as dots you can drag, zoom and tap to open."
+  },
+  {
     "version": "0.8.1",
     "date": "2026-10-16",
     "story": "mw-njb33n.3",

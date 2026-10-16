@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.2
+_2026-10-16_
+- New: The Roadmap has a Picture view beside the lanes, showing every app and its epics as dots you can drag, zoom and tap to open.
+
 ## 0.8.1
 _2026-10-16_
 - New: A Roadmap on the Map shows all open work in four lanes (Now, Next, Later, Icebox) by app, each app opening to its titles.

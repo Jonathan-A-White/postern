@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.40
+_2026-10-16_
+- New: a to-do with an email line has an Email button that opens your mail app to the right person with the subject and message already written.
+
 ## 0.6.39
 _2026-10-16_
 - New: iced stories now read Iced, fold into one Icebox row on their epic, and can be thawed with a tap.

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.40",
+    "date": "2026-10-16",
+    "story": "mw-ev7oyy.26",
+    "kind": "new",
+    "text": "a to-do with an email line has an Email button that opens your mail app to the right person with the subject and message already written."
+  },
+  {
     "version": "0.6.39",
     "date": "2026-10-16",
     "story": "mw-njb33n.1",

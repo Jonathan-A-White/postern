@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.6.44",
+    "date": "2026-10-16",
+    "story": "mw-ev7oyy.30",
+    "kind": "fixed",
+    "text": "A busy moment at the chain provider no longer locks a licensed key out of the backend for an hour; it is retried within half a minute."
+  },
+  {
     "version": "0.6.43",
     "date": "2026-10-16",
     "story": "mw-q6n8m0.15",

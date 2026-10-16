@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.6.44
+_2026-10-16_
+- Fixed: A busy moment at the chain provider no longer locks a licensed key out of the backend for an hour; it is retried within half a minute.
+
 ## 0.6.43
 _2026-10-16_
 - Fixed: Postern no longer gets stuck on 'Connecting…' after you come back to it; a sync that hangs is given up on and the next one goes out at once.

@@ -1,7 +1,7 @@
 // tests/unit/todo-links.test.ts — mw-ev7oyy.12: the 'Open:' line of a card's description as link chips.
 // src/todo/links.ts holds the table of link kinds; a new kind is one row there and one case in KINDS below.
 import { describe, expect, it } from 'vitest';
-import { LINK_KINDS, MAX_OPEN_LINKS, linkKind, linkOpens, linkProps, openLinksOf, parseOpenLinks } from '../../src/todo';
+import { LINK_KINDS, MAX_OPEN_LINKS, linkKind, linkOpens, linkProps, openLinkLabel, openLinkName, openLinksOf, parseOpenLinks } from '../../src/todo';
 
 const KINDLE = 'kindle://book?action=open&asin=B0C74TJ712';
 const AUDIBLE = 'https://www.audible.com/pd/B0CC36V9KG';
@@ -56,6 +56,39 @@ describe('the Open: line parser', () => {
 
   it('is what lists.ts hands a card', () => {
     expect(openLinksOf(`Open: [Kindle](${KINDLE})`)).toEqual([{ text: 'Kindle', url: KINDLE }]);
+  });
+});
+
+// mw-ev7oyy.17: the Governor's Deep Discipleship card holds an Open: line per book, and its chips read 'Kindle, Audible, Kindle, Audible'.
+describe('several Open: lines, one per book (mw-ev7oyy.17)', () => {
+  const KINDLE_2 = 'kindle://book?action=open&asin=B07ZJZ1X3K';
+  const AUDIBLE_2 = 'https://www.audible.com/pd/B07ZJYQWXR';
+  const TWO_BOOKS = `Week 5's reading.\n\nOpen: Deep Discipleship [Kindle](${KINDLE}) · [Audible](${AUDIBLE})\nOpen: **You Are a Theologian** — [Kindle](${KINDLE_2}) · [Audible](${AUDIBLE_2})`;
+
+  it('gives four chips, each label naming its book after the app, and each named for a screen reader by book and app', () => {
+    const links = parseOpenLinks(TWO_BOOKS);
+    expect(links.map((link) => link.url)).toEqual([KINDLE, AUDIBLE, KINDLE_2, AUDIBLE_2]);
+    expect(links.map(openLinkLabel)).toEqual(['Kindle · Deep Discipleship', 'Audible · Deep Discipleship', 'Kindle · You Are a Theologian', 'Audible · You Are a Theologian']);
+    expect(links.map(openLinkName)).toEqual(['Open Deep Discipleship in Kindle', 'Open Deep Discipleship in Audible', 'Open You Are a Theologian in Kindle', 'Open You Are a Theologian in Audible']);
+    expect(new Set(links.map(openLinkLabel)).size).toBe(4);
+  });
+
+  it('keeps today\'s labels for one Open: line, words before its links or not', () => {
+    for (const text of [`Open: [Kindle](${KINDLE}) · [Audible](${AUDIBLE})`, `Open: Deep Discipleship [Kindle](${KINDLE}) · [Audible](${AUDIBLE})`]) {
+      const links = parseOpenLinks(text);
+      expect(links.map(openLinkLabel)).toEqual(['Kindle', 'Audible']);
+      expect(links.map(openLinkName)).toEqual(['Open in Kindle', 'Open in Audible']);
+    }
+  });
+
+  it('names a line with nothing before its links by the link text alone, and does not count a line with no chip of its own', () => {
+    const links = parseOpenLinks(`Open: [Deep Discipleship on Kindle](${KINDLE})\nOpen: Theologian: [Kindle](${KINDLE_2})`);
+    expect(links.map(openLinkLabel)).toEqual(['Deep Discipleship on Kindle', 'Kindle · Theologian']);
+    expect(parseOpenLinks(`Open: Deep Discipleship [Kindle](${KINDLE})\nOpen: nothing here https://bare.example/`).map(openLinkLabel)).toEqual(['Kindle']);
+  });
+
+  it('is what lists.ts hands a card', () => {
+    expect(openLinksOf(TWO_BOOKS).map(openLinkLabel)).toEqual(parseOpenLinks(TWO_BOOKS).map(openLinkLabel));
   });
 });
 

@@ -176,8 +176,8 @@ const THINKING = 'The Mayor is thinking…';
 /** Said while the Mayor's answer waits paused (by Pause, a hold or the page going hidden) for Resume. */
 const PAUSED = 'The answer is paused.';
 
-/** What the big button says a hold will do (or why it cannot be held now). */
-function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean): string {
+/** What the big button says a hold will do (or why it cannot be held now); after a hold that ended with a message it says Try again. */
+function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean, holdFailed: boolean): string {
   if (!supported) return 'Hold to talk';
   switch (phase) {
     case 'listening':
@@ -187,7 +187,7 @@ function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean): st
     case 'waiting':
       return 'Waiting for the Mayor…';
     default:
-      return 'Hold to talk';
+      return holdFailed ? 'Try again' : 'Hold to talk';
   }
 }
 
@@ -494,7 +494,7 @@ export function TalkLineScreen() {
   const listening = line.phase === 'listening';
   const dead = !talk.supported || line.phase === 'sending' || line.phase === 'waiting';
   const micOpen = talk.mic === 'ready';
-  const label = buttonLabel(line.phase, talk.supported, micOpen);
+  const label = buttonLabel(line.phase, talk.supported, micOpen, talk.holdFailed);
   const [calling, setCalling] = useState(false);
   // Ideas only was on when the request went: 'Recorded for after 21:00', shown and said (the turns do the same).
   const [callRecorded, setCallRecorded] = useState<string>();

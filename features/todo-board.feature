@@ -313,3 +313,43 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     When the To do tab opens
     Then the card "Title of mw-list.1" shows a Text button named "Text Dad" under its title
     And the Text button "Text Dad" opens "intent:?body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.sms_body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F;S.browser_fallback_url=sms%3A%3Fbody%3DHi%2520Dad%252C%2520would%2520Saturday%2520suit%2520you%253F;end" in the same tab
+
+  Scenario: mw-ev7oyy.24 AC-1: a card whose notes have an Audible: line shows a Listen in Audible button that opens the book in the Audible app
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Read this.\n\nAudible: B0CC36V9KG"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows a Listen in Audible button under its title
+    And the Listen in Audible button opens Audible's link for the book "B0CC36V9KG" in a new tab
+    When he taps the Listen in Audible button on the card "Title of mw-list.1"
+    Then the card "Title of mw-list.1" is still on its front, not done, with nothing waiting in the outbox
+
+  Scenario: mw-ev7oyy.24 AC-1: a card whose notes link to audible.com/pd/ shows a Listen in Audible button, and one without shows none
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Deep discipleship.\n\nOpen: [Audible](https://www.audible.com/pd/B0CC36V9KG)"
+    And the card "mw-list.2" also has the notes "Open: [Call Dad](tel:+15165550123)"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows the chips "Audible" under its title
+    And the Listen in Audible button opens Audible's link for the book "B0CC36V9KG" in a new tab
+    And the card "Title of mw-list.2" shows no Listen in Audible button
+
+  Scenario: mw-ev7oyy.24 AC-4: a Listen: Luke 15 line opens The Word of Promise at the start of the chapter, stamped with the time of the tap
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Listen: Luke 15"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows a Listen in Audible button under its title
+    And the Listen in Audible button opens The Word of Promise "B003UC45I8" at 300423039 milliseconds
+    When he taps the Listen in Audible button on the card "Title of mw-list.1"
+    Then the Listen in Audible link carries the time of the tap
+
+  Scenario: mw-ev7oyy.24 AC-5: a Listen: line names a chapter of any Audible book, opened at its start
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has the notes "Audible: B0CC36V9KG single\nListen: You Are a Theologian ch 6 | 7733124"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows a Listen in Audible button under its title
+    And the Listen in Audible button opens the single-part book "B0CC36V9KG" at 7733124 milliseconds
+
+  Scenario: mw-ev7oyy.24 AC-1: an Audible: line past the view's short summary of the notes still shows its button
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the card "mw-list.1" has long notes, longer than the view's summary, ending "Audible: B0CC36V9KG"
+    When the To do tab opens
+    Then the Listen in Audible button opens Audible's link for the book "B0CC36V9KG" in a new tab

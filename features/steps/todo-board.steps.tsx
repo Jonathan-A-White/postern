@@ -551,7 +551,11 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
   // mw-ev7oyy.12: link chips on a card's front, from the Open: line of its notes.
   const SAME_GIVEN = 'a view with a list {string} holding two open cards, a closed card and a card that is not a to do';
   const longNotesEnding = (_c: unknown, id: string, line: string) => hasNotes(_c, id, `${'Chapter notes for the class, written long. '.repeat(10)}\\n\\n${line}`);
-  const chipsOf = (el: HTMLElement) => within(el).queryAllByRole('link').map((link) => link.textContent);
+  const chipsOf = (el: HTMLElement) =>
+    within(el)
+      .queryAllByRole('link')
+      .filter((link) => link.dataset.testid !== 'card-listen')
+      .map((link) => link.textContent);
   const wordsOf = (...names: string[]) => names;
   const chipsShown = (name: string, ...expected: string[]) =>
     async () => {
@@ -899,6 +903,118 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       const column = await listNamed(list);
       await waitFor(() => expect(within(column).getAllByTestId('todo-card').at(-1)).toHaveTextContent(title));
       expect(pendingIn(within(column).getAllByTestId('todo-card').at(-1) as HTMLElement)).not.toBeNull();
+    });
+  });
+
+  // mw-ev7oyy.24: a Listen in Audible button on a card's front, from audible-kit.
+  const LISTEN = 'Listen in Audible';
+  const listenButton = (el: HTMLElement) => within(el).queryByTestId('card-listen');
+  const listenParams = async () => {
+    return waitFor(() => {
+      const link = screen.getByRole('link', { name: LISTEN });
+      expect(link).toHaveAttribute('data-testid', 'card-listen');
+      expect(link).toHaveAttribute('target', '_blank');
+      return { link, url: new URL(link.getAttribute('href') ?? '') };
+    });
+  };
+  const listenShown = async (_c: unknown, name: string) => {
+    const el = await card(name.replace('Title of ', ''));
+    await waitFor(() => expect(listenButton(el)).toHaveTextContent(LISTEN));
+    expect(within(el).getByRole('link', { name: LISTEN })).toBe(listenButton(el));
+    const order = Array.from(el.querySelectorAll('button, a')).map((node) => node.textContent);
+    expect(order.indexOf(LISTEN)).toBeGreaterThan(order.findIndex((text) => text?.startsWith('Title of')));
+  };
+
+  Scenario('mw-ev7oyy.24 AC-1: a card whose notes have an Audible: line shows a Listen in Audible button that opens the book in the Audible app', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows a Listen in Audible button under its title', listenShown);
+    And('the Listen in Audible button opens Audible\'s link for the book {string} in a new tab', async (_c, asin: string) => {
+      await waitFor(async () => {
+        const { url } = await listenParams();
+        expect(url.origin + url.pathname).toBe('https://audible.smart.link/aexglzp2n');
+        expect(url.searchParams.get('asin')).toBe(asin);
+        expect(url.searchParams.has('position_from_start')).toBe(false);
+      });
+    });
+    When('he taps the Listen in Audible button on the card {string}', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      el.addEventListener('click', (event) => event.preventDefault());
+      await userEvent.click(within(el).getByRole('link', { name: LISTEN }));
+    });
+    Then('the card {string} is still on its front, not done, with nothing waiting in the outbox', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      expect(screen.queryByRole('group', { name: /^Back of/ })).toBeNull();
+      expect(within(el).getByRole('button', { name: DONE })).toBeEnabled();
+      expect(await db.outbox.count()).toBe(0);
+    });
+  });
+
+  Scenario('mw-ev7oyy.24 AC-1: a card whose notes link to audible.com/pd/ shows a Listen in Audible button, and one without shows none', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    And('the card {string} also has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows the chips {string} under its title', async (_c, name: string, chip: string) => chipsShown(name, chip)());
+    And('the Listen in Audible button opens Audible\'s link for the book {string} in a new tab', async (_c, asin: string) => {
+      await waitFor(async () => expect((await listenParams()).url.searchParams.get('asin')).toBe(asin));
+    });
+    And('the card {string} shows no Listen in Audible button', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(within(el).getByRole('link', { name: 'Open in Call Dad' })).toBeInTheDocument());
+      expect(listenButton(el)).toBeNull();
+    });
+  });
+
+  Scenario('mw-ev7oyy.24 AC-4: a Listen: Luke 15 line opens The Word of Promise at the start of the chapter, stamped with the time of the tap', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows a Listen in Audible button under its title', listenShown);
+    And('the Listen in Audible button opens The Word of Promise {string} at {int} milliseconds', async (_c, asin: string, ms: number) => {
+      await waitFor(async () => {
+        const { url } = await listenParams();
+        expect(url.searchParams.get('asin')).toBe(asin);
+        expect(url.searchParams.get('position_from_start')).toBe(String(ms));
+        expect(url.searchParams.get('content_delivery_type')).toBe('MultiPartBook');
+      });
+    });
+    let before = 0;
+    When('he taps the Listen in Audible button on the card {string}', async (_c, name: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      el.addEventListener('click', (event) => event.preventDefault());
+      before = Date.now();
+      await userEvent.click(within(el).getByRole('link', { name: LISTEN }));
+    });
+    Then('the Listen in Audible link carries the time of the tap', async () => {
+      const stamped = Number((await listenParams()).url.searchParams.get('annotation_time_utc'));
+      expect(stamped).toBeGreaterThanOrEqual(before);
+      expect(stamped).toBeLessThanOrEqual(Date.now());
+    });
+  });
+
+  Scenario('mw-ev7oyy.24 AC-5: a Listen: line names a chapter of any Audible book, opened at its start', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows a Listen in Audible button under its title', listenShown);
+    And('the Listen in Audible button opens the single-part book {string} at {int} milliseconds', async (_c, asin: string, ms: number) => {
+      await waitFor(async () => {
+        const { url } = await listenParams();
+        expect(url.searchParams.get('asin')).toBe(asin);
+        expect(url.searchParams.get('position_from_start')).toBe(String(ms));
+        expect(url.searchParams.get('content_delivery_type')).toBe('SinglePartBook');
+      });
+    });
+  });
+
+  Scenario("mw-ev7oyy.24 AC-1: an Audible: line past the view's short summary of the notes still shows its button", ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And("the card {string} has long notes, longer than the view's summary, ending {string}", longNotesEnding);
+    When('the To do tab opens', tabOpens);
+    Then('the Listen in Audible button opens Audible\'s link for the book {string} in a new tab', async (_c, asin: string) => {
+      await waitFor(async () => expect((await listenParams()).url.searchParams.get('asin')).toBe(asin));
     });
   });
 });

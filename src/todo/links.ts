@@ -5,7 +5,10 @@
 // The board draws only what linkProps() gives it. A 'Text:' line is the card's text action (mw-ev7oyy.22): who to
 // text and a draft, drawn as a Text button that opens his texting app with the person and the message filled in;
 // textHref() is the one place it is built. On Android it names Google Voice (mw-ev7oyy.23): a plain sms: link goes to
-// the phone's default texting app, and Voice is not his default.
+// the phone's default texting app, and Voice is not his default. An 'Audible:' or a 'Listen:' line, or an audible.com/pd/ link, is
+// the card's listen action (mw-ev7oyy.24): a Listen in Audible button whose link audible-kit builds (listenHref), at a chapter's start
+// when the card names one.
+import { BIBLE_BOOKS, WORD_OF_PROMISE_ASIN, audibleLink, wordOfPromiseStart } from 'audible-kit';
 
 /** A link of an 'Open:' line: its own words, which are the chip's label, and where it goes. */
 export interface OpenLink {
@@ -185,4 +188,76 @@ export function textHref(action: TextAction, userAgent: string): string {
 export function textLabel(action: TextAction): string {
   const who = action.name ?? action.number;
   return who ? `Text ${who}` : 'Text';
+}
+
+/** What a card's Listen in Audible button opens (mw-ev7oyy.24): an Audible book, and where in it. */
+export interface ListenAction {
+  /** The book's Audible id. */
+  asin: string;
+  /** Where the chapter starts, in milliseconds. Absent, the book opens where Audible left it. */
+  positionMs?: number;
+  /** The book is one file (Audible calls it a SinglePartBook), not many. */
+  single?: boolean;
+}
+
+/** An 'Audible: <ASIN>' line, set as the 'Open:' line may be; what follows the id is read for the word 'single'. */
+const AUDIBLE_LINE = /^[\s>*+-]*(?:\*\*|__)?Audible:(?:\*\*|__)?\s*(\S*)(.*)$/;
+/** A 'Listen:' line: a Bible chapter ('Luke 15'), or a chapter of the Audible book ('You Are a Theologian ch 6 | 7733124'). */
+const LISTEN_LINE = /^[\s>*+-]*(?:\*\*|__)?Listen:(?:\*\*|__)?(.*)$/;
+const ASIN = /^[A-Z0-9]{10}$/;
+/** An audible.com/pd/ link, with or without the title's slug in the path, anywhere in the notes. */
+const PD_LINK = /https?:\/\/(?:[\w-]+\.)*audible\.com\/pd\/(?:[^\s/)]+\/)?([A-Z0-9]{10})(?![A-Za-z0-9])/;
+const CHAPTER_OF = /^(.+?)\s+(?:(?:chapter|ch\.?)\s*)?(\d+)$/i;
+
+/** The Bible's books by lower-case name, with the two spellings Audible itself uses for Psalms and Revelation. */
+const BOOKS = new Map<string, (typeof BIBLE_BOOKS)[number]>([
+  ...BIBLE_BOOKS.map((book) => [book.name.toLowerCase(), book] as const),
+  ['psalm', BIBLE_BOOKS.find((book) => book.name === 'Psalms')!],
+  ['revelations', BIBLE_BOOKS.find((book) => book.name === 'Revelation')!],
+]);
+
+/** The Word of Promise's chapter a 'Listen:' line names ('Luke 15', 'Psalm 23', 'Obadiah'), or none. */
+function bibleChapter(words: string): ListenAction | undefined {
+  const chapter = CHAPTER_OF.exec(words);
+  const book = BOOKS.get((chapter?.[1] ?? words).replace(/\s+/g, ' ').toLowerCase());
+  const number = chapter ? Number(chapter[2]) : 1;
+  const positionMs = book && (chapter || book.chapters === 1) ? wordOfPromiseStart(book.name, number) : undefined;
+  return positionMs === undefined ? undefined : { asin: WORD_OF_PROMISE_ASIN, positionMs };
+}
+
+/** The listen action of a description, or none. The book is the id of its 'Audible: <ASIN>' line (then 'single' for a book that
+ * is one file), else the first audible.com/pd/<ASIN> link. A 'Listen: <Book> <chapter>' line (Luke 15) opens The Word of Promise
+ * at that chapter's start, from audible-kit's data. A 'Listen: <title> ch <n> | <start in ms>' line opens the Audible book at
+ * that chapter's start: api.audible.com sends a browser no CORS header, so the board cannot ask it, and the start is written
+ * into the line (audible-kit's fetchChapterStarts reads it) when the card is filed. A chapter the board cannot place opens the book. */
+export function parseListenAction(description: string): ListenAction | undefined {
+  const lines = description.split(/\r?\n/);
+  let book: ListenAction | undefined;
+  for (const line of lines) {
+    const found = AUDIBLE_LINE.exec(line);
+    if (found && ASIN.test(found[1])) {
+      book = { asin: found[1], ...(/\bsingle\b/i.test(found[2]) ? { single: true } : {}) };
+      break;
+    }
+  }
+  const pd = PD_LINK.exec(description)?.[1];
+  book ??= pd ? { asin: pd } : undefined;
+  const listen = lines.map((line) => LISTEN_LINE.exec(line)?.[1]).find((rest) => rest !== undefined);
+  if (listen !== undefined) {
+    const bar = listen.indexOf('|');
+    if (bar < 0) {
+      const chapter = bibleChapter(listen.trim());
+      if (chapter) return chapter;
+    } else if (book) {
+      const start = /^\s*(\d+)\s*$/.exec(listen.slice(bar + 1))?.[1];
+      if (start !== undefined) return { ...book, positionMs: Number(start) };
+    }
+  }
+  return book;
+}
+
+/** The link a tap on the Listen in Audible button opens, built by audible-kit. Audible wants a positioned link stamped with the
+ * time of the tap, so the board asks for it when it is tapped (now is for a test). */
+export function listenHref(action: ListenAction, now?: number): string {
+  return audibleLink({ asin: action.asin, ...(action.positionMs !== undefined ? { positionMs: action.positionMs } : {}), ...(action.single ? { contentDeliveryType: 'SinglePartBook' as const } : {}), ...(now !== undefined ? { now } : {}) });
 }

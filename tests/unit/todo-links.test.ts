@@ -112,4 +112,9 @@ describe('the table of link kinds', () => {
     expect(new Set(names).size).toBe(names.length);
     for (const name of ['kindle', 'audible', 'call', 'map', 'podcast', 'web']) expect(names).toContain(name);
   });
+
+  it('is named, every row of it, in the KINDS cases above (mw-ev7oyy.24 sweep)', () => {
+    const tested = new Set(KINDS.map(({ kind }) => kind));
+    expect([...tested].sort()).toEqual(LINK_KINDS.map((row) => row.kind).sort());
+  });
 });

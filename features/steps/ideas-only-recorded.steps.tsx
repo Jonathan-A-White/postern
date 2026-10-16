@@ -22,6 +22,7 @@ import { settledWrites } from '../../src/services/deliver';
 import { publicKeyHexFromMasterKey } from '../../src/services/vault';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { fixtureDetail, fixtureView } from '../../tests/support/cockpit-fixture';
+import { emptyPhone } from '../../tests/support/empty-phone';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 import { ToastHost } from '../../src/ui/toast';
 import { dismissAllToasts } from '../../src/ui/toastStore';
@@ -124,12 +125,13 @@ async function start(clock: string, until: string | null): Promise<void> {
   URL.createObjectURL = () => 'blob:preview';
   URL.revokeObjectURL = () => {};
   forgetSilentInputs();
-  forgetOutboxState();
   forgetTaps();
   setKey(doubles.key);
   doubles.delivered = [];
   doubles.actions = [];
-  await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.outbox.clear(), db.beadDetails.clear(), db.answers.clear()]);
+  // The last scenario's sender and write-behinds finish before the phone is emptied (its message and Recorded note share a txid with this one's).
+  await emptyPhone();
+  forgetOutboxState();
   const until21 = until ? secs(until) : 0;
   await settingsRepo.setIdeasOnly({
     key: HIM,
@@ -183,6 +185,8 @@ describeFeature(feature, ({ Scenario }) => {
   };
   const noNote = async () => {
     await screen.findByTestId('message');
+    // the note is kept by a write-behind: a late one is let land before looking
+    await act(async () => settledWrites());
     expect(screen.queryByTestId('recorded-note')).toBeNull();
   };
 

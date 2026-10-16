@@ -967,7 +967,9 @@ are near the top, and the board reads the whole notes when it may have been cut.
     line after it. Any character is fine (`&`, `?`, `#`, an emoji): the app encodes it, so the whole message arrives.
 
   The button's link is `sms:<number>?body=<the message, percent-encoded>` (`sms:?body=...` without a number;
-  `sms:<number>` with no message); a tap opens it in the same tab, which is how Android hands it to the app.
+  `sms:<number>` with no message); a tap opens it in the same tab. On Android that link would go to the phone's
+  default texting app, so there the button names Google Voice instead (mw-ev7oyy.23): `intent:<the same, after
+  sms:>#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.sms_body=<the message>;S.browser_fallback_url=<the sms: link>;end`.
 
   One example, as filed:
 

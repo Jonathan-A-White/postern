@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.1
+_2026-10-16_
+- New: A Roadmap on the Map shows all open work in four lanes (Now, Next, Later, Icebox) by app, each app opening to its titles.
+
 ## 0.8.0
 _2026-10-16_
 - New: Needs you and Map now show 'Up next: 3', the next stories the factory will start, and a tap lists them and opens any one.

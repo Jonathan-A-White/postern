@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.1",
+    "date": "2026-10-16",
+    "story": "mw-njb33n.3",
+    "kind": "new",
+    "text": "A Roadmap on the Map shows all open work in four lanes (Now, Next, Later, Icebox) by app, each app opening to its titles."
+  },
+  {
     "version": "0.8.0",
     "date": "2026-10-16",
     "story": "mw-njb33n.2",

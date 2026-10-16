@@ -5,7 +5,7 @@
 // What the screen does is in useTalkLine; this only draws it.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Button, Chip, Icon, IconButton, cx, useAlive } from '../ui';
+import { Button, Chip, Icon, IconButton, LengthNote, cx, isTooLong, useAlive } from '../ui';
 import type { IconName } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
@@ -208,6 +208,9 @@ function PresenceMark({ here }: { here: boolean | undefined }) {
 }
 
 const CALL_ME = 'Call me';
+/** The most a call request's words may be (mw-gq6.464): past it the field keeps them, counts them in red and Send is off; nothing is cut. Well inside the record's CALL_TEXT_MAX_BYTES. */
+const CALL_TEXT_MAX = 500;
+const CALL_LENGTH_ID = 'call-length';
 
 /**
  * Leaves the Mayor a note to call him back (docs/protocol.md §21): a tap opens a short
@@ -222,9 +225,10 @@ function CallMe({ open, onClose, onRecorded }: { open: boolean; onClose: () => v
   const [failed, setFailed] = useState(false);
   const alive = useAlive();
   if (!open) return null;
+  const tooLong = isTooLong(text, CALL_TEXT_MAX);
   const send = () => {
     const words = text.trim();
-    if (words === '' || sending) return;
+    if (words === '' || sending || isTooLong(words, CALL_TEXT_MAX)) return;
     setSending(true);
     setFailed(false);
     sendCallRequest(words, Math.floor(now() / 1000)).then(
@@ -253,19 +257,21 @@ function CallMe({ open, onClose, onRecorded }: { open: boolean; onClose: () => v
     >
       <input
         aria-label="What to tell the Mayor"
+        aria-describedby={tooLong ? CALL_LENGTH_ID : undefined}
+        aria-invalid={tooLong || undefined}
         value={text}
-        maxLength={500}
         ref={focusOnMount}
         disabled={sending}
         onChange={(event) => setText(event.target.value)}
         className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-[15px]"
       />
+      <LengthNote id={CALL_LENGTH_ID} testId="call-length" text={text} max={CALL_TEXT_MAX} what="call request" />
       {failed && <p className="text-[12.5px] text-danger">{NOT_KEPT}</p>}
       <span className="flex justify-end gap-2">
         <Button type="button" variant="ghost" disabled={sending} onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" disabled={sending || text.trim() === ''}>
+        <Button type="submit" variant="primary" disabled={sending || text.trim() === '' || tooLong} aria-describedby={tooLong ? CALL_LENGTH_ID : undefined}>
           {sending ? 'Sending…' : 'Send'}
         </Button>
       </span>

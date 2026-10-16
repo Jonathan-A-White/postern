@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.7.2
+_2026-10-16_
+- New: A To do card with a date and time in it now has Add to Google Calendar and Download .ics buttons, so a one-off appointment lands on your calendar in two taps.
+
 ## 0.7.1
 _2026-10-16_
 - New: Every message on the Talk line, yours and the Mayor's, now has a Share button to copy it or send it on.

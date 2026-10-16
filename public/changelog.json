@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.7.2",
+    "date": "2026-10-16",
+    "story": "mw-ev7oyy.32",
+    "kind": "new",
+    "text": "A To do card with a date and time in it now has Add to Google Calendar and Download .ics buttons, so a one-off appointment lands on your calendar in two taps."
+  },
+  {
     "version": "0.7.1",
     "date": "2026-10-16",
     "story": "mw-q6n8m0.17",

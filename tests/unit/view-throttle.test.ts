@@ -1,7 +1,7 @@
 // tests/unit/view-throttle.test.ts — mw-7dige5.4: the whole view (~405 KB) is fetched at most once a
 // minute, leading and trailing, however many events batches, gaps and refreshes ask for it, and every
 // fetch asks with the ETag of the view the phone holds.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { db, type EventRow } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
@@ -11,6 +11,7 @@ import { syncMessagesAndEvents } from '../../src/services/events';
 import { sealDocument } from '../../src/services/documents';
 import { refreshView, resetViewThrottle, VIEW_BEHIND_INTERVAL_MS, VIEW_MIN_INTERVAL_MS } from '../../src/services/view';
 import { MAYOR } from '../support/cockpit-fixture';
+import { countInflates, letInflatesGo } from '../support/held-inflate';
 
 const net = vi.hoisted(() => ({
   /** what the next message sync hands back */
@@ -64,11 +65,20 @@ function batchOf(events: EventRow[]): EventBatch {
   return { from: events[0].seq, to: events[events.length - 1].seq, lane: 'normal', events };
 }
 
-/** Lets fake-indexeddb (which runs on the real setImmediate) and the promise chains behind it settle. */
+// The view's inflate is zlib on libuv's thread pool and takes real time: a trailing fetch's, which nothing awaits, is
+// counted until it is back, so settle() waits for it rather than for a count of turns a loaded host can outrun (mw-ev7oyy.18).
+countInflates();
+
+/** Lets every inflate out come back, and fake-indexeddb (which runs on the real setImmediate) and the promise chains
+ * behind it settle: 20 turns with no inflate out. */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 20; i++) {
-    await vi.advanceTimersByTimeAsync(0);
-    await new Promise((resolve) => setImmediate(resolve));
+  for (let quiet = 0; quiet < 20; ) {
+    if (await letInflatesGo()) quiet = 0;
+    else {
+      await vi.advanceTimersByTimeAsync(0);
+      await new Promise((resolve) => setImmediate(resolve));
+      quiet += 1;
+    }
   }
 }
 
@@ -94,8 +104,13 @@ describe('the view fetch throttle (mw-7dige5.4)', () => {
     resetViewThrottle();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await settle(); // a trailing fetch's view lands in this test, not on the next one's
     vi.useRealTimers();
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
   });
 
   it('twenty triggers inside a minute fetch the view twice: at once, and once more when the window ends', async () => {

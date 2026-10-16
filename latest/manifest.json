@@ -1,7 +1,7 @@
 {
-  "version": "0.6.45",
-  "commit": "b178446",
-  "published_at": "2026-10-16T13:21:40.987Z",
+  "version": "0.6.47",
+  "commit": "f4c48b0",
+  "published_at": "2026-10-16T14:42:18.751Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1640,6 +1640,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-card-due.png"
+    },
+    {
+      "name": "390x844/todo-card-fields.png",
+      "screen": "todo-card-fields",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/todo-card-fields.png"
+    },
+    {
+      "name": "360x640/todo-card-fields.png",
+      "screen": "todo-card-fields",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/todo-card-fields.png"
+    },
+    {
+      "name": "1280x800/todo-card-fields.png",
+      "screen": "todo-card-fields",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-card-fields.png"
     },
     {
       "name": "390x844/todo-card-links.png",

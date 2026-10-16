@@ -18,6 +18,7 @@ import { chain, type LicenceStatus } from '../chain';
 import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../services/collections';
 import { plainMessage } from '../services/chainBusy';
 import { MyPublicKey } from './KeyQr';
+import { useAlive } from '../ui/useAlive';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
 
@@ -180,9 +181,13 @@ export function KeyVault() {
   const [mintOutcome, setMintOutcome] = useState<MintOutcome>({ name: 'idle' });
   const [licenceState, setLicenceState] = useState<LicenceState>({ name: 'checking' });
   const [licenceRefreshToken, setLicenceRefreshToken] = useState(0);
+  const alive = useAlive();
 
+  // Each read below drops its answer once the screen has closed or the read is replaced (mw-ev7oyy.21).
   useEffect(() => {
+    let cancelled = false;
     void vaultRepo.get().then((vault) => {
+      if (cancelled) return;
       if (!vault) {
         setScreen({ name: 'empty' });
         return;
@@ -190,20 +195,38 @@ export function KeyVault() {
       const cachedKey = getKey();
       setScreen(cachedKey ? { name: 'unlocked', key: cachedKey } : { name: 'locked', vault });
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (screen.name !== 'unlocked') return;
     const publicKeyHex = publicKeyHexFromMasterKey(screen.key);
-    chain
+    let cancelled = false;
+    void chain
       .balance(publicKeyHex)
-      .then((satoshis) => setBalanceState({ name: 'loaded', satoshis }))
-      .catch((err) => setBalanceState({ name: 'error', message: plainMessage(err) }));
+      .then(
+        (satoshis): BalanceState => ({ name: 'loaded', satoshis }),
+        (err): BalanceState => ({ name: 'error', message: plainMessage(err) }),
+      )
+      .then((next) => {
+        if (!cancelled) setBalanceState(next);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [screen, balanceRefreshToken]);
 
   useEffect(() => {
     if (screen.name !== 'unlocked') return;
-    void determineLicenceState(publicKeyHexFromMasterKey(screen.key)).then(setLicenceState);
+    let cancelled = false;
+    void determineLicenceState(publicKeyHexFromMasterKey(screen.key)).then((next) => {
+      if (!cancelled) setLicenceState(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [screen, licenceRefreshToken]);
 
   function handleCheckLicenceAgain() {
@@ -221,10 +244,11 @@ export function KeyVault() {
     setMintOutcome({ name: 'minting' });
     try {
       const result = await chain.mint(key);
+      if (!alive()) return;
       setMintOutcome({ name: 'success', txid: result.txid });
       setLicenceState({ name: 'mint-pending', txid: result.txid });
     } catch (err) {
-      setMintOutcome({ name: 'error', message: plainMessage(err) });
+      if (alive()) setMintOutcome({ name: 'error', message: plainMessage(err) });
     }
   }
 
@@ -249,6 +273,7 @@ export function KeyVault() {
   async function handleGenerate() {
     const mnemonic = createMnemonic();
     const key = await deriveMasterKey(mnemonic);
+    if (!alive()) return;
     setCopyStatus('idle');
     setScreen({ name: 'reveal', mnemonic, key });
   }
@@ -257,10 +282,13 @@ export function KeyVault() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API not available');
       await navigator.clipboard.writeText(mnemonic);
+      if (!alive()) return;
       setCopyStatus('copied');
-      setTimeout(() => setCopyStatus('idle'), 3000);
+      setTimeout(() => {
+        if (alive()) setCopyStatus('idle');
+      }, 3000);
     } catch {
-      setCopyStatus('unavailable');
+      if (alive()) setCopyStatus('unavailable');
     }
   }
 
@@ -268,10 +296,13 @@ export function KeyVault() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API not available');
       await navigator.clipboard.writeText(address);
+      if (!alive()) return;
       setAddressCopyStatus('copied');
-      setTimeout(() => setAddressCopyStatus('idle'), 3000);
+      setTimeout(() => {
+        if (alive()) setAddressCopyStatus('idle');
+      }, 3000);
     } catch {
-      setAddressCopyStatus('unavailable');
+      if (alive()) setAddressCopyStatus('unavailable');
     }
   }
 
@@ -280,9 +311,10 @@ export function KeyVault() {
     try {
       const prfFallbackReason = await storeKey(mnemonic, key);
       setKey(key);
+      if (!alive()) return;
       setScreen({ name: 'unlocked', key, prfFallbackReason: prfFallbackReason ?? undefined });
     } catch (err) {
-      setError((err as Error).message);
+      if (alive()) setError((err as Error).message);
     }
   }
 
@@ -300,11 +332,12 @@ export function KeyVault() {
     try {
       const key = await deriveMasterKey(phraseInput);
       const prfFallbackReason = await storeKey(phraseInput, key);
-      setPhraseInput('');
       setKey(key);
+      if (!alive()) return;
+      setPhraseInput('');
       setScreen({ name: 'unlocked', key, prfFallbackReason: prfFallbackReason ?? undefined });
     } catch (err) {
-      setError((err as Error).message);
+      if (alive()) setError((err as Error).message);
     }
   }
 
@@ -317,9 +350,10 @@ export function KeyVault() {
       const aesKey = await deriveAesKeyFromPrf(prfSecret);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
       setKey(key);
+      if (!alive()) return;
       setScreen({ name: 'unlocked', key });
     } catch (err) {
-      setError(describeUnlockError(err));
+      if (alive()) setError(describeUnlockError(err));
     }
   }
 
@@ -334,18 +368,19 @@ export function KeyVault() {
       if (!vault.salt) throw new Error('No recovery salt is stored for this key.');
       const aesKey = await deriveAesKeyFromPhrase(phraseInput, vault.salt);
       const key = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, aesKey);
-      setPhraseInput('');
       setKey(key);
+      if (!alive()) return;
+      setPhraseInput('');
       setScreen({ name: 'unlocked', key });
     } catch {
-      setError('That recovery phrase did not unlock the key.');
+      if (alive()) setError('That recovery phrase did not unlock the key.');
     }
   }
 
   async function handleLock(): Promise<void> {
     lockSession();
     const vault = await vaultRepo.get();
-    setScreen(vault ? { name: 'locked', vault } : { name: 'empty' });
+    if (alive()) setScreen(vault ? { name: 'locked', vault } : { name: 'empty' });
   }
 
   return (

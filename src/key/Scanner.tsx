@@ -48,7 +48,9 @@ export function Scanner({ onRead, onCancel }: { onRead: (text: string) => void; 
             .catch(() => undefined);
         }, SCAN_INTERVAL_MS);
       })
-      .catch(() => setProblem('The camera could not be opened. Paste the key instead.'));
+      .catch(() => {
+        if (!stopped) setProblem('The camera could not be opened. Paste the key instead.');
+      });
 
     return stop;
   }, [onRead]);

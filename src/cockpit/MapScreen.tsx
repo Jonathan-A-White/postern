@@ -87,10 +87,14 @@ function useInitialFilter(bucket?: string, saved?: string, landed?: 'today'): [B
   const [filter, setFilter] = useState<BeadFilter>(() => ({ ...EMPTY_FILTER, buckets: bucket ? [bucket as Bucket] : [], ...(landed ? { landedToday: true } : {}) }));
   useEffect(() => {
     if (!saved) return;
+    let cancelled = false;
     void loadSavedFilters().then((all) => {
       const found = all.find((entry) => entry.name === saved);
-      if (found) setFilter(found.filter);
+      if (found && !cancelled) setFilter(found.filter);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [saved]);
   return [filter, setFilter];
 }

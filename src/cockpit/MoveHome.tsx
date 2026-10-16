@@ -3,17 +3,18 @@
 // through the normal send path. Used by the Me screen's Home row and by the
 // shell's 'Home is down' offer.
 import { useState } from 'react';
-import { Button } from '../ui';
+import { Button, useAlive } from '../ui';
 import type { HomeHost } from '../services/standby';
 import { sendMoveHome, useSend } from './send';
 
 export function MoveHomeButtons({ hosts, current }: { hosts: readonly HomeHost[]; current?: string }) {
   const { busy, run } = useSend();
   const [asking, setAsking] = useState<HomeHost | null>(null);
+  const alive = useAlive();
 
   async function move(host: HomeHost) {
     await run(() => sendMoveHome(host), `Asked the Mayor to move the home to ${host}`);
-    setAsking(null);
+    if (alive()) setAsking(null);
   }
 
   if (asking) {

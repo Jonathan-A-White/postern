@@ -2,7 +2,7 @@
 // decisions 9 and 13): words, the board's columns, rigs and hosts, and a name to
 // save it under for next time.
 import { useState } from 'react';
-import { Button, Icon, cx } from '../ui';
+import { Button, Icon, cx, useAlive } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { BUCKETS, type Bucket } from '../model/tree';
 import { isEmptyFilter, type BeadFilter } from '../model/filter';
@@ -45,12 +45,14 @@ export function FilterBar({
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
   const saved = useSavedFilters();
+  const alive = useAlive();
 
   async function save() {
     const trimmed = name.trim();
     if (!trimmed) return;
     await saveFilter({ name: trimmed, filter });
     toast(`Saved “${trimmed}”`);
+    if (!alive()) return;
     setNaming(false);
     setName('');
   }

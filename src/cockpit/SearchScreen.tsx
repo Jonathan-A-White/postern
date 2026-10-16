@@ -3,7 +3,7 @@
 // has opened, and every message. Saved filters sit underneath as one-tap views
 // of the map.
 import { useEffect, useMemo, useState } from 'react';
-import { Button, EmptyState, Icon, IconButton, SectionTitle, TimeAgo } from '../ui';
+import { Button, EmptyState, Icon, IconButton, SectionTitle, TimeAgo, useAlive } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useMessages, useUnlockedKey, useViewIndex } from './hooks';
@@ -33,6 +33,7 @@ function OpenById({ id }: { id: string }) {
   const key = useUnlockedKey();
   const [outcome, setOutcome] = useState<{ id: string; note: string }>();
   const [busyId, setBusyId] = useState<string>();
+  const alive = useAlive();
   const note = outcome?.id === id ? outcome.note : undefined;
 
   function open() {
@@ -44,10 +45,14 @@ function OpenById({ id }: { id: string }) {
     fetchBeadDetail(id, { key, mayorKey: getLiveState().mayorKey })
       .then((fetched) => {
         if (fetched.status === 'ok') navigate(beadHref(id));
-        else setOutcome({ id, note: fetched.status === 'missing' ? `no bead ${id}` : 'This backend cannot fetch one bead yet (docs/protocol.md §12).' });
+        else if (alive()) setOutcome({ id, note: fetched.status === 'missing' ? `no bead ${id}` : 'This backend cannot fetch one bead yet (docs/protocol.md §12).' });
       })
-      .catch((err: unknown) => setOutcome({ id, note: err instanceof Error ? err.message : String(err) }))
-      .finally(() => setBusyId(undefined));
+      .catch((err: unknown) => {
+        if (alive()) setOutcome({ id, note: err instanceof Error ? err.message : String(err) });
+      })
+      .finally(() => {
+        if (alive()) setBusyId(undefined);
+      });
   }
 
   return (
@@ -75,7 +80,13 @@ export function SearchScreen({ q }: { q?: string }) {
   const [details, setDetails] = useState<BeadDetail[]>([]);
 
   useEffect(() => {
-    void allStoredBeadDetails().then(setDetails);
+    let cancelled = false;
+    void allStoredBeadDetails().then((stored) => {
+      if (!cancelled) setDetails(stored);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

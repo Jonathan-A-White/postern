@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { settingsRepo } from '../data/repositories';
 import { onUntil, recordedWords, type IdeasOnlyKept, type IdeasOnlySetting } from '../model/ideasOnly';
 import { useNow } from '../ui/useNow';
+import { useAlive } from '../ui/useAlive';
 import { getIdeasOnly, putIdeasOnly } from '../services/ideasOnly';
 import { publicKeyHexFromMasterKey } from '../services/vault';
 import { useLiveQuery, useUnlockedKey } from './hooks';
@@ -74,6 +75,7 @@ export function useIdeasOnly(): IdeasOnlyView {
   }, []);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
+  const alive = useAlive();
 
   useEffect(() => {
     if (!key) return;
@@ -92,6 +94,8 @@ export function useIdeasOnly(): IdeasOnlyView {
       setSaving(true);
       setSaveError(undefined);
       const answer = await putIdeasOnly(key, next);
+      // the screen that asked has closed: what the backend said is for the next one to read (mw-ev7oyy.21)
+      if (!alive()) return answer.ok;
       setSaving(false);
       if (answer.ok) {
         setAvailability('ok');
@@ -103,7 +107,7 @@ export function useIdeasOnly(): IdeasOnlyView {
       );
       return false;
     },
-    [key, setAvailability],
+    [key, setAvailability, alive],
   );
 
   return { kept, availability, saving, saveError, save };

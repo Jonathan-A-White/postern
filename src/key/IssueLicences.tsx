@@ -10,6 +10,7 @@ import { publicKeyHexFromMasterKey } from '../services/vault';
 import { issuedTimes, rememberIssuedAt } from './issuedDates';
 import { hasBarcodeDetector } from './barcode';
 import { Scanner } from './Scanner';
+import { useAlive } from '../ui/useAlive';
 
 const WHATSONCHAIN_TESTNET_TX_URL = 'https://test.whatsonchain.com/tx/';
 
@@ -178,9 +179,16 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const [addressCopied, setAddressCopied] = useState<'idle' | 'copied' | 'unavailable'>('idle');
   // A second tap in the tick before the first one's re-render must not build a second mint.
   const issueInFlight = useRef(false);
+  const alive = useAlive();
 
   useEffect(() => {
-    void loadCollections(issuerKey).then(setCollectionsState);
+    let current = true;
+    void loadCollections(issuerKey).then((next) => {
+      if (current) setCollectionsState(next);
+    });
+    return () => {
+      current = false;
+    };
   }, [issuerKey, collectionsToken]);
 
   const collections = collectionsState.name === 'loaded' ? collectionsState.collections : [];
@@ -202,7 +210,9 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       const rowsKnown = knownEntries.current.length > 0 || issuedHere.current > 0;
       setListing(rowsKnown && failedReads.current <= LISTING_RETRIES ? { name: 'retrying', entries: knownEntries.current } : next);
     });
-    void issuedTimes().then(setTimes);
+    void issuedTimes().then((next) => {
+      if (current) setTimes(next);
+    });
     return () => {
       current = false;
     };
@@ -270,10 +280,13 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API not available');
       await navigator.clipboard.writeText(fundingAddress);
+      if (!alive()) return;
       setAddressCopied('copied');
-      setTimeout(() => setAddressCopied('idle'), 3000);
+      setTimeout(() => {
+        if (alive()) setAddressCopied('idle');
+      }, 3000);
     } catch {
-      setAddressCopied('unavailable');
+      if (alive()) setAddressCopied('unavailable');
     }
   }
 
@@ -286,20 +299,23 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
         issuerKey,
         holderPublicKeyHex: holder,
         collection,
-        onBusy: () => setOutcome({ name: 'issuing', busy: true }),
+        onBusy: () => {
+          if (alive()) setOutcome({ name: 'issuing', busy: true });
+        },
       });
       await rememberIssuedAt(issued.txid);
       issuedHere.current += 1;
+      if (!alive()) return;
       setJustIssued((previous) => [...previous, issued]);
       setOutcome({ name: 'issued', txid: issued.txid });
       setHolder('');
       setRefreshToken((token) => token + 1);
       setBalanceToken((token) => token + 1);
     } catch (error) {
-      setOutcome({ name: 'error', message: plainMessage(error) });
+      if (alive()) setOutcome({ name: 'error', message: plainMessage(error) });
     } finally {
       issueInFlight.current = false;
-      setConfirmingIssue(false);
+      if (alive()) setConfirmingIssue(false);
     }
   }
 
@@ -308,14 +324,21 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
     setRevokeBusy(false);
     setRevokeError(null);
     try {
-      await chain.revokeLicence({ issuerKey, origin, onBusy: () => setRevokeBusy(true) });
+      await chain.revokeLicence({
+        issuerKey,
+        origin,
+        onBusy: () => {
+          if (alive()) setRevokeBusy(true);
+        },
+      });
+      if (!alive()) return;
       setRevokedHere((previous) => [...previous, origin]);
       setConfirming(null);
       setRefreshToken((token) => token + 1);
     } catch (error) {
-      setRevokeError({ origin, message: plainMessage(error) });
+      if (alive()) setRevokeError({ origin, message: plainMessage(error) });
     } finally {
-      setRevoking(null);
+      if (alive()) setRevoking(null);
     }
   }
 

@@ -3,6 +3,7 @@
 // path (qr.ts), so nothing touches a canvas or injects markup.
 import { useState } from 'react';
 import { qrPath } from './qr';
+import { useAlive } from '../ui/useAlive';
 
 const QUIET_ZONE = 4;
 
@@ -27,15 +28,19 @@ export function QrCode({ text, label }: { text: string; label: string }) {
 /** The key as a QR, its hex beside it, and a Copy button. */
 export function MyPublicKey({ publicKeyHex }: { publicKeyHex: string }) {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'unavailable'>('idle');
+  const alive = useAlive();
 
   async function handleCopy() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API not available');
       await navigator.clipboard.writeText(publicKeyHex);
+      if (!alive()) return;
       setCopyStatus('copied');
-      setTimeout(() => setCopyStatus('idle'), 3000);
+      setTimeout(() => {
+        if (alive()) setCopyStatus('idle');
+      }, 3000);
     } catch {
-      setCopyStatus('unavailable');
+      if (alive()) setCopyStatus('unavailable');
     }
   }
 

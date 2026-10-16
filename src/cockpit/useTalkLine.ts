@@ -20,6 +20,7 @@ import { announceAnswer, clearAnnouncement } from '../services/talkAnswerNotice'
 import { refuseFile, sendTurn } from './send';
 import { toPicked } from './pickedFile';
 import { toast } from '../ui/toastStore';
+import { useAlive } from '../ui/useAlive';
 import { useBeadTitles, useTalkTurns } from './hooks';
 import { useMayorHere } from './useMayorHere';
 import { useRecordedWords } from './useIdeasOnly';
@@ -40,10 +41,16 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   const [{ line, log }, dispatch] = useReducer(talkScreenReducer, initialTalkLine, initialTalkScreen);
   // What keeps the phone awake for the open talk; any event but the wait's own tick (a hold, an answer, a tap) re-arms it (mw-1ox07o.1).
   const holds = useRef(new Set<IdleHold>());
-  const feed = useCallback((event: TalkLineEvent) => {
-    if (event.type !== 'tick') for (const held of holds.current) held.rearm();
-    dispatch({ event, at: now() });
-  }, []);
+  // A send, a picture read or a recogniser that answers after the line has closed feeds it nothing (mw-ev7oyy.21).
+  const alive = useAlive();
+  const feed = useCallback(
+    (event: TalkLineEvent) => {
+      if (!alive()) return;
+      if (event.type !== 'tick') for (const held of holds.current) held.rearm();
+      dispatch({ event, at: now() });
+    },
+    [alive],
+  );
   const setAbout = useCallback((about?: TalkAbout) => feed({ type: 'setAbout', about }), [feed]);
   const stored = useTalkTurns();
   const turns = stored ?? NO_ROWS;
@@ -347,7 +354,10 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     const turn = endTurn(line);
     hold.drop();
     feed({ type: 'end' });
-    if (turn && turn.talk.turn > 0) sendTurn(turn).catch(() => hold.setNotice('Could not tell the Mayor the talk is over.'));
+    if (turn && turn.talk.turn > 0)
+      sendTurn(turn).catch(() => {
+        if (alive()) hold.setNotice('Could not tell the Mayor the talk is over.');
+      });
   }
 
   return {

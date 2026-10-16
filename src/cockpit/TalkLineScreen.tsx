@@ -5,7 +5,7 @@
 // What the screen does is in useTalkLine; this only draws it.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Button, Chip, Icon, IconButton, cx } from '../ui';
+import { Button, Chip, Icon, IconButton, cx, useAlive } from '../ui';
 import type { IconName } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
@@ -220,6 +220,7 @@ function CallMe({ open, onClose, onRecorded }: { open: boolean; onClose: () => v
   const [text, setText] = useState(CALL_ME);
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
+  const alive = useAlive();
   if (!open) return null;
   const send = () => {
     const words = text.trim();
@@ -228,12 +229,14 @@ function CallMe({ open, onClose, onRecorded }: { open: boolean; onClose: () => v
     setFailed(false);
     sendCallRequest(words, Math.floor(now() / 1000)).then(
       () => {
+        if (!alive()) return;
         setSending(false);
         setText(CALL_ME);
         onRecorded(recorded);
         onClose();
       },
       () => {
+        if (!alive()) return;
         setSending(false);
         setFailed(true);
       },

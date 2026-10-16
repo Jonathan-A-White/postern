@@ -94,9 +94,16 @@ export interface Need {
   answered?: { option: string; at: string };
 }
 
+export interface UpNextStory {
+  id: string;
+  title: string;
+}
+
 export interface HostState {
   name: string;
   last_sync: string;
+  /** §11: the first stories a dispatch on this host would start, in its start order; absent from an older mw's view or when none is ready. */
+  up_next?: UpNextStory[];
 }
 
 export interface View {
@@ -259,6 +266,17 @@ function decodeNeed(value: unknown): Need | undefined {
   };
 }
 
+function decodeUpNext(raw: unknown): UpNextStory[] {
+  if (!Array.isArray(raw)) return [];
+  const stories: UpNextStory[] = [];
+  for (const item of raw) {
+    const story = record(item);
+    if (!story || typeof story.id !== 'string' || !story.id) continue;
+    stories.push({ id: story.id, title: str(story.title) || story.id });
+  }
+  return stories;
+}
+
 /** Parses a decrypted §11 plaintext. Anything that is not a v2 view is refused
  * with an error saying so; unknown fields are ignored and missing ones take
  * safe empty values, so a slightly newer or older producer never blanks the app. */
@@ -275,7 +293,10 @@ export function decodeView(text: string): View {
     ? raw.hosts
         .map((host) => record(host))
         .filter((host): host is Record<string, unknown> => host !== undefined && typeof host.name === 'string')
-        .map((host) => ({ name: str(host.name), last_sync: str(host.last_sync) }))
+        .map((host) => {
+          const upNext = decodeUpNext(host.up_next);
+          return { name: str(host.name), last_sync: str(host.last_sync), ...(upNext.length > 0 ? { up_next: upNext } : {}) };
+        })
     : [];
   const seq = typeof raw.seq === 'number' && Number.isFinite(raw.seq) ? raw.seq : undefined;
   return {

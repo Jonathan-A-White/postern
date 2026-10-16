@@ -1,9 +1,11 @@
 // src/cockpit/FactoryPulse.tsx — the factory at a glance (plans/0021 decision 9's
 // top zoom level): which hosts are alive, how much is working, ready, blocked,
 // held and landed today. Each figure opens the map narrowed to it.
-import { Dot, Icon, cx, type Tone } from '../ui';
+import { useState } from 'react';
+import { Chip, Dot, Icon, cx, type Tone } from '../ui';
 import { factoryStats, type ViewIndex } from '../model/tree';
-import { formatRoute } from '../nav/route';
+import type { HostState } from '../model/view';
+import { beadHref, formatRoute } from '../nav/route';
 import { relativeTime } from '../services/age';
 
 const STALE_MS = 20 * 60 * 1000;
@@ -20,6 +22,42 @@ function Metric({ label, value, tone, href }: { label: string; value: number; to
   );
 }
 
+/** §11's hosts[].up_next as one calm line: 'Up next: N', closed, a tap opens the titles, each a link to its bead. */
+function UpNext({ hosts }: { hosts: HostState[] }) {
+  const [open, setOpen] = useState(false);
+  const withStories = hosts.filter((host) => host.up_next && host.up_next.length > 0);
+  const count = withStories.reduce((sum, host) => sum + (host.up_next?.length ?? 0), 0);
+  if (count === 0) return null;
+  const named = withStories.length > 1;
+  return (
+    <section className="flex flex-col gap-2" aria-label="Up next">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+        className="inline-flex h-9 w-fit items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 text-[13px] font-medium text-muted hover:border-line-strong"
+      >
+        {`Up next: ${count}`}
+        <Icon name={open ? 'down' : 'forward'} size={13} />
+      </button>
+      {open &&
+        withStories.map((host) => (
+          <ul key={host.name} className="flex flex-col gap-1.5" aria-label={named ? `Up next on ${host.name}` : undefined}>
+            {named && <li className="text-[11.5px] font-medium text-muted">{host.name}</li>}
+            {(host.up_next ?? []).map((story) => (
+              <li key={story.id}>
+                <a href={beadHref(story.id)} className="flex min-w-0 items-center gap-2 text-[14px] leading-snug hover:underline">
+                  <Chip mono>{story.id}</Chip>
+                  <span className="min-w-0 wrap-anywhere">{story.title}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        ))}
+    </section>
+  );
+}
+
 export function FactoryPulse({ index, now = new Date() }: { index: ViewIndex; now?: Date }) {
   const stats = factoryStats(index, now);
   const hosts = index.view.hosts;
@@ -32,6 +70,7 @@ export function FactoryPulse({ index, now = new Date() }: { index: ViewIndex; no
         <Metric label="Blocked" value={stats.blocked} tone="blocked" href={mapHref('blocked')} />
         <Metric label="Landed today" value={stats.landedToday} tone="done" href={formatRoute({ view: 'map', landed: 'today' })} />
       </div>
+      <UpNext hosts={hosts} />
       {hosts.length > 0 && (
         <div className="no-scrollbar flex gap-2 overflow-x-auto">
           {hosts.map((host) => {

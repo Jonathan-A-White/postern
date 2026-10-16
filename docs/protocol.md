@@ -635,7 +635,13 @@ it stands. The BRC-78 header's sender key must equal the Mayor's pinned key (§1
   "written_at": "2026-09-28T12:00:00Z",
   "seq": 4182,
   "host": "desktop",
-  "hosts": [{ "name": "desktop", "last_sync": "2026-09-28T11:59:10Z" }],
+  "hosts": [
+    {
+      "name": "desktop",
+      "last_sync": "2026-09-28T11:59:10Z",
+      "up_next": [{ "id": "mw-abc.3", "title": "Pick the storage engine" }]
+    }
+  ],
   "needs": [
     {
       "kind": "question",
@@ -679,6 +685,13 @@ it stands. The BRC-78 header's sender key must equal the Mayor's pinned key (§1
 events say. A number; optional, and absent from an older mw's view. The app compares seqs
 with seqs (a one-tap action waits on it, §13), never `written_at` with its own clock, which
 is the host's time and may differ from the phone's by minutes.
+
+`hosts[].up_next` — optional, on a host: the first three stories a dispatch on that host would start,
+in its start order (`mw queue`), each `{ "id": "<full bead id>", "title": "<title>" }`. Omitted when
+none is ready, and absent from an older mw's view; the app then shows nothing. The Needs you and Map
+pulse shows one line, `Up next: N` (N counts every host's stories), closed; a tap opens the titles, each
+a link to its bead page, with the host named above its titles when more than one host lists any. An
+entry with no `id` is dropped; a missing `title` reads as the id.
 
 `beads` — every live epic (open or in progress), every bead under one at any depth
 (child epics included, each with its own children), and every live bead's

@@ -27,6 +27,8 @@ import { isUnsent, pendingTurn } from '../model/outbox';
 import type { OutboxRow } from '../data/db';
 import { OutboxMark } from './OutboxMark';
 import { AttachmentView } from './Conversation';
+import { ShareButton } from './ShareButton';
+import { shareTitle } from '../model/shareText';
 import { NOT_KEPT, type TalkPhase } from '../model/talkLine';
 import { EARLIER_PAGE, talkDividerLabel, type EarlierTalk } from '../model/talkLog';
 import type { TalkLogEntry } from '../model/talkScreen';
@@ -338,8 +340,12 @@ function TalkDivider({ at }: { at: number }) {
   );
 }
 
+/** The channel name the share sheet's title carries for a turn of the Talk line. */
+const TALK_SHARE_CHANNEL = 'Talk';
+
 /** One turn of a talk: his words, and the Mayor's answer with its speaker button. `earlier` turns belong to a talk before the open one. */
 function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: { entry: TalkLogEntry; talkId: string; marks?: ReactNode; earlier?: boolean; reader: ReadAloud; answerSpeech?: AnswerSpeech }) {
+  const title = shareTitle(TALK_SHARE_CHANNEL);
   const id = (name: string) => (earlier ? `talk-earlier-${name}` : `talk-${name}`);
   const key = `${talkId}:${entry.turn}`;
   const reading = reader.playing === key;
@@ -363,6 +369,7 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: {
             {entry.said}
           </p>
         )}
+        {entry.said !== '' && <ShareButton title={title} text={entry.said} className="h-11 min-w-11 justify-center text-[11.5px]" />}
         <span className="flex gap-1.5">
           {marks}
           {showsCutTag(entry) && <Chip>cut the last answer</Chip>}
@@ -418,6 +425,7 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: {
                 <AnswerButton icon={reading ? 'stop' : 'speaker'} label={reading ? 'Stop reading' : 'Read the answer aloud'} onClick={() => reader.toggle(key, entry.answer ?? '')} />
               )
             )}
+            <ShareButton title={title} text={entry.answer} className="h-11 min-w-11 justify-center" />
             {entry.answeredBy && <Chip tone="working">{entry.answeredBy}</Chip>}
             {tookLong(entry) ? (
               <span className="tabular-nums">answer took {formatSeconds(entry.tookMs ?? 0)}</span>

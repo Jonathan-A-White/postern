@@ -169,7 +169,8 @@ test("talk line: the answer's own buttons sit beside its speaker, 44 px, in 390 
   await expect(answer).toContainText('One waits for you.', { timeout: 20_000 });
 
   await expect(page.getByRole('region', { name: 'Speaking' })).toHaveCount(0);
-  expect(await answer.getByRole('button').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))).toEqual(['Stop reading', 'Pause']);
+  // the speech buttons, then Share (mw-q6n8m0.17), which is named by its text and measured below with the rest
+  expect(await answer.getByRole('button').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label') ?? node.textContent))).toEqual(['Stop reading', 'Pause', 'Share']);
   await expect(answer).toContainText('Speaking…');
   await expect(page.getByTestId('talk-unheard')).toHaveCount(0);
   for (const control of await answer.getByRole('button').all()) {
@@ -186,7 +187,7 @@ test("talk line: the answer's own buttons sit beside its speaker, 44 px, in 390 
   await shot(page, 'talk-line-answer-speaking-390');
 
   await answer.getByRole('button', { name: 'Pause' }).click();
-  expect(await answer.getByRole('button').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))).toEqual(['Resume reading', 'Resume', 'Restart']);
+  expect(await answer.getByRole('button').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label') ?? node.textContent))).toEqual(['Resume reading', 'Resume', 'Restart', 'Share']);
   await expect(page.getByText('The answer is paused.')).toBeVisible();
   await expect(answer).toContainText('Not heard yet');
   await shot(page, 'talk-line-answer-paused-390');

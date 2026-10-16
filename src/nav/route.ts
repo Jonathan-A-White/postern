@@ -37,7 +37,9 @@ export type Route =
   /** Where a tap on an emergency notification lands: the emergency events held, newest first, with their words (src/cockpit/EmergencyScreen.tsx). */
   | { view: 'emergency' }
   /** The live cards untouched for 48 h, newest first, each still updating (src/cockpit/ArchiveScreen.tsx). */
-  | { view: 'archive' };
+  | { view: 'archive' }
+  /** The Roadmap: Now / Next / Later / Icebox lanes of the open work, by app (src/cockpit/RoadmapScreen.tsx). */
+  | { view: 'roadmap' };
 
 export type TopView = 'needs' | 'todo' | 'map' | 'talk' | 'search' | 'me';
 
@@ -138,6 +140,8 @@ export function parseRoute(search: string): Route {
       return { view: 'emergency' };
     case 'archive':
       return { view: 'archive' };
+    case 'roadmap':
+      return { view: 'roadmap' };
     case 'todo':
       return { view: 'todo' };
     case 'needs': {
@@ -204,6 +208,7 @@ export function topViewOf(route: Route): TopView {
       return 'todo';
     case 'bead':
     case 'map':
+    case 'roadmap':
       return 'map';
     case 'talk':
     case 'line':
@@ -230,6 +235,7 @@ export function isDeep(route: Route): boolean {
     route.view === 'alarm' ||
     route.view === 'emergency' ||
     route.view === 'archive' ||
+    route.view === 'roadmap' ||
     route.view === 'key' ||
     route.view === 'prompts' ||
     route.view === 'about' ||

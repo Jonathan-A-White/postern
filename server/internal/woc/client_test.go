@@ -493,3 +493,76 @@ func TestGetSpenderFailsOnAnyOtherAnswer(t *testing.T) {
 		t.Fatal("GetSpender succeeded on a 500, want an error")
 	}
 }
+
+// mw-ev7oyy.30: a 429 that says when to come back is waited out, to a cap.
+func TestRateLimitWaitsTheRetryAfterItCarries(t *testing.T) {
+	var slept []time.Duration
+	var attempt int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&attempt, 1) == 1 {
+			w.Header().Set("Retry-After", "3")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(server.Close)
+	client := NewClient(server.URL, WithMinSpacing(0), WithRetryDelay(time.Millisecond),
+		WithSleep(func(d time.Duration) { slept = append(slept, d) }))
+
+	if _, err := client.GetUtxos("mAddr"); err != nil {
+		t.Fatalf("GetUtxos: %v", err)
+	}
+	if len(slept) != 1 || slept[0] != 3*time.Second {
+		t.Fatalf("slept %v, want one wait of the 3 s Retry-After", slept)
+	}
+}
+
+func TestRateLimitRetryAfterIsCapped(t *testing.T) {
+	var slept []time.Duration
+	var attempt int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&attempt, 1) == 1 {
+			w.Header().Set("Retry-After", "3600")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(server.Close)
+	client := NewClient(server.URL, WithMinSpacing(0), WithRetryDelay(time.Millisecond),
+		WithSleep(func(d time.Duration) { slept = append(slept, d) }))
+
+	if _, err := client.GetUtxos("mAddr"); err != nil {
+		t.Fatalf("GetUtxos: %v", err)
+	}
+	if len(slept) != 1 || slept[0] != maxRetryAfter {
+		t.Fatalf("slept %v, want one wait of the cap %s", slept, maxRetryAfter)
+	}
+}
+
+func TestRateLimitWithoutAUsableRetryAfterKeepsTheBackoff(t *testing.T) {
+	for _, header := range []string{"", "soon", "-5"} {
+		var slept []time.Duration
+		var attempt int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if atomic.AddInt32(&attempt, 1) == 1 {
+				if header != "" {
+					w.Header().Set("Retry-After", header)
+				}
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			w.Write([]byte(`[]`))
+		}))
+		client := NewClient(server.URL, WithMinSpacing(0), WithRetryDelay(time.Millisecond),
+			WithSleep(func(d time.Duration) { slept = append(slept, d) }))
+		if _, err := client.GetUtxos("mAddr"); err != nil {
+			t.Fatalf("Retry-After %q: GetUtxos: %v", header, err)
+		}
+		server.Close()
+		if len(slept) != 1 || slept[0] != time.Millisecond {
+			t.Fatalf("Retry-After %q: slept %v, want the 1 ms backoff", header, slept)
+		}
+	}
+}

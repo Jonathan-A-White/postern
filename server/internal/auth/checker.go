@@ -59,6 +59,11 @@ type backoff struct {
 // still served when the chain cannot be reached to refresh it.
 const DefaultStaleGrace = time.Hour
 
+// ColdRateLimitBackoff is how long a key with no answer to serve is told the
+// chain's 429 before the chain is asked again: short, because a key kept out
+// for the grace is a paying key locked out by one rate limit.
+const ColdRateLimitBackoff = 30 * time.Second
+
 // RestoredMaxAge is how old an answer read back from disk (WithPersistence)
 // may be and still be served, at once, while the first refresh after the
 // restart runs. It is far past the grace on purpose: a restart must never
@@ -273,8 +278,9 @@ func (c *CachedChecker) startWalkLocked(key, address string) (call *walkCall, st
 // everyone waiting on call. A walk the chain refuses (429) or cannot finish
 // (a history too long to read) puts the key in a backoff of the grace: its
 // last good answer is kept and nothing is asked of the chain until the
-// backoff is over; a history too long to read keeps that answer indefinitely,
-// and says so in the log.
+// backoff is over (a 429 for a key with no answer backs off only
+// ColdRateLimitBackoff); a history too long to read keeps that answer
+// indefinitely, and says so in the log.
 func (c *CachedChecker) run(key, address string, call *walkCall) {
 	c.mu.Lock()
 	remembered := append([]licence.Mint(nil), c.mints[key]...)
@@ -296,7 +302,14 @@ func (c *CachedChecker) run(key, address string, call *walkCall) {
 		}
 		delete(c.backoffs, key)
 	case isRateLimited(err):
-		c.backoffs[key] = backoff{until: c.now().Add(c.grace), err: err}
+		// A key with an answer keeps it, and the chain is left alone for the
+		// grace. A key with none would be told this 429 for that whole time:
+		// ask again soon instead.
+		wait := c.grace
+		if _, ok := c.cache[key]; !ok {
+			wait = ColdRateLimitBackoff
+		}
+		c.backoffs[key] = backoff{until: c.now().Add(wait), err: err}
 	case isHistoryTooLong(err):
 		c.backoffs[key] = backoff{until: c.now().Add(c.grace), err: err}
 		if entry, ok := c.cache[key]; ok && !entry.kept {

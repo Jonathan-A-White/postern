@@ -170,10 +170,32 @@ func TestAColdKeyBackedOffIsAnsweredWithoutAskingTheChainAgain(t *testing.T) {
 		if _, err := checker.HeldCollections(key); err == nil {
 			t.Fatal("HeldCollections succeeded, want the rate limit")
 		}
-		clock.Advance(time.Minute)
+		clock.Advance(time.Second)
 	}
 	if got := script.calls(); got != 1 {
-		t.Fatalf("find calls = %d, want 1: a 429 is not retried inside the grace", got)
+		t.Fatalf("find calls = %d, want 1: a 429 is not retried inside the short backoff", got)
+	}
+}
+
+// mw-ev7oyy.30: one 429 locked a key with no cached licence out for the whole
+// grace (an hour), replaying the 429 as a 502 on every request.
+func TestAColdKeyRateLimitedOnceGetsItsLicenceAfterTheShortBackoff(t *testing.T) {
+	script := &findScript{outcomes: []findOutcome{{err: fmt.Errorf("asking who spent: %w", rateLimited)}, licensed("postern")}}
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	checker := newFindChecker(script, clock)
+	key := testPubKeyHex(t)
+
+	if _, err := checker.HeldCollections(key); err == nil {
+		t.Fatal("first check succeeded, want the rate limit")
+	}
+
+	clock.Advance(ColdRateLimitBackoff + time.Second)
+	got, err := checker.HeldCollections(key)
+	if err != nil || !reflect.DeepEqual(got, []string{"postern"}) {
+		t.Fatalf("check after the short backoff = %v, %v; want the licence, not the replayed 429", got, err)
+	}
+	if ColdRateLimitBackoff > time.Minute {
+		t.Fatalf("ColdRateLimitBackoff = %s, want a short one", ColdRateLimitBackoff)
 	}
 }
 

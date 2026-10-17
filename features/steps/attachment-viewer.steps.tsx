@@ -12,6 +12,7 @@ import { db, type MessageRow } from '../../src/data/db';
 import { mergeConversation } from '../../src/model/conversation';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { encodeThreadedMessage } from '../../src/services/threads';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 
@@ -131,6 +132,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     doubles.picture = undefined;
     thawClock();
     ordinaryPhone();
+    await settlePhone();
     forgetOutboxState();
     // jsdom has no object URLs; the previews only need a string, a message's picture its own
     URL.createObjectURL = (blob: Blob | MediaSource) => {

@@ -14,6 +14,7 @@ import { OutboxNote } from '../../src/cockpit/OutboxNote';
 import { db } from '../../src/data/db';
 import { getLiveState, startLive, stopLive } from '../../src/services/live';
 import { enqueue, forgetOutboxState, settledOutbox, startOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
 const held = vi.hoisted(() => ({ key: new Uint8Array(Array.from({ length: 32 }, (_, i) => i + 1)), mayorKey: '', up: true }));
@@ -107,6 +108,7 @@ async function connected(): Promise<void> {
   stopLive();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  await settlePhone();
   forgetOutboxState();
   await db.outbox.clear();
   held.up = true;

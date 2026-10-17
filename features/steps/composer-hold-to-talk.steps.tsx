@@ -15,6 +15,7 @@ import { db } from '../../src/data/db';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetSilentInputs } from 'voice-kit/composer';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import type { Attachment } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
@@ -188,6 +189,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     doubles.recorderStarvesRecogniser = false;
     doubles.blankFinal = false;
     doubles.canRecord = true;
+    await settlePhone();
     forgetOutboxState();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.outbox.clear()]);
     vi.stubGlobal(

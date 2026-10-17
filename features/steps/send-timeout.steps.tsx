@@ -47,6 +47,8 @@ async function fresh(answer: (url: string, init?: RequestInit) => Promise<Respon
   dismissAllToasts();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  // Only the sender: AC-3 holds a write-behind (messagesRepo.put) open for ever, which can never land, so settledWrites() would never return.
+  await settledOutbox();
   forgetOutboxState();
   await Promise.all([db.messages.clear(), db.outbox.clear()]);
   posted = 0;

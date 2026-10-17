@@ -14,6 +14,7 @@ import { db, type MessageRow } from '../../src/data/db';
 import { mergeConversation } from '../../src/model/conversation';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { encodeThreadedMessage, type Attachment } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
@@ -98,6 +99,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     doubles.uploads = 0;
     downloads = [];
     plaintext = '';
+    await settlePhone();
     forgetOutboxState();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.outbox.clear()]);
     vi.stubGlobal(

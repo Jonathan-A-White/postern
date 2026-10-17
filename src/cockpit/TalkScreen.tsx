@@ -150,7 +150,7 @@ function openReplies(channel: string, rootTxid: string) {
 
 /** One channel: each post once, with one row for its replies. A bead's channel
  * merges the bead's own comments, which are always posts. */
-function ChannelPane({ threadKey, prefill, held }: { threadKey: string; prefill?: string; held: readonly MessageRow[] }) {
+function ChannelPane({ threadKey, prefill, held, msg }: { threadKey: string; prefill?: string; held: readonly MessageRow[]; msg?: string }) {
   const ref: ThreadRef | undefined = parseThreadKey(threadKey);
   const storeKey = threadKey === GENERAL ? undefined : threadKey;
   const rows = useThreadMessages(storeKey, held);
@@ -181,6 +181,7 @@ function ChannelPane({ threadKey, prefill, held }: { threadKey: string; prefill?
           <ThreadCards threadKey={storeKey} shareTitle={sharedAs} />
           <Conversation
             items={posts}
+            focus={msg}
             shareTitle={sharedAs}
             onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}
             onReply={(item) => {
@@ -210,7 +211,7 @@ function cardRoot(card: LiveCardData): ConversationItem {
  * A live card is a post like any other: the card itself heads the thread, and a reply
  * to one of its updates is a reply to the card (mw-q6n8m0.13).
  * `threadKey` is the post's own channel. */
-function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: string }) {
+function RepliesPane({ threadKey, rootTxid, msg }: { threadKey: string; rootTxid: string; msg?: string }) {
   const ref: ThreadRef | undefined = parseThreadKey(threadKey);
   const storeKey = threadKey === GENERAL ? undefined : threadKey;
   const rows = useThreadMessages(storeKey);
@@ -258,6 +259,7 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
           {(!card || shown.length > 0) && (
             <Conversation
               items={shown}
+              focus={msg}
               windowed={false}
               shareTitle={shareTitle(titleFor(threadKey, view?.index).title)}
               onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}
@@ -271,11 +273,11 @@ function RepliesPane({ threadKey, rootTxid }: { threadKey: string; rootTxid: str
   );
 }
 
-function PaneFor({ threadKey, root, prefill, held }: { threadKey: string; root?: string; prefill?: string; held: readonly MessageRow[] }) {
+function PaneFor({ threadKey, root, prefill, held, msg }: { threadKey: string; root?: string; prefill?: string; held: readonly MessageRow[]; msg?: string }) {
   return root ? (
-    <RepliesPane key={`${threadKey}:${root}`} threadKey={threadKey} rootTxid={root} />
+    <RepliesPane key={`${threadKey}:${root}|${msg ?? ''}`} threadKey={threadKey} rootTxid={root} msg={msg} />
   ) : (
-    <ChannelPane key={`${threadKey}|${prefill ?? ''}`} threadKey={threadKey} prefill={prefill} held={held} />
+    <ChannelPane key={`${threadKey}|${prefill ?? ''}|${msg ?? ''}`} threadKey={threadKey} prefill={prefill} held={held} msg={msg} />
   );
 }
 
@@ -284,7 +286,7 @@ function aboutThread(key: string, title: string): TalkAbout {
   return key.startsWith('bead:') ? { kind: 'bead', id: key.slice(5), title } : { kind: 'channel', id: key, title };
 }
 
-export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: string; prefill?: string }) {
+export function TalkScreen({ thread, root, prefill, msg }: { thread?: string; root?: string; prefill?: string; msg?: string }) {
   const wide = useWide();
   // The channel list keeps its place whatever address opens beside it.
   const rememberList = useScrollMemory('channels', false);
@@ -347,7 +349,7 @@ export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: 
         <div className="flex min-h-0 flex-1">
           <div className="flex w-[360px] shrink-0 flex-col border-r border-line">{list}</div>
           <div className="flex min-w-0 flex-1 flex-col">
-            {current ? <PaneFor threadKey={current} root={root} prefill={prefill} held={messages} /> : <EmptyState icon="talk" title="Pick a channel">Or start with Factory.</EmptyState>}
+            {current ? <PaneFor threadKey={current} root={root} prefill={prefill} held={messages} msg={msg} /> : <EmptyState icon="talk" title="Pick a channel">Or start with Factory.</EmptyState>}
           </div>
         </div>
       </Screen>
@@ -357,7 +359,7 @@ export function TalkScreen({ thread, root, prefill }: { thread?: string; root?: 
   if (current) {
     return (
       <Screen title={title} subtitle={subtitle} back={inReplies ? { view: 'talk', thread: current } : { view: 'talk' }} actions={threadActions} bare>
-        <PaneFor threadKey={current} root={root} prefill={prefill} held={messages} />
+        <PaneFor threadKey={current} root={root} prefill={prefill} held={messages} msg={msg} />
       </Screen>
     );
   }

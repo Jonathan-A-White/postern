@@ -3,7 +3,8 @@
 // (descriptions, acceptance, every comment), and every decrypted message. Ranked
 // so an exact id or a title hit comes before a word buried in a comment.
 import type { MessageRow } from '../data/db';
-import { previewText } from './conversation';
+import { mergeConversation, previewText } from './conversation';
+import { groupPosts } from './postThreads';
 import { tokens } from './filter';
 import type { BeadDetail, ViewBead } from './view';
 
@@ -20,6 +21,9 @@ export interface SearchHit {
   /** For a message: its thread key (docs/protocol.md §6) and id. */
   thread?: string;
   messageId?: string;
+  /** What the hit opens at, as the conversation names it (route's `msg`): a message's txid, or the id a bead's
+   * comment has in its conversation (`comment:<index>:<at>`). Absent for a bead and for a description. */
+  target?: string;
 }
 
 function snippetAround(text: string, words: string[], radius = 70): string {
@@ -79,10 +83,10 @@ export function search(query: string, input: SearchInput, limit = 60): SearchHit
         hits.push({ kind: 'comment', score: 6, bead: detail.id, title: `${title} — ${field}`, snippet: snippetAround(text, words), at: detail.updated });
       }
     }
-    for (const comment of detail.comments) {
-      if (!containsAll(comment.text, words)) continue;
-      hits.push({ kind: 'comment', score: 5, bead: detail.id, title, snippet: snippetAround(comment.text, words), at: comment.at });
-    }
+    detail.comments.forEach((comment, index) => {
+      if (!containsAll(comment.text, words)) return;
+      hits.push({ kind: 'comment', score: 5, bead: detail.id, title, snippet: snippetAround(comment.text, words), at: comment.at, target: `comment:${index}:${comment.at}` });
+    });
   }
 
   for (const row of input.messages) {
@@ -98,8 +102,22 @@ export function search(query: string, input: SearchInput, limit = 60): SearchHit
       at: new Date(row.ts * 1000).toISOString(),
       thread: row.thread,
       messageId: row.id,
+      target: row.txid,
     });
   }
 
   return hits.sort((a, b) => b.score - a.score || (b.at ?? '').localeCompare(a.at ?? '')).slice(0, limit);
+}
+
+/** For each reply in the messages (docs/protocol.md §14), the txid of the post its thread is rooted at, by the
+ * reply's own txid, both lower-cased: a reply is opened in that thread, never in its channel, where only
+ * posts are drawn. A message that is a post of its own is not in the map. */
+export function threadRoots(messages: MessageRow[]): Map<string, string> {
+  const roots = new Map<string, string>();
+  for (const thread of groupPosts(mergeConversation(messages))) {
+    const root = thread.root.txid?.toLowerCase();
+    if (!root) continue;
+    for (const reply of thread.replies) if (reply.txid) roots.set(reply.txid.toLowerCase(), root);
+  }
+  return roots;
 }

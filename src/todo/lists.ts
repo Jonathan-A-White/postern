@@ -9,6 +9,12 @@ import { parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, t
 
 export const TODO_LABEL = 'hitl:todo';
 
+/** Whether a bead is a to do he can mark Done wherever it is shown (mw-ev7oyy.42): labelled hitl:todo, not a list (an epic) and not closed;
+ * which epic it hangs from, if any, does not matter. A bead with children of its own (a state change filed under it) is still a card. */
+export function isOpenTodo(bead: { labels: readonly string[]; type: string; status: string }): boolean {
+  return bead.labels.includes(TODO_LABEL) && bead.type !== 'epic' && bead.status !== 'closed';
+}
+
 /** The column for cards whose bead has no epic in the view. */
 export const OTHER_LIST = 'other';
 

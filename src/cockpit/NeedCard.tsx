@@ -30,6 +30,8 @@ import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
 import { ChaseChoice } from './ChaseChoice';
 import { VerifiedButton } from './VerifiedButton';
+import { TodoDoneButton } from './TodoDoneButton';
+import { isOpenTodo } from '../todo';
 
 export interface NeedCardProps {
   need: Need;
@@ -139,7 +141,10 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const chase = need.kind === 'chase';
   // A waiting need (a bead waiting on others) says who and since when, and offers him nothing to tap.
   const waitingOnOthers = need.kind === 'waiting';
-  const options = notReady || hasSteps || stale || chase || released || verify ? [] : orderedOptions(need);
+  // A card of his own to do (mw-ev7oyy.42) has one Done, a close: the bead's page offers it among its actions, so a compact card leaves it there.
+  const todoBead = need.bead !== '' ? index?.byId.get(need.bead) : undefined;
+  const todo = todoBead !== undefined && isOpenTodo(todoBead);
+  const options = notReady || hasSteps || stale || chase || released || verify || todo ? [] : orderedOptions(need);
   const thread = need.bead ? { bead: need.bead } : undefined;
   // Where a message from this card lands, so the toast can name it and open it.
   const threadName = need.bead || titleFor(GENERAL).title;
@@ -299,6 +304,8 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
       )}
 
       {verify && <VerifiedButton bead={need.bead} where="needs" />}
+
+      {todo && !compact && <TodoDoneButton bead={need.bead} />}
 
       {options.length > 0 && !(tapAction && oneTap.waiting) && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Answers">

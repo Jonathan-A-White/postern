@@ -73,6 +73,8 @@ export interface StubExtras {
   liveCard?: boolean;
   /** Adds a live card sent three days ago, untouched since: archived (mw-v1uyku.1). */
   archivedCard?: boolean;
+  /** A whole view served in place of the fixture's (mw-ev7oyy.43: tests/support/live-shape-view.ts); `needs` and `beads` are added to it. */
+  view?: View;
 }
 
 export async function stubBackend(
@@ -83,7 +85,7 @@ export async function stubBackend(
 ): Promise<{ posted: string[] }> {
   const governorPub = governor.toPublicKey().toString();
   const now = Date.now();
-  const view = await sealDocument(JSON.stringify(withNeeds(fixtureView(now), extras.needs, extras.beads)), MAYOR.toHex(), governorPub);
+  const view = await sealDocument(JSON.stringify(withNeeds(extras.view ?? fixtureView(now), extras.needs, extras.beads)), MAYOR.toHex(), governorPub);
   let voiceAttachment: { hash: string; size: number; mime: string } | undefined;
   let voiceCiphertext: Uint8Array | undefined;
   if (voice) {

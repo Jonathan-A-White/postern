@@ -1016,6 +1016,9 @@ are near the top, and the board reads the whole notes when it may have been cut.
   `sms:<number>` with no message); a tap opens it in the same tab. On Android that link would go to the phone's
   default texting app, so there the button names Google Voice instead (mw-ev7oyy.23): `intent:<the same, after
   sms:>#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.sms_body=<the message>;S.browser_fallback_url=<the sms: link>;end`.
+  With no number (mw-ev7oyy.28) Voice has no activity for an sms: link, and Chrome sent the named package to its Play Store
+  page, so the button is Voice's launcher instead, `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.google.android.apps.googlevoice;S.browser_fallback_url=<the sms: link>;end`,
+  and the tap first copies the message and toasts 'Draft copied: pick <the name> and paste'. An 'Open:' sms: chip does the same.
 
   One example, as filed:
 

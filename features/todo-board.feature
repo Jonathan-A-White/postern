@@ -261,10 +261,20 @@ Feature: The To do board holds the Governor's own outside things, a column per l
   Scenario: mw-ev7oyy.23 AC-2: on Android the Text button opens Google Voice by name, not the phone's default texting app
     Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
     And the phone is an Android phone running Chrome
-    And the card "mw-list.1" has the notes "Text: Dad | Hi Dad, would Saturday suit you?"
+    And the card "mw-list.1" has the notes "Text: Dad 5551234567 | Hi Dad, would Saturday suit you?"
     When the To do tab opens
     Then the card "Title of mw-list.1" shows a Text button named "Text Dad" under its title
-    And the Text button "Text Dad" opens "intent:?body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.sms_body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F;S.browser_fallback_url=sms%3A%3Fbody%3DHi%2520Dad%252C%2520would%2520Saturday%2520suit%2520you%253F;end" in the same tab
+    And the Text button "Text Dad" opens "intent:5551234567?body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.sms_body=Hi%20Dad%2C%20would%20Saturday%20suit%20you%3F;S.browser_fallback_url=sms%3A5551234567%3Fbody%3DHi%2520Dad%252C%2520would%2520Saturday%2520suit%2520you%253F;end" in the same tab
+
+  Scenario: mw-ev7oyy.28 AC-2: on Android a Text button with a name and no number opens Voice itself, never the Play Store, and copies the draft
+    Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do
+    And the phone is an Android phone running Chrome
+    And the card "mw-list.1" has the notes "Text: Matthew Steele | Hi Matthew, are we on for Friday?"
+    When the To do tab opens
+    Then the card "Title of mw-list.1" shows a Text button named "Text Matthew Steele" under its title
+    And the Text button "Text Matthew Steele" opens "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.google.android.apps.googlevoice;S.browser_fallback_url=sms%3A%3Fbody%3DHi%2520Matthew%252C%2520are%2520we%2520on%2520for%2520Friday%253F;end" in the same tab
+    When he taps the Text button "Text Matthew Steele" on the card "Title of mw-list.1"
+    Then the clipboard holds "Hi Matthew, are we on for Friday?" and a toast says "Draft copied: pick Matthew Steele and paste"
 
   Scenario: mw-ev7oyy.26 AC-4: a card whose notes have an Email: line shows an Email button that opens his mail app to the person with the subject and the draft filled in
     Given a view with a list "mw-list" holding two open cards, a closed card and a card that is not a to do

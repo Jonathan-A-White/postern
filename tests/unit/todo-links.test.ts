@@ -115,7 +115,7 @@ describe('an Open: chip on Android (mw-ev7oyy.23 sweep)', () => {
 
   it('opens an sms: or smsto: link in Google Voice by name, not the default texting app, falling back to the link itself', () => {
     expect(linkProps({ text: 'Text Dad', url: 'sms:+15555550123?body=Hi%20Dad' }, ANDROID)).toEqual({
-      href: `intent:+15555550123?body=Hi%20Dad#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.browser_fallback_url=${encodeURIComponent('sms:+15555550123?body=Hi%20Dad')};end`,
+      href: `intent:+15555550123?body=Hi%20Dad#Intent;scheme=sms;package=com.google.android.apps.googlevoice;S.sms_body=Hi%20Dad;S.browser_fallback_url=${encodeURIComponent('sms:+15555550123?body=Hi%20Dad')};end`,
       'data-kind': 'text',
     });
     expect(linkProps({ text: 'Text Dad', url: 'SMSTO:+15555550123' }, ANDROID).href).toBe(

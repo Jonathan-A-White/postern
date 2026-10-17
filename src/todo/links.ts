@@ -89,17 +89,59 @@ const onAndroid = (userAgent: string) => /\bAndroid\b/i.test(userAgent);
  * phone's default texting app, and Voice is not his default. intent:<the link after its scheme>#Intent;scheme=<its
  * scheme>;package=<Voice>;<extras>S.browser_fallback_url=<the link>;end: Android's Intent.parseUri swaps 'intent:' for the
  * scheme, so Voice is handed the very link Chrome would open ('intent://' would make it sms://). Chrome takes only an
- * http(s) fallback, so the link as fallback serves other browsers. */
+ * http(s) fallback, so the link as fallback serves other browsers. Only for a link that names a recipient (mw-ev7oyy.28):
+ * no Voice activity resolves an sms: link without one, and Chrome sends a named package that resolves nothing to its Play Store page. */
 function voiceIntent(url: string, scheme: string, extras = ''): string {
   return `intent:${url.slice(scheme.length + 1)}#Intent;scheme=${scheme};package=${GOOGLE_VOICE};${extras}S.browser_fallback_url=${encodeURIComponent(url)};end`;
+}
+
+/** Google Voice's own launcher as an intent: link (mw-ev7oyy.28): the one thing Voice always resolves, so a text with no
+ * recipient opens the app itself, never its Play Store page. The draft cannot ride along (Voice reads none without a
+ * recipient), so the board copies it first (textCopyDraft) and says so. */
+function voiceLauncher(url: string): string {
+  return `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${GOOGLE_VOICE};S.browser_fallback_url=${encodeURIComponent(url)};end`;
+}
+
+/** An sms: or smsto: link taken apart: the recipient (after the scheme, before any '?') and the decoded body. */
+function smsParts(url: string, scheme: string): { recipient: string; body: string } {
+  const rest = url.slice(scheme.length + 1);
+  const query = rest.indexOf('?');
+  const recipient = (query < 0 ? rest : rest.slice(0, query)).trim();
+  let body = '';
+  for (const pair of query < 0 ? [] : rest.slice(query + 1).split('&')) {
+    const eq = pair.indexOf('=');
+    if (eq > 0 && pair.slice(0, eq).toLowerCase() === 'body') {
+      try {
+        body = decodeURIComponent(pair.slice(eq + 1));
+      } catch {
+        body = pair.slice(eq + 1);
+      }
+    }
+  }
+  return { recipient, body };
+}
+
+/** The Android link for an sms: or smsto: link: Voice by name with the draft also as the sms_body extra when it names a recipient,
+ * else Voice's launcher (smsParts, voiceLauncher). */
+function androidSmsHref(url: string, scheme: string): string {
+  const { recipient, body } = smsParts(url, scheme);
+  return recipient ? voiceIntent(url, scheme, body ? `S.sms_body=${encodeDraft(body)};` : '') : voiceLauncher(url);
 }
 
 /** The attributes of the anchor that opens a link on a phone with this user agent: what the board spreads onto its <a>.
  * A text link on Android opens Google Voice by name. */
 export function linkProps(link: OpenLink, userAgent: string): { href: string; 'data-kind': string; target?: '_blank'; rel?: string } {
   const { row, scheme } = rowOf(link.url);
-  const href = row.kind === 'text' && onAndroid(userAgent) ? voiceIntent(link.url, scheme) : link.url;
+  const href = row.kind === 'text' && onAndroid(userAgent) ? androidSmsHref(link.url, scheme) : link.url;
   return { href, 'data-kind': row.kind, ...(linkOpens(link.url) === 'new-tab' ? { target: '_blank' as const, rel: 'noopener noreferrer' } : {}) };
+}
+
+/** The draft a tap on an 'Open:' sms: chip copies before Voice opens, on Android only and only when the link names no one (mw-ev7oyy.28). */
+export function linkCopyDraft(link: OpenLink, userAgent: string): string | undefined {
+  const { row, scheme } = rowOf(link.url);
+  if (row.kind !== 'text' || !onAndroid(userAgent)) return undefined;
+  const { recipient, body } = smsParts(link.url, scheme);
+  return !recipient && body ? body : undefined;
 }
 
 /** A line that opens with 'Open:' (as a list item, a quote or in bold, too) and what follows it. */
@@ -205,11 +247,24 @@ function smsHref(action: TextAction): string {
 }
 
 /** The Text button's link for a phone with this user agent. On Android, the sms: link as an intent: link naming Google
- * Voice (voiceIntent), the draft also in the sms_body extra (Android's documented field for it), whichever Voice reads.
+ * Voice (voiceIntent), the draft also in the sms_body extra (Android's documented field for it), whichever Voice reads;
+ * with no number, Voice's own launcher instead (mw-ev7oyy.28), never an intent that can end at the Play Store.
  * Anywhere else, today's sms: link. */
 export function textHref(action: TextAction, userAgent: string): string {
   const sms = smsHref(action);
-  return onAndroid(userAgent) ? voiceIntent(sms, 'sms', action.draft ? `S.sms_body=${encodeDraft(action.draft)};` : '') : sms;
+  if (!onAndroid(userAgent)) return sms;
+  return action.number ? voiceIntent(sms, 'sms', action.draft ? `S.sms_body=${encodeDraft(action.draft)};` : '') : voiceLauncher(sms);
+}
+
+/** The draft a tap on the Text button copies before Voice opens: on Android, a line with no number (Voice opens without a
+ * recipient to hand the draft to, so he picks the person and pastes it). None anywhere else, or with a number or no draft. */
+export function textCopyDraft(action: TextAction, userAgent: string): string | undefined {
+  return onAndroid(userAgent) && !action.number && action.draft ? action.draft : undefined;
+}
+
+/** The toast after the draft is copied for a text with no number: 'Draft copied: pick Matthew Steele and paste'. */
+export function copyNotice(who?: string): string {
+  return `Draft copied: pick ${who ?? 'the person'} and paste`;
 }
 
 /** What the Text button says: who a tap texts, by name, else by number, else only 'Text'. */

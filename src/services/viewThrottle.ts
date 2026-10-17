@@ -6,7 +6,7 @@ import type { RefreshViewOptions } from './view';
 /** The least time between two full fetches of the view. */
 export const VIEW_MIN_INTERVAL_MS = 60_000;
 
-/** The least time between two full fetches made only because the events named something the home builds (a new bead, a
+/** The least time between two full fetches made only because the events named something the home builds (a
  * hold, a landing, a story closed): in a busy factory there is one of those nearly every minute (mw-7dige5.5). */
 export const VIEW_BEHIND_INTERVAL_MS = 15 * 60_000;
 

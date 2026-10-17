@@ -92,9 +92,12 @@ export interface Projection {
   view: View;
   /** The events said something this copy cannot work out and he must not wait for (a question it does not hold): fetch the view again now. */
   refetch: boolean;
-  /** The events said something only the home builds (a new or reopened bead, a hold, a landing, a story closed and the
-   * cards that follow): the copy is behind the home's until the view is next fetched, which need not be now (mw-7dige5.5). */
+  /** The events said something only the home builds (a hold, a landing, a story closed and the cards that follow): the
+   * copy is behind the home's until the view is next fetched, which need not be now (mw-7dige5.5). */
   behind: boolean;
+  /** Beads the copy does not hold that an event named as new (filed, or reopened from outside the view): their detail (§12)
+   * is small and brings the bead, and its card, into the copy now (addBead), rather than at the next full fetch (mw-ev7oyy.37). */
+  fresh: string[];
   /** Beads whose detail (§12) holds what the event did not carry: a changed field, a RAN step. */
   details: string[];
 }
@@ -146,13 +149,13 @@ function replaceBead(view: View, bead: ViewBead): View {
   return { ...view, beads: view.beads.map((b) => (b.id === bead.id ? bead : b)) };
 }
 
-function beadChanged(view: View, event: FactoryEvent, out: { behind: boolean; details: string[] }): View {
+function beadChanged(view: View, event: FactoryEvent, out: { behind: boolean; details: string[]; fresh: string[] }): View {
   const bead = view.beads.find((b) => b.id === event.bead);
   const wasClosed = event.from === 'closed' || event.from === 'verified';
   const closes = event.to === 'closed';
   if (!bead) {
-    // A new bead, or one reopened from outside the view, belongs on the map; anything else outside it (a mail bead, an old one) does not.
-    if (event.from === '' || (wasClosed && !closes)) out.behind = true;
+    // A new bead, or one reopened from outside the view, belongs on the map (its detail brings it); anything else outside it (a mail bead, an old one) does not.
+    if ((event.from === '' || (wasClosed && !closes)) && event.bead && !out.fresh.includes(event.bead)) out.fresh.push(event.bead);
     return view;
   }
   const at = event.ts || bead.updated;
@@ -236,7 +239,7 @@ function bumpComments(view: View, id: string): View {
 
 /** Applies `events`, in the order given (the caller's seq order), to a copy of `view`. */
 export function projectEvents(view: View, events: FactoryEvent[], lookups: ProjectionLookups): Projection {
-  const out = { refetch: false, behind: false, details: [] as string[] };
+  const out = { refetch: false, behind: false, details: [] as string[], fresh: [] as string[] };
   let next = view;
   for (const event of events) {
     switch (event.kind) {
@@ -267,6 +270,66 @@ export function projectEvents(view: View, events: FactoryEvent[], lookups: Proje
     if (next.seq !== undefined && event.seq > next.seq) next = { ...next, seq: event.seq };
   }
   return { view: next, ...out };
+}
+
+/** How many runes of a bead's description the view's `summary` holds (§11). */
+const SUMMARY_RUNES = 280;
+
+/** The kinds of card a hitl bead is the card of (§11): `hands`, `decision`, `review` or `verify`, from its `hitl:<kind>` label. */
+function hitlKinds(labels: string[]): string[] {
+  return labels.flatMap((label) => (/^hitl:(hands|decision|review|verify)$/.test(label) ? [label.slice(5)] : []));
+}
+
+/** What a bead newly held brings: `added` when it is in the copy now, and `behind` when it raises a card only the home
+ * can build (so the copy is behind until the view is next fetched). */
+export interface AddedBead {
+  view: View;
+  added: boolean;
+  behind: boolean;
+}
+
+/** A bead the copy does not hold, from its fetched detail (§12): the bead as the view would carry it, and, when it is a
+ * decision or review card, that card too (its text the body run together, as §11 says). It is added when the copy can
+ * place it: its parent is held, or it is a list of the To do board (a hitl:todo epic) with none. Anything else the copy
+ * cannot place is left out (`added` false), and a card of a kind only the home builds (a step to run, a demo, one waiting
+ * on others, a held story's approval) leaves the copy `behind` (mw-ev7oyy.37). A bead the copy holds is left as it is. */
+export function addBead(view: View, detail: BeadDetail): AddedBead {
+  if (view.beads.some((b) => b.id === detail.id)) return { view, added: true, behind: false };
+  const todo = detail.labels.includes('hitl:todo');
+  const placed = detail.parent ? view.beads.some((b) => b.id === detail.parent) : todo && detail.type === 'epic';
+  if (!placed) return { view, added: false, behind: false };
+  const bead: ViewBead = {
+    id: detail.id,
+    title: detail.title,
+    type: detail.type,
+    status: detail.status,
+    priority: detail.priority,
+    ...(detail.parent ? { parent: detail.parent } : {}),
+    labels: detail.labels,
+    assignee: detail.assignee,
+    waits: detail.waits,
+    created: detail.created,
+    updated: detail.updated,
+    started: detail.started,
+    closed: detail.closed,
+    ...(detail.path ? { path: detail.path } : {}),
+    attempts: detail.attempts,
+    summary: [...detail.description].slice(0, SUMMARY_RUNES).join(''),
+    comments: detail.comments.length,
+    done_earlier: 0,
+  };
+  let next: View = { ...view, beads: [...view.beads, bead] };
+  const live = detail.status === 'open';
+  const kinds = hitlKinds(detail.labels);
+  const card = !todo && live && detail.labels.includes('hitl') && kinds.length === 1 && (kinds[0] === 'decision' || kinds[0] === 'review') ? kinds[0] : undefined;
+  if (card) {
+    const text = [detail.description, detail.acceptance].map((part) => part.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ');
+    const need: Need = { kind: card, bead: bead.id, epic: epicOf(next, bead), title: bead.title, since: bead.created, text, recommended: '', options: [], blocks: 0, steps: [], waits_for: 'you', not_ready: false, waiting_on: [] };
+    next = { ...next, needs: insertNeed(next.needs, need) };
+  }
+  const homeBuilds =
+    detail.status === 'deferred' || (live && !todo && ((detail.labels.includes('hitl') && !card) || detail.labels.includes('demo') || detail.labels.includes('waiting:others')));
+  return { view: next, added: true, behind: homeBuilds };
 }
 
 /** §17's RAN comment: `RAN step <id> on <host> as <as>, exit <n> …` (millwright's posternrun.go). */

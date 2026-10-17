@@ -24,6 +24,8 @@ vi.mock('../../src/services/apiAuth', () => ({
       net.probes.push(new Headers(init?.headers).get('If-None-Match') ?? '');
       return { ok: false, status: 304, body: null };
     }
+    // A new bead's own detail (mw-ev7oyy.37): this home has no such bead to give, so the view is the way to place it.
+    if (path.startsWith('/beads/')) return new Response('{"error":"no such bead"}', { status: 404, headers: { 'Content-Type': 'application/json' } });
     net.streams += 1;
     return {
       ok: true,

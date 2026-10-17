@@ -12,7 +12,7 @@
 // the session, and after that only when the events call for it: a gap in their seqs, a batch that
 // cannot be applied, or a start whose fetch failed. Once events flow, the stream's `view` event,
 // a reconnect and a return to the app fetch nothing (mw-7dige5.1), and a hello fetches only when it names a view other than the one held (mw-7dige5.4). Every full fetch of the view goes through one throttle in view.ts, at most one a minute; only a tap on a Refresh button goes through it. An event naming
-// something only the home builds (a new bead, a hold, a landing, a story closed) fetches it at most once a quarter of an hour, and a
+// something only the home builds (a hold, a landing, a story closed) fetches it at most once a quarter of an hour, and a
 // push, a notice or another screen asking for the messages asks for nothing more (mw-7dige5.5). Every fetch says why (?why=). The line never says live over a dead
 // link: a stream with no ping for STREAM_STALE_MS is read as dropped, and a send the backend does not
 // answer (deliver's onUnreachable) drops it to reconnecting at once. A backend that did not answer /api/me

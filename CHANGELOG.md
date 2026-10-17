@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.12
+_2026-10-17_
+- New: On a phone unlocked with a fingerprint, "Approve and run" on a step for your hands now asks only for your fingerprint and runs the step, with no second confirm box.
+
 ## 0.8.11
 _2026-10-17_
 - Fixed: A verify or approve card from a landing, a hold or a finished story now shows up in Postern within about a minute instead of up to a quarter of an hour.

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.12",
+    "date": "2026-10-17",
+    "story": "mw-ev7oyy.41",
+    "kind": "new",
+    "text": "On a phone unlocked with a fingerprint, \"Approve and run\" on a step for your hands now asks only for your fingerprint and runs the step, with no second confirm box."
+  },
+  {
     "version": "0.8.11",
     "date": "2026-10-17",
     "story": "mw-ev7oyy.39",

@@ -21,6 +21,8 @@ import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
 import { StaleChoice } from './StaleChoice';
 import { VerifiedButton } from './VerifiedButton';
+import { TodoDoneButton } from './TodoDoneButton';
+import { isOpenTodo } from '../todo';
 import { chain as chainDoor } from '../chain';
 import { howToCheckItemId } from '../model/verified';
 import { ancestors, BUCKET_LABEL, BUCKET_TONE, bucketOf, isEpic, isIced, releasableHeld, type ViewIndex } from '../model/tree';
@@ -104,6 +106,8 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
   const hasStories = (detail?.children.length ?? 0) > 0 || (index?.children.get(id)?.length ?? 0) > 0;
   const verify = index?.needsByBead.get(id)?.some((need) => need.kind === 'verify');
   const stale = index?.needsByBead.get(id)?.some((need) => need.kind === 'stale');
+  // His own to do: Done closes it, whichever epic it hangs from and whatever has been filed under it (mw-ev7oyy.42).
+  const todo = id !== '' && isOpenTodo({ labels: detail?.labels ?? bead?.labels ?? [], type: detail?.type ?? bead?.type ?? 'task', status });
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Actions">
       {iced &&
@@ -152,6 +156,7 @@ function Actions({ bead, detail, index }: { bead?: ViewBead; detail?: BeadDetail
             Hold
           </Button>
         ))}
+      {todo && <TodoDoneButton bead={id} size="sm" />}
       {verify && id && <VerifiedButton bead={id} where="page" size="sm" />}
       {stale && id && <StaleChoice bead={id} size="sm" />}
       {status !== 'closed' && id && (

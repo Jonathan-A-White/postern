@@ -14,7 +14,7 @@ var routeTable = []struct {
 	{"POST /api/messages", everyKey},
 	{"GET /api/me", everyKey},
 	{"GET /api/view", cockpitKeys},
-	{"GET /api/events", cockpitKeys | mayorKey | appKeys},
+	{"GET /api/events", everyKey | mayorKey},
 	{"GET /api/presence", cockpitKeys},
 	{"GET /api/prompts", everyKey | mayorKey},
 	{"GET /api/prompts/{name}", everyKey | mayorKey},

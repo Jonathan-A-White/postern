@@ -609,7 +609,13 @@ for it. The narrowed stream carries nothing the key cannot already read:
 - `: ping` as for every stream, on its own clock. An app's stream is not presence
   (§20).
 
-The mill's key may not read the stream.
+The mill's key may read a narrowed stream too, so its grist watch hears a grist as
+soon as it is delivered rather than polling; `GET /api/me` lists `events` for it. It
+carries what an app's does (`hello` is the head only; `: ping`; never `view`,
+`ideas-only` or any event added later; not presence), and of the `message` events
+only those naming a record of class `grist` whose `to` or `from` is the mill key: a
+grist sent to the mill and a grist the mill sent. A direct message (any other
+class), even one addressed to the mill, and another key's record, is never named.
 
 ## 11. The live view
 
@@ -1168,7 +1174,7 @@ first, each `{ "name" }`, then the collections of `POSTERN_APPS`, each
 key gets neither field.
 
 An app's key (§19, *Who may do what*) gets a smaller answer: its own key, the
-mill, the network, `"features": ["grist", "events"]` (the mill's key: `["grist"]`)
+mill, the network, `"features": ["grist", "events"]` (the mill's key: the same, without `"apps"`)
 and `"apps"`, the apps its licences name; never the Mayor. `events` is its narrowed
 stream (§10).
 
@@ -1369,7 +1375,7 @@ A licence's collection (§16) now says which door it opens:
 | The key | Holds | May |
 | --- | --- | --- |
 | A **cockpit** key | a licence in one of `POSTERN_COLLECTIONS` (today `postern`) | everything, as before §19 |
-| The **mill** key | `POSTERN_MILL_KEY` | read its own records; post `grist` to any key; fetch blobs; delete a blob whose uploader has sent a grist to the mill; `GET /api/me` |
+| The **mill** key | `POSTERN_MILL_KEY` | read its own records; hear the grist among them on a narrowed event stream (§10); post `grist` to any key; fetch blobs; delete a blob whose uploader has sent a grist to the mill; `GET /api/me` |
 | An **app** key | a licence only in an app's collection (`POSTERN_APPS`, e.g. `cairn=cairn`) | read its own records; hear them on a narrowed event stream (§10); post `grist` to the mill only; upload blobs; subscribe its own pushes; `GET /api/me` |
 
 Anything else an app or the mill key asks for is `403`. "Its own records" means

@@ -77,9 +77,6 @@ func TestAnAppKeyOpensTheEventStreamAndMeListsEvents(t *testing.T) {
 	if me := s.me(t, "cairnPhone"); !contains(me.Features, "events") || !contains(me.Features, "grist") {
 		t.Fatalf("app /api/me features = %v, want events and grist", me.Features)
 	}
-	if me := s.me(t, "mill"); contains(me.Features, "events") {
-		t.Fatalf("mill /api/me features = %v, want no events: the mill may not open the stream", me.Features)
-	}
 }
 
 func TestAnAppKeysStreamCarriesOnlyTheRecordsItMayPage(t *testing.T) {
@@ -101,7 +98,7 @@ func TestAnAppKeysStreamCarriesOnlyTheRecordsItMayPage(t *testing.T) {
 	if ev := nextEvent(t, frames); ev.name != "message" || ev.data != `{"seq":3}` {
 		t.Fatalf("event = %+v, want message {\"seq\":3}, the first record it may page", ev)
 	}
-	s.mustDeliver(t, "grist", "mill", "mill") // seq 4: the mill to itself
+	s.mustDeliver(t, "grist", "mill", "mill")       // seq 4: the mill to itself
 	s.mustDeliver(t, "grist", "cairnPhone", "mill") // seq 5: its own grist
 	if ev := nextEvent(t, frames); ev.name != "message" || ev.data != `{"seq":5}` {
 		t.Fatalf("event = %+v, want message {\"seq\":5}, its own grist", ev)
@@ -141,11 +138,82 @@ func TestACockpitStreamStillCarriesEverythingBesideAnAppStream(t *testing.T) {
 	}
 }
 
-func TestTheMillKeyIsStillRefusedTheEventStream(t *testing.T) {
+func TestTheMillKeyOpensTheEventStreamAndMeListsEvents(t *testing.T) {
 	s, _ := newGristStreamServer(t)
-	resp := s.do(t, "mill", http.MethodGet, "/api/events", "")
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	s.mustDeliver(t, "grist", "cairnPhone", "mill")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resp, frames := s.openStreamAs(t, ctx, "mill")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("Content-Type = %q, want text/event-stream", got)
+	}
+	// The head only, as an app key's: never the view's ETag.
+	if hello := nextEvent(t, frames); hello.name != "hello" || hello.data != `{"head":1}` {
+		t.Fatalf("first event = %+v, want hello {\"head\":1} with no view", hello)
+	}
+	if me := s.me(t, "mill"); !contains(me.Features, "events") || !contains(me.Features, "grist") {
+		t.Fatalf("mill /api/me features = %v, want grist and events", me.Features)
+	}
+}
+
+// The mill's stream carries a grist record naming the mill as to or from, and
+// nothing else: it hears a grist sent to it (seq 3) and a grist it sent (seq
+// 5); it does not hear a direct message to the mill (seq 1: it may page it,
+// but it is not grist), a direct message to the Governor (seq 2), a grist
+// between two other keys (seq 4),
+// a record the index does not hold, the view or an Ideas only change.
+func TestTheMillKeysStreamHearsOnlyGristNamingTheMill(t *testing.T) {
+	s, hub := newGristStreamServer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, frames := s.openStreamAs(t, ctx, "mill")
+	nextEvent(t, frames) // hello
+
+	s.mustDeliver(t, "message", "governor", "mill")     // seq 1: a direct message to the mill
+	s.mustDeliver(t, "message", "governor", "governor") // seq 2: a direct message to the Governor
+	hub.RecordIndexed(index.Record{Seq: 999})
+	hub.ViewChanged(`"abc"`)
+	hub.IdeasOnlyChanged("02"+strings.Repeat("ab", 32), true, 1790003600)
+
+	s.mustDeliver(t, "grist", "cairnPhone", "mill") // seq 3: a grist to the mill
+	if ev := nextEvent(t, frames); ev.name != "message" || ev.data != `{"seq":3}` {
+		t.Fatalf("event = %+v, want message {\"seq\":3}, the first grist naming the mill", ev)
+	}
+	s.mustDeliver(t, "grist", "governor", "cairnPhone") // seq 4: two other keys
+	s.mustDeliver(t, "grist", "mill", "cairnPhone")     // seq 5: the mill's answer
+	if ev := nextEvent(t, frames); ev.name != "message" || ev.data != `{"seq":5}` {
+		t.Fatalf("event = %+v, want message {\"seq\":5}, a grist the mill sent", ev)
+	}
+}
+
+func TestTheMillKeyIsRefusedEveryRouteButTheOnesItWasAdmittedTo(t *testing.T) {
+	s, _ := newGristStreamServer(t)
+	admitted := map[string]bool{
+		"GET /api/messages":        true,
+		"POST /api/messages":       true,
+		"GET /api/me":              true,
+		"GET /api/events":          true, // mw-46z0my.14
+		"GET /api/prompts":         true,
+		"GET /api/prompts/{name}":  true,
+		"GET /api/blobs/{hash}":    true,
+		"DELETE /api/blobs/{hash}": true,
+	}
+	// A request the gate refuses never reaches its handler, so a path with
+	// placeholders filled in and no body is enough to read the gate.
+	for _, pattern := range Routes() {
+		if admitted[pattern] {
+			continue
+		}
+		method, path, _ := strings.Cut(pattern, " ")
+		path = strings.NewReplacer("{name}", "x", "{hash}", strings.Repeat("a", 64), "{pubkey}", "02"+strings.Repeat("ab", 32), "{id}", "mw-1", "{address}", "mxyz").Replace(path)
+		resp := s.do(t, "mill", method, path, "")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s as mill: status %d, want 403: no route but the events stream was widened", pattern, resp.StatusCode)
+		}
 	}
 }

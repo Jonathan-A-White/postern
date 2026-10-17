@@ -111,14 +111,6 @@ func TestAStrangersKeyIsStillRefusedTheEventStream(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("GET /api/events as an unlicensed stranger: status %d, want 401", resp.StatusCode)
 	}
-
-	// An app's key now opens a narrowed stream (app_events_test.go); the
-	// mill's key is still refused it.
-	resp = s.do(t, "mill", http.MethodGet, "/api/events", "")
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("GET /api/events as the mill's key: status %d, want 403", resp.StatusCode)
-	}
 }
 
 func TestTheMayorsUnlicensedKeyOpensTheEventStreamAndNothingElse(t *testing.T) {

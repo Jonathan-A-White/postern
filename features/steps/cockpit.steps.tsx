@@ -15,6 +15,7 @@ import { db } from '../../src/data/db';
 import { sharesRepo, vaultRepo } from '../../src/data/repositories';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { stopLive } from '../../src/services/live';
 import { resetViewThrottle } from '../../src/services/viewThrottle';
@@ -109,12 +110,14 @@ async function letTheSendFinish(bead: string): Promise<void> {
 async function fresh(options: BackendOptions = {}): Promise<void> {
   cleanup();
   stopLive();
+  // A held send is let through and the last scenario's writes settle before the phone is emptied.
+  sendGate?.open();
+  sendGate = undefined;
+  await settlePhone();
   lock();
   vi.unstubAllGlobals();
   forgetTaps();
   forgetOutboxState();
-  sendGate?.open();
-  sendGate = undefined;
   refuseNext = false;
   delivered = [];
   await Promise.all([db.vault.clear(), db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear(), db.answers.clear(), db.shares.clear(), db.session.clear(), db.outbox.clear()]);

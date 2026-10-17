@@ -10,6 +10,7 @@ import { BeadScreen } from '../../src/cockpit/BeadScreen';
 import { statusWord } from '../../src/cockpit/labels';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { forgetOutboxState } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { deliverAction } from '../../src/services/deliver';
@@ -41,6 +42,7 @@ async function save(): Promise<void> {
 async function fresh(): Promise<void> {
   cleanup();
   forgetTaps();
+  await settlePhone();
   forgetOutboxState();
   vi.mocked(deliverAction).mockClear();
   now = Date.now();

@@ -10,6 +10,7 @@ import { NeedCard } from '../../src/cockpit/NeedCard';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { db } from '../../src/data/db';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { deliverThreaded } from '../../src/services/deliver';
 import type { Need, NeedKind } from '../../src/model/view';
 
@@ -40,6 +41,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
   BeforeEachScenario(async () => {
     cleanup();
     forgetTaps();
+    await settlePhone();
     forgetOutboxState();
     vi.mocked(deliverThreaded).mockClear();
     await Promise.all([db.settings.clear(), db.answers.clear(), db.messages.clear(), db.outbox.clear()]);

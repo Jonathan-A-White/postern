@@ -12,6 +12,7 @@ import { forgetTaps } from '../../src/cockpit/oneTap';
 import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { forgetOutboxState } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import type { ViewBead } from '../../src/model/view';
 
@@ -28,6 +29,7 @@ async function fresh(): Promise<void> {
   now = Date.now();
   beads = [];
   forgetTaps();
+  await settlePhone();
   forgetOutboxState();
   await Promise.all([db.settings.clear(), db.view.clear(), db.answers.clear(), db.messages.clear(), db.beadDetails.clear(), db.outbox.clear(), db.events.clear()]);
   localStorage.clear();

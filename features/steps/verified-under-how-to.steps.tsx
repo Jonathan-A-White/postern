@@ -9,6 +9,7 @@ import { forgetTaps } from '../../src/cockpit/oneTap';
 import { db } from '../../src/data/db';
 import { beadDetailsRepo, viewRepo } from '../../src/data/repositories';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { deliverThreaded } from '../../src/services/deliver';
 import { fixtureDetail, fixtureView } from '../../tests/support/cockpit-fixture';
 import type { BeadComment } from '../../src/model/view';
@@ -59,6 +60,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
   BeforeEachScenario(async () => {
     cleanup();
     forgetTaps();
+    await settlePhone();
     forgetOutboxState();
     vi.mocked(deliverThreaded).mockClear();
     await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.outbox.clear(), db.settings.clear()]);

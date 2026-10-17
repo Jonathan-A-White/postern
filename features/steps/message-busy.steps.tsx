@@ -10,6 +10,7 @@ import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
 import { db } from '../../src/data/db';
 import { forgetOutboxState, settledOutbox, startOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { settledWrites } from '../../src/services/deliver';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
@@ -62,6 +63,7 @@ function stubNetwork(): void {
 async function fresh(): Promise<void> {
   cleanup();
   stopOutbox?.();
+  await settlePhone();
   forgetOutboxState();
   answers = [];
   broadcasts = 0;

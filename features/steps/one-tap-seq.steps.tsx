@@ -10,6 +10,7 @@ import { db } from '../../src/data/db';
 import { eventsRepo, viewRepo } from '../../src/data/repositories';
 import { deliverAction } from '../../src/services/deliver';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 
 vi.mock('../../src/services/deliver', async (importOriginal) => ({
@@ -60,6 +61,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     cleanup();
     vi.mocked(deliverAction).mockClear();
     forgetTaps();
+    await settlePhone();
     forgetOutboxState();
     await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.outbox.clear(), db.events.clear()]);
     vi.useFakeTimers({ toFake: ['Date'] });

@@ -9,7 +9,16 @@ import { settledOutbox } from '../../src/services/outbox';
  * scenario's screen is unmounted and before forgetOutboxState().
  */
 export async function emptyPhone(): Promise<void> {
+  await settlePhone();
+  await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.outbox.clear(), db.beadDetails.clear(), db.answers.clear()]);
+}
+
+/**
+ * The settle half of emptyPhone(), for a step file that clears its own list of tables (events, vault,
+ * pendingSpends...): the sender and the write-behinds finish first. Call it before forgetOutboxState(),
+ * which drops the sender's pass, and before the clear (mw-gq6.544).
+ */
+export async function settlePhone(): Promise<void> {
   await settledOutbox();
   await settledWrites();
-  await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.outbox.clear(), db.beadDetails.clear(), db.answers.clear()]);
 }

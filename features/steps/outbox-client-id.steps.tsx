@@ -7,6 +7,7 @@ import { PrivateKey, Utils } from '@bsv/sdk';
 import { db } from '../../src/data/db';
 import { outboxRepo } from '../../src/data/repositories';
 import { enqueue, forgetOutboxState, kickOutbox, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { settledWrites } from '../../src/services/deliver';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
@@ -55,6 +56,7 @@ vi.mock('../../src/services/keySession', async (importOriginal) => ({
 let firstClientId: string | undefined;
 
 async function fresh(): Promise<void> {
+  await settlePhone();
   forgetOutboxState();
   backend.loseFirstReply = false;
   backend.posts = 0;

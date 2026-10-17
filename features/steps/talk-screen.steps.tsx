@@ -30,6 +30,7 @@ import { challengeResponse, isChallengeRequest } from '../../tests/support/chall
 import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-woc';
 import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { imageSeam } from '../../src/images/shrink';
 
 const clock = vi.hoisted(() => ({ at: 1_000_000 }));
@@ -362,6 +363,7 @@ async function fresh(): Promise<void> {
   });
   for (const fake of [speak, cancel, vibrate, release, request, showNotification, getNotifications]) fake.mockClear();
   pageShowing = true;
+  await settlePhone();
   await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
   document.documentElement.lang = '';
   setInputs(undefined);
@@ -2784,6 +2786,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     URL.revokeObjectURL = () => {};
     outbox.real = true;
     setKey(outbox.key);
+    await settlePhone();
     forgetOutboxState();
     await db.outbox.clear();
     let uploads = 0;

@@ -12,6 +12,7 @@ import { dismissAllToasts } from '../../src/ui/toastStore';
 import { db } from '../../src/data/db';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import type { Attachment } from '../../src/services/threads';
 import { imageSeam } from '../../src/images/shrink';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
@@ -80,6 +81,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     setKey(doubles.key);
     doubles.delivered = [];
     doubles.uploads = 0;
+    await settlePhone();
     forgetOutboxState();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.outbox.clear()]);
     vi.stubGlobal(

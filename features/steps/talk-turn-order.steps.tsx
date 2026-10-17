@@ -9,6 +9,7 @@ import { RefusedError } from '../../src/services/apiAuth';
 import { db } from '../../src/data/db';
 import { outboxRepo } from '../../src/data/repositories';
 import { discardRow, forgetOutboxState, kickOutbox, retryRow, startOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import type { TalkTurn } from '../../src/model/talkLine';
 
 const backend = vi.hoisted(() => ({
@@ -41,6 +42,7 @@ let stopOutbox: (() => void) | undefined;
 
 async function fresh(): Promise<void> {
   stopOutbox?.();
+  await settlePhone();
   forgetOutboxState();
   backend.fate.clear();
   backend.heard = [];

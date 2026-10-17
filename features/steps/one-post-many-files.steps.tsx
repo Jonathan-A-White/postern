@@ -13,6 +13,7 @@ import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { mergeConversation } from '../../src/model/conversation';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetOutboxState, kickOutbox, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { decodeThreadedMessage, encodeThreadedMessage, type ThreadedBody } from '../../src/services/threads';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 
@@ -102,6 +103,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     caption = '';
     sendError = undefined;
     plaintext = '';
+    await settlePhone();
     forgetOutboxState();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear(), db.outbox.clear()]);
   });

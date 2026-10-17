@@ -16,6 +16,7 @@ import { db } from '../../src/data/db';
 import { lock, setKey } from '../../src/services/keySession';
 import { forgetSilentInputs } from 'voice-kit/composer';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import type { Attachment } from '../../src/services/threads';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
@@ -67,6 +68,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     forgetSilentInputs();
     setKey(doubles.key);
     doubles.delivered = [];
+    await settlePhone();
     forgetOutboxState();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.outbox.clear()]);
     vi.stubGlobal(

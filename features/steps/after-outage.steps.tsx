@@ -13,6 +13,7 @@ import { LiveBadge } from '../../src/cockpit/Shell';
 import { db } from '../../src/data/db';
 import { getLiveState, startLive, stopLive } from '../../src/services/live';
 import { enqueue, forgetOutboxState, settledOutbox, startOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 
 const held = vi.hoisted(() => ({ key: new Uint8Array(Array.from({ length: 32 }, (_, i) => i + 1)), mayorKey: '', up: false }));
@@ -125,6 +126,7 @@ const feature = await loadFeature('features/after-outage.feature');
 describeFeature(feature, ({ Scenario }) => {
   Scenario('mw-gq6.276 AC-1: the app opens while the backend does not answer, and once it answers the line is Live and what waited goes by the direct road', ({ Given, When, And, Then }) => {
     Given('the app opens while the backend does not answer and the chain does', async () => {
+      await settlePhone();
       forgetOutboxState();
       await db.outbox.clear();
       held.up = false;

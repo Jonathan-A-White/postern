@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { db, type EventRow } from '../../src/data/db';
 import { eventsRepo, viewRepo } from '../../src/data/repositories';
-import { applyBeadDetail, decodeEventBatch, detailAsOf, projectEvents, type EventBatch } from '../../src/model/events';
+import { addBead, applyBeadDetail, decodeEventBatch, detailAsOf, projectEvents, type EventBatch } from '../../src/model/events';
 import { projectBatches, publishEvents, useEvents } from '../../src/services/events';
 import { decodeView, type BeadDetail, type Need, type View, type ViewBead } from '../../src/model/view';
 import { handsStep } from '../support/cockpit-fixture';
@@ -120,9 +120,9 @@ describe('projectBatches', () => {
     expect(decodeView((await viewRepo.get())!.plaintext).beads[0].comments).toBe(0);
   });
 
-  it('a new bead in an unbroken run leaves the copy behind, with no ask for the view now (mw-7dige5.5)', async () => {
+  it('a new bead in an unbroken run asks for its own detail, not for the view now (mw-7dige5.5, mw-ev7oyy.37)', async () => {
     const result = await projectBatches([batch([event({ seq: 1, kind: 'bead_changed', bead: 'mw-new', from: '', to: 'open', detail: 'created' })])]);
-    expect(result).toMatchObject({ refetch: false, gap: false, behind: true });
+    expect(result).toMatchObject({ refetch: false, gap: false, behind: false, fresh: ['mw-new'] });
     expect((await projectBatches([batch([event({ seq: 2, kind: 'job' })])])).behind).toBe(false);
   });
 
@@ -169,10 +169,20 @@ describe('projectEvents', () => {
     expect(after.refetch).toBe(false);
   });
 
-  it('marks the copy behind where only the home can say what follows: a bead it does not hold, a landing, a hold; none asks for the view at once (mw-7dige5.5)', () => {
+  it('names a bead it does not hold as fresh: its detail brings it, the copy is not behind for it (mw-ev7oyy.37)', () => {
     const before = view([bead('mw-a')]);
     for (const changed of [
       event({ kind: 'bead_changed', bead: 'mw-new', from: '', to: 'open', detail: 'status' }),
+      event({ kind: 'bead_changed', bead: 'mw-new', from: 'closed', to: 'open', detail: 'status' }),
+    ]) {
+      expect(projectEvents(before, [changed], NO_LOOKUPS)).toMatchObject({ fresh: ['mw-new'], behind: false, refetch: false });
+    }
+    expect(projectEvents(before, [event({ kind: 'bead_changed', bead: 'mw-old', from: 'open', to: 'closed', detail: 'status' })], NO_LOOKUPS).fresh).toEqual([]);
+  });
+
+  it('marks the copy behind where only the home can say what follows: a landing, a hold; none asks for the view at once (mw-7dige5.5)', () => {
+    const before = view([bead('mw-a')]);
+    for (const changed of [
       event({ kind: 'bead_changed', bead: 'mw-a', from: 'running', to: 'landed', detail: 'status' }),
       event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'held', detail: 'status' }),
     ]) {
@@ -292,5 +302,45 @@ describe('detailAsOf', () => {
     expect(detailAsOf(other, bead('mw-b', { updated: '2026-10-01T11:00:00Z' }))).toBe(other);
     expect(detailAsOf(other, undefined)).toBe(other);
     expect(detailAsOf(undefined, bead('mw-a'))).toBeUndefined();
+  });
+});
+
+describe('addBead (mw-ev7oyy.37)', () => {
+  function detail(extra: Partial<BeadDetail> = {}): BeadDetail {
+    return { v: 2, id: 'mw-new', title: 'Filed', type: 'task', status: 'open', priority: 2, parent: 'mw-list', labels: [], assignee: '', waits: [], blocks: [], children: [], created: '2026-10-01T12:01:00Z', updated: '2026-10-01T12:01:00Z', started: '', closed: '', attempts: 0, description: 'Do this: ring.\nDone when: booked.', acceptance: '', comments: [], ...extra };
+  }
+  const held = () => view([bead('mw-list', { type: 'epic', labels: ['hitl:todo'] })]);
+
+  it('adds a bead whose parent the copy holds, with the summary and counts the view would carry', () => {
+    const added = addBead(held(), detail({ labels: ['hitl:todo'], description: 'x'.repeat(400) }));
+    expect(added).toMatchObject({ added: true, behind: false });
+    expect(added.view.beads.find((b) => b.id === 'mw-new')).toMatchObject({ title: 'Filed', parent: 'mw-list', labels: ['hitl:todo'], status: 'open', comments: 0 });
+    expect(added.view.beads.find((b) => b.id === 'mw-new')?.summary).toHaveLength(280);
+    expect(added.view.needs).toEqual([]);
+  });
+
+  it('adds a hitl:decision or hitl:review bead as the card of that kind, its text the body run together', () => {
+    for (const kind of ['decision', 'review'] as const) {
+      const added = addBead(held(), detail({ labels: ['hitl', `hitl:${kind}`] }));
+      expect(added.behind).toBe(false);
+      expect(added.view.needs).toEqual([expect.objectContaining({ kind, bead: 'mw-new', epic: 'mw-list', title: 'Filed', text: 'Do this: ring. Done when: booked.', waits_for: 'you', not_ready: false })]);
+    }
+  });
+
+  it('adds a new list of the To do board that has no parent, and leaves any other bead it cannot place out', () => {
+    expect(addBead(view([]), detail({ type: 'epic', parent: undefined, labels: ['hitl:todo'] })).added).toBe(true);
+    expect(addBead(held(), detail({ parent: 'mw-elsewhere' }))).toMatchObject({ added: false, behind: false });
+    expect(addBead(held(), detail({ type: 'epic', parent: undefined })).added).toBe(false);
+  });
+
+  it('leaves the copy behind for a card only the home builds: a step to run, a demo, a wait on others, a held bead', () => {
+    for (const extra of [{ labels: ['hitl'] }, { labels: ['hitl', 'hitl:hands'] }, { labels: ['demo'] }, { labels: ['waiting:others'] }, { status: 'deferred' }]) {
+      expect(addBead(held(), detail(extra))).toMatchObject({ added: true, behind: true });
+    }
+  });
+
+  it('leaves a bead the copy holds as it is', () => {
+    const before = view([bead('mw-new', { title: 'Held' })]);
+    expect(addBead(before, detail()).view).toBe(before);
   });
 });

@@ -1969,7 +1969,7 @@ own field) or applied, a closed bead's cards settled and the cards that waited o
 A changed field or a `hands_ran` fetches that bead's detail (§12) for the value the event
 does not carry. It fetches the view again only on a gap (the first event past the cursor is
 not cursor + 1), with no view yet, or when an event says something only the home can build
-(a new or reopened bead, a hold, a landing, a story closed, a question it does not hold).
+(a hold, a landing, a story closed, a question it does not hold).
 The whole view is therefore fetched at the start of a session, and after that only on a gap
 (also after a reconnect, whose first batch must follow on from the last `seq` seen), when a batch
 cannot be applied, or when a start's fetch failed (the next sync tries again). A hello, a
@@ -1981,8 +1981,8 @@ asks `GET /api/view` with `If-None-Match: *`, which the backend answers with a b
 standby `503`), never the body, so that 'Home is down' (§ standby) still shows and ends; a `304`
 ends it like a `200`.
 
-`mw-7dige5.5`. In a busy factory an event that only the home can build follows (a new bead, a
-hold, a landing, a story closed) comes nearly every minute, so those no longer fetch the view at
+`mw-7dige5.5`. In a busy factory an event that only the home can build follows (a hold, a landing,
+a story closed) comes nearly every minute, so those no longer fetch the view at
 once: they mark the copy behind, and the view is fetched once a quarter of an hour
 (`VIEW_BEHIND_INTERVAL_MS`) has passed since the last full fetch, whichever fetch that was (a gap,
 a reconnect, a tap on Refresh answers it sooner). A gap, a batch that cannot be applied and a
@@ -1994,6 +1994,17 @@ session's first, or its retry), `hello` (the first stream naming another view), 
 later one), `gap`, `unapplied`, `behind`, `view-event`, `poll` (a backend without events),
 `refresh` (a tap), `focus` (the Map), `mayor-key` or `probe` (the bodiless return-to-the-app ask
 above); the backend writes it on the request's log line (docs/api.md).
+
+`mw-ev7oyy.37`. A new bead's event (`bead_changed` from `""`, or a reopen of a bead the copy does
+not hold) carries no title, labels or parent, so the phone fetches that one bead's detail (§12,
+small) and adds the bead to its copy when it can place it (its parent is held, or it is a
+`hitl:todo` list with none): a To do filed for him shows on the board within the minute, with no
+view fetch. A bead labelled `hitl` plus exactly `hitl:decision` or `hitl:review` is added as that
+card too, its `text` the description (and acceptance) run together. A bead the copy cannot place,
+a detail that cannot be had, and a card only the home builds (a `hands`, `verify` or `demo` card,
+`waiting:others`, a held story's approval) leave the copy behind as before: the view is fetched
+once a quarter of an hour has passed since the last fetch (above). The next full view replaces
+the copy's own.
 
 `mw-jrx0s.8`. The bead's page hears the events about its bead: a `message` shows in its
 thread from the stored record (the sync keeps it before the batch is applied), so it fetches

@@ -19,6 +19,7 @@ function item(n: number): ConversationItem {
 
 let count = 3;
 let scrollOnOpen = true;
+let focus: string | undefined;
 let intoView = vi.fn();
 
 const tops = new WeakMap<Element, number>();
@@ -28,13 +29,30 @@ const content = (el: Element) => el.querySelectorAll('[data-testid="message"]').
 
 /** The box clamps scrollTop to the content behind it, as a browser's does. It is faked on the
  * prototype because the conversation's layout effect runs before a parent's ref is attached. */
-const LAYOUT = ['scrollHeight', 'clientHeight', 'scrollTop'] as const;
+const LAYOUT = ['scrollHeight', 'clientHeight', 'scrollTop', 'getBoundingClientRect'] as const;
 const original = LAYOUT.map((name) => [name, Object.getOwnPropertyDescriptor(Element.prototype, name)] as const);
+
+/** Where an element sits on the screen: the box at the top of it, a message at its row of the box less the
+ * box's scroll; a message's wrapper (the one thing marked or not) stands for the row it is in. */
+function rect(this: Element): DOMRect {
+  const box = this.closest('[data-testid="box"]');
+  let top = 0;
+  let height = 0;
+  if (this === box) height = VIEW;
+  else if (box) {
+    const wrapper = this.closest('[data-found], .message-list > div') ?? this;
+    const rows = Array.from(box.querySelectorAll('.message-list > div'));
+    top = Math.max(0, rows.indexOf(wrapper)) * ROW - (tops.get(box) ?? 0);
+    height = ROW;
+  }
+  return { top, bottom: top + height, left: 0, right: 0, width: 0, height, x: 0, y: top, toJSON: () => ({}) };
+}
 
 function fakeLayout(): void {
   Object.defineProperties(Element.prototype, {
     scrollHeight: { configurable: true, get: function (this: Element) { return isBox(this) ? content(this) : 0; } },
     clientHeight: { configurable: true, get: function (this: Element) { return isBox(this) ? VIEW : 0; } },
+    getBoundingClientRect: { configurable: true, value: rect },
     scrollTop: {
       configurable: true,
       get: function (this: Element) { return tops.get(this) ?? 0; },
@@ -50,7 +68,7 @@ function Harness({ n }: { n: number }) {
   return (
     <div>
       <div data-testid="box" style={{ overflowY: 'auto' }}>
-        <Conversation items={Array.from({ length: n }, (_, i) => item(i + 1))} scrollOnOpen={scrollOnOpen} />
+        <Conversation items={Array.from({ length: n }, (_, i) => item(i + 1))} scrollOnOpen={scrollOnOpen} focus={focus} />
       </div>
     </div>
   );
@@ -73,6 +91,7 @@ function fresh(): void {
   cleanup();
   count = 3;
   scrollOnOpen = true;
+  focus = undefined;
   intoView = vi.fn();
   fakeLayout();
   document.documentElement.scrollTop = 0;
@@ -151,6 +170,29 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('a new message arrives', arrive);
     Then("the conversation's box is scrolled to its bottom", () => {
       expect(box().scrollTop).toBe(count * ROW - VIEW);
+    });
+  });
+
+  Scenario('mw-ev7oyy.38: a conversation asked to open at an old message draws it, marks it and scrolls its box to it', ({ Given, Then, And }) => {
+    Given('a conversation of 150 messages open in its own scroll box, asked to open at message 20', () => {
+      count = 150;
+      focus = 'm20';
+      open();
+    });
+    Then('message 20 is drawn and marked as the one found', () => {
+      const found = document.querySelector('[data-found]');
+      expect(found).not.toBeNull();
+      expect(found).toHaveTextContent('Message 20');
+    });
+    And("the conversation's box is scrolled to message 20, not to its bottom", () => {
+      const found = document.querySelector('[data-found]') as HTMLElement;
+      const top = found.getBoundingClientRect().top;
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(top + ROW).toBeLessThanOrEqual(VIEW);
+      expect(box().scrollTop).toBeLessThan(content(box()) - VIEW);
+    });
+    And('no other message is marked', () => {
+      expect(document.querySelectorAll('[data-found]')).toHaveLength(1);
     });
   });
 });

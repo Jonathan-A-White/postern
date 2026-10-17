@@ -56,6 +56,8 @@ func main() {
 			os.Exit(setupMain(os.Args[2:]))
 		case "keygen":
 			os.Exit(runKeygen(os.Args[2:], os.Stdout, os.Stderr))
+		case "rights":
+			os.Exit(runRights(os.Args[2:], os.Getenv, os.Stdout, os.Stderr))
 		}
 	}
 

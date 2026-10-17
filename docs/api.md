@@ -892,6 +892,23 @@ origin, stops the backend at start. So does half a grist door: `POSTERN_APPS` or
 `POSTERN_ON_GRIST` without `POSTERN_MILL_KEY`, or `POSTERN_MILL_KEY` without
 `POSTERN_APPS`; the error names the missing setting.
 
+## The licence map (`postern rights`)
+
+```
+postern rights --json [--env-file F]
+```
+
+Prints which routes a key opens, for each collection the backend would load
+(POSTERN_COLLECTIONS, then POSTERN_APPS, with the defaults the server uses;
+read from the env file `F` (a systemd EnvironmentFile) or, without it, the
+environment): `{"collections":[{"collection","kind":"cockpit"|"app","app",
+"routes":["GET /api/view", ...]}]}`. The routes come from the same table the
+gate registers its routes from and the same rights function it runs, so there
+is no second copy to keep in step (`mw doctor licences` reads this instead of
+its own). It is read-only: no server starts, no key is read, nothing is
+written, and no value from the env file is printed. Without `--json` it prints
+the same map as text.
+
 ## The poller
 
 A background goroutine walks `POSTERN_ANCHOR`'s history (`GET

@@ -255,7 +255,6 @@ func TestAppAndMillKeysAreRefusedTheCockpit(t *testing.T) {
 		}
 	}
 	for _, route := range []struct{ as, method, path string }{
-		{"mill", http.MethodGet, "/api/events"}, // an app key's stream is narrowed to its own records (app_events_test.go)
 		{"cairnPhone", http.MethodGet, "/api/blobs/" + strings.Repeat("a", 64)},
 		{"cairnPhone", http.MethodDelete, "/api/blobs/" + strings.Repeat("a", 64)},
 		{"mill", http.MethodPost, "/api/blobs"},

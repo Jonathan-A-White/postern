@@ -11,6 +11,7 @@ import (
 
 	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/record"
 	"github.com/Jonathan-A-White/postern/server/internal/view"
 )
 
@@ -26,7 +27,8 @@ import (
 // stream (§19): a hello naming only the head, which its own GET /api/messages
 // already answers as next, and only the message events whose record it may page
 // there (readableBy); never the view, nor any other event. Its stream does not
-// count as presence.
+// count as presence. The mill's key gets the same, and of its records only the
+// grist ones.
 func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.Duration, here *presence) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
@@ -77,7 +79,7 @@ func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.D
 				if !open {
 					return
 				}
-				if narrowed && !readableBy(store, key, ev) {
+				if narrowed && !readableBy(store, key, granted.mill, ev) {
 					continue
 				}
 				err = writeSSE(w, ev)
@@ -92,11 +94,13 @@ func handleEvents(store *index.Store, hub *events.Hub, v *view.File, ping time.D
 	}
 }
 
-// readableBy reports whether an app key's narrowed stream carries ev: only a
-// message event naming a record the index holds and key may page from GET
-// /api/messages (ownRecords: its envelope names key as to or from). Every other
-// event, an event name added later included, stays off it.
-func readableBy(store *index.Store, key string, ev events.Event) bool {
+// readableBy reports whether a narrowed stream carries ev: only a message
+// event naming a record the index holds and key may page from GET
+// /api/messages (ownRecords: its envelope names key as to or from). The
+// mill's stream (mill) carries only such a record of class grist, so it never
+// hears a direct message. Every other event, an event name added later
+// included, stays off it.
+func readableBy(store *index.Store, key string, mill bool, ev events.Event) bool {
 	if ev.Name != "message" {
 		return false
 	}
@@ -107,7 +111,14 @@ func readableBy(store *index.Store, key string, ev events.Event) bool {
 		return false
 	}
 	page, _, _ := store.SinceLimit(msg.Seq-1, 1)
-	return len(page) == 1 && page[0].Seq == msg.Seq && len(ownRecords(page, key)) == 1
+	if len(page) != 1 || page[0].Seq != msg.Seq || len(ownRecords(page, key)) != 1 {
+		return false
+	}
+	if !mill {
+		return true
+	}
+	env, err := record.ParseEnvelope(page[0].Payload)
+	return err == nil && env.Class == record.ClassGrist
 }
 
 // writeSSE writes one named event with its one-line data.

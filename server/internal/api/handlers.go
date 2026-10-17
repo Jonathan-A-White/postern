@@ -434,15 +434,15 @@ func keyPrefix(pubKeyHex string) string {
 // handleMe answers who the caller is, who the Mayor is and who the mill is,
 // and tells a cockpit key the backend's collections and the issuer's address
 // (docs/protocol.md §15, §19). An app's key or the mill's is never told the
-// Mayor, and is offered only grist, and an app's key also its narrowed event
-// stream.
+// Mayor, and is offered only grist, and an app's key or the mill's also its
+// narrowed event stream.
 func handleMe(o *options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller := AuthenticatedKey(r.Context())
 		granted := rightsOf(r.Context())
 		if !granted.cockpit {
 			features := []string{featureGrist}
-			if appKeys.admits(granted) {
+			if (appKeys | millKey).admits(granted) {
 				features = append(features, featureEvents)
 			}
 			writeJSON(w, http.StatusOK, struct {

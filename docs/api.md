@@ -167,6 +167,7 @@ A proved key is one of three kinds, and each endpoint below admits only some:
   endpoint, exactly as before §19;
 - the **mill** key is `POSTERN_MILL_KEY`, vouched for by configuration (it needs
   no licence, only the signed proof): `GET/POST /api/messages`, `GET /api/me`,
+  `GET /api/events` (narrowed to the grist naming it),
   `GET /api/blobs/{hash}`, and `DELETE /api/blobs/{hash}` for a blob whose
   uploader has sent a grist to the mill;
 - an **app** key holds a licence only in an app's collection (`POSTERN_APPS`):
@@ -571,7 +572,12 @@ data: {"seq":43}
 - `: ping` as for every stream. An app's stream does not count towards
   `GET /api/presence`.
 
-The mill's key gets `403`.
+The mill's key may open the stream too, narrowed the same way and further: it
+hears a `message` event only for a record of class `grist` whose envelope names
+the mill as `to` or `from` (a grist to the mill, and the answers it sent), never a
+direct message (any other class), so its grist watch needs no polling. Its
+`hello` is `{"head":N}` as above, and its stream does not count towards
+`GET /api/presence` either.
 
 ## GET /api/presence
 
@@ -661,8 +667,8 @@ Who the caller is, who the Mayor is and who the mill is (`docs/protocol.md` §15
 
   An app's key or the mill's gets `{"pubkey", "mill", "network", "features",
   "apps"}` instead: never the Mayor, and `apps` names the apps its licences open.
-  `features` is `["grist", "events"]` for an app's key (its narrowed stream, see
-  `GET /api/events`) and `["grist"]` for the mill's.
+  `features` is `["grist", "events"]` for an app's key or the mill's (its narrowed stream, see
+  `GET /api/events`).
 - `401` — as for every endpoint, which includes a key holding no licence: the
   app's cue to offer the licence screen.
 

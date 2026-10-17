@@ -48,9 +48,9 @@ function Place({ route }: { route: Route }) {
     case 'map':
       return <MapScreen key={`${route.bucket ?? ''}|${route.filter ?? ''}|${route.landed ?? ''}`} focus={route.focus} lens={route.lens} bucket={route.bucket} filter={route.filter} landed={route.landed} />;
     case 'bead':
-      return <BeadScreen key={route.id} id={route.id} />;
+      return <BeadScreen key={`${route.id}|${route.msg ?? ''}`} id={route.id} msg={route.msg} />;
     case 'talk':
-      return <TalkScreen thread={route.thread} root={route.root} prefill={route.prefill} />;
+      return <TalkScreen thread={route.thread} root={route.root} prefill={route.prefill} msg={route.msg} />;
     case 'line':
       return <TalkLineScreen />;
     case 'search':

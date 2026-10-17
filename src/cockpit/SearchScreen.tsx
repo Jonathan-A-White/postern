@@ -8,7 +8,7 @@ import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { deleteFilter, useSavedFilters } from './savedFilters';
-import { beadIdQuery, search, type SearchHit, type SearchHitKind } from '../model/search';
+import { beadIdQuery, search, threadRoots, type SearchHit, type SearchHitKind } from '../model/search';
 import { describeFilter } from '../model/filter';
 import { allStoredBeadDetails, fetchBeadDetail } from '../services/beads';
 import { getLiveState } from '../services/live';
@@ -22,9 +22,10 @@ const GROUPS: { kind: SearchHitKind; label: string }[] = [
   { kind: 'message', label: 'Messages' },
 ];
 
-function hitHref(hit: SearchHit): string {
-  if (hit.kind === 'message') return threadHrefFor(hit.thread);
-  return hit.bead ? beadHref(hit.bead) : formatRoute({ view: 'map' });
+/** Where a tap on a hit lands: at the message, in its thread when it is a reply; at the comment, in its bead. */
+function hitHref(hit: SearchHit, roots: ReadonlyMap<string, string>): string {
+  if (hit.kind === 'message') return threadHrefFor(hit.thread, hit.target, hit.target ? roots.get(hit.target.toLowerCase()) : undefined);
+  return hit.bead ? beadHref(hit.bead, hit.target) : formatRoute({ view: 'map' });
 }
 
 /** A bead id typed into Search that the phone's view does not hold: one tap
@@ -102,6 +103,10 @@ export function SearchScreen({ q }: { q?: string }) {
     [query, view, details, messages],
   );
 
+  // Which messages are replies is worked out once the search has a message to open, not on every key.
+  const anyMessage = hits.some((hit) => hit.kind === 'message');
+  const roots = useMemo(() => (anyMessage ? threadRoots(messages) : new Map<string, string>()), [anyMessage, messages]);
+
   const id = beadIdQuery(query);
   const offerOpen = id !== null && !hits.some((hit) => hit.kind === 'bead' && hit.bead === id);
 
@@ -160,7 +165,7 @@ export function SearchScreen({ q }: { q?: string }) {
               <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface" data-testid={`hits-${kind}`}>
                 {group.map((hit, i) => (
                   <li key={`${hit.kind}-${hit.bead}-${hit.messageId}-${i}`}>
-                    <a href={hitHref(hit)} className="flex flex-col gap-0.5 px-4 py-3 hover:bg-raised">
+                    <a href={hitHref(hit, roots)} className="flex flex-col gap-0.5 px-4 py-3 hover:bg-raised">
                       <span className="flex items-baseline gap-2">
                         <span className="truncate text-[14.5px] font-medium">{hit.title}</span>
                         {hit.bead && <span className="shrink-0 font-mono text-[11.5px] text-faint">{hit.bead}</span>}

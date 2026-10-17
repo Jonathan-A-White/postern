@@ -327,6 +327,8 @@ interface BubbleProps {
   titles: () => ReadonlyMap<string, string>;
   onQuote?: (item: ConversationItem) => void;
   onReply?: (item: ConversationItem) => void;
+  /** This is the item the conversation was opened at (a Search result): drawn marked. */
+  found?: boolean;
 }
 
 /** Whether two items read the same. Every change to the database rebuilds every item as a new object, so the
@@ -349,13 +351,14 @@ function sameBubble(a: BubbleProps, b: BubbleProps): boolean {
     a.titles === b.titles &&
     a.onQuote === b.onQuote &&
     a.onReply === b.onReply &&
+    a.found === b.found &&
     a.given?.answer === b.given?.answer &&
     a.given?.at === b.given?.at &&
     sameItem(a.item, b.item)
   );
 }
 
-const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, onQuote, onReply }: BubbleProps) {
+const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, onQuote, onReply, found }: BubbleProps) {
   const speakKey = `message:${item.id}`;
   const reading = useSpeaking(speakKey);
   const voiceFailure = useSpeechFailure(speakKey);
@@ -379,6 +382,7 @@ const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, on
           mine ? 'rounded-br-md bg-mine' : 'rounded-bl-md border border-line bg-theirs',
           builder && 'border-dashed',
           item.pending && 'opacity-60',
+          found && 'ring-2 ring-accent ring-offset-2 ring-offset-canvas',
         )}
       >
         {!mine && <p className={cx('mb-0.5 text-[11.5px] font-semibold', item.speaker === 'mayor' ? 'text-accent' : 'text-muted')}>{item.speakerLabel}</p>}
@@ -443,6 +447,9 @@ function scrollBoxOf(el: HTMLElement): HTMLElement | null {
  * hundreds is never all in the page at once (mw-q6n8m0.6). */
 export const CHANNEL_WINDOW = 60;
 
+/** How many messages before the one a Search result opens at are drawn with it, when it is further back than the window. */
+const FOUND_CONTEXT = 3;
+
 export function Conversation({
   items,
   windowed = true,
@@ -453,6 +460,7 @@ export function Conversation({
   className,
   scrollOnOpen = true,
   shareTitle = 'Postern',
+  focus,
 }: {
   items: ConversationItem[];
   /** Draw only the newest CHANNEL_WINDOW items, with 'Show earlier' above them. Off for one post and its replies. */
@@ -469,21 +477,41 @@ export function Conversation({
   scrollOnOpen?: boolean;
   /** The title Share gives the phone's share sheet: shareTitle() of the channel this conversation is in. */
   shareTitle?: string;
+  /** Open at this item instead of the newest, however far back it is, and mark it: the txid of a message, or
+   * the id of a comment (a Search result's target, route's `msg`). Nothing happens when no item is it. */
+  focus?: string;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const seen = useRef<number | null>(null);
   const count = items.length;
   const titles = useBeadTitles();
   const recordedNotes = useRecordedNotes();
+  // The item asked for, its place among the items, and (once it is drawn) the element that holds it.
+  const wanted = focus?.toLowerCase();
+  const foundAt = wanted === undefined ? -1 : items.findIndex((item) => item.id.toLowerCase() === wanted || item.txid?.toLowerCase() === wanted);
+  const foundBox = useRef<HTMLDivElement>(null);
+  const landedOn = useRef<string | undefined>(undefined);
+  const present = foundAt >= 0;
   useLayoutEffect(() => {
     const first = seen.current === null;
     if ((first && scrollOnOpen) || (!first && count > (seen.current ?? 0))) {
       // Move the conversation's own scroll box, never an ancestor outside it (what scrollIntoView does).
       const box = end.current && scrollBoxOf(end.current);
-      if (box) box.scrollTop = box.scrollHeight;
+      // Not while it is yet to land on the item it was asked to open at: that is the landing's to do, just below.
+      if (box && !(present && landedOn.current !== wanted)) box.scrollTop = box.scrollHeight;
     }
     seen.current = count;
-  }, [count, scrollOnOpen]);
+  }, [count, scrollOnOpen, present, wanted]);
+
+  useLayoutEffect(() => {
+    const target = foundBox.current;
+    const box = target && scrollBoxOf(target);
+    if (!target || !box || landedOn.current === wanted) return;
+    // Centre it in the conversation's own scroll box (never an ancestor outside it); the box clamps at its ends.
+    const [at, within] = [target.getBoundingClientRect(), box.getBoundingClientRect()];
+    box.scrollTop += at.top - within.top - Math.max(0, (box.clientHeight - at.height) / 2);
+    landedOn.current = wanted;
+  }, [wanted, present]);
 
   const given = useMemo(() => answersGiven(items), [items]);
   const askedAgain = useMemo(() => askedAgainAt(items), [items]);
@@ -499,9 +527,11 @@ export function Conversation({
   const titlesNow = useCallback(() => latest.current.titles, []);
 
   // The window: the newest `shown` items. 'Show earlier' adds a page above and keeps the screen where it was.
+  // An item asked for that is further back than that is drawn too, with a few before it, whatever the window.
   const [shown, setShown] = useState(CHANNEL_WINDOW);
+  const reach = Math.max(shown, foundAt >= 0 ? count - foundAt + FOUND_CONTEXT : 0);
   const anchor = useRef<{ box: HTMLElement; height: number; top: number } | null>(null);
-  const hidden = windowed ? Math.max(0, count - shown) : 0;
+  const hidden = windowed ? Math.max(0, count - reach) : 0;
   useLayoutEffect(() => {
     const kept = anchor.current;
     if (!kept) return;
@@ -511,7 +541,7 @@ export function Conversation({
   function showEarlier() {
     const box = end.current && scrollBoxOf(end.current);
     anchor.current = box ? { box, height: box.scrollHeight, top: box.scrollTop } : null;
-    setShown((was) => was + CHANNEL_WINDOW);
+    setShown(reach + CHANNEL_WINDOW);
   }
 
   if (count === 0) return <div className={className}>{empty}</div>;
@@ -528,8 +558,9 @@ export function Conversation({
       {visible.map((item, i) => {
         const day = days[i];
         const showDay = i === 0 || day !== days[i - 1];
+        const isFound = hidden + i === foundAt;
         return (
-          <div key={item.id} className="flex flex-col gap-3">
+          <div key={item.id} className="flex flex-col gap-3" {...(isFound ? { ref: foundBox, 'data-found': true } : {})}>
             {showDay && (
               <div className="flex items-center gap-3 py-1 text-[11px] font-semibold tracking-wide text-faint uppercase">
                 <span className="h-px flex-1 bg-line" />
@@ -537,7 +568,7 @@ export function Conversation({
                 <span className="h-px flex-1 bg-line" />
               </div>
             )}
-            <Bubble item={item.recorded === undefined && item.txid && recordedNotes[item.txid] ? { ...item, recorded: recordedNotes[item.txid] } : item} given={given.get(item.id)} until={askedAgain.get(item.id)} shareTitle={shareTitle} titles={titlesNow} onQuote={onQuote && quote} onReply={onReply && reply} />
+            <Bubble item={item.recorded === undefined && item.txid && recordedNotes[item.txid] ? { ...item, recorded: recordedNotes[item.txid] } : item} given={given.get(item.id)} until={askedAgain.get(item.id)} shareTitle={shareTitle} titles={titlesNow} onQuote={onQuote && quote} onReply={onReply && reply} found={isFound} />
             {footer?.(item)}
           </div>
         );

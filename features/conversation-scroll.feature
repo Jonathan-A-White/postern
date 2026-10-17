@@ -21,3 +21,9 @@ Feature: A conversation scrolls inside its own box, never the page (mw-jkrnxu.1)
     Given a conversation of 100 messages open in its own scroll box
     When he scrolls to the top and taps Show earlier
     Then the 40 earlier messages are above and the box is scrolled past them
+
+  Scenario: mw-ev7oyy.38: a conversation asked to open at an old message draws it, marks it and scrolls its box to it
+    Given a conversation of 150 messages open in its own scroll box, asked to open at message 20
+    Then message 20 is drawn and marked as the one found
+    And the conversation's box is scrolled to message 20, not to its bottom
+    And no other message is marked

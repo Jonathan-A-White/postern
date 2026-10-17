@@ -16,9 +16,11 @@ export type Route =
   /** His own outside things as a board (src/todo/): a column per list, a card per item. */
   | { view: 'todo' }
   | { view: 'map'; focus?: string; lens?: MapLens; bucket?: string; filter?: string; landed?: 'today' }
-  | { view: 'bead'; id: string }
-  /** `root` is the txid of a General post whose thread of replies is open (docs/protocol.md §14). */
-  | { view: 'talk'; thread?: string; root?: string; prefill?: string }
+  /** `msg` is a comment the bead page opens at (a Conversation item id), marked: where a Search result for it lands. */
+  | { view: 'bead'; id: string; msg?: string }
+  /** `root` is the txid of a General post whose thread of replies is open (docs/protocol.md §14). `msg` is the txid of
+   * the message the channel (or the thread) opens at, marked: where a Search result for it lands. */
+  | { view: 'talk'; thread?: string; root?: string; prefill?: string; msg?: string }
   /** The Talk line: a spoken conversation with the Mayor (docs/protocol.md §20). `call` is the txid of the ring he answered (§21). */
   | { view: 'line'; call?: string; about?: TalkAbout }
   | { view: 'search'; q?: string }
@@ -103,7 +105,7 @@ export function parseRoute(search: string): Route {
       };
     case 'bead': {
       const id = params.get('id');
-      return id ? { view: 'bead', id } : { view: 'map' };
+      return id ? { view: 'bead', id, ...(params.get('m') ? { msg: params.get('m') as string } : {}) } : { view: 'map' };
     }
     case 'talk':
       return {
@@ -111,6 +113,7 @@ export function parseRoute(search: string): Route {
         thread: params.get('t') ?? undefined,
         ...(params.get('r') ? { root: params.get('r') as string } : {}),
         ...(params.get('p') ? { prefill: params.get('p') as string } : {}),
+        ...(params.get('m') ? { msg: params.get('m') as string } : {}),
       };
     case 'line':
       return { view: 'line', ...(params.get('call') ? { call: params.get('call') as string } : {}), ...aboutOf(params) };
@@ -169,11 +172,13 @@ export function formatRoute(route: Route): string {
       break;
     case 'bead':
       params.set('id', route.id);
+      if (route.msg) params.set('m', route.msg);
       break;
     case 'talk':
       if (route.thread) params.set('t', route.thread);
       if (route.thread && route.root) params.set('r', route.root);
       if (route.thread && route.prefill) params.set('p', route.prefill);
+      if (route.thread && route.msg) params.set('m', route.msg);
       break;
     case 'line':
       if (route.call) params.set('call', route.call);
@@ -247,10 +252,10 @@ export function isDeep(route: Route): boolean {
 
 export const href = formatRoute;
 
-export function beadHref(id: string): string {
-  return formatRoute({ view: 'bead', id });
+export function beadHref(id: string, msg?: string): string {
+  return formatRoute({ view: 'bead', id, ...(msg ? { msg } : {}) });
 }
 
-export function threadHrefFor(key: string | undefined): string {
-  return formatRoute({ view: 'talk', thread: key ?? 'general' });
+export function threadHrefFor(key: string | undefined, msg?: string, root?: string): string {
+  return formatRoute({ view: 'talk', thread: key ?? 'general', ...(root ? { root } : {}), ...(msg ? { msg } : {}) });
 }

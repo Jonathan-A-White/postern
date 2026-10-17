@@ -300,7 +300,7 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
   );
 }
 
-export function BeadScreen({ id }: { id: string }) {
+export function BeadScreen({ id, msg }: { id: string; msg?: string }) {
   const view = useViewIndex();
   const wide = useWide();
   // A phone scrolls details and conversation as one page; a wide screen scrolls them as two.
@@ -398,6 +398,7 @@ export function BeadScreen({ id }: { id: string }) {
   const messages = (
     <Conversation
       items={posts}
+      focus={msg}
       shareTitle={shareTitle(title)}
       onQuote={onQuote}
       onReply={(item) => {

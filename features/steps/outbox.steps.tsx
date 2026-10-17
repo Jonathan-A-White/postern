@@ -17,6 +17,7 @@ import { BackendUnreachableError, RefusedError } from '../../src/services/apiAut
 import { db, type MessageRow } from '../../src/data/db';
 import { outboxRepo } from '../../src/data/repositories';
 import { forgetOutboxState, kickOutbox, settledOutbox, startOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { settledWrites } from '../../src/services/deliver';
 import type { Need } from '../../src/model/view';
 
@@ -93,13 +94,15 @@ async function fresh(): Promise<void> {
   cleanup();
   forgetTaps();
   stopOutbox?.();
-  forgetOutboxState();
   backend.up = false;
   backend.refuseOnce = false;
   backend.refuseNext = undefined;
   backend.release();
   backend.hold = undefined;
   backend.release = () => {};
+  // A delivery held by the last scenario is let go and the writes it left settle before the phone is emptied.
+  await settlePhone();
+  forgetOutboxState();
   backend.heard = [];
   backend.txids = 0;
   await Promise.all([db.settings.clear(), db.view.clear(), db.answers.clear(), db.messages.clear(), db.events.clear(), db.outbox.clear()]);

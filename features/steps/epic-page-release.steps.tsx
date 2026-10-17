@@ -8,6 +8,7 @@ import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { forgetOutboxState } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { deliverAction } from '../../src/services/deliver';
@@ -45,6 +46,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   BeforeEachScenario(async () => {
     cleanup();
     forgetTaps();
+    await settlePhone();
     forgetOutboxState();
     vi.mocked(deliverAction).mockClear();
     await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.settings.clear(), db.outbox.clear()]);

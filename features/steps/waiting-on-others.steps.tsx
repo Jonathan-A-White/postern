@@ -11,6 +11,7 @@ import { BeadScreen } from '../../src/cockpit/BeadScreen';
 import { Shell } from '../../src/cockpit/Shell';
 import { forgetTaps } from '../../src/cockpit/oneTap';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
+import { settlePhone } from '../../tests/support/empty-phone';
 import { deliverAction } from '../../src/services/deliver';
 import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
@@ -54,6 +55,7 @@ async function fresh(): Promise<void> {
   vi.mocked(deliverAction).mockReset();
   vi.mocked(deliverAction).mockResolvedValue(delivered);
   forgetTaps();
+  await settlePhone();
   forgetOutboxState();
   await Promise.all([db.settings.clear(), db.view.clear(), db.answers.clear(), db.outbox.clear(), db.beadDetails.clear(), db.messages.clear()]);
   window.history.replaceState(null, '', '/?v=needs');

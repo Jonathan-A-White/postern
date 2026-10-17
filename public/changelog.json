@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.4",
+    "date": "2026-10-17",
+    "story": "mw-q6n8m0.16",
+    "kind": "fixed",
+    "text": "pausing mid-sentence while you hold the Talk button no longer rings a bell, and the words you say after the pause go in the same turn."
+  },
+  {
     "version": "0.8.2",
     "date": "2026-10-16",
     "story": "mw-njb33n.6",

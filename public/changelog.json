@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.8",
+    "date": "2026-10-17",
+    "story": "mw-ev7oyy.38",
+    "kind": "fixed",
+    "text": "Tapping a message, reply or comment found by Search now opens it at that very item, marked, however old it is."
+  },
+  {
     "version": "0.8.6",
     "date": "2026-10-17",
     "story": "mw-ev7oyy.37",

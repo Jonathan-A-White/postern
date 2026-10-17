@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.11",
+    "date": "2026-10-17",
+    "story": "mw-ev7oyy.39",
+    "kind": "fixed",
+    "text": "A verify or approve card from a landing, a hold or a finished story now shows up in Postern within about a minute instead of up to a quarter of an hour."
+  },
+  {
     "version": "0.8.8",
     "date": "2026-10-17",
     "story": "mw-ev7oyy.38",

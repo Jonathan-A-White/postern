@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.11
+_2026-10-17_
+- Fixed: A verify or approve card from a landing, a hold or a finished story now shows up in Postern within about a minute instead of up to a quarter of an hour.
+
 ## 0.8.8
 _2026-10-17_
 - Fixed: Tapping a message, reply or comment found by Search now opens it at that very item, marked, however old it is.

@@ -48,24 +48,88 @@ export interface ViewState {
   source: 'live' | 'snapshot';
 }
 
+/** One live query shared by every reader of it (mw-ev7oyy.43): Needs you's cards each read the view, the
+ * answers and the outbox, and 264 cards of a query each froze his phone. With `remember` the read is also kept
+ * in lastKnown.ts under that name, as useLiveQuery's are. Undefined until the first read arrives. */
+function sharedRead<T>(query: () => Promise<T>, remember?: string): { subscribe: (listener: () => void) => () => void; snapshot: () => T | undefined } {
+  const listeners = new Set<() => void>();
+  let subscription: { unsubscribe(): void } | undefined;
+  let latest: T | undefined;
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      subscription ??= liveQuery(query).subscribe({
+        next: (next) => {
+          if (remember !== undefined) rememberRead(remember, next);
+          latest = next;
+          for (const tell of [...listeners]) tell();
+        },
+        error: () => undefined,
+      });
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size > 0) return;
+        subscription?.unsubscribe();
+        subscription = undefined;
+        latest = undefined;
+      };
+    },
+    snapshot() {
+      const known = remember !== undefined ? recallRead<T>(remember) : undefined;
+      return known?.known ? known.value : latest;
+    },
+  };
+}
+
+// The stored view is decoded once, whoever reads it (mw-ev7oyy.43): a decode of the live view (1252 beads, 2 MB)
+// is tens of ms, and every card on Needs you read it three times or more, each its own decode.
+type ViewRead = ViewRow | null | undefined;
+const storedView = sharedRead<ViewRow | null>(() => viewRepo.get().then((r) => r ?? null), 'view');
+let decodedText: { plaintext: string; index: ViewIndex | null } | undefined;
+let viewState: { row: ViewRead; state: ViewState | null | undefined } = { row: undefined, state: undefined };
+
+function indexOf(plaintext: string): ViewIndex | null {
+  if (decodedText?.plaintext !== plaintext) {
+    let index: ViewIndex | null;
+    try {
+      index = indexView(decodeView(plaintext));
+    } catch {
+      index = null;
+    }
+    decodedText = { plaintext, index };
+  }
+  return decodedText.index;
+}
+
+function viewSnapshot(): ViewState | null | undefined {
+  const row = storedView.snapshot();
+  if (row !== viewState.row) viewState = { row, state: row ? stateOf(row) : row };
+  return viewState.state;
+}
+
+function stateOf(row: ViewRow): ViewState | null {
+  const index = indexOf(row.plaintext);
+  return index ? { index, fetchedAt: row.fetchedAt, source: row.source } : null;
+}
+
 /** The stored view as a walkable tree; undefined until the first one arrives. */
 export function useViewIndex(): ViewState | undefined | null {
-  const row = useLiveQuery<ViewRow | null | undefined>(() => viewRepo.get().then((r) => r ?? null), [], undefined, 'view');
-  return useMemo(() => {
-    if (row === undefined) return undefined;
-    if (row === null) return null;
-    try {
-      return { index: indexView(decodeView(row.plaintext)), fetchedAt: row.fetchedAt, source: row.source };
-    } catch {
-      return null;
-    }
-  }, [row]);
+  return useSyncExternalStore(storedView.subscribe, viewSnapshot, viewSnapshot);
 }
+
+const titlesByIndex = new WeakMap<ViewIndex, ReadonlyMap<string, string>>();
+const NO_TITLES: ReadonlyMap<string, string> = new Map();
 
 /** Every bead's title by id, for the speaker to say a bead's title in place of its id (mw-gq6.224). */
 export function useBeadTitles(): ReadonlyMap<string, string> {
-  const view = useViewIndex();
-  return useMemo(() => new Map([...(view?.index.byId ?? [])].map(([id, bead]) => [id, bead.title])), [view]);
+  const index = useViewIndex()?.index;
+  if (!index) return NO_TITLES;
+  let titles = titlesByIndex.get(index);
+  if (!titles) {
+    titles = new Map([...index.byId].map(([id, bead]) => [id, bead.title]));
+    titlesByIndex.set(index, titles);
+  }
+  return titles;
 }
 
 /** The newest emergency event (§22) he has not tapped away and that is not over; undefined when there is none.
@@ -117,12 +181,18 @@ export function useCallLine(): MessageRow[] {
   return useLiveQuery(() => messagesRepo.callLine(), [], [] as MessageRow[]);
 }
 
-/** One thread's messages, oldest first. `held` are the messages the screen already has in memory: until
- * the first read of this thread arrives they are what shows, so an opened channel is never painted empty
- * while the phone holds its posts. */
-export function useThreadMessages(threadKey: string | undefined, held?: readonly MessageRow[]): MessageRow[] {
-  const read = useLiveQuery(() => messagesRepo.inThread(threadKey).then((rows) => ({ threadKey, rows })), [threadKey], undefined as { threadKey: string | undefined; rows: MessageRow[] } | undefined);
-  const seed = useMemo(() => (held ? messagesRepo.heldInThread(held, threadKey) : []), [held, threadKey]);
+const NO_MESSAGES: MessageRow[] = [];
+
+/** One thread's messages, oldest first; null reads none (undefined is the Factory thread). `held` are the
+ * messages the screen already has in memory: until the first read of this thread arrives they are what shows,
+ * so an opened channel is never painted empty while the phone holds its posts. */
+export function useThreadMessages(threadKey: string | undefined | null, held?: readonly MessageRow[]): MessageRow[] {
+  const read = useLiveQuery(
+    () => (threadKey === null ? Promise.resolve(NO_MESSAGES) : messagesRepo.inThread(threadKey)).then((rows) => ({ threadKey, rows })),
+    [threadKey],
+    undefined as { threadKey: string | undefined | null; rows: MessageRow[] } | undefined,
+  );
+  const seed = useMemo(() => (held && threadKey !== null ? messagesRepo.heldInThread(held, threadKey) : NO_MESSAGES), [held, threadKey]);
   return read && read.threadKey === threadKey ? read.rows : seed;
 }
 
@@ -156,9 +226,12 @@ export function useThreadArchive(): ArchiveChoices {
   return useLiveQuery(() => settingsRepo.getThreadArchive(), [], {} as ArchiveChoices, 'threadArchive');
 }
 
+const storedAnswers = sharedRead(() => answersRepo.getAll(), 'answers');
+const NO_ANSWERS: AnswerRow[] = [];
+
 /** Every answer and action he has sent, for settling the Needs-you queue at once. */
 export function useAnswers(): AnswerRow[] {
-  return useLiveQuery(() => answersRepo.getAll(), [], [] as AnswerRow[], 'answers');
+  return useSyncExternalStore(storedAnswers.subscribe, storedAnswers.snapshot, storedAnswers.snapshot) ?? NO_ANSWERS;
 }
 
 /** Everything he did that has not yet been seen coming back (mw-jrx0s.10): pending and sent rows, oldest first. */
@@ -169,8 +242,11 @@ export function useRecordedNotes(): Record<string, string> {
   return useLiveQuery(() => settingsRepo.getRecordedNotes(), [], NO_NOTES);
 }
 
+const openOutbox = sharedRead(() => outboxRepo.open());
+const NO_OUTBOX: OutboxRow[] = [];
+
 export function useOutbox(): OutboxRow[] {
-  return useLiveQuery(() => outboxRepo.open(), [], [] as OutboxRow[]);
+  return useSyncExternalStore(openOutbox.subscribe, openOutbox.snapshot, openOutbox.snapshot) ?? NO_OUTBOX;
 }
 
 /** A To do hand edit (§13 todo_*) and the seq of the event that echoed it, undefined while none has. */

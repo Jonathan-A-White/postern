@@ -31,6 +31,9 @@ const doubles = vi.hoisted(() => ({
   recorderStarvesRecogniser: false,
   // On letting go the recogniser's last result is blank, after words were shown (mw-f7gmps.3).
   blankFinal: false,
+  // The page can record (MediaRecorder and getUserMedia). A page that cannot starts a recogniser that ended by itself again;
+  // one that can records the rest of the hold instead, so the start tone never rings mid-hold (voice-kit, mw-q6n8m0.16).
+  canRecord: true,
 }));
 
 doubles.mayorKey = PrivateKey.fromRandom().toPublicKey().toString();
@@ -53,7 +56,7 @@ vi.mock('../../src/services/deliver', async (importOriginal) => ({
 // the recorder the package's hold uses (voice-kit/composer's own module; vitest.config.ts runs the package through vite)
 vi.mock('../../node_modules/voice-kit/packages/composer/dist/recorder.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../node_modules/voice-kit/packages/composer/dist/recorder.js')>()),
-  canRecord: () => true,
+  canRecord: () => doubles.canRecord,
   VoiceRecorder: class {
     private ownMic = false;
     async start(track?: unknown) {
@@ -184,6 +187,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     doubles.recorderOpenedMic = false;
     doubles.recorderStarvesRecogniser = false;
     doubles.blankFinal = false;
+    doubles.canRecord = true;
     forgetOutboxState();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.outbox.clear()]);
     vi.stubGlobal(
@@ -601,8 +605,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     expect(bar()).toHaveTextContent(/Release to send|Starting the mic…/);
   };
 
-  Scenario('AC-17: a 3-minute hold the recogniser ends twice by itself keeps every word, and letting go sends them all (mw-f7gmps.3)', ({ Given, When, And, Then }) => {
-    Given('the composer is open', () => {
+  Scenario('AC-17: on a phone that cannot record, a 3-minute hold the recogniser ends twice by itself keeps every word, and letting go sends them all (mw-f7gmps.3)', ({ Given, When, And, Then }) => {
+    Given('the composer is open on a phone that cannot record', () => {
+      doubles.canRecord = false;
       freezeClock(new Date().toISOString());
       open();
     });
@@ -621,6 +626,39 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
     });
     And('he lets go on the bar', letGoOnTheBar);
+    Then('the recogniser was started {int} times in the one hold', (_c, times: number) => {
+      expect(recognizers).toHaveLength(times);
+    });
+    And('one message is delivered with the words {string}', oneMessageWith);
+  });
+
+  Scenario('AC-17b: on a phone that can record, a recogniser that ends by itself mid-hold is not started again, so no start tone rings; the rest of the hold is recorded and the words before go (mw-q6n8m0.16)', ({ Given, When, And, Then }) => {
+    let micsBefore = 0;
+    Given('the composer is open', () => {
+      freezeClock(new Date().toISOString());
+      open();
+    });
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    And('the recogniser hears {string}', async (_c, words: string) => {
+      await hear(words);
+      await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
+    });
+    And('a minute and a half passes and the recogniser ends by itself, his finger still on the bar', async () => {
+      micsBefore = doubles.recorderMics;
+      vi.setSystemTime(Date.now() + 90_000);
+      await act(async () => recognizers.at(-1)?.onend?.());
+    });
+    Then('the recogniser has been started once in the hold', () => {
+      expect(recognizers).toHaveLength(1);
+    });
+    And('a recorder has opened the microphone for the rest of the hold', async () => {
+      await waitFor(() => expect(doubles.recorderMics).toBe(micsBefore + 1));
+    });
+    And('the bar reads {string}', (_c, name: string) => {
+      expect(bar()).toHaveTextContent(name);
+    });
+    When('he lets go on the bar', letGoOnTheBar);
     Then('the recogniser was started {int} times in the one hold', (_c, times: number) => {
       expect(recognizers).toHaveLength(times);
     });

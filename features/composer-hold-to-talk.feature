@@ -156,8 +156,8 @@ Feature: The composer's mic is the Talk line's hold-to-talk (mw-q6n8m0.3)
     And the text box holds "ship it tonight"
     And the screen says "Kept what you said: tap Send."
 
-  Scenario: AC-17: a 3-minute hold the recogniser ends twice by itself keeps every word, and letting go sends them all (mw-f7gmps.3)
-    Given the composer is open
+  Scenario: AC-17: on a phone that cannot record, a 3-minute hold the recogniser ends twice by itself keeps every word, and letting go sends them all (mw-f7gmps.3)
+    Given the composer is open on a phone that cannot record
     When he taps the mic beside Send
     And he presses and holds the bar
     And the recogniser hears "first the build"
@@ -168,6 +168,19 @@ Feature: The composer's mic is the Talk line's hold-to-talk (mw-q6n8m0.3)
     And he lets go on the bar
     Then the recogniser was started 3 times in the one hold
     And one message is delivered with the words "first the build then the tests then the landing"
+
+  Scenario: AC-17b: on a phone that can record, a recogniser that ends by itself mid-hold is not started again, so no start tone rings; the rest of the hold is recorded and the words before go (mw-q6n8m0.16)
+    Given the composer is open
+    When he taps the mic beside Send
+    And he presses and holds the bar
+    And the recogniser hears "first the build"
+    And a minute and a half passes and the recogniser ends by itself, his finger still on the bar
+    Then the recogniser has been started once in the hold
+    And a recorder has opened the microphone for the rest of the hold
+    And the bar reads "Release to send"
+    When he lets go on the bar
+    Then the recogniser was started 1 times in the one hold
+    And one message is delivered with the words "first the build"
 
   Scenario: AC-18: a language-not-supported that every route fails with says what was tried, and the bar says Try again (mw-hgtlf5.2)
     Given the composer is open

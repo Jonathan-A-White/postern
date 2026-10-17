@@ -198,31 +198,47 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 		return requireLicence(nonces, checker, &o, who, next)
 	}
 
+	here := newPresence()
+	handlers := map[string]http.HandlerFunc{
+		"GET /api/messages":              handleMessages(store),
+		"POST /api/messages":             handleDirectMessage(store, o.notifier, o.millKey),
+		"GET /api/me":                    handleMe(&o),
+		"GET /api/view":                  handleView(o.view),
+		"GET /api/events":                handleEvents(store, o.hub, o.view, o.ping, here),
+		"GET /api/presence":              handlePresence(here, o.mayorKey),
+		"GET /api/prompts":               handlePromptList(o.prompts),
+		"GET /api/prompts/{name}":        handlePromptGet(o.prompts),
+		"PUT /api/prompts/{name}":        handlePromptPut(o.prompts),
+		"DELETE /api/prompts/{name}":     handlePromptDelete(o.prompts),
+		"GET /api/ideas-only/{pubkey}":   handleIdeasOnlyGet(o.ideas),
+		"PUT /api/ideas-only/{pubkey}":   handleIdeasOnlyPut(o.ideas),
+		"GET /api/beads/{id}":            handleBead(o.beads),
+		"POST /api/broadcast":            handleBroadcast(client),
+		"GET /api/utxos/{address}":       handleUtxos(client),
+		"GET /api/balance/{address}":     handleBalance(client),
+		"GET /api/push/vapid-public-key": handleVAPIDPublicKey(vapidPublicKey),
+		"POST /api/push/subscribe":       handlePushSubscribe(pushStore),
+		"POST /api/blobs":                handleBlobUpload(blobStore),
+		"GET /api/blobs/{hash}":          handleBlobDownload(blobStore),
+		"DELETE /api/blobs/{hash}":       handleBlobDelete(blobStore, store, o.millKey),
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.HandleFunc("GET /api/challenge", handleChallenge(nonces))
-	mux.HandleFunc("GET /api/messages", gate(everyKey, handleMessages(store)))
-	mux.HandleFunc("POST /api/messages", gate(everyKey, handleDirectMessage(store, o.notifier, o.millKey)))
-	mux.HandleFunc("GET /api/me", gate(everyKey, handleMe(&o)))
-	mux.HandleFunc("GET /api/view", gate(cockpitKeys, handleView(o.view)))
-	here := newPresence()
-	mux.HandleFunc("GET /api/events", gate(cockpitKeys|mayorKey|appKeys, handleEvents(store, o.hub, o.view, o.ping, here)))
-	mux.HandleFunc("GET /api/presence", gate(cockpitKeys, handlePresence(here, o.mayorKey)))
-	mux.HandleFunc("GET /api/prompts", gate(everyKey|mayorKey, handlePromptList(o.prompts)))
-	mux.HandleFunc("GET /api/prompts/{name}", gate(everyKey|mayorKey, handlePromptGet(o.prompts)))
-	mux.HandleFunc("PUT /api/prompts/{name}", gate(cockpitKeys, handlePromptPut(o.prompts)))
-	mux.HandleFunc("DELETE /api/prompts/{name}", gate(cockpitKeys, handlePromptDelete(o.prompts)))
-	mux.HandleFunc("GET /api/ideas-only/{pubkey}", gate(cockpitKeys|mayorKey, handleIdeasOnlyGet(o.ideas)))
-	mux.HandleFunc("PUT /api/ideas-only/{pubkey}", gate(cockpitKeys|mayorKey, handleIdeasOnlyPut(o.ideas)))
-	mux.HandleFunc("GET /api/beads/{id}", gate(cockpitKeys, handleBead(o.beads)))
-	mux.HandleFunc("POST /api/broadcast", gate(cockpitKeys, handleBroadcast(client)))
-	mux.HandleFunc("GET /api/utxos/{address}", gate(cockpitKeys, handleUtxos(client)))
-	mux.HandleFunc("GET /api/balance/{address}", gate(cockpitKeys, handleBalance(client)))
-	mux.HandleFunc("GET /api/push/vapid-public-key", gate(cockpitKeys|appKeys, handleVAPIDPublicKey(vapidPublicKey)))
-	mux.HandleFunc("POST /api/push/subscribe", gate(cockpitKeys|appKeys, handlePushSubscribe(pushStore)))
-	mux.HandleFunc("POST /api/blobs", gate(cockpitKeys|appKeys, handleBlobUpload(blobStore)))
-	mux.HandleFunc("GET /api/blobs/{hash}", gate(cockpitKeys|millKey, handleBlobDownload(blobStore)))
-	mux.HandleFunc("DELETE /api/blobs/{hash}", gate(cockpitKeys|millKey, handleBlobDelete(blobStore, store, o.millKey)))
+	// The routes and who each admits are routeTable's: nothing is registered
+	// here that the table does not name, and the table names nothing that is
+	// not registered, so LicenceMap (postern rights) reads the same gate.
+	for _, route := range routeTable {
+		handler, ok := handlers[route.pattern]
+		if !ok {
+			panic("api: routeTable names " + route.pattern + ", which has no handler")
+		}
+		mux.HandleFunc(route.pattern, gate(route.who, handler))
+	}
+	if len(handlers) != len(routeTable) {
+		panic("api: a handler has no entry in routeTable")
+	}
 	return withCORS(o.cors, mux)
 }
 

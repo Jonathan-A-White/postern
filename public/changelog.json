@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.6",
+    "date": "2026-10-17",
+    "story": "mw-ev7oyy.37",
+    "kind": "fixed",
+    "text": "A To do or decision card filed for you now shows up in Postern within about a minute instead of after several minutes."
+  },
+  {
     "version": "0.8.4",
     "date": "2026-10-17",
     "story": "mw-q6n8m0.16",

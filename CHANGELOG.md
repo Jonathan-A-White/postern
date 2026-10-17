@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.6
+_2026-10-17_
+- Fixed: A To do or decision card filed for you now shows up in Postern within about a minute instead of after several minutes.
+
 ## 0.8.4
 _2026-10-17_
 - Fixed: pausing mid-sentence while you hold the Talk button no longer rings a bell, and the words you say after the pause go in the same turn.

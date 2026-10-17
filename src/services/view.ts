@@ -8,7 +8,7 @@ import { decryptSnapshotCiphertext } from './messages';
 import { decodeSnapshot } from './questions';
 import { decodeView, viewFromSnapshot, type View } from '../model/view';
 import { viewRepo } from '../data/repositories';
-import { VIEW_MIN_INTERVAL_MS, viewThrottle } from './viewThrottle';
+import { HOME_PUBLISH_WAIT_MS, VIEW_BEHIND_INTERVAL_MS, VIEW_MIN_INTERVAL_MS, viewThrottle } from './viewThrottle';
 import { Utils } from '@bsv/sdk';
 
 export const SNAPSHOT_URL = '/snapshot';
@@ -19,10 +19,10 @@ export type ViewRefresh = 'updated' | 'unchanged' | 'absent';
 /** Why the whole view is asked for, sent as `GET /api/view?why=` so the backend's log says it and a count of fetches
  * reads from the log alone (mw-7dige5.5): the session's `start`; a first `hello` naming another view, or a `reconnect`'s;
  * a `gap` in the events' seqs, or a batch that could not be applied (`unapplied`); `behind`, the events having named
- * something only the home builds; a `view-event` before any batch; `poll` on a backend without events; a tap on a
+ * something only the home builds; a `card`, the home's next `view` event (or half a minute) after an event raised a card only it builds (mw-ev7oyy.39); a `view-event` before any batch; `poll` on a backend without events; a tap on a
  * Refresh button (`refresh`); a bead the Map was sent to that the copy does not hold (`focus`); the Mayor's key
  * accepted (`mayor-key`); and a return to the app's bodiless `probe` (src/services/live.ts). */
-export type ViewWhy = 'start' | 'hello' | 'reconnect' | 'gap' | 'unapplied' | 'behind' | 'view-event' | 'poll' | 'refresh' | 'focus' | 'mayor-key' | 'probe';
+export type ViewWhy = 'start' | 'hello' | 'reconnect' | 'gap' | 'unapplied' | 'behind' | 'card' | 'view-event' | 'poll' | 'refresh' | 'focus' | 'mayor-key' | 'probe';
 
 export interface RefreshViewOptions {
   key: Uint8Array;
@@ -98,7 +98,10 @@ async function fetchNow(options: RefreshViewOptions): Promise<ViewRefresh> {
   if (viewThrottle.trailing) clearTimeout(viewThrottle.trailing.timer);
   viewThrottle.trailing = undefined;
   viewThrottle.lastFetchAt = performance.now();
-  return fetchView(options);
+  const fetched = fetchView(options);
+  // A card's fetch may find the view the home has not yet republished: the quarter-hour window stays behind it, as it was before (mw-ev7oyy.39).
+  if (options.why === 'card') void fetched.then(() => refreshView({ ...options, why: 'behind', within: VIEW_BEHIND_INTERVAL_MS, force: false }), () => undefined).catch(() => undefined);
+  return fetched;
 }
 
 /** Brings the stored view up to date from whichever source the backend has. The whole view is large, so every
@@ -128,4 +131,26 @@ export async function storedView(): Promise<{ view: View; fetchedAt: number; sou
   } catch {
     return undefined;
   }
+}
+
+/** An event raised a card only the home builds (a landing, a hold, a story closed, a reopening, a bead whose card is the
+ * home's): the view is asked for, through the one-a-minute throttle, when the home next publishes it (its `view` event, see
+ * homeViewPublished) or HOME_PUBLISH_WAIT_MS on, whichever is first. Further such events while it waits ask for nothing more,
+ * so a burst costs one fetch (mw-ev7oyy.39). */
+export function expectHomeView(options: RefreshViewOptions): void {
+  if (viewThrottle.expected) {
+    viewThrottle.expected.options = options;
+    return;
+  }
+  viewThrottle.expected = { timer: setTimeout(() => void homeViewPublished(), HOME_PUBLISH_WAIT_MS), options };
+}
+
+/** The home's `view` event, or the end of the wait: asks for the view when an event is waiting for it. Resolves whether one was. */
+export function homeViewPublished(): boolean {
+  const waiting = viewThrottle.expected;
+  if (!waiting) return false;
+  clearTimeout(waiting.timer);
+  viewThrottle.expected = undefined;
+  void refreshView({ ...waiting.options, why: 'card', within: undefined, force: false }).catch(() => undefined);
+  return true;
 }

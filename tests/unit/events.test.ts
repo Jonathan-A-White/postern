@@ -186,9 +186,28 @@ describe('projectEvents', () => {
       event({ kind: 'bead_changed', bead: 'mw-a', from: 'running', to: 'landed', detail: 'status' }),
       event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'held', detail: 'status' }),
     ]) {
-      expect(projectEvents(before, [changed], NO_LOOKUPS)).toMatchObject({ behind: true, refetch: false });
+      expect(projectEvents(before, [changed], NO_LOOKUPS)).toMatchObject({ behind: true, cards: true, refetch: false });
     }
-    expect(projectEvents(before, [event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'claimed', detail: 'status' })], NO_LOOKUPS)).toMatchObject({ behind: false, refetch: false });
+    expect(projectEvents(before, [event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'claimed', detail: 'status' })], NO_LOOKUPS)).toMatchObject({ behind: false, cards: false, refetch: false });
+  });
+
+  it('names the cards the home is about to build, to be asked for at its next view: a landing, a hold, a story closed, a reopening; not a claim, a comment or a new bead (mw-ev7oyy.39)', () => {
+    const before = view([bead('mw-a'), bead('mw-done', { status: 'closed', closed: '2026-10-01T11:00:00Z' })]);
+    for (const changed of [
+      event({ kind: 'bead_changed', bead: 'mw-a', from: 'running', to: 'landed', detail: 'status' }),
+      event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'held', detail: 'status' }),
+      event({ kind: 'bead_changed', bead: 'mw-a', from: 'running', to: 'closed', detail: 'status' }),
+      event({ kind: 'bead_changed', bead: 'mw-done', from: 'closed', to: 'open', detail: 'status' }),
+    ]) {
+      expect(projectEvents(before, [changed], NO_LOOKUPS).cards).toBe(true);
+    }
+    for (const quiet of [
+      event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'claimed', detail: 'status' }),
+      event({ kind: 'bead_changed', bead: 'mw-a', from: 'open', to: 'open', detail: 'comment' }),
+      event({ kind: 'bead_changed', bead: 'mw-new', from: '', to: 'open', detail: 'created' }),
+    ]) {
+      expect(projectEvents(before, [quiet], NO_LOOKUPS).cards).toBe(false);
+    }
   });
 
   it('a field changed (a title) asks for that bead\'s detail; a comment and a message bump its count', () => {

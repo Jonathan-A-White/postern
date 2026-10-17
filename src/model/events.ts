@@ -95,6 +95,10 @@ export interface Projection {
   /** The events said something only the home builds (a hold, a landing, a story closed and the cards that follow): the
    * copy is behind the home's until the view is next fetched, which need not be now (mw-7dige5.5). */
   behind: boolean;
+  /** The part of `behind` that is a card about to be built (a hold, a landing, a story closed, a reopening, a freed card):
+   * the home publishes the view with it about half a minute on, and the phone asks for it then, through the one-a-minute
+   * throttle, rather than at the quarter-hour (mw-ev7oyy.39). A bead the copy cannot place says only `behind`. */
+  cards: boolean;
   /** Beads the copy does not hold that an event named as new (filed, or reopened from outside the view): their detail (§12)
    * is small and brings the bead, and its card, into the copy now (addBead), rather than at the next full fetch (mw-ev7oyy.37). */
   fresh: string[];
@@ -149,7 +153,7 @@ function replaceBead(view: View, bead: ViewBead): View {
   return { ...view, beads: view.beads.map((b) => (b.id === bead.id ? bead : b)) };
 }
 
-function beadChanged(view: View, event: FactoryEvent, out: { behind: boolean; details: string[]; fresh: string[] }): View {
+function beadChanged(view: View, event: FactoryEvent, out: { behind: boolean; cards: boolean; details: string[]; fresh: string[] }): View {
   const bead = view.beads.find((b) => b.id === event.bead);
   const wasClosed = event.from === 'closed' || event.from === 'verified';
   const closes = event.to === 'closed';
@@ -166,7 +170,7 @@ function beadChanged(view: View, event: FactoryEvent, out: { behind: boolean; de
     return replaceBead(view, { ...bead, updated: at });
   }
   // Reopened, held (an approve card may follow) or landed (a verify card may follow): the home builds those cards.
-  if ((wasClosed && !closes) || event.to === 'held' || event.to === 'landed') out.behind = true;
+  if ((wasClosed && !closes) || event.to === 'held' || event.to === 'landed') out.behind = out.cards = true;
   let next = view;
   if (event.to === 'verified') next = { ...next, needs: next.needs.filter((n) => !(n.kind === 'verify' && n.bead === bead.id)) };
   const status = STATUS_OF[event.to] ?? bead.status;
@@ -181,9 +185,9 @@ function beadChanged(view: View, event: FactoryEvent, out: { behind: boolean; de
   if (status === 'closed' && bead.status !== 'closed') {
     const closed = close(next, moved);
     next = closed.view;
-    if (!closed.known) out.behind = true;
+    if (!closed.known) out.behind = out.cards = true;
     // A story that closes may raise a verify card, built from its HOW TO CHECK IT section.
-    if (bead.type !== 'epic') out.behind = true;
+    if (bead.type !== 'epic') out.behind = out.cards = true;
   }
   return next;
 }
@@ -239,7 +243,7 @@ function bumpComments(view: View, id: string): View {
 
 /** Applies `events`, in the order given (the caller's seq order), to a copy of `view`. */
 export function projectEvents(view: View, events: FactoryEvent[], lookups: ProjectionLookups): Projection {
-  const out = { refetch: false, behind: false, details: [] as string[], fresh: [] as string[] };
+  const out = { refetch: false, behind: false, cards: false, details: [] as string[], fresh: [] as string[] };
   let next = view;
   for (const event of events) {
     switch (event.kind) {

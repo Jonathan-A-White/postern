@@ -12,7 +12,8 @@
 // the session, and after that only when the events call for it: a gap in their seqs, a batch that
 // cannot be applied, or a start whose fetch failed. Once events flow, the stream's `view` event,
 // a reconnect and a return to the app fetch nothing (mw-7dige5.1), and a hello fetches only when it names a view other than the one held (mw-7dige5.4). Every full fetch of the view goes through one throttle in view.ts, at most one a minute; only a tap on a Refresh button goes through it. An event naming
-// something only the home builds (a hold, a landing, a story closed) fetches it at most once a quarter of an hour, and a
+// something only the home builds fetches it at most once a quarter of an hour (mw-7dige5.5); one that raises a card (a hold, a
+// landing, a story closed) asks for it at the home's next `view` event, saying card, through that throttle (mw-ev7oyy.39); and a
 // push, a notice or another screen asking for the messages asks for nothing more (mw-7dige5.5). Every fetch says why (?why=). The line never says live over a dead
 // link: a stream with no ping for STREAM_STALE_MS is read as dropped, and a send the backend does not
 // answer (deliver's onUnreachable) drops it to reconnecting at once. A backend that did not answer /api/me
@@ -33,7 +34,7 @@ import { freshRings, ringInApp } from './ringIn';
 import { fetchRecordByTxid } from './inbox';
 import { getKey } from './keySession';
 import { fetchMe, LEGACY, NoLicenceError, reconcileMayorKey, type Me } from './me';
-import { refreshView, type ViewWhy } from './view';
+import { homeViewPublished, refreshView, type ViewWhy } from './view';
 import { viewRepo } from '../data/repositories';
 import { resetViewThrottle } from './viewThrottle';
 import { publicKeyHexFromMasterKey } from './vault';
@@ -279,9 +280,11 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: ViewW
 
 /** The stream says the view changed. Before any events batch this session it is fetched at once, as ever.
  * Once events flow, the batch that carries the change has changed the stored copy (or will), and a change it
- * does not carry shows as a gap or a batch that cannot be applied: the view event fetches nothing (mw-7dige5.1). */
+ * does not carry shows as a gap or a batch that cannot be applied: the view event fetches nothing (mw-7dige5.1),
+ * unless an event has named a card only the home builds, which this publishing brings (mw-ev7oyy.39). */
 function onViewEvent(key: Uint8Array): void {
   if (lastProjected === 0) void syncAll(key, { view: 'view-event' });
+  else homeViewPublished();
 }
 
 /** The ETag of the view the backend holds, as its hello carries it (docs/api.md); undefined when it names none. */

@@ -167,17 +167,31 @@ describe('the view fetch throttle (mw-7dige5.4)', () => {
     expect(net.views.map((v) => v.ifNoneMatch)).toEqual(['"v0"', '"B"']);
   });
 
-  it('a story closing in an unbroken run fetches nothing now, and once when a quarter of an hour has passed since the last fetch, saying behind (mw-7dige5.5)', async () => {
+  it('a new bead the phone cannot place, in an unbroken run, fetches nothing now, and once when a quarter of an hour has passed since the last fetch, saying behind (mw-7dige5.5)', async () => {
     await refresh();
     for (let i = 0; i < 8; i++) {
-      net.batches = [batchOf([event({ kind: 'bead_changed', bead: STORIES[i], from: 'claimed', to: 'closed', detail: 'status' })])];
-      await sync();
+      net.batches = [batchOf([event({ kind: 'bead_changed', bead: `mw-new${i}`, from: '', to: 'open', detail: 'created' })])];
+      await sync(); // its detail cannot be had here: the copy is behind for it
       await wait(VIEW_MIN_INTERVAL_MS);
     }
     expect(net.views.map((v) => v.why)).toEqual(['gap']);
     await wait(VIEW_BEHIND_INTERVAL_MS - 8 * VIEW_MIN_INTERVAL_MS);
     expect(net.views.map((v) => v.why)).toEqual(['gap', 'behind']);
     expect(net.views[1].at - net.views[0].at).toBe(VIEW_BEHIND_INTERVAL_MS);
+  });
+
+  it('a story closing every minute asks for the view saying card, at the home\'s publishing (30 s on here), never twice inside a minute (mw-ev7oyy.39)', async () => {
+    await refresh();
+    for (let i = 0; i < 8; i++) {
+      net.batches = [batchOf([event({ kind: 'bead_changed', bead: STORIES[i], from: 'claimed', to: 'closed', detail: 'status' })])];
+      await sync();
+      await wait(VIEW_MIN_INTERVAL_MS);
+    }
+    await wait(VIEW_MIN_INTERVAL_MS);
+    expect(net.views[0].why).toBe('gap');
+    expect(net.views.length).toBeGreaterThan(1);
+    expect(net.views.slice(1).every((v) => v.why === 'card')).toBe(true);
+    for (let i = 1; i < net.views.length; i++) expect(net.views[i].at - net.views[i - 1].at).toBeGreaterThanOrEqual(VIEW_MIN_INTERVAL_MS);
   });
 
   it('behind with the last fetch a quarter of an hour old fetches at once', async () => {

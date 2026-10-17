@@ -1991,7 +1991,7 @@ push, an opened notice or another screen asking for the messages syncs the messa
 events and asks for no view; the Map sent to a bead its copy does not hold, and the Mayor's key
 accepted, still ask for it. Every ask says why, `GET /api/view?why=<reason>`: `start` (the
 session's first, or its retry), `hello` (the first stream naming another view), `reconnect` (a
-later one), `gap`, `unapplied`, `behind`, `view-event`, `poll` (a backend without events),
+later one), `gap`, `unapplied`, `behind`, `card`, `view-event`, `poll` (a backend without events),
 `refresh` (a tap), `focus` (the Map), `mayor-key` or `probe` (the bodiless return-to-the-app ask
 above); the backend writes it on the request's log line (docs/api.md).
 
@@ -2005,6 +2005,17 @@ a detail that cannot be had, and a card only the home builds (a `hands`, `verify
 `waiting:others`, a held story's approval) leave the copy behind as before: the view is fetched
 once a quarter of an hour has passed since the last fetch (above). The next full view replaces
 the copy's own.
+
+`mw-ev7oyy.39`. The cards only the home builds no longer wait for the quarter of an hour: a hold,
+a landing, a story closed, a reopening, and a new bead whose card is the home's (a `hands`,
+`verify` or `demo` card, `waiting:others`, a held story's approval) make the phone ask for the view
+once, when the home next publishes it (the stream's `view` event) or 30 s on if that event does not
+come first (`HOME_PUBLISH_WAIT_MS`), through the one-a-minute throttle, saying `card`. The home
+publishes about 27 s after the beads change, so the card is on the phone within the minute. Events
+that come while it waits ask for nothing more, so a burst costs one fetch; a new bead, a claim, a
+step closed and a job still fetch nothing. A new bead the copy cannot place, or whose detail cannot
+be had, keeps the quarter-hour window (such beads, a molecule's steps among them, come nearly every
+minute).
 
 `mw-jrx0s.8`. The bead's page hears the events about its bead: a `message` shows in its
 thread from the stored record (the sync keeps it before the batch is applied), so it fetches

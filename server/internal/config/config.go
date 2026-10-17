@@ -3,8 +3,10 @@
 package config
 
 import (
+	"bufio"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 )
@@ -246,4 +248,32 @@ func orDefault(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+// ParseEnvFile reads a systemd EnvironmentFile: KEY=value lines, blank lines
+// and # comments skipped, a value optionally wrapped in one pair of single or
+// double quotes. A line that is not KEY=value is an error naming its number,
+// never its text (a value may be a secret).
+func ParseEnvFile(r io.Reader) (map[string]string, error) {
+	env := map[string]string{}
+	sc := bufio.NewScanner(r)
+	for n := 1; sc.Scan(); n++ {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+		if !ok || key == "" {
+			return nil, fmt.Errorf("env file line %d is not KEY=value", n)
+		}
+		if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+			value = value[1 : len(value)-1]
+		}
+		env[key] = value
+	}
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("reading env file: %w", err)
+	}
+	return env, nil
 }

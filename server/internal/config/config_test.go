@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -344,5 +345,29 @@ func TestLoadRejectsAnOddRelayOnly(t *testing.T) {
 	_, err := Load(gristEnv(map[string]string{"POSTERN_RELAY_ONLY": "yes", "POSTERN_PEERS": "a=http://a:1"}))
 	if err == nil || !strings.Contains(err.Error(), "POSTERN_RELAY_ONLY") {
 		t.Fatalf("err = %v, want one naming POSTERN_RELAY_ONLY", err)
+	}
+}
+
+func TestParseEnvFileReadsAnEnvironmentFile(t *testing.T) {
+	got, err := ParseEnvFile(strings.NewReader("# a comment\n\nPOSTERN_ANCHOR=addr1\nPOSTERN_APPS=\"cairn=cairn, x=y\"\nPOSTERN_DATA='/var/lib/p'\n  POSTERN_NETWORK = main  \nEMPTY=\n"))
+	if err != nil {
+		t.Fatalf("ParseEnvFile: %v", err)
+	}
+	want := map[string]string{
+		"POSTERN_ANCHOR":  "addr1",
+		"POSTERN_APPS":    "cairn=cairn, x=y",
+		"POSTERN_DATA":    "/var/lib/p",
+		"POSTERN_NETWORK": "main",
+		"EMPTY":           "",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("env = %v, want %v", got, want)
+	}
+}
+
+func TestParseEnvFileNamesTheLineNotItsContent(t *testing.T) {
+	_, err := ParseEnvFile(strings.NewReader("A=b\nsecretvalue-without-equals\n"))
+	if err == nil || !strings.Contains(err.Error(), "line 2") || strings.Contains(err.Error(), "secretvalue") {
+		t.Fatalf("err = %v, want one naming line 2 and not the line's text", err)
 	}
 }

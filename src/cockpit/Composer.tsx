@@ -29,6 +29,7 @@ import { toPicked } from './pickedFile';
 import { draftsRepo } from '../data/repositories';
 import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext } from '../model/prompts';
 import { optionChip } from '../services/prompts';
+import { listensThroughPauses } from '../services/listening';
 
 interface Pending extends OutgoingFile {
   id: string;
@@ -104,6 +105,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const viewer = useViewer();
   const hold = useHold({
     appName: APP_NAME,
+    transcriber: listensThroughPauses,
     record: true,
     onFailed: (said) => {
       setHolding(false);

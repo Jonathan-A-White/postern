@@ -1,7 +1,8 @@
 // src/cockpit/HandsSteps.tsx — the steps only his hands could take, and now his
 // thumb can (docs/protocol.md §17): each shown exactly as it will run — where, as
 // whom, the commands and the way back — with "Approve and run" asking for his
-// fingerprint again before his key signs it, or "I did it myself" to tell the
+// fingerprint again before his key signs it (on a passkey phone that one tap is
+// all; a phrase-wrapped key adds "Confirm and run"), or "I did it myself" to tell the
 // Mayor. What ran says so, with its exit code. A step whose bead waits on an open
 // bead offers neither: it says what it waits on, each a link to that bead.
 import { useState } from 'react';
@@ -9,7 +10,8 @@ import { Button, Chip, CodeBlock, Icon, IconButton, TimeAgo, cx, useAlive } from
 import { navigate } from '../router';
 import type { HandsStep } from '../model/hands';
 import type { WaitsOn } from '../model/needs';
-import { approveHandsStep, sendToThread, useSend } from './send';
+import { usesPasskey } from '../services/hands';
+import { approveHandsStep, describeSendError, sendToThread, useSend } from './send';
 
 /**
  * What a step offers under its commands: what it waits on, or Approve and run and "I did it myself".
@@ -19,6 +21,8 @@ export function StepRun({ bead, step, waitsOn, approvedAt, onApproved }: { bead:
   const { busy, run } = useSend();
   const [confirming, setConfirming] = useState(false);
   const [approvedHere, setApprovedHere] = useState<number>();
+  const [asking, setAsking] = useState(false);
+  const [failure, setFailure] = useState<string>();
   const alive = useAlive();
   const approvedAtNow = approvedAt ?? approvedHere;
   const root = step.as === 'root';
@@ -26,13 +30,34 @@ export function StepRun({ bead, step, waitsOn, approvedAt, onApproved }: { bead:
   const where = `${root ? 'as root' : 'as you'} on ${step.host}`;
 
   async function approve() {
-    const sent = await run(() => approveHandsStep(bead, step), `Approved — ${step.id} runs ${where}`);
+    setFailure(undefined);
+    const sent = await run(
+      () =>
+        approveHandsStep(bead, step).catch((err: unknown) => {
+          if (alive()) setFailure(describeSendError(err));
+          throw err;
+        }),
+      `Approved — ${step.id} runs ${where}`,
+    );
     if (!alive()) return;
     setConfirming(false);
     if (sent) {
       const at = Date.now();
       setApprovedHere(at);
       onApproved?.(at);
+    }
+  }
+
+  /** A passkey phone's one tap: the fingerprint is the confirmation. A phrase-wrapped key asks him to confirm first. */
+  async function tapApprove() {
+    setAsking(true);
+    try {
+      const passkey = await usesPasskey();
+      if (!alive()) return;
+      if (passkey) await approve();
+      else setConfirming(true);
+    } finally {
+      if (alive()) setAsking(false);
     }
   }
 
@@ -72,12 +97,17 @@ export function StepRun({ bead, step, waitsOn, approvedAt, onApproved }: { bead:
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="primary" icon="play" onClick={() => setConfirming(true)}>
+            <Button size="sm" variant="primary" icon="play" busy={asking || busy} onClick={() => void tapApprove()}>
               {step.ran ? 'Approve and run again' : 'Approve and run'}
             </Button>
-            <Button size="sm" variant="ghost" icon="hand" disabled={busy} onClick={() => void run(() => sendToThread({ bead }, `I ran step ${step.id} myself.`), 'Told the Mayor')}>
+            <Button size="sm" variant="ghost" icon="hand" disabled={busy || asking} onClick={() => void run(() => sendToThread({ bead }, `I ran step ${step.id} myself.`), 'Told the Mayor')}>
               I did it myself
             </Button>
+            {failure && (
+              <p role="alert" className="basis-full text-[13px] text-danger">
+                {failure}
+              </p>
+            )}
           </div>
         )
       )}

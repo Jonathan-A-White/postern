@@ -6,7 +6,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PrivateKey, PublicKey, Signature, Utils } from '@bsv/sdk';
 import { approvalMessage, canonicalStep, decodeHandsSteps, stepSha256 } from '../../src/model/hands';
-import { buildApproval, stepUp, StepChangedError } from '../../src/services/hands';
+import { buildApproval, stepUp, usesPasskey, StepChangedError } from '../../src/services/hands';
+import { deriveAesKeyFromPrf, wrapKey } from '../../src/services/vault';
 import { vaultRepo } from '../../src/data/repositories';
 import { db } from '../../src/data/db';
 import { installMockAuthenticator, removeMockAuthenticator } from '../support/webauthn-mock';
@@ -69,21 +70,67 @@ describe('stepUp', () => {
   });
   afterEach(() => removeMockAuthenticator());
 
-  it('asks the passkey again for a passkey-wrapped key', async () => {
+  /** A passkey-wrapped vault holding KEY, wrapped under the secret `authenticator` would return. */
+  async function passkeyVault(secret: ArrayBuffer, wrapped: Uint8Array = KEY): Promise<void> {
+    const { ciphertext, iv } = await wrapKey(wrapped, await deriveAesKeyFromPrf(secret));
+    await vaultRepo.save({ mode: 'prf', ciphertext, iv, credentialId: new Uint8Array(16).buffer, publicKeyHex: 'p' });
+  }
+  async function hardwareSecret(authenticator: ReturnType<typeof installMockAuthenticator>): Promise<ArrayBuffer> {
+    const assertion = (await (authenticator.get as unknown as () => Promise<unknown>)()) as { getClientExtensionResults: () => { prf: { results: { first: ArrayBuffer } } } };
+    authenticator.get.mockClear();
+    return assertion.getClientExtensionResults().prf.results.first;
+  }
+
+  it('asks the passkey again for a passkey-wrapped key, and the secret it gives opens the vault', async () => {
     const authenticator = installMockAuthenticator({ prfSupported: true });
-    await vaultRepo.save({ mode: 'prf', ciphertext: new ArrayBuffer(16), iv: new Uint8Array(12), credentialId: new Uint8Array(16).buffer, publicKeyHex: 'p' });
-    expect(await stepUp()).toBe('passkey');
+    await passkeyVault(await hardwareSecret(authenticator));
+    expect(await stepUp(KEY)).toBe('passkey');
     expect(authenticator.get).toHaveBeenCalledTimes(1);
   });
 
-  it('fails when the fingerprint is dismissed', async () => {
+  it('refuses a secret that does not unwrap the stored key (mw-ev7oyy.41 AC-4)', async () => {
+    const authenticator = installMockAuthenticator({ prfSupported: true });
+    await passkeyVault(new Uint8Array(32).fill(9).buffer);
+    await expect(stepUp(KEY)).rejects.toThrow(/did not confirm it was you/);
+    expect(authenticator.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a vault that unwraps to a different key than the one signing', async () => {
+    const authenticator = installMockAuthenticator({ prfSupported: true });
+    await passkeyVault(await hardwareSecret(authenticator), new Uint8Array(32).fill(7));
+    await expect(stepUp(KEY)).rejects.toThrow(/did not confirm it was you/);
+  });
+
+  it('fails when the fingerprint is dismissed, in words and not the browser sentence', async () => {
+    const authenticator = installMockAuthenticator({ prfSupported: true });
+    await passkeyVault(await hardwareSecret(authenticator));
+    removeMockAuthenticator();
     installMockAuthenticator({ prfSupported: true, prfGetResult: 'not-allowed' });
-    await vaultRepo.save({ mode: 'prf', ciphertext: new ArrayBuffer(16), iv: new Uint8Array(12), credentialId: new Uint8Array(16).buffer, publicKeyHex: 'p' });
-    await expect(stepUp()).rejects.toThrow();
+    await expect(stepUp(KEY)).rejects.toThrow(/Fingerprint cancelled/);
+  });
+
+  it('fails when the passkey gives no secret', async () => {
+    installMockAuthenticator({ prfSupported: true, prfGetResult: 'empty' });
+    await passkeyVault(new Uint8Array(32).buffer);
+    await expect(stepUp(KEY)).rejects.toThrow(/did not confirm it was you/);
   });
 
   it('takes the tapped confirmation as enough for a phrase-wrapped key', async () => {
     await vaultRepo.save({ mode: 'phrase', ciphertext: new ArrayBuffer(16), iv: new Uint8Array(12), salt: new Uint8Array(16), publicKeyHex: 'p' });
-    expect(await stepUp()).toBe('confirmed');
+    expect(await stepUp(KEY)).toBe('confirmed');
+  });
+});
+
+describe('usesPasskey', () => {
+  beforeEach(async () => {
+    await db.vault.clear();
+  });
+
+  it('is true for a passkey-wrapped vault and false for a phrase-wrapped or missing one', async () => {
+    expect(await usesPasskey()).toBe(false);
+    await vaultRepo.save({ mode: 'phrase', ciphertext: new ArrayBuffer(16), iv: new Uint8Array(12), salt: new Uint8Array(16), publicKeyHex: 'p' });
+    expect(await usesPasskey()).toBe(false);
+    await vaultRepo.save({ mode: 'prf', ciphertext: new ArrayBuffer(16), iv: new Uint8Array(12), credentialId: new Uint8Array(16).buffer, publicKeyHex: 'p' });
+    expect(await usesPasskey()).toBe(true);
   });
 });

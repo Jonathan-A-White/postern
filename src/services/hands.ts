@@ -1,12 +1,13 @@
 // src/services/hands.ts — his approval of a hands step (docs/protocol.md §17).
 // The app checks the text it shows hashes to the hash the Mayor's host gave,
 // asks for his fingerprint again (a fresh passkey assertion, however long ago
-// the day's unlock was), and only then signs the approval with his key. The
+// the day's unlock was, whose secret must open the vault), and only then signs the approval with his key. The
 // factory's host runs nothing his signature does not name.
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { approvalMessage, stepSha256, type HandsStep } from '../model/hands';
 import { vaultRepo } from '../data/repositories';
-import { getPrfSecret } from './webauthnPrf';
+import { describeUnlockError, getPrfSecret } from './webauthnPrf';
+import { deriveAesKeyFromPrf, unwrapKey } from './vault';
 import type { GovernorAction } from '../model/conversation';
 
 export class StepChangedError extends Error {
@@ -16,16 +17,36 @@ export class StepChangedError extends Error {
   }
 }
 
-/** A fresh fingerprint, for a passkey-wrapped key. A phrase-wrapped key has no
- * passkey to ask; the confirmation he just tapped is its step-up. */
-export async function stepUp(): Promise<'passkey' | 'confirmed'> {
+/** Whether the key is wrapped by a passkey, so a fingerprint (not a typed confirmation) is what approves. */
+export async function usesPasskey(): Promise<boolean> {
   const vault = await vaultRepo.get();
-  if (vault?.mode === 'prf' && vault.credentialId) {
-    const secret = await getPrfSecret(vault.credentialId);
-    if (!secret) throw new Error('The passkey did not confirm it was you.');
-    return 'passkey';
+  return vault?.mode === 'prf' && !!vault.credentialId;
+}
+
+const NOT_YOU = 'The passkey did not confirm it was you. Nothing was sent.';
+
+/** A fresh fingerprint, for a passkey-wrapped key: the passkey's PRF secret must open the stored vault to the very
+ * key that will sign (`key`), so it is proven and not only present. A phrase-wrapped key has no passkey to ask;
+ * the confirmation he just tapped is its step-up. */
+export async function stepUp(key: Uint8Array): Promise<'passkey' | 'confirmed'> {
+  const vault = await vaultRepo.get();
+  if (vault?.mode !== 'prf' || !vault.credentialId) return 'confirmed';
+  let secret: ArrayBuffer | null;
+  try {
+    secret = await getPrfSecret(vault.credentialId);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'NotAllowedError') throw new Error('Fingerprint cancelled. Nothing was sent.');
+    throw new Error(describeUnlockError(err));
   }
-  return 'confirmed';
+  if (!secret) throw new Error(NOT_YOU);
+  let unwrapped: Uint8Array;
+  try {
+    unwrapped = await unwrapKey({ ciphertext: vault.ciphertext, iv: vault.iv }, await deriveAesKeyFromPrf(secret));
+  } catch {
+    throw new Error(NOT_YOU);
+  }
+  if (unwrapped.length !== key.length || unwrapped.some((byte, i) => byte !== key[i])) throw new Error(NOT_YOU);
+  return 'passkey';
 }
 
 /** The §13 `run` action for `step` on `bead`, signed by `key` at `now`. */

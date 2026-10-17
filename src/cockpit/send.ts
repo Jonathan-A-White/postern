@@ -80,7 +80,7 @@ export function sendMoveHome(host: HomeHost): Promise<Delivered> {
  * stays in the queue until every step has run. */
 export async function approveHandsStep(bead: string, step: HandsStep): Promise<Delivered> {
   const opts = options();
-  await stepUp();
+  await stepUp(opts.key);
   return deliverAction(await buildApproval(bead, step, opts.key), opts);
 }
 

@@ -602,7 +602,7 @@ stand on disk.
 
 `?why=` (optional, mw-7dige5.5) says why the app asks, and only goes into the log line
 (above), so the Governor's fetches can be counted and told apart from the log alone:
-`start`, `hello`, `reconnect`, `gap`, `unapplied`, `behind`, `view-event`, `poll`,
+`start`, `hello`, `reconnect`, `gap`, `unapplied`, `behind`, `card`, `view-event`, `poll`,
 `refresh`, `focus`, `mayor-key` or `probe` (`docs/protocol.md` §22). It changes nothing
 in the answer.
 

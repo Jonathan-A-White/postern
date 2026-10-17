@@ -3,7 +3,7 @@
 // every event once by seq, applies the ones past the cursor in seq order to the stored
 // view (so Needs you and the Map re-render through their live queries), fetches the view
 // again at once only on a gap or a batch it cannot apply, and within a quarter of an hour
-// when an event names something only the home builds (mw-7dige5.5), adds a new bead from its own detail (mw-ev7oyy.37), and tells each
+// when an event names something only the home builds (mw-7dige5.5), or at the home's next `view` event when that something is a card (mw-ev7oyy.39), adds a new bead from its own detail (mw-ev7oyy.37), and tells each
 // useEvents subscriber of the events it asked for.
 import { useMemo, useSyncExternalStore } from 'react';
 import { answersRepo, eventsRepo, messagesRepo, viewRepo } from '../data/repositories';
@@ -12,7 +12,7 @@ import { decodeView } from '../model/view';
 import { fetchBeadDetail } from './beads';
 import { syncMessages } from './inbox';
 import { decodeQuestion, decodeReply, type QuestionBody } from './questions';
-import { refreshView, VIEW_BEHIND_INTERVAL_MS } from './view';
+import { expectHomeView, refreshView, VIEW_BEHIND_INTERVAL_MS } from './view';
 
 export interface ProjectedBatches {
   /** The events applied, in seq order: those past the cursor, each once. */
@@ -24,6 +24,9 @@ export interface ProjectedBatches {
   /** An event named something only the home builds (a hold, a landing, a story closed): the view is fetched
    * once VIEW_BEHIND_INTERVAL_MS has passed since the last full fetch, not now. */
   behind: boolean;
+  /** Part of `behind`: a card the home is about to build (a hold, a landing, a story closed, a reopening): the view is
+   * asked for when the home next publishes it, through the one-a-minute throttle (mw-ev7oyy.39). */
+  cards: boolean;
   /** Beads whose detail (§12) holds what an event named but did not carry. */
   details: string[];
   /** Beads the copy does not hold that an event named as new: their detail brings them in (mw-ev7oyy.37). */
@@ -71,14 +74,15 @@ async function applyToView(events: FactoryEvent[]): Promise<{ held: boolean; pro
  * batch, out of seq order if need be; its seqs are recorded so the ordinary pass, which
  * still moves the cursor over them, does not apply them a second time. */
 export async function projectBatches(batches: EventBatch[]): Promise<ProjectedBatches> {
-  const none: ProjectedBatches = { applied: [], refetch: false, gap: false, behind: false, details: [], fresh: [] };
+  const none: ProjectedBatches = { applied: [], refetch: false, gap: false, behind: false, cards: false, details: [], fresh: [] };
   if (batches.length === 0) return none;
   const cursor = await eventsRepo.cursor();
-  const result: ProjectedBatches = { applied: [], refetch: false, gap: false, behind: false, details: [], fresh: [] };
+  const result: ProjectedBatches = { applied: [], refetch: false, gap: false, behind: false, cards: false, details: [], fresh: [] };
   const merge = (applied: FactoryEvent[], held: boolean, projection: Projection | undefined) => {
     result.applied.push(...applied);
     result.refetch = result.refetch || !held || !projection || projection.refetch;
     result.behind = result.behind || Boolean(projection?.behind);
+    result.cards = result.cards || Boolean(projection?.cards);
     for (const id of projection?.details ?? []) if (!result.details.includes(id)) result.details.push(id);
     for (const id of projection?.fresh ?? []) if (!result.fresh.includes(id)) result.fresh.push(id);
   };
@@ -143,6 +147,7 @@ export async function syncMessagesAndEvents(options: SyncEventsOptions): Promise
   const projected = await projectBatches(events);
   const refetch = projected.refetch;
   let behind = projected.behind;
+  let cards = projected.cards;
   for (const id of projected.details) {
     try {
       const fetched = await fetchBeadDetail(id, { key, mayorKey, apiBase, fetchImpl });
@@ -167,6 +172,7 @@ export async function syncMessagesAndEvents(options: SyncEventsOptions): Promise
         return result.added.added ? JSON.stringify(result.added.view) : undefined;
       });
       if (!result.added?.added || result.added.behind) behind = true;
+      if (result.added?.behind) cards = true;
     } catch {
       behind = true;
     }
@@ -174,7 +180,12 @@ export async function syncMessagesAndEvents(options: SyncEventsOptions): Promise
   const view = { key, mayorKey, live, apiBase, fetchImpl };
   if (forceView) await refreshView({ ...view, why: 'refresh', force: true });
   else if (refetch) await refreshView({ ...view, why: projected.gap ? 'gap' : 'unapplied' });
-  else if (behind) await refreshView({ ...view, why: 'behind', within: VIEW_BEHIND_INTERVAL_MS });
+  else {
+    // What only the home builds is asked for when the home next publishes the view, within the minute (the card the events named);
+    // the quarter-hour window stays for the rest, and for a card whose view does not arrive.
+    if (behind) await refreshView({ ...view, why: 'behind', within: VIEW_BEHIND_INTERVAL_MS });
+    if (cards) expectHomeView({ ...view, why: 'card' });
+  }
   return { applied: projected.applied.length, refetched: refetch || Boolean(forceView) };
 }
 

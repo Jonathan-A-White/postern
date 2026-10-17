@@ -108,13 +108,13 @@ const SPECIALS: Record<number, () => EventRow> = {
 
 /** One busy minute, as on 2026-10-14: a bead filed (a story's step), claimed and closed; the home's view event
  * every 30 s; now and then a hold, a landing or a story closed, a push for a message, a return to the app. */
-async function busyMinute(m: number): Promise<void> {
+async function busyMinute(m: number, specials: boolean): Promise<void> {
   const step = `mw-mol-${m}`;
   await batch([...job(), event({ kind: 'bead_changed', bead: step, from: '', to: 'open', detail: 'created' })]);
   await advance(10_000);
   if (m === 2 || m === 6) await act(() => refreshNow()); // the service worker's 'sync-inbox' on a push he is looking at
   await advance(10_000);
-  await batch([event({ kind: 'bead_changed', bead: step, from: 'open', to: 'claimed', detail: 'status' }), ...(SPECIALS[m] ? [SPECIALS[m]()] : [])]);
+  await batch([event({ kind: 'bead_changed', bead: step, from: 'open', to: 'claimed', detail: 'status' }), ...(specials && SPECIALS[m] ? [SPECIALS[m]()] : [])]);
   await say('event: view\ndata: {}');
   await advance(20_000);
   await batch([event({ kind: 'bead_changed', bead: step, from: 'claimed', to: 'closed', detail: 'status' }), ...job()]);
@@ -127,8 +127,8 @@ async function busyMinute(m: number): Promise<void> {
   await say('event: view\ndata: {}');
 }
 
-async function busyFor(minutes: number): Promise<void> {
-  for (let m = 0; m < minutes; m += 1) await busyMinute(m);
+async function busyFor(minutes: number, specials = true): Promise<void> {
+  for (let m = 0; m < minutes; m += 1) await busyMinute(m, specials);
 }
 
 async function live(): Promise<void> {
@@ -165,14 +165,15 @@ afterAll(() => {
 const feature = await loadFeature('features/view-busy-factory.feature');
 
 describeFeature(feature, ({ Scenario }) => {
-  Scenario('mw-7dige5.5: ten minutes of a busy factory on a live stream with no gap fetch the view once, at the start', ({ Given, When, Then, And }) => {
+  Scenario('mw-7dige5.5: ten minutes of a busy factory on a live stream fetch the view at the start and once for each card the home builds, not for the rest', ({ Given, When, Then, And }) => {
     Given('the event stream is live and the view was fetched at the start', live);
     When('ten minutes pass with the factory busy: new beads, steps closing, a hold, a landing, a story closed, pushes and a return to the app', () => busyFor(10));
-    Then('the whole view was fetched once in all', () => {
-      expect(wholeFetches()).toHaveLength(1);
+    Then('the whole view was fetched four times in all: the start, then one for each of the hold, the landing and the story closed, saying card', () => {
+      expect(wholeFetches().map((v) => v.why)).toEqual(['start', 'card', 'card', 'card']);
     });
-    And('every ask for the view said why: the start, and a probe for each return to the app', () => {
-      expect(net.views.map((v) => v.why)).toEqual(['start', 'probe']);
+    And('every ask for the view said why, a probe for the return to the app among them', () => {
+      expect(net.views.every((v) => v.why !== null)).toBe(true);
+      expect(net.views.filter((v) => v.why === 'probe')).toHaveLength(1);
     });
   });
 
@@ -206,9 +207,9 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario('mw-7dige5.5: what only the home can build is caught up once, fifteen minutes after the last fetch, saying behind', ({ Given, When, Then }) => {
+  Scenario('mw-7dige5.5: what the phone cannot place is caught up once, fifteen minutes after the last fetch, saying behind', ({ Given, When, Then }) => {
     Given('the event stream is live and the view was fetched at the start', live);
-    When('sixteen minutes pass with the factory busy', () => busyFor(16));
+    When('sixteen minutes pass with the factory busy but no hold, landing or story closed', () => busyFor(16, false));
     Then('the whole view was fetched twice in all, the second fifteen minutes after the start, saying behind', () => {
       const fetches = wholeFetches();
       expect(fetches.map((v) => v.why)).toEqual(['start', 'behind']);

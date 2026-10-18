@@ -25,6 +25,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/prompts"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
+	"github.com/Jonathan-A-White/postern/server/internal/register"
 	"github.com/Jonathan-A-White/postern/server/internal/standby"
 	"github.com/Jonathan-A-White/postern/server/internal/view"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
@@ -177,6 +178,12 @@ func newApp(cfg config.Config) (*app, error) {
 	licenceChecker := auth.NewCachedChecker(licence.NewTxCache(client, filepath.Join(cfg.DataDir, licenceTxDir)), licenceCacheTTL,
 		auth.WithRule(rule), auth.WithPersistence(filepath.Join(cfg.DataDir, licenceAnswersFile)))
 
+	registration, err := newRegistration(cfg)
+	if err != nil {
+		store.Close()
+		return nil, err
+	}
+
 	handler := api.NewHandler(store, client, vapidKeys.PublicKey, pushStore, blobStore, auth.NewNonceStore(nonceTTL, auth.WithKey(nonceKey)), licenceChecker,
 		api.WithNotifier(fanout),
 		api.WithEvents(hub, api.DefaultPingInterval),
@@ -188,6 +195,7 @@ func newApp(cfg config.Config) (*app, error) {
 		api.WithCORS(cfg.CORSOrigins),
 		api.WithPrompts(promptStore),
 		api.WithIdeasOnly(ideasStore),
+		api.WithRegistration(registration, cfg.RegisterIPHeader),
 	)
 
 	start := func(stop <-chan struct{}) {
@@ -211,6 +219,24 @@ func newApp(cfg config.Config) (*app, error) {
 	}
 
 	return &app{handler: standby.Middleware(home, handler, standby.WithPeers(cfg.Peers)), start: start, close: func() { store.Close() }}, nil
+}
+
+// newRegistration opens Lampas self-registration (internal/register): its
+// people and fingerprint key under POSTERN_DATA, and Twilio Verify when all
+// three POSTERN_TWILIO_* names are set. Without them it is closed (start and
+// confirm answer 503) and the rest of the backend is unaffected.
+func newRegistration(cfg config.Config) (*register.Service, error) {
+	opts := []register.Option{register.WithLimits(cfg.RegisterStartsPerHour, cfg.RegisterConfirmsPerHour)}
+	if cfg.TwilioConfigured() {
+		opts = append(opts, register.WithVerifier(register.NewTwilio(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioVerifySID)))
+	} else {
+		log.Printf("registration closed: set POSTERN_TWILIO_ACCOUNT_SID, POSTERN_TWILIO_AUTH_TOKEN and POSTERN_TWILIO_VERIFY_SID to open it")
+	}
+	svc, err := register.Open(cfg.DataDir, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("opening registration: %w", err)
+	}
+	return svc, nil
 }
 
 // newRelayOnlyApp is the backend under POSTERN_RELAY_ONLY=1: it opens no

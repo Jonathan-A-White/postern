@@ -31,6 +31,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/prompts"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
+	"github.com/Jonathan-A-White/postern/server/internal/register"
 	"github.com/Jonathan-A-White/postern/server/internal/view"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
@@ -65,6 +66,9 @@ type options struct {
 	cors     []string          // POSTERN_CORS_ORIGINS
 	prompts  *prompts.Store    // the saved prompts; nil answers 501
 	ideas    *ideasonly.Store  // each key's Ideas only setting (§25); nil answers 501
+
+	register         *register.Service // Lampas self-registration; nil answers 503
+	registerIPHeader string            // the header the proxy puts the caller's address in; "" uses the peer's
 
 	cockpitCollections []string // POSTERN_COLLECTIONS, for GET /api/me (§15)
 	appCollections     []string // POSTERN_APPS' collections in the order configured
@@ -162,7 +166,7 @@ func WithView(v *view.File) Option {
 // NewHandler builds the full /api/* surface (plus /healthz) backed by store
 // and client. vapidPublicKey is handed to GET /api/push/vapid-public-key;
 // pushStore backs POST /api/push/subscribe; blobStore backs POST/GET
-// /api/blobs. Every /api endpoint except GET /api/challenge requires a
+// /api/blobs. Every /api endpoint except GET /api/challenge and /api/register/* requires a
 // signed, licensed proof (requireLicence), checked against nonces and
 // checker, and admits only the kinds of key it names (docs/protocol.md
 // §19). opts configure the v2 endpoints (docs/protocol.md §9–15, §19).
@@ -226,6 +230,11 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.HandleFunc("GET /api/challenge", handleChallenge(nonces))
+	// Registration is open: the caller has no licence yet. Its own per-IP
+	// limits and 5-try codes are what guard it (internal/register).
+	mux.HandleFunc("POST /api/register/start", handleRegisterStart(o.register, o.registerIPHeader))
+	mux.HandleFunc("POST /api/register/confirm", handleRegisterConfirm(o.register, o.registerIPHeader))
+	mux.HandleFunc("GET /api/register/person", handleRegisterPerson(o.register))
 	// The routes and who each admits are routeTable's: nothing is registered
 	// here that the table does not name, and the table names nothing that is
 	// not registered, so LicenceMap (postern rights) reads the same gate.

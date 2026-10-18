@@ -1053,3 +1053,41 @@ func TestFanoutWithIdeasOnlyOnPushesOnlyARingAndAnEmergencyButHubAndHookRunForAl
 		t.Fatalf("%d pushes in all, want 2 (the ring and the emergency)", pushes.Load())
 	}
 }
+
+func TestAppRegistrationIsClosedWithoutTwilioAndOpenWithIt(t *testing.T) {
+	start := func(env map[string]string) int {
+		env["POSTERN_ANCHOR"], env["POSTERN_DATA"], env["POSTERN_WOC_BASE"] = "mt6vaAWeFxu2qC6pPs7bsqTNvv87dCwMW5", t.TempDir(), "http://unused.invalid"
+		cfg, err := config.Load(func(key string) string { return env[key] })
+		if err != nil {
+			t.Fatalf("config.Load: %v", err)
+		}
+		app, err := newApp(cfg)
+		if err != nil {
+			t.Fatalf("newApp: %v", err)
+		}
+		defer app.close()
+		server := httptest.NewServer(app.handler)
+		defer server.Close()
+		resp, err := http.Post(server.URL+"/api/register/start", "application/json", strings.NewReader(`{"email":"bad","phone":"+14155550101","deviceKey":"x"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		person, err := http.Get(server.URL + "/api/register/person?key=x")
+		if err != nil {
+			t.Fatal(err)
+		}
+		person.Body.Close()
+		if person.StatusCode != http.StatusOK {
+			t.Fatalf("person lookup = %d, want 200 either way", person.StatusCode)
+		}
+		return resp.StatusCode
+	}
+	if got := start(map[string]string{}); got != http.StatusServiceUnavailable {
+		t.Fatalf("no Twilio env: start = %d, want 503", got)
+	}
+	open := map[string]string{"POSTERN_TWILIO_ACCOUNT_SID": "AC1", "POSTERN_TWILIO_AUTH_TOKEN": "t", "POSTERN_TWILIO_VERIFY_SID": "VA1"}
+	if got := start(open); got != http.StatusBadRequest {
+		t.Fatalf("Twilio env set: start of bad input = %d, want 400 (open, and validating)", got)
+	}
+}

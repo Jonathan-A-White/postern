@@ -5,6 +5,40 @@ The Go backend behind https://postern.allmymind.org. Configuration is in
 `../docs/protocol.md`. This file documents the saved-prompts routes; the Ideas only routes are in
 `../docs/api.md` and `../docs/protocol.md` §25.
 
+## Self-registration (Lampas)
+
+A stranger proves an email and a phone with Twilio Verify and the backend keeps
+who they are as keyed fingerprints only (HMAC-SHA256, key in
+`postern-register.key` under `POSTERN_DATA`, made the first time). The people
+are `register-people.json` in `POSTERN_DATA`: per person a fingerprint of each
+email and of the phone, up to 3 device keys, a daily limit (50), no address.
+Each email and each phone belongs to one person; a new email with a phone
+already registered is a new device joining that person. The raw email and phone
+are never written to disk or the log (a pending registration holds them in memory
+for at most 10 minutes, because Twilio's check needs them again).
+
+Environment:
+
+| Name | Meaning |
+|---|---|
+| `POSTERN_TWILIO_ACCOUNT_SID` | the Twilio account SID |
+| `POSTERN_TWILIO_AUTH_TOKEN` | the Twilio auth token |
+| `POSTERN_TWILIO_VERIFY_SID` | the Verify service SID (email and SMS channels enabled) |
+| `POSTERN_REGISTER_STARTS_PER_HOUR` | starts one IP may make an hour (default 10) |
+| `POSTERN_REGISTER_CONFIRMS_PER_HOUR` | confirms one IP may make an hour (default 30) |
+| `POSTERN_REGISTER_IP_HEADER` | the header the proxy sets to the caller's address, for the limits (nginx: `proxy_set_header X-Real-IP $remote_addr;` and `X-Real-IP`); unset counts the connection's own address, which behind nginx is every caller at once |
+
+With any of the three Twilio names missing, registration is closed: start and
+confirm answer `503 {"error":"registration closed"}` and nothing else changes.
+
+All three routes are open (no licence proof); CORS applies as for the rest.
+
+| Route | Answers |
+|---|---|
+| `POST /api/register/start` `{email, phone, deviceKey}` | `200 {registrationId}` after Twilio sends a code to the email and one to the phone; `400` bad input (`phone` in E.164, `deviceKey` a compressed public key); `429` over the hourly limit; `502` Twilio could not be asked; `503` closed |
+| `POST /api/register/confirm` `{registrationId, emailCode, phoneCode}` | `200 {personId, devices:[{key,name,addedAt}], issued:false}` (issuing is a later step); `400 {error, triesLeft}` a wrong code (5 wrong confirms end the registration; a code already right need not be sent again); `409` `that email is already registered`, `This licence already has 3 devices. Remove one first.` or the device is another licence's; `410` the registration expired (10 minutes), was used or ended; `429`; `503` |
+| `GET /api/register/person?key=<deviceKey>` | `200 {known:false}` or `200 {known:true, personId, keys:[...], dailyLimit}` (the mill's lookup; works with registration closed) |
+
 ## Saved prompts
 
 The backend is the definitive store of saved prompts, so any app can ask what

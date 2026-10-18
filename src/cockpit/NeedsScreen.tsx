@@ -2,7 +2,7 @@
 // the factory's pulse, then everything waiting on the Governor in one queue,
 // most blocking first, then anything new from the Mayor he has not read. This
 // replaces the old Inbox and Projects' "Needs you" (decision 10).
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Banner, Button, EmptyState, Icon, IconButton, SectionTitle, Segmented, Spinner, TimeAgo, useAlive } from '../ui';
 import { Screen } from './Shell';
 import { FactoryPulse } from './FactoryPulse';
@@ -179,6 +179,30 @@ function WaitingOnOthers({ needs }: { needs: Need[] }) {
   );
 }
 
+/** How many cards paint at once, and how many more each pass after (mw-ev7oyy.43). */
+const FIRST_CARDS = 12;
+const MORE_CARDS = 8;
+
+/** A list of need cards that never holds the phone, however long (his were 264 and 359 on 2026-10-17, and
+ * drawing them all at once froze it for good): the first FIRST_CARDS paint at once and the rest follow
+ * MORE_CARDS at a time, a tap landing between; a changed list is drawn deferred, the one shown kept meanwhile. */
+function NeedCards({ needs, index }: { needs: Need[]; index: ViewIndex }) {
+  const list = useDeferredValue(needs);
+  const [count, setCount] = useState(FIRST_CARDS);
+  useEffect(() => {
+    if (count >= list.length) return;
+    const more = setTimeout(() => setCount((was) => was + MORE_CARDS), 0);
+    return () => clearTimeout(more);
+  }, [count, list.length]);
+  return (
+    <div className="grid gap-3 xl:grid-cols-2">
+      {list.slice(0, count).map((need) => (
+        <NeedCard key={`${need.kind}:${need.bead}:${need.since}`} need={need} epicTitle={index.byId.get(need.epic)?.title} index={index} />
+      ))}
+    </div>
+  );
+}
+
 /** The verify cards the Mayor folded (§11, `folded`): one closed line at the foot; a tap opens them as the same cards. */
 function FoldedNeeds({ needs, index }: { needs: Need[]; index: ViewIndex }) {
   const [open, setOpen] = useState(false);
@@ -194,13 +218,7 @@ function FoldedNeeds({ needs, index }: { needs: Need[]; index: ViewIndex }) {
         {`Waiting on your use (${needs.length})`}
         <Icon name={open ? 'down' : 'forward'} size={13} />
       </button>
-      {open && (
-        <div className="grid gap-3 xl:grid-cols-2">
-          {needs.map((need) => (
-            <NeedCard key={`${need.kind}:${need.bead}:${need.since}`} need={need} epicTitle={index.byId.get(need.epic)?.title} index={index} />
-          ))}
-        </div>
-      )}
+      {open && <NeedCards needs={needs} index={index} />}
     </section>
   );
 }
@@ -302,11 +320,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
                 </EmptyState>
               </div>
             ) : needs.length > 0 ? (
-              <div className="grid gap-3 xl:grid-cols-2">
-                {needs.map((need) => (
-                  <NeedCard key={`${need.kind}:${need.bead}:${need.since}`} need={need} epicTitle={index.byId.get(need.epic)?.title} index={index} />
-                ))}
-              </div>
+              <NeedCards needs={needs} index={index} />
             ) : null}
           </section>
         )}

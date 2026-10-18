@@ -95,7 +95,9 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const answerTap = useOneTap(asks ? need.bead : '', `answer:${need.since}`);
   // What he sent is on this phone's own record too: the card stays dead across a reload and a view refetch.
   // An answer that names another question card on the bead (its `re`) is that card's, not this one's.
-  const inBeadThread = useThreadMessages(asks ? threadKey({ bead: need.bead }) : undefined);
+  // Only a question reads the threads (a full read of the messages each): Needs you shows hundreds of cards (mw-ev7oyy.43).
+  const question = need.kind === 'question';
+  const inBeadThread = useThreadMessages(asks ? threadKey({ bead: need.bead }) : question ? undefined : null);
   const cardTxid = useMemo(() => questionTxidOf(need, inBeadThread), [need, inBeadThread]);
   const sentRow = useAnswers().find((row) => row.bead === need.bead && row.ts * 1000 >= Date.parse(need.since) && namesCard(row.re, cardTxid));
   // An answer the factory has heard (a card_answered event, §22, on the view's copy) is dead too, whichever device sent it.
@@ -104,7 +106,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const outbox = useOutbox();
   const pendingRow = asks ? pendingAnswer(outbox, need.bead, Date.parse(need.since), cardTxid) : undefined;
   // Words count as an answer too (mw-gq6.199): typed in the bead's thread or in Factory naming an option, or an ANSWER comment on the bead.
-  const inFactory = useThreadMessages(undefined);
+  const inFactory = useThreadMessages(asks ? undefined : null);
   const comments = useStoredComments(asks ? need.bead : '');
   const soleQuestion = index !== undefined && index.view.needs.filter((n) => n.kind === 'question' && n.bead !== '').length === 1;
   const inWords = useMemo(

@@ -13,6 +13,7 @@ import { forgetTaps } from '../../src/cockpit/oneTap';
 import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
 import { forgetOutboxState } from '../../src/services/outbox';
+import { currentToasts, dismissAllToasts } from '../../src/ui/toastStore';
 import { settlePhone } from '../../tests/support/empty-phone';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 import type { BeadDetail, ViewBead } from '../../src/model/view';
@@ -716,6 +717,32 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       await waitFor(() => expect(textButton(el)).toHaveTextContent(button));
     });
     And('the Text button {string} opens {string} in the same tab', textOpens);
+  });
+  Scenario('mw-ev7oyy.28 AC-2: on Android a Text button with a name and no number opens Voice itself, never the Play Store, and copies the draft', ({ Given, When, And, Then }) => {
+    Given(SAME_GIVEN, aList);
+    And('the phone is an Android phone running Chrome', () => {
+      vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36');
+    });
+    And('the card {string} has the notes {string}', hasNotes);
+    When('the To do tab opens', tabOpens);
+    Then('the card {string} shows a Text button named {string} under its title', async (_c, name: string, button: string) => {
+      const el = await card(name.replace('Title of ', ''));
+      await waitFor(() => expect(textButton(el)).toHaveTextContent(button));
+    });
+    And('the Text button {string} opens {string} in the same tab', textOpens);
+    When('he taps the Text button {string} on the card {string}', async (_c, button: string, name: string) => {
+      dismissAllToasts();
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(async () => undefined) } });
+      const el = await card(name.replace('Title of ', ''));
+      const link = within(el).getByRole('link', { name: button });
+      link.addEventListener('click', (event) => event.preventDefault());
+      await userEvent.click(link);
+    });
+    Then('the clipboard holds {string} and a toast says {string}', async (_c, draft: string, words: string) => {
+      await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(draft));
+      await waitFor(() => expect(currentToasts().map((t) => t.text)).toContain(words));
+      dismissAllToasts();
+    });
   });
   // mw-ev7oyy.26: an Email button on a card's front, from the Email: line of its notes.
   const emailButton = (el: HTMLElement) => within(el).queryByTestId('card-email');

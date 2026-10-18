@@ -143,8 +143,10 @@ describe('the Text button on Android: Google Voice, by name (mw-ev7oyy.23)', () 
     expect(parseIntent(textHref(action, ANDROID)).fields['S.browser_fallback_url']).toBe(textHref(action, COMPUTER));
   });
 
-  it('without a number, opens Voice with the draft for him to pick the person; without a draft, opens a text to them, empty', () => {
-    expect(parseIntent(textHref({ name: 'Dad', draft: 'Hi Dad' }, ANDROID)).data).toBe('sms:?body=Hi%20Dad');
+  it('without a number, opens Voice itself (mw-ev7oyy.28: an sms: link with no recipient ended at the Play Store); without a draft, opens a text to them, empty', () => {
+    const named = parseIntent(textHref({ name: 'Dad', draft: 'Hi Dad' }, ANDROID));
+    expect(named.fields.action).toBe('android.intent.action.MAIN');
+    expect(named.fields.package).toBe('com.google.android.apps.googlevoice');
     const empty = parseIntent(textHref({ number: '+15165550123', draft: '' }, ANDROID));
     expect(empty.data).toBe('sms:+15165550123');
     expect(empty.fields).not.toHaveProperty('S.sms_body');

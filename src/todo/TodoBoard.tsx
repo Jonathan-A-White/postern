@@ -16,6 +16,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Button, Chip, EmptyState, Icon, IconButton, LengthNote, Spinner, cx, isTooLong } from '../ui';
 import { useNow } from '../ui/useNow';
+import { copyText } from '../ui/copyText';
+import { toast } from '../ui/toastStore';
 import { focusOnMount } from '../ui/focus';
 import { Markdown } from '../markdown/Markdown';
 import { beadHref } from '../nav/route';
@@ -23,7 +25,7 @@ import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
 import { moveFor, realIndex } from './edits';
 import { isRowOpen, keepRowOpen, readRowsOpen, type FoldedRow, type RowsOpen } from './kept';
 import { googleCalendarHref, icsHref, parseWhen, type When } from './calendar';
-import { emailHref, emailLabel, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
+import { copyNotice, emailHref, emailLabel, linkCopyDraft, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textCopyDraft, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
 import { beadsNamed, boardRows, type RowCard, type TodoCard, type TodoList, type TodoSize } from './lists';
 import { usePosternTodoStore } from './posternStore';
 import type { TodoDone, TodoStore } from './store';
@@ -232,6 +234,13 @@ function CalendarTaps({ when, card }: { when: Extract<When, { kind: 'ok' }>; car
   );
 }
 
+/** On Android a text with no number opens Google Voice with no one to hand the draft to (mw-ev7oyy.28): the tap copies the draft
+ * (the link is followed as the tap goes on) and a toast says to pick the person and paste. Nothing to do for any other link. */
+function copyDraftFirst(draft: string | undefined, who: string | undefined): void {
+  if (draft === undefined) return;
+  void copyText(draft).then((ok) => (ok ? toast(copyNotice(who)) : toast('Could not copy the draft', 'error')));
+}
+
 /** A card's links as chips under its title: each an anchor that opens the app it names (links.ts says how), named 'Open in <its text>' for a screen reader;
  * with an 'Open:' line per book, each chip names its book too ('Kindle · Deep Discipleship', 'Open Deep Discipleship in Kindle'; openLinkLabel, openLinkName).
  * A text action comes first, as a Text button that says who a tap texts: opened in this tab, so the phone hands it to his texting app (Google Voice on Android).
@@ -247,6 +256,7 @@ function LinkChips({ links, text, email, listen, calendar }: { links: OpenLink[]
           data-testid="card-text"
           data-kind="text"
           href={textHref(text, navigator.userAgent)}
+          onClick={() => copyDraftFirst(textCopyDraft(text, navigator.userAgent), text.name)}
           className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-md border border-accent/60 bg-accent/15 px-2 text-[12px] font-medium text-fg no-underline"
         >
           <Icon name="talk" size={12} className="shrink-0" />
@@ -291,6 +301,7 @@ function LinkChips({ links, text, email, listen, calendar }: { links: OpenLink[]
         <a
           key={`${at}|${link.url}`}
           {...linkProps(link, navigator.userAgent)}
+          onClick={() => copyDraftFirst(linkCopyDraft(link, navigator.userAgent), link.text)}
           aria-label={openLinkName(link)}
           className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-md border border-line px-2 text-[12px] text-muted no-underline"
         >

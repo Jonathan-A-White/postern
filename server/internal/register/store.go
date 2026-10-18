@@ -16,12 +16,15 @@ const PeopleFile = "register-people.json"
 
 // Device is one key on a person's licence. LicenceTxid is the mint the site
 // issuer licensed it with (its licence's origin is LicenceTxid:0); empty for
-// a device added before the site issuer licensed any.
+// a device added before the site issuer licensed any. LastSeen is when its
+// licence last passed a gated route, to the minute (see Seen); nil for a
+// device not seen using it yet.
 type Device struct {
-	Key         string    `json:"key"`
-	Name        string    `json:"name"`
-	AddedAt     time.Time `json:"addedAt"`
-	LicenceTxid string    `json:"licenceTxid,omitempty"`
+	Key         string     `json:"key"`
+	Name        string     `json:"name"`
+	AddedAt     time.Time  `json:"addedAt"`
+	LastSeen    *time.Time `json:"lastSeen,omitempty"`
+	LicenceTxid string     `json:"licenceTxid,omitempty"`
 }
 
 // person is one human who proved an email and a phone: the keyed

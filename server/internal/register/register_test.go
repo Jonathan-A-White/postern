@@ -736,3 +736,38 @@ func TestPersonForADeviceAnswersOnlyItsOwnPerson(t *testing.T) {
 		}
 	}
 }
+
+// AC2 (mw-cvwm1u.16): Seen stamps a registered device's lastSeen, moves it
+// forward, writes no more often than SeenEvery, and ignores a key no one
+// registered. The stamp survives a reopen.
+func TestSeenStampsADevicesLastUse(t *testing.T) {
+	s, _, c, dir := newService(t)
+	if _, err := register(t, s, email1, phone1, deviceKey(0)); err != nil {
+		t.Fatal(err)
+	}
+	key := deviceKey(0)
+	first := c.Now()
+
+	s.Seen(deviceKey(9)) // no one's: nothing happens
+	view, _ := s.Person(key)
+	if view.Devices[0].LastSeen != nil {
+		t.Fatalf("lastSeen before any use = %v, want nil", view.Devices[0].LastSeen)
+	}
+	s.Seen(key)
+	c.Advance(10 * time.Second)
+	s.Seen(key) // within SeenEvery: not rewritten
+	view, _ = s.Person(key)
+	if got := view.Devices[0].LastSeen; got == nil || !got.Equal(first) {
+		t.Fatalf("lastSeen = %v, want the first use, %v", got, first)
+	}
+	c.Advance(time.Hour)
+	s.Seen(key)
+	reopened, err := Open(dir, WithClock(c.Now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, _ = reopened.Person(key)
+	if got := view.Devices[0].LastSeen; got == nil || !got.Equal(c.Now()) {
+		t.Fatalf("lastSeen after a reopen = %v, want %v", got, c.Now())
+	}
+}

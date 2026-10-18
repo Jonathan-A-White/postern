@@ -241,6 +241,8 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	// Removing a device needs a proof, but no licence on the chain: the
 	// signer must be a device of the same person, which register checks.
 	mux.HandleFunc("DELETE /api/register/device", handleRegisterDevice(o.register, nonces))
+	// Renaming one is the same: signed by a device of that person.
+	mux.HandleFunc("PATCH /api/register/device", handleRegisterRenameDevice(o.register, nonces))
 	// The routes and who each admits are routeTable's: nothing is registered
 	// here that the table does not name, and the table names nothing that is
 	// not registered, so LicenceMap (postern rights) reads the same gate.
@@ -331,6 +333,9 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 		if !who.admits(granted) {
 			refuse(w, r, http.StatusForbidden, reasonForbidden, "this key's licence does not open this route", key)
 			return
+		}
+		if o.register != nil {
+			o.register.Seen(key)
 		}
 		acceptLog.Printf("accepted %s %s%s (scheme=v2 key %s)", r.Method, r.URL.EscapedPath(), whyLogged(r), keyPrefix(key))
 		ctx := context.WithValue(r.Context(), authKey{}, key)

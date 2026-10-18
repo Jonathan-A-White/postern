@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 )
@@ -28,6 +30,13 @@ import (
 const (
 	// KeyFile is the fingerprint key's name under POSTERN_DATA.
 	KeyFile = "postern-register.key"
+
+	// MaxNameLength is the longest a device's name may be, in characters.
+	MaxNameLength = 80
+	// SeenEvery is how often a device's last use is written down: a use
+	// within it of the last one stamped changes nothing, so a busy device does
+	// not rewrite the people file on every request.
+	SeenEvery = time.Minute
 
 	// MaxDevices is how many keys one licence may hold.
 	MaxDevices = 3
@@ -104,6 +113,16 @@ type PersonView struct {
 	PersonID   string   `json:"personId"`
 	Keys       []string `json:"keys"`
 	DailyLimit int      `json:"dailyLimit"`
+	// Devices are the keys again, each with what Lampas's My devices shows.
+	Devices []DeviceView `json:"devices"`
+}
+
+// DeviceView is a device as a person's answer shows it: no licence txid.
+type DeviceView struct {
+	Key      string     `json:"key"`
+	Name     string     `json:"name"`
+	AddedAt  time.Time  `json:"addedAt"`
+	LastSeen *time.Time `json:"lastSeen,omitempty"`
 }
 
 // Option configures Open.
@@ -562,6 +581,82 @@ func (s *Service) RemoveDevice(personID, signerKey, deviceKey string) (Result, e
 	return Result{PersonID: next.PersonID, Devices: append([]Device(nil), next.Devices...)}, nil
 }
 
+// RenameDevice names deviceKey on the signer's licence, at the word of
+// signerKey, which must be a device on it (deviceKey itself included). A
+// device of another person's is ErrNotYours, a key no one registered
+// ErrNoDevice, and a name empty or over MaxNameLength characters, or holding
+// a control character, an InvalidError.
+func (s *Service) RenameDevice(signerKey, deviceKey, name string) (Result, error) {
+	signer, err := normaliseKey(signerKey)
+	if err != nil {
+		return Result{}, ErrNotYours
+	}
+	if deviceKey, err = normaliseKey(deviceKey); err != nil {
+		return Result{}, err
+	}
+	if name, err = normaliseName(name); err != nil {
+		return Result{}, err
+	}
+	s.changing.Lock()
+	defer s.changing.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := s.people.byKey[signer]
+	if owner == nil {
+		return Result{}, ErrNotYours
+	}
+	if other := s.people.byKey[deviceKey]; other == nil {
+		return Result{}, ErrNoDevice
+	} else if other != owner {
+		return Result{}, ErrNotYours
+	}
+	next := owner.clone()
+	next.Devices[next.device(deviceKey)].Name = name
+	if err := s.people.put(next); err != nil {
+		return Result{}, err
+	}
+	return Result{PersonID: next.PersonID, Devices: append([]Device(nil), next.Devices...)}, nil
+}
+
+func normaliseName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", &InvalidError{"give the device a name"}
+	}
+	if utf8.RuneCountInString(name) > MaxNameLength {
+		return "", &InvalidError{fmt.Sprintf("a device name is at most %d characters", MaxNameLength)}
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return "", &InvalidError{"a device name cannot hold a control character"}
+		}
+	}
+	return name, nil
+}
+
+// Seen notes that key's licence passed a gated route just now, for its
+// device's lastSeen. It is a no-op for a key no one registered, and for a use
+// within SeenEvery of the last one noted. A failure to write is logged and
+// does not fail the request that passed.
+func (s *Service) Seen(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := s.people.byKey[key]
+	if owner == nil {
+		return
+	}
+	now := s.now()
+	at := owner.device(key)
+	if last := owner.Devices[at].LastSeen; last != nil && now.Sub(*last) < SeenEvery && !now.Before(*last) {
+		return
+	}
+	next := owner.clone()
+	next.Devices[at].LastSeen = &now
+	if err := s.people.put(next); err != nil {
+		log.Printf("register: noting a device's last use: %v", err)
+	}
+}
+
 // Person is the person whose licence holds key, for the mill: ok is false for
 // a key no one registered.
 func (s *Service) Person(key string) (PersonView, bool) {
@@ -600,9 +695,10 @@ func (s *Service) PersonForDevice(signerKey, key string) (PersonView, error) {
 }
 
 func (p *person) view() PersonView {
-	view := PersonView{PersonID: p.PersonID, DailyLimit: p.DailyLimit, Keys: make([]string, len(p.Devices))}
+	view := PersonView{PersonID: p.PersonID, DailyLimit: p.DailyLimit, Keys: make([]string, len(p.Devices)), Devices: make([]DeviceView, len(p.Devices))}
 	for i, d := range p.Devices {
 		view.Keys[i] = d.Key
+		view.Devices[i] = DeviceView{Key: d.Key, Name: d.Name, AddedAt: d.AddedAt, LastSeen: d.LastSeen}
 	}
 	return view
 }

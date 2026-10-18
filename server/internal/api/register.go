@@ -19,7 +19,7 @@ const maxRegisterBodyBytes = 1 << 12
 
 // WithRegistration sets the service behind POST /api/register/start and
 // POST /api/register/confirm, which are open (no licence: the caller has none
-// yet), and GET /api/register/person and DELETE /api/register/device, which
+// yet), and GET /api/register/person, PATCH and DELETE /api/register/device, which
 // are signed but need no licence on the chain. ipHeader names the header the
 // proxy in front sets to the caller's address (nginx: X-Real-IP, POSTERN_REGISTER_IP_HEADER),
 // for the per-IP limits; "" uses the connection's own address, which behind
@@ -166,6 +166,38 @@ func handleRegisterDevice(svc *register.Service, nonces *auth.NonceStore) http.H
 			return
 		}
 		result, err := svc.RemoveDevice(in.PersonID, signer, in.DeviceKey)
+		if err != nil {
+			writeRegisterError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			PersonID string            `json:"personId"`
+			Devices  []register.Device `json:"devices"`
+		}{result.PersonID, result.Devices})
+	}
+}
+
+// handleRegisterRenameDevice is PATCH /api/register/device {deviceKey, name}:
+// signed ('Postern2') by a device of the same person as deviceKey, it renames
+// that device and answers the person's devices.
+func handleRegisterRenameDevice(svc *register.Service, nonces *auth.NonceStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			writeError(w, http.StatusServiceUnavailable, register.ErrClosed.Error())
+			return
+		}
+		signer, ok := verifyProof(w, r, nonces)
+		if !ok {
+			return
+		}
+		var in struct {
+			DeviceKey string `json:"deviceKey"`
+			Name      string `json:"name"`
+		}
+		if !readRegisterBody(w, r, &in) {
+			return
+		}
+		result, err := svc.RenameDevice(signer, in.DeviceKey, in.Name)
 		if err != nil {
 			writeRegisterError(w, err)
 			return

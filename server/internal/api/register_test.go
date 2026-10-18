@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"sync"
@@ -574,5 +575,177 @@ func TestASignedRequestIs429WhenTheNonceStoreIsFull(t *testing.T) {
 	}
 	if statuses[0] != http.StatusOK || statuses[1] != http.StatusOK || statuses[2] != http.StatusTooManyRequests || last["reason"] != "busy" {
 		t.Fatalf("statuses = %v, last = %v; want 200, 200, then 429 reason busy", statuses, last)
+	}
+}
+
+// joinedPair registers two devices of one person (keys a0, a1) and one of
+// another (b0) on a server whose registration clock the test moves.
+type joinedPair struct {
+	server        *httptest.Server
+	clock         *regClock
+	person        string
+	a0, a1, b0    *btcec.PrivateKey
+	a0Pub, a1Pub  string
+	b0Pub         string
+	a0Person      map[string]any
+	stranger      *btcec.PrivateKey
+	unknownDevice string
+}
+
+func newJoinedPair(t *testing.T) *joinedPair {
+	t.Helper()
+	clock := &regClock{now: time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)}
+	svc, err := register.Open(t.TempDir(), register.WithClock(clock.Now), register.WithVerifier(regVerifier{}), register.WithIssuer(&regIssuer{}), register.WithSendLimits(5, 10, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, _ := newServerWithOptions(t, WithRegistration(svc, ""))
+	p := &joinedPair{server: server, clock: clock}
+	p.a0, p.a0Pub = newKey(t)
+	p.a1, p.a1Pub = newKey(t)
+	p.b0, p.b0Pub = newKey(t)
+	p.stranger, _ = newKey(t)
+	_, p.unknownDevice = newKey(t)
+	for i, join := range []struct{ email, phone, key string }{
+		{"a0@example.com", regPhone, p.a0Pub},
+		{"a1@example.com", regPhone, p.a1Pub},
+		{"b0@example.com", "+14155550999", p.b0Pub},
+	} {
+		_, started := regPost(t, server.URL, "/api/register/start", "", map[string]string{"email": join.email, "phone": join.phone, "deviceKey": join.key})
+		status, body := regPost(t, server.URL, "/api/register/confirm", "", map[string]string{"registrationId": started["registrationId"].(string), "emailCode": "111111", "phoneCode": "222222"})
+		if status != http.StatusOK {
+			t.Fatalf("join %s = %d %v", join.email, status, body)
+		}
+		if i == 0 {
+			p.person = body["personId"].(string)
+		}
+	}
+	return p
+}
+
+func (p *joinedPair) call(t *testing.T, method, path string, signer *btcec.PrivateKey, body any) (int, map[string]any) {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		raw, _ := json.Marshal(body)
+		reader = bytes.NewReader(raw)
+	}
+	req, _ := http.NewRequest(method, p.server.URL+path, reader)
+	if signer != nil {
+		signRequest(t, p.server, signer, req)
+	}
+	return regDo(t, req)
+}
+
+func deviceNamed(t *testing.T, devices any, key string) map[string]any {
+	t.Helper()
+	list, _ := devices.([]any)
+	for _, d := range list {
+		if m, ok := d.(map[string]any); ok && m["key"] == key {
+			return m
+		}
+	}
+	t.Fatalf("no device %s in %v", key[:8], devices)
+	return nil
+}
+
+// AC1 (mw-cvwm1u.16): PATCH /api/register/device {deviceKey, name}, signed by
+// a device of the person, renames one of that person's devices.
+func TestRegisterPatchDeviceRenamesADeviceOfTheSignersPerson(t *testing.T) {
+	p := newJoinedPair(t)
+	rename := func(signer *btcec.PrivateKey, key, name string) (int, map[string]any) {
+		return p.call(t, http.MethodPatch, "/api/register/device", signer, map[string]string{"deviceKey": key, "name": name})
+	}
+	if status, _ := rename(nil, p.a1Pub, "Kitchen tablet"); status != http.StatusUnauthorized {
+		t.Fatalf("unsigned = %d, want 401", status)
+	}
+	if status, _ := rename(p.stranger, p.a1Pub, "Kitchen tablet"); status != http.StatusForbidden {
+		t.Fatalf("a stranger = %d, want 403", status)
+	}
+	if status, _ := rename(p.b0, p.a1Pub, "Kitchen tablet"); status != http.StatusForbidden {
+		t.Fatalf("another person's device = %d, want 403", status)
+	}
+	if status, _ := rename(p.a0, p.b0Pub, "Kitchen tablet"); status != http.StatusForbidden {
+		t.Fatalf("another person's device as the target = %d, want 403", status)
+	}
+	if status, body := rename(p.a0, p.unknownDevice, "Kitchen tablet"); status != http.StatusNotFound {
+		t.Fatalf("an unknown device = %d %v, want 404", status, body)
+	}
+	for _, name := range []string{"", "   ", strings.Repeat("x", 81)} {
+		if status, body := rename(p.a0, p.a1Pub, name); status != http.StatusBadRequest {
+			t.Fatalf("name %q = %d %v, want 400", name, status, body)
+		}
+	}
+	status, body := rename(p.a0, p.a1Pub, "  Kitchen tablet ")
+	if status != http.StatusOK || body["personId"] != p.person {
+		t.Fatalf("rename = %d %v, want 200 and the person", status, body)
+	}
+	if list, _ := body["devices"].([]any); len(list) != 2 {
+		t.Fatalf("devices = %v, want two", body["devices"])
+	}
+	if got := deviceNamed(t, body["devices"], p.a1Pub)["name"]; got != "Kitchen tablet" {
+		t.Fatalf("name = %v, want Kitchen tablet", got)
+	}
+	// A device may rename itself, and the name outlasts the answer.
+	if status, _ := rename(p.a1, p.a1Pub, "Tablet"); status != http.StatusOK {
+		t.Fatalf("rename itself = %d, want 200", status)
+	}
+	_, person := p.call(t, http.MethodGet, "/api/register/person?key="+p.a0Pub, p.a0, nil)
+	if got := deviceNamed(t, person["devices"], p.a1Pub)["name"]; got != "Tablet" {
+		t.Fatalf("person devices name = %v, want Tablet", got)
+	}
+}
+
+// AC2 (mw-cvwm1u.16): GET /api/register/person carries each device's name,
+// addedAt and lastSeen; lastSeen moves forward when the device's licence
+// passes a gated route.
+func TestRegisterPersonDevicesCarryNameAddedAtAndLastSeen(t *testing.T) {
+	p := newJoinedPair(t)
+	devices := func() (map[string]any, map[string]any) {
+		t.Helper()
+		status, body := p.call(t, http.MethodGet, "/api/register/person?key="+p.a0Pub, p.a0, nil)
+		if status != http.StatusOK {
+			t.Fatalf("person = %d %v", status, body)
+		}
+		if body["known"] != true || body["personId"] != p.person || body["dailyLimit"] == nil || len(body["keys"].([]any)) != 2 {
+			t.Fatalf("person = %v, want known, personId, keys and dailyLimit as before", body)
+		}
+		return deviceNamed(t, body["devices"], p.a0Pub), deviceNamed(t, body["devices"], p.a1Pub)
+	}
+	first0, first1 := devices()
+	for _, d := range []map[string]any{first0, first1} {
+		if d["name"] == "" || d["addedAt"] == nil {
+			t.Fatalf("device %v lacks a name or addedAt", d)
+		}
+		if _, licenceShown := d["licenceTxid"]; licenceShown {
+			t.Fatalf("device %v shows its licence txid", d)
+		}
+	}
+	// The person call is not a gated route: a0 has not been seen using a licence.
+	if first0["lastSeen"] != nil || first1["lastSeen"] != nil {
+		t.Fatalf("lastSeen before any use = %v, %v; want absent", first0["lastSeen"], first1["lastSeen"])
+	}
+
+	p.clock.now = p.clock.now.Add(2 * time.Hour)
+	req, _ := http.NewRequest(http.MethodGet, p.server.URL+"/api/me", nil)
+	signRequest(t, p.server, p.a1, req)
+	if status, body := regDo(t, req); status != http.StatusOK {
+		t.Fatalf("GET /api/me = %d %v", status, body)
+	}
+	second0, second1 := devices()
+	if second1["lastSeen"] != p.clock.now.Format(time.RFC3339Nano) {
+		t.Fatalf("a1 lastSeen = %v, want %s", second1["lastSeen"], p.clock.now.Format(time.RFC3339Nano))
+	}
+	if second0["lastSeen"] != nil {
+		t.Fatalf("a0 lastSeen = %v, want absent (it used no licence)", second0["lastSeen"])
+	}
+
+	// Later use moves it forward.
+	p.clock.now = p.clock.now.Add(3 * time.Hour)
+	req, _ = http.NewRequest(http.MethodGet, p.server.URL+"/api/me", nil)
+	signRequest(t, p.server, p.a1, req)
+	regDo(t, req)
+	if _, third1 := devices(); third1["lastSeen"] != p.clock.now.Format(time.RFC3339Nano) {
+		t.Fatalf("a1 lastSeen = %v, want %s", third1["lastSeen"], p.clock.now.Format(time.RFC3339Nano))
 	}
 }

@@ -1,7 +1,7 @@
 // tests/unit/router.test.tsx — mw-t64a3.21: a click on a link to this app's own
 // origin is an in-app route change (history.pushState), never a page load.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { goBack } from '../../src/router';
+import { goBack, inAppHref } from '../../src/router';
 
 function anchor(href: string, target?: string): HTMLAnchorElement {
   const a = document.createElement('a');
@@ -48,6 +48,33 @@ describe('router link clicks', () => {
     expect(click(anchor('https://example.org/?v=needs')).defaultPrevented).toBe(false);
     expect(click(anchor(`${window.location.origin}/?v=needs`, '_blank')).defaultPrevented).toBe(false);
     expect(click(anchor(`${window.location.origin}/?v=needs`), { ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(push).not.toHaveBeenCalled();
+  });
+});
+
+// mw-ev7oyy.40: a link to another app is the phone's to hand over, never a route of this one.
+describe('links to another app', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  const OTHER_APPS = [
+    'kindle://book?action=open&asin=B0C74TJ712',
+    'intent://scan/#Intent;scheme=zxing;package=com.google.zxing.client.android;end',
+    'tel:+15555550123',
+    'sms:+15555550123?body=Hello',
+    'smsto:+15555550123',
+    'mailto:me@example.org',
+    'audible://library',
+    'geo:0,0?q=Home',
+    'someapp://?v=needs',
+  ];
+
+  it.each(OTHER_APPS)('%s is not an in-app route and its click is left to the phone', (href) => {
+    const push = vi.spyOn(window.history, 'pushState');
+    expect(inAppHref(href)).toBeNull();
+    expect(click(anchor(href)).defaultPrevented).toBe(false);
     expect(push).not.toHaveBeenCalled();
   });
 });

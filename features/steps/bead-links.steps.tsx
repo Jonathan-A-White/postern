@@ -135,4 +135,29 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await waitFor(() => expect(within(conversation).getByRole('link', { name: id })).toHaveAttribute('href', `?v=bead&id=${id}`));
     });
   });
+  Scenario('mw-ev7oyy.40: a Kindle link in a Talk message is handed to the phone, not routed to the Thread screen', ({ Given, When, Then, And }) => {
+    let tap: MouseEvent | null = null;
+    Given("the Mayor's message in the general thread is {string}", (_c, text: string) => {
+      seeded.push(generalMessage(text));
+    });
+    When('the general thread is opened and the link {string} is tapped', async (_c, name: string) => {
+      await viewRepo.save({ plaintext: JSON.stringify(viewWith(now)), written_at: new Date(now).toISOString(), source: 'live', fetchedAt: now });
+      for (const row of seeded) await messagesRepo.put(row);
+      render(<TalkScreen thread="general" />);
+      const conversation = await screen.findByTestId('conversation');
+      const link = await within(conversation).findByRole('link', { name });
+      tap = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      link.dispatchEvent(tap);
+    });
+    Then('the link {string} goes to {string} in this tab', (_c, name: string, href: string) => {
+      const link = within(screen.getByTestId('conversation')).getByRole('link', { name });
+      expect(link).toHaveAttribute('href', href);
+      expect(link).not.toHaveAttribute('target');
+    });
+    And('the tap was left to the phone and {string} is not shown', (_c, words: string) => {
+      expect(tap?.defaultPrevented).toBe(false);
+      expect(window.location.search).toBe('?v=talk&t=general');
+      expect(screen.queryByText(words)).toBeNull();
+    });
+  });
 });

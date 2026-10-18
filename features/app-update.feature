@@ -23,3 +23,9 @@ Feature: A new build waits for his tap and then loads once (mw-yxwtth.1)
     Then it has looked for an update twice
     When 30 minutes pass
     Then it has looked for an update 3 times
+
+  Scenario: mw-he81zu AC-5: a build that has not taken over within the patience loads anyway, once
+    Given Postern is open on a phone whose service worker has a newer build waiting
+    When he taps the update banner
+    And the new worker does not take over for 10 seconds
+    Then the page has reloaded exactly once

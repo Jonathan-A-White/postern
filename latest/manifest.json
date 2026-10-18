@@ -1,7 +1,7 @@
 {
-  "version": "0.8.16",
-  "commit": "db852c2",
-  "published_at": "2026-10-18T02:43:19.066Z",
+  "version": "0.8.17",
+  "commit": "47b89bb",
+  "published_at": "2026-10-18T03:23:41.599Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -863,6 +863,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/message-failed-long-error.png"
+    },
+    {
+      "name": "390x844/needs-at-size.png",
+      "screen": "needs-at-size",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/needs-at-size.png"
+    },
+    {
+      "name": "360x640/needs-at-size.png",
+      "screen": "needs-at-size",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/needs-at-size.png"
+    },
+    {
+      "name": "1280x800/needs-at-size.png",
+      "screen": "needs-at-size",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/needs-at-size.png"
     },
     {
       "name": "390x844/needs-mayor.png",

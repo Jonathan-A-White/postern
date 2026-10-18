@@ -9,8 +9,9 @@ Feature: The Governor's cockpit (plans/0021)
   Scenario: plans/0021 AC-2 (decisions 7, 8): tapping the recommendation answers the question and it leaves the queue
     Given the factory is live and his key is unlocked
     When the cockpit opens
+    And the Mayor's question post has reached the phone
     And "New repo bsv-kit (recommended)" is tapped
-    Then a reply naming "mw-2rbm.10" with the answer "New repo bsv-kit" is delivered directly to the Mayor
+    Then a reply naming "mw-2rbm.10" with the answer "New repo bsv-kit" and the question post it answers is delivered directly to the Mayor
     And the question leaves the queue
 
   Scenario: plans/0021 AC-3 (decision 7): releasing held work is one tap

@@ -44,7 +44,16 @@ var (
 	ErrNonceHost = errors.New("nonce-host")
 	// ErrNonceStale: a genuine nonce of this host, issued before this process started.
 	ErrNonceStale = errors.New("nonce-stale")
+	// ErrNonceFull: a genuine nonce, refused because the store already
+	// remembers as many spent nonces as it may.
+	ErrNonceFull = errors.New("nonce-full")
 )
+
+// DefaultMaxSpent is how many spent nonces a store remembers at most: GET
+// /api/challenge is open, so without a cap a flood of presented nonces would
+// grow the store for as long as each one lives. A hundred thousand is some 20
+// MB, and more than 800 signed requests a second for a nonce's two minutes.
+const DefaultMaxSpent = 100_000
 
 // NonceStore issues short-lived, single-use nonces and consumes them. A
 // nonce carries its own expiry, the id of the host that issued it and a MAC
@@ -60,8 +69,11 @@ type NonceStore struct {
 	hostID  [hostIDBytes]byte
 	started time.Time
 
-	mu   sync.Mutex
-	used map[string]time.Time // consumed nonce -> expiry, kept until it would have expired anyway
+	maxSpent int
+
+	mu     sync.Mutex
+	used   map[string]time.Time // consumed nonce -> expiry, kept until it would have expired anyway
+	pruned time.Time            // when used was last swept of expired nonces
 }
 
 // NonceStoreOption configures a NonceStore constructed by NewNonceStore.
@@ -71,6 +83,16 @@ type NonceStoreOption func(*NonceStore)
 // expiry, so tests can control time without sleeping.
 func WithClock(now func() time.Time) NonceStoreOption {
 	return func(s *NonceStore) { s.now = now }
+}
+
+// WithMaxSpent caps how many spent nonces the store remembers; a value under
+// 1 keeps DefaultMaxSpent.
+func WithMaxSpent(n int) NonceStoreOption {
+	return func(s *NonceStore) {
+		if n > 0 {
+			s.maxSpent = n
+		}
+	}
 }
 
 // WithKey sets the MAC key nonces are made and verified under. Stores that
@@ -94,9 +116,10 @@ func hostIDOf(name string) [hostIDBytes]byte {
 // NewNonceStore builds a NonceStore whose issued nonces expire after ttl.
 func NewNonceStore(ttl time.Duration, opts ...NonceStoreOption) *NonceStore {
 	s := &NonceStore{
-		ttl:  ttl,
-		now:  time.Now,
-		used: make(map[string]time.Time),
+		ttl:      ttl,
+		now:      time.Now,
+		maxSpent: DefaultMaxSpent,
+		used:     make(map[string]time.Time),
 	}
 	name, _ := os.Hostname()
 	s.hostID = hostIDOf(name)
@@ -205,7 +228,8 @@ func (s *NonceStore) Consume(nonce string) bool { return s.Spend(nonce) == nil }
 // Spend accepts nonce if it was issued under this store's key by this host
 // after this process started, has not expired, and has not been spent here
 // before, recording it so it can never be presented to this store again.
-// Otherwise it says why: ErrNonceHost, ErrNonceStale or ErrNonceInvalid. A
+// Otherwise it says why: ErrNonceHost, ErrNonceStale or ErrNonceInvalid, or
+// ErrNonceFull when the store already remembers its cap of spent nonces. A
 // nonce that fails is not recorded.
 func (s *NonceStore) Spend(nonce string) error {
 	raw, err := hex.DecodeString(nonce)
@@ -230,13 +254,21 @@ func (s *NonceStore) Spend(nonce string) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for n, exp := range s.used {
-		if now.After(exp) {
-			delete(s.used, n)
+	// Swept at most once a second, so a flood against a full store costs a
+	// lookup each, not a walk of the whole store each.
+	if now.Sub(s.pruned) >= time.Second {
+		for n, exp := range s.used {
+			if now.After(exp) {
+				delete(s.used, n)
+			}
 		}
+		s.pruned = now
 	}
 	if _, seen := s.used[nonce]; seen {
 		return ErrNonceInvalid
+	}
+	if len(s.used) >= s.maxSpent {
+		return ErrNonceFull
 	}
 	s.used[nonce] = expiry
 	return nil

@@ -305,3 +305,42 @@ func TestNonceOfTheOldSeventeenByteShapeIsRefused(t *testing.T) {
 		t.Fatalf("v1 nonce: err = %v, want ErrNonceInvalid", err)
 	}
 }
+
+// AC3 (mw-cvwm1u.9): GET /api/challenge is open and every nonce presented is
+// remembered until it expires, so the remembered set has a size cap: once
+// full a new presentation is refused (ErrNonceFull, which the gate answers
+// 429), and a flood of distinct nonces never grows it past the cap.
+func TestNonceStoreRefusesOnceFullAndStaysBoundedUnderAFlood(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store := NewNonceStore(2*time.Minute, WithClock(func() time.Time { return now }), WithMaxSpent(100))
+	for i := 0; i < 100; i++ {
+		nonce, _ := store.Issue()
+		if err := store.Spend(nonce); err != nil {
+			t.Fatalf("spend %d: %v", i+1, err)
+		}
+	}
+	for i := 0; i < 10_000; i++ {
+		nonce, _ := store.Issue()
+		if err := store.Spend(nonce); !errors.Is(err, ErrNonceFull) {
+			t.Fatalf("flood %d: err = %v, want ErrNonceFull", i+1, err)
+		}
+	}
+	if n := store.usedCount(); n != 100 {
+		t.Fatalf("after a flood of 10,000 the store holds %d, want the cap of 100", n)
+	}
+	// Once the remembered nonces expire there is room again.
+	now = now.Add(2*time.Minute + time.Second)
+	nonce, _ := store.Issue()
+	if err := store.Spend(nonce); err != nil {
+		t.Fatalf("after expiry: %v", err)
+	}
+	if n := store.usedCount(); n != 1 {
+		t.Fatalf("after expiry the store holds %d, want 1", n)
+	}
+}
+
+func TestNonceStoreHasADefaultCap(t *testing.T) {
+	if store := NewNonceStore(time.Minute); store.maxSpent != DefaultMaxSpent || DefaultMaxSpent < 10_000 {
+		t.Fatalf("cap = %d (default %d), want a default of at least 10,000", store.maxSpent, DefaultMaxSpent)
+	}
+}

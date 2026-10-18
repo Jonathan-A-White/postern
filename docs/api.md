@@ -104,8 +104,11 @@ or MAC, an expired nonce or a replay); the wire does not.
   fresh challenge (nothing has been acted on when it is refused).
 - `403` — a proved, licensed key whose licence does not open the route; `reason`
   is `forbidden`.
+- `429` — the backend already remembers as many spent nonces as it may (100,000:
+  `GET /api/challenge` is open, so the record has a cap); `reason` is `busy`, and
+  nothing has been acted on. Try again in a minute, when the oldest have expired.
 
-Every refusal (each 401 and the 403) writes one log line: the status, the route,
+Every refusal (each 401, the 403 and the 429) writes one log line: the status, the route,
 the reason in words and its code, and the key's first 12 hex characters (`-` when
 the request named none) — never a body, a signature or a nonce.
 - `502` — the licence check itself failed (a chain read failing), distinct from a

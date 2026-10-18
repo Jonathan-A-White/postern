@@ -5,7 +5,7 @@ import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { startAppUpdates, UPDATE_CHECK_EVERY_MS } from '../../src/services/appUpdate';
+import { startAppUpdates, TAKE_OVER_PATIENCE_MS, UPDATE_CHECK_EVERY_MS } from '../../src/services/appUpdate';
 import { UpdateBanner } from '../../src/cockpit/UpdateBanner';
 import { fakeSetup, fakeWorker, type FakeSetup, type FakeWorker } from '../../tests/support/fake-registration';
 
@@ -63,6 +63,19 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
         setup.controllerChanges();
         setup.controllerChanges();
       });
+    });
+    Then('the page has reloaded exactly once', () => {
+      expect(setup.reload).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  Scenario('mw-he81zu AC-5: a build that has not taken over within the patience loads anyway, once', ({ Given, When, Then, And }) => {
+    Given('Postern is open on a phone whose service worker has a newer build waiting', () => open(true));
+    When('he taps the update banner', () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Update ready, tap to reload' }));
+    });
+    And('the new worker does not take over for 10 seconds', () => {
+      act(() => void vi.advanceTimersByTime(TAKE_OVER_PATIENCE_MS));
     });
     Then('the page has reloaded exactly once', () => {
       expect(setup.reload).toHaveBeenCalledTimes(1);

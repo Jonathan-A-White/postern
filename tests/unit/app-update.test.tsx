@@ -4,7 +4,7 @@
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { startAppUpdates, UPDATE_CHECK_EVERY_MS } from '../../src/services/appUpdate';
+import { startAppUpdates, TAKE_OVER_PATIENCE_MS, UPDATE_CHECK_EVERY_MS } from '../../src/services/appUpdate';
 import { UpdateBanner } from '../../src/cockpit/UpdateBanner';
 import { fakeSetup, fakeWorker, type FakeSetup } from '../support/fake-registration';
 
@@ -89,15 +89,51 @@ describe('the update banner', () => {
     expect(setup.reload).not.toHaveBeenCalled();
   });
 
-  it('lets him tap again when the worker has not taken over after a while', () => {
+  it('reloads anyway, once, when the new worker has not taken over within the patience, while a worker still waits', () => {
     const waiting = fakeWorker();
     const setup = fakeSetup({ waiting });
     start(setup);
     render(<UpdateBanner />);
     fireEvent.click(screen.getByRole('button', { name: 'Update ready, tap to reload' }));
-    act(() => void vi.advanceTimersByTime(15_000));
+    act(() => void vi.advanceTimersByTime(TAKE_OVER_PATIENCE_MS - 1));
+    expect(setup.reload).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Updating…' })).toBeDisabled();
+    act(() => void vi.advanceTimersByTime(1));
+    expect(setup.reload).toHaveBeenCalledTimes(1);
+    act(() => void vi.advanceTimersByTime(60_000));
+    expect(setup.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads anyway when the waiting worker is gone but the controller never changed', () => {
+    const setup = fakeSetup({ waiting: fakeWorker() });
+    start(setup);
+    render(<UpdateBanner />);
     fireEvent.click(screen.getByRole('button', { name: 'Update ready, tap to reload' }));
-    expect(waiting.postMessage).toHaveBeenCalledTimes(2);
+    setup.registration.waiting = null;
+    act(() => void vi.advanceTimersByTime(TAKE_OVER_PATIENCE_MS));
+    expect(setup.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('a controller change within the patience reloads once and the patience then adds no second reload', () => {
+    const setup = fakeSetup({ waiting: fakeWorker() });
+    start(setup);
+    render(<UpdateBanner />);
+    fireEvent.click(screen.getByRole('button', { name: 'Update ready, tap to reload' }));
+    act(() => void vi.advanceTimersByTime(TAKE_OVER_PATIENCE_MS - 1000));
+    act(() => setup.controllerChanges());
+    expect(setup.reload).toHaveBeenCalledTimes(1);
+    act(() => void vi.advanceTimersByTime(60_000));
+    expect(setup.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads on return to the foreground when the tab slept past the patience with its timer unfired', () => {
+    const setup = fakeSetup({ waiting: fakeWorker() });
+    start(setup);
+    render(<UpdateBanner />);
+    fireEvent.click(screen.getByRole('button', { name: 'Update ready, tap to reload' }));
+    vi.setSystemTime(Date.now() + TAKE_OVER_PATIENCE_MS + 1);
+    act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    expect(setup.reload).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -1,3 +1,4 @@
+import './support/shift-clock';
 import 'fake-indexeddb/auto';
 import '@testing-library/jest-dom/vitest';
 // Not '@testing-library/react': importing it here would register its auto-unmount before

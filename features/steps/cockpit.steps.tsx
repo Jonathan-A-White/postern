@@ -21,7 +21,7 @@ import { stopLive } from '../../src/services/live';
 import { resetViewThrottle } from '../../src/services/viewThrottle';
 import { decryptMessage, encryptMessage, type MessagePayload } from '../../src/services/messages';
 import { sealDocument } from '../../src/services/documents';
-import { MAYOR, STALE_FACTS_END, fixtureDetail, fixtureRecords, fixtureStaleNeed, fixtureView } from '../../tests/support/cockpit-fixture';
+import { FIXTURE_QUESTION_TXID, MAYOR, STALE_FACTS_END, fixtureDetail, fixtureRecords, fixtureStaleNeed, fixtureView } from '../../tests/support/cockpit-fixture';
 import { approvalMessage, stepSha256 } from '../../src/model/hands';
 
 const HIM = PrivateKey.fromHex('5a'.repeat(32));
@@ -221,12 +221,16 @@ describeFeature(feature, ({ Scenario }) => {
       await openAt('');
       await screen.findAllByTestId('need-card');
     });
+    And("the Mayor's question post has reached the phone", async () => {
+      // An answer names the card it answers once the phone holds that card's post (mw-s8ksjw): wait for the post, not for the clock.
+      await waitFor(async () => expect((await db.messages.toArray()).some((row) => row.txid === FIXTURE_QUESTION_TXID)).toBe(true));
+    });
     And('"New repo bsv-kit (recommended)" is tapped', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'New repo bsv-kit (recommended)' }));
     });
-    Then('a reply naming "mw-2rbm.10" with the answer "New repo bsv-kit" is delivered directly to the Mayor', async () => {
+    Then('a reply naming "mw-2rbm.10" with the answer "New repo bsv-kit" and the question post it answers is delivered directly to the Mayor', async () => {
       await waitFor(() => expect(delivered).toHaveLength(1));
-      expect(JSON.parse(delivered[0])).toEqual({ bead: 'mw-2rbm.10', answer: 'New repo bsv-kit' });
+      expect(JSON.parse(delivered[0])).toEqual({ bead: 'mw-2rbm.10', answer: 'New repo bsv-kit', re: FIXTURE_QUESTION_TXID });
     });
     And('the question leaves the queue', async () => {
       await waitFor(() => expect(screen.queryByRole('article', { name: 'Question: Where should the BSV library live?' })).toBeNull());

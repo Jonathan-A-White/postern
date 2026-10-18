@@ -209,6 +209,9 @@ function hex64(seed: number): string {
   return Utils.toHex(Array.from({ length: 32 }, (_, i) => (seed * 31 + i * 7) % 256));
 }
 
+/** The txid of the Mayor's question post on mw-2rbm.10 in fixtureRecords (its seq 4: the voice note is built first): what an answer to that card names as `re`. */
+export const FIXTURE_QUESTION_TXID = `direct:${hex64(4)}`;
+
 /** The conversation, as the backend's GET /api/messages would return it. */
 export function fixtureRecords(governorKey: PrivateKey, now: number = Date.now(), voice?: { hash: string; size: number; mime: string }): FixtureRecord[] {
   const governorPub = governorKey.toPublicKey().toString();

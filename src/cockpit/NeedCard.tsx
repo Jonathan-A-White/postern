@@ -14,6 +14,7 @@ import type { TalkAbout } from '../model/talkLine';
 import { navigate } from '../router';
 import { threadKey } from '../services/threads';
 import { namesCard } from '../services/questions';
+import { messagesRepo } from '../data/repositories';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import type { Need } from '../model/view';
@@ -99,6 +100,9 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const question = need.kind === 'question';
   const inBeadThread = useThreadMessages(asks ? threadKey({ bead: need.bead }) : question ? undefined : null);
   const cardTxid = useMemo(() => questionTxidOf(need, inBeadThread), [need, inBeadThread]);
+  // The card's txid at the moment of the tap: the thread read above lands a beat after the post does, and an answer sent in that
+  // beat would name no card (mw-s8ksjw). A phone that holds the post names it; one that does not yet, sends the answer bare.
+  const cardTxidNow = async () => cardTxid ?? questionTxidOf(need, await messagesRepo.inThread(threadKey({ bead: need.bead })));
   const sentRow = useAnswers().find((row) => row.bead === need.bead && row.ts * 1000 >= Date.parse(need.since) && namesCard(row.re, cardTxid));
   // An answer the factory has heard (a card_answered event, §22, on the view's copy) is dead too, whichever device sent it.
   const heard = need.answered;
@@ -155,9 +159,9 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   async function choose(option: string) {
     if (asks) {
       setNotSent(false);
-      if ((await answerTap.tap(() => sendAnswer(need.bead, option, cardTxid), { text: `Answered ${need.bead}: ${option}`, open: openThread }, option)) === undefined && alive()) setNotSent(true);
+      if ((await answerTap.tap(async () => sendAnswer(need.bead, option, await cardTxidNow()), { text: `Answered ${need.bead}: ${option}`, open: openThread }, option)) === undefined && alive()) setNotSent(true);
     }
-    else if (need.kind === 'question') await run(() => sendAnswer(need.bead, option, cardTxid), { text: `Answered ${need.bead}: ${option}`, open: openThread });
+    else if (need.kind === 'question') await run(async () => sendAnswer(need.bead, option, await cardTxidNow()), { text: `Answered ${need.bead}: ${option}`, open: openThread });
     else if (need.kind === 'approve') await oneTap.tap(() => sendAction({ action: 'release', bead: need.bead }), `Released ${need.bead}`);
     else await run(() => sendToThread(thread, option), { text: `Told the Mayor in ${threadName}: ${option}`, open: openThread });
   }
@@ -168,7 +172,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
     setNotSent(false);
     const sent =
       need.kind === 'question'
-        ? await (asks ? answerTap.tap(() => sendAnswer(need.bead, text, cardTxid), { text: `Answered ${need.bead}`, open: openThread }, text) : run(() => sendAnswer(need.bead, text, cardTxid), { text: `Answered ${need.bead}`, open: openThread }))
+        ? await (asks ? answerTap.tap(async () => sendAnswer(need.bead, text, await cardTxidNow()), { text: `Answered ${need.bead}`, open: openThread }, text) : run(async () => sendAnswer(need.bead, text, await cardTxidNow()), { text: `Answered ${need.bead}`, open: openThread }))
         : await run(() => sendToThread(thread, text), { text: `Sent to the Mayor in ${threadName}`, open: openThread });
     if (!alive()) return;
     if (asks && sent === undefined) setNotSent(true);

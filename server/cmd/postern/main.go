@@ -173,17 +173,17 @@ func newApp(cfg config.Config) (*app, error) {
 	for collection := range cfg.Apps {
 		collections = append(collections, collection)
 	}
-	rule := licence.Rule{Collections: collections, IssuerKey: cfg.IssuerKey}
-	// What the walk fetches and answers is kept in POSTERN_DATA, so a backend
-	// swap starts from the last answer instead of a cold walk (mw-gq6.215).
-	licenceChecker := auth.NewCachedChecker(licence.NewTxCache(client, filepath.Join(cfg.DataDir, licenceTxDir)), licenceCacheTTL,
-		auth.WithRule(rule), auth.WithPersistence(filepath.Join(cfg.DataDir, licenceAnswersFile)))
-
 	siteIssuer, err := newSiteIssuer(cfg, client)
 	if err != nil {
 		store.Close()
 		return nil, err
 	}
+	rule := licenceRule(cfg, collections, siteIssuer)
+	// What the walk fetches and answers is kept in POSTERN_DATA, so a backend
+	// swap starts from the last answer instead of a cold walk (mw-gq6.215).
+	licenceChecker := auth.NewCachedChecker(licence.NewTxCache(client, filepath.Join(cfg.DataDir, licenceTxDir)), licenceCacheTTL,
+		auth.WithRule(rule), auth.WithPersistence(filepath.Join(cfg.DataDir, licenceAnswersFile)))
+
 	registration, err := newRegistration(cfg, siteIssuer)
 	if err != nil {
 		store.Close()
@@ -228,6 +228,20 @@ func newApp(cfg config.Config) (*app, error) {
 	}
 
 	return &app{handler: standby.Middleware(home, handler, standby.WithPeers(cfg.Peers)), start: start, close: func() { store.Close() }}, nil
+}
+
+// licenceRule is what makes a mint count: the Governor's POSTERN_ISSUER_KEY
+// and, when the site issuer is on, its public key too, so a device holding a
+// licence registration issued passes the gated routes. Only the public half
+// of the site key leaves newSiteIssuer. Without POSTERN_ISSUER_KEY the rule
+// is the open one (any mint naming the holder counts, which a site-issued mint
+// already does), and naming the site issuer would narrow it, so it stays open.
+func licenceRule(cfg config.Config, collections []string, siteIssuer *register.Issuer) licence.Rule {
+	rule := licence.Rule{Collections: collections, IssuerKey: cfg.IssuerKey}
+	if siteIssuer != nil && cfg.IssuerKey != "" {
+		rule.ExtraIssuerKeys = []string{siteIssuer.PublicKey()}
+	}
+	return rule
 }
 
 // newSiteIssuer is the site issuer POSTERN_SITE_ISSUER_KEY names, which

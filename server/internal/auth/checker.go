@@ -401,7 +401,11 @@ type persistedAnswer struct {
 // ruleStamp names the licence rule an answer was computed under, so a
 // restart with other collections or another issuer starts cold.
 func (c *CachedChecker) ruleStamp() string {
-	return fmt.Sprintf("%q|%s", c.rule.Collections, strings.ToLower(c.rule.IssuerKey))
+	stamp := fmt.Sprintf("%q|%s", c.rule.Collections, strings.ToLower(c.rule.IssuerKey))
+	if extras := c.rule.IssuerKeys(); len(c.rule.ExtraIssuerKeys) > 0 {
+		stamp += fmt.Sprintf("|%q", extras)
+	}
+	return stamp
 }
 
 // restore loads the answers an earlier life of the backend kept. A missing

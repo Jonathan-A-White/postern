@@ -63,6 +63,24 @@ type Rule struct {
 	// pays nothing to the holder's address). Empty keeps the old rule: any
 	// mint naming the holder, found in the holder's own history.
 	IssuerKey string
+	// ExtraIssuerKeys are further issuers' compressed public keys, hex (the
+	// site issuer's, POSTERN_SITE_ISSUER_KEY): a mint counts when any one of
+	// IssuerKey and these signed it. Only the issuer that signed a mint may
+	// revoke it. Only public halves belong here.
+	ExtraIssuerKeys []string
+}
+
+// IssuerKeys is every issuer the rule names, lowercase and without
+// repeats, IssuerKey first; none means the old self-mint rule.
+func (r Rule) IssuerKeys() []string {
+	var keys []string
+	for _, key := range append([]string{r.IssuerKey}, r.ExtraIssuerKeys...) {
+		key = strings.ToLower(key)
+		if key != "" && !contains(keys, key) {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 type mintPayload struct {
@@ -114,31 +132,25 @@ func HeldCollections(reader Reader, address string, rule Rule) ([]string, error)
 // walkHistories is HeldCollections naming the mints too.
 func walkHistories(reader Reader, address string, rule Rule) (Result, error) {
 	addresses := []string{address}
-	issuerKey := strings.ToLower(rule.IssuerKey)
-	issuerAddress := ""
-	if issuerKey != "" {
-		var err error
-		issuerAddress, err = AddressForPublicKey(issuerKey)
-		if err != nil {
-			return Result{}, fmt.Errorf("issuer key: %w", err)
-		}
-		if issuerAddress != address {
-			addresses = append(addresses, issuerAddress)
+	issuers := newIssuers(rule)
+	if err := issuers.resolve(); err != nil {
+		return Result{}, err
+	}
+	for _, issuer := range issuers.list {
+		if !contains(addresses, issuer.address) {
+			addresses = append(addresses, issuer.address)
 		}
 	}
 
 	txs := make(map[string]*record.Transaction)
 	var order []string
-	inIssuerHistory := make(map[string]bool)
 	for _, addr := range addresses {
 		history, err := reader.GetHistory(addr)
 		if err != nil {
 			return Result{}, fmt.Errorf("getting history for %s: %w", addr, err)
 		}
 		for _, entry := range history {
-			if addr == issuerAddress {
-				inIssuerHistory[entry.TxHash] = true
-			}
+			issuers.sawInHistory(addr, entry.TxHash)
 			if err := loadTransaction(reader, entry, txs, &order); err != nil {
 				return Result{}, err
 			}
@@ -155,12 +167,7 @@ func walkHistories(reader Reader, address string, rule Rule) (Result, error) {
 		}
 	}
 
-	var issuer *issuerCheck
-	var revokes map[string][]string
-	if issuerKey != "" {
-		issuer = newIssuerCheck(reader, issuerKey, txs)
-		revokes = revokeCandidates(txs, order, inIssuerHistory, issuerKey)
-	}
+	issuers.check(reader, txs, order)
 
 	collections := rule.Collections
 	if len(collections) == 0 {
@@ -172,19 +179,12 @@ func walkHistories(reader Reader, address string, rule Rule) (Result, error) {
 		if !ok || contains(result.Collections, collection) || holderNow(txid, address, txs, spentBy) != address {
 			continue
 		}
-		if issuer != nil {
-			signed, err := issuer.signed(txs[txid])
+		if !issuers.empty() {
+			counts, err := issuers.counts(txid, txs[txid])
 			if err != nil {
 				return Result{}, err
 			}
-			if !signed {
-				continue
-			}
-			revoked, err := issuer.revoked(txid+":0", revokes)
-			if err != nil {
-				return Result{}, err
-			}
-			if revoked {
+			if !counts {
 				continue
 			}
 		}
@@ -247,7 +247,7 @@ const maxTokenSpends = 1000
 // a reader that can look spends up, Find is the walk of HeldCollections.
 func Find(reader Reader, address string, rule Rule, remembered []Mint) (Result, error) {
 	spends, ok := reader.(chain.SpendReader)
-	if !ok || rule.IssuerKey == "" {
+	if !ok || len(rule.IssuerKeys()) == 0 {
 		return walkHistories(reader, address, rule)
 	}
 	result, err := findByIssuer(reader, spends, address, rule, remembered)
@@ -258,23 +258,23 @@ func Find(reader Reader, address string, rule Rule, remembered []Mint) (Result, 
 }
 
 func findByIssuer(reader Reader, spends chain.SpendReader, address string, rule Rule, remembered []Mint) (Result, error) {
-	issuerKey := strings.ToLower(rule.IssuerKey)
-	issuerAddress, err := AddressForPublicKey(issuerKey)
-	if err != nil {
-		return Result{}, fmt.Errorf("issuer key: %w", err)
-	}
-	history, err := reader.GetHistory(issuerAddress)
-	if err != nil {
-		return Result{}, fmt.Errorf("getting history for %s: %w", issuerAddress, err)
+	issuers := newIssuers(rule)
+	if err := issuers.resolve(); err != nil {
+		return Result{}, err
 	}
 
 	txs := make(map[string]*record.Transaction)
 	var order []string
-	inIssuerHistory := make(map[string]bool)
-	for _, entry := range history {
-		inIssuerHistory[entry.TxHash] = true
-		if err := loadTransaction(reader, entry, txs, &order); err != nil {
-			return Result{}, err
+	for _, issuer := range issuers.list {
+		history, err := reader.GetHistory(issuer.address)
+		if err != nil {
+			return Result{}, fmt.Errorf("getting history for %s: %w", issuer.address, err)
+		}
+		for _, entry := range history {
+			issuers.sawInHistory(issuer.address, entry.TxHash)
+			if err := loadTransaction(reader, entry, txs, &order); err != nil {
+				return Result{}, err
+			}
 		}
 	}
 	for _, mint := range remembered {
@@ -283,8 +283,7 @@ func findByIssuer(reader Reader, spends chain.SpendReader, address string, rule 
 		}
 	}
 
-	issuer := newIssuerCheck(reader, issuerKey, txs)
-	revokes := revokeCandidates(txs, order, inIssuerHistory, issuerKey)
+	issuers.check(reader, txs, order)
 	collections := rule.Collections
 	if len(collections) == 0 {
 		collections = DefaultCollections
@@ -302,18 +301,11 @@ func findByIssuer(reader Reader, spends chain.SpendReader, address string, rule 
 		if holder != address {
 			continue
 		}
-		signed, err := issuer.signed(txs[txid])
+		counts, err := issuers.counts(txid, txs[txid])
 		if err != nil {
 			return Result{}, err
 		}
-		if !signed {
-			continue
-		}
-		revoked, err := issuer.revoked(txid+":0", revokes)
-		if err != nil {
-			return Result{}, err
-		}
-		if revoked {
+		if !counts {
 			continue
 		}
 		result.Collections = append(result.Collections, collection)
@@ -418,6 +410,91 @@ func pushesKey(tx *record.Transaction, key string) bool {
 		}
 	}
 	return false
+}
+
+// issuer is one issuer a rule names: its key, its address, the
+// transactions in its address history, and (once check has run) its signature
+// check and the revokes it signed.
+type issuer struct {
+	key       string
+	address   string
+	inHistory map[string]bool
+	check     *issuerCheck
+	revokes   map[string][]string
+}
+
+// issuerSet is every issuer a rule names.
+type issuerSet struct {
+	list []*issuer
+}
+
+func newIssuers(rule Rule) *issuerSet {
+	set := &issuerSet{}
+	for _, key := range rule.IssuerKeys() {
+		set.list = append(set.list, &issuer{key: key, inHistory: map[string]bool{}})
+	}
+	return set
+}
+
+func (s *issuerSet) empty() bool { return len(s.list) == 0 }
+
+// resolve works out each issuer's address, refusing a key that is no public key.
+func (s *issuerSet) resolve() error {
+	for _, issuer := range s.list {
+		address, err := AddressForPublicKey(issuer.key)
+		if err != nil {
+			return fmt.Errorf("issuer key: %w", err)
+		}
+		issuer.address = address
+	}
+	return nil
+}
+
+// sawInHistory records that txid is in the history of addr, if addr is an
+// issuer's.
+func (s *issuerSet) sawInHistory(addr, txid string) {
+	for _, issuer := range s.list {
+		if issuer.address == addr {
+			issuer.inHistory[txid] = true
+		}
+	}
+}
+
+// check readies each issuer's signature check and its revoke candidates
+// over txs.
+func (s *issuerSet) check(reader Reader, txs map[string]*record.Transaction, order []string) {
+	for _, issuer := range s.list {
+		issuer.check = newIssuerCheck(reader, issuer.key, txs)
+		issuer.revokes = revokeCandidates(txs, order, issuer.inHistory, issuer.key)
+	}
+}
+
+// counts reports whether the mint txid (tx) counts: one of the issuers
+// signed it and that same issuer has not revoked it. A transaction an issuer's
+// output could not be read for is an error only if no other issuer vouches
+// for the mint.
+func (s *issuerSet) counts(txid string, tx *record.Transaction) (bool, error) {
+	var firstErr error
+	for _, issuer := range s.list {
+		signed, err := issuer.check.signed(tx)
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+		if !signed {
+			continue
+		}
+		revoked, err := issuer.check.revoked(txid+":0", issuer.revokes)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if !revoked {
+			return true, nil
+		}
+	}
+	return false, firstErr
 }
 
 // issuerCheck decides whether the issuer signed a transaction, reading the

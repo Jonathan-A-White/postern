@@ -7,7 +7,8 @@
 // textHref() is the one place it is built. On Android it names Google Voice (mw-ev7oyy.23): a plain sms: link goes to
 // the phone's default texting app, and Voice is not his default. An 'Audible:' or a 'Listen:' line, or an audible.com/pd/ link, is
 // the card's listen action (mw-ev7oyy.24): a Listen in Audible button whose link audible-kit builds (listenHref), at a chapter's start
-// when the card names one. An 'Email:' line is the card's email action (mw-ev7oyy.26): who to write to, a subject and a draft,
+// when the card names one. A Text: line with a name and no number (the home's lookup found none, or two) can be given one (mw-ev7oyy.35): parsePhoneNumber and
+// withTextNumber are how the number he types reaches the line, TextNumber.tsx the field. An 'Email:' line is the card's email action (mw-ev7oyy.26): who to write to, a subject and a draft,
 // drawn as an Email button after the Text one, whose mailto: link (emailHref) Android hands to his default mail app (Gmail).
 // Notes with an 'Open:' line per book name each chip by its line (mw-ev7oyy.17): openLinkLabel and openLinkName are the one rule for it.
 import { BIBLE_BOOKS, WORD_OF_PROMISE_ASIN, audibleLink, wordOfPromiseStart } from 'audible-kit';
@@ -198,6 +199,8 @@ export interface TextAction {
   /** Only digits and a leading '+'. Absent, the texting app opens with the message and he picks the person. */
   number?: string;
   draft: string;
+  /** Why the home found no number for the name (mw-ev7oyy.35): the words of the 'Contacts:' line right below a name-only line. */
+  reason?: string;
 }
 
 /** A line that opens with 'Text:', set as the 'Open:' line may be (a list item, a quote, in bold). */
@@ -206,8 +209,10 @@ const TEXT_LINE = /^[\s>*+-]*(?:\*\*|__)?Text:(?:\*\*|__)?(.*)$/;
 const EMAIL_LINE = /^[\s>*+-]*(?:\*\*|__)?Email:(?:\*\*|__)?(.*)$/;
 /** A phone number as it is written: an optional '+' and '(', then digits with spaces, dots, dashes and brackets between. */
 const PHONE = /\+?\(?\d[\d\s().-]*\d/;
-/** Edge punctuation left on a name once its number is taken out: 'Dad (+1 516 555 0123)' is 'Dad'. */
-const NAME_EDGES = /^[\s,;:()–—-]+|[\s,;:()–—-]+$/g;
+/** Edge punctuation left on a name once its number is taken out: 'Dad (+1 516 555 0123)' is 'Dad', and so is 'Dad <+15165550123>', which is how the home writes a number it found (mw-ev7oyy.35). */
+const NAME_EDGES = /^[\s,;:()<>–—-]+|[\s,;:()<>–—-]+$/g;
+/** The line the home writes right below a name-only Text: line when it found no one number for the name (mw-ev7oyy.34). */
+const CONTACTS_LINE = /^\s*Contacts:\s*(.*?)\s*$/;
 
 function whoOf(who: string): { name?: string; number?: string } {
   const written = PHONE.exec(who)?.[0];
@@ -216,7 +221,7 @@ function whoOf(who: string): { name?: string; number?: string } {
     const name = who.trim();
     return name ? { name } : {};
   }
-  const name = who.replace(written, ' ').replace(/\(\s*\)/g, ' ').replace(NAME_EDGES, '').trim();
+  const name = who.replace(written, ' ').replace(/[(<]\s*[)>]/g, ' ').replace(NAME_EDGES, '').trim();
   return { ...(name ? { name } : {}), number: `${written.trim().startsWith('+') ? '+' : ''}${digits}` };
 }
 
@@ -230,14 +235,53 @@ export function parseTextAction(description: string): TextAction | undefined {
   const rest = TEXT_LINE.exec(lines[at])?.[1] ?? '';
   const bar = rest.indexOf('|');
   const who = bar < 0 ? {} : whoOf(rest.slice(0, bar));
+  // the home's 'Contacts:' line sits right below the Text: line: it is not part of the draft (mw-ev7oyy.35)
+  const contacts = CONTACTS_LINE.exec(lines[at + 1] ?? '')?.[1];
   const draftLines = [(bar < 0 ? rest : rest.slice(bar + 1)).trim()];
-  for (const line of lines.slice(at + 1)) {
+  for (const line of lines.slice(at + (contacts === undefined ? 1 : 2))) {
     if (!line.trim() || TEXT_LINE.test(line) || OPEN_LINE.test(line) || EMAIL_LINE.test(line)) break;
     draftLines.push(line.trim());
   }
   const draft = draftLines.join('\n').trim();
   if (!draft && !who.number) return undefined;
-  return { ...who, draft };
+  return { ...who, draft, ...(contacts && who.name && !who.number ? { reason: contacts } : {}) };
+}
+
+/** Whether a Text: line names someone and no number: the one case that gets the field that adds it (mw-ev7oyy.35). */
+export const needsNumber = (text: TextAction | undefined): text is TextAction & { name: string } => Boolean(text?.name && !text.number);
+
+/** What the field that adds a name's number is called: "Add Matthew's number". */
+export function textNumberLabel(action: { name?: string }): string {
+  return `Add ${action.name ?? 'the'}'s number`;
+}
+
+/** A number he types, as the line carries it: '+' and digits. Ten digits are a US number and eleven that begin 1 are too; any other needs its '+'
+ * and country code. Else the short reason it is refused (mw-ev7oyy.35). */
+export function parsePhoneNumber(typed: string): { number: string } | { problem: string } {
+  const text = typed.trim();
+  if (!text) return { problem: 'Type a number' };
+  if (!/^\+?[\d\s().-]+$/.test(text)) return { problem: 'A number has only digits' };
+  const digits = text.replace(/\D/g, '');
+  if (digits.length > 15) return { problem: 'That number is too long' };
+  if (text.startsWith('+')) return digits.length < 8 ? { problem: 'That number is too short' } : { number: `+${digits}` };
+  if (digits.length === 10) return { number: `+1${digits}` };
+  if (digits.length === 11 && digits.startsWith('1')) return { number: `+${digits}` };
+  return { problem: digits.length < 10 ? 'Add the area code' : 'Start a number from abroad with + and its country code' };
+}
+
+/** The notes with the number written into their Text: line the way the home writes it, 'Text: Matthew <+15551230001> | draft', and the home's
+ * 'Contacts:' line below it taken out (mw-ev7oyy.35). None when the notes' first Text: line is not a name with no number. */
+export function withTextNumber(description: string, number: string): string | undefined {
+  const lines = description.split(/\r?\n/);
+  const at = lines.findIndex((line) => TEXT_LINE.test(line));
+  if (at < 0) return undefined;
+  const written = /^([\s>*+-]*(?:\*\*|__)?Text:(?:\*\*|__)?)(.*)$/.exec(lines[at]);
+  const bar = written ? written[2].indexOf('|') : -1;
+  const who = written && bar >= 0 ? whoOf(written[2].slice(0, bar)) : {};
+  if (!written || !who.name || who.number) return undefined;
+  const below = CONTACTS_LINE.test(lines[at + 1] ?? '') ? 1 : 0;
+  lines.splice(at, 1 + below, `${written[1]} ${who.name} <${number}> ${written[2].slice(bar)}`);
+  return lines.join('\n');
 }
 
 /** A lone half of a surrogate pair, which encodeURIComponent will not take. */

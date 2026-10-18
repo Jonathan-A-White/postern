@@ -74,7 +74,9 @@ type WrongCodeError struct{ TriesLeft int }
 
 func (e *WrongCodeError) Error() string { return "that code is not right" }
 
-// Result is what a confirmed registration answers.
+// Result is what a confirmed registration answers. Issued says the device
+// holds a licence the site issuer minted (its txid is the device's
+// licenceTxid).
 type Result struct {
 	PersonID string   `json:"personId"`
 	Devices  []Device `json:"devices"`
@@ -115,8 +117,14 @@ func WithLimits(startsPerHour, confirmsPerHour int) Option {
 // Safe for concurrent use.
 type Service struct {
 	verifier Verifier
+	issuer   LicenceIssuer
 	now      func() time.Time
 	key      []byte
+
+	// changing serialises what changes a person and may touch the chain
+	// (a join that issues, a removal that revokes), so a person cannot change
+	// between the plan and the write while mu is free for lookups.
+	changing sync.Mutex
 
 	starts, confirms *limiter
 
@@ -163,6 +171,10 @@ func Open(dir string, opts ...Option) (*Service, error) {
 
 // Open reports whether registration is open: Twilio is configured.
 func (s *Service) Open() bool { return s.verifier != nil }
+
+// Issuing reports whether a confirmed device is licensed here: the site
+// issuer key is set. Without it start and confirm answer ErrByHand.
+func (s *Service) Issuing() bool { return s.issuer != nil }
 
 // AllowStart and AllowConfirm count one request from ip against its hourly
 // limit and say whether it may go on.
@@ -216,6 +228,9 @@ func (s *Service) Start(ctx context.Context, email, phone, deviceKey string) (st
 	if !s.Open() {
 		return "", ErrClosed
 	}
+	if !s.Issuing() {
+		return "", ErrByHand
+	}
 	email, err := normaliseEmail(email)
 	if err != nil {
 		return "", err
@@ -267,13 +282,18 @@ func (s *Service) upstream(err error) error {
 }
 
 // Confirm checks the two codes and, when both are right, finds or makes the
-// person and adds the device. A code already approved need not be sent
-// again (Twilio will not check an approved verification twice). Any final
-// answer, a refusal as well as a success, ends the registration. userAgent
-// names the device when it is new.
+// person, has the site issuer license the device and adds it. A code already
+// approved need not be sent again (Twilio will not check an approved
+// verification twice). Any final answer, a refusal as well as a success,
+// ends the registration; a licence that could not be issued (ErrIssue) is
+// not final, so the same codes may confirm again. userAgent names the device
+// when it is new.
 func (s *Service) Confirm(ctx context.Context, id, emailCode, phoneCode, userAgent string) (Result, error) {
 	if !s.Open() {
 		return Result{}, ErrClosed
+	}
+	if !s.Issuing() {
+		return Result{}, ErrByHand
 	}
 	s.mu.Lock()
 	p := s.pending[id]
@@ -327,7 +347,9 @@ func (s *Service) Confirm(ctx context.Context, id, emailCode, phoneCode, userAge
 	}
 
 	result, err := s.join(p, userAgent)
-	s.end(id, p)
+	if !errors.Is(err, ErrIssue) {
+		s.end(id, p)
+	}
 	return result, err
 }
 
@@ -338,9 +360,38 @@ func (s *Service) end(id string, p *pending) {
 	s.mu.Unlock()
 }
 
-// join finds or makes the person the proven email and phone name and adds
-// p's device to them.
+// join finds or makes the person the proven email and phone name, has the
+// site issuer license p's device unless it holds a licence already, and
+// stores the person with the device and its licence's txid. Nothing is
+// stored when the licence cannot be issued.
 func (s *Service) join(p *pending, userAgent string) (Result, error) {
+	s.changing.Lock()
+	defer s.changing.Unlock()
+	next, err := s.plan(p, userAgent)
+	if err != nil {
+		return Result{}, err
+	}
+	at := next.device(p.key)
+	if next.Devices[at].LicenceTxid == "" {
+		txid, err := s.issuer.Issue(p.key)
+		if err != nil {
+			log.Printf("register: issuing a licence: %v", err)
+			return Result{}, ErrIssue
+		}
+		log.Printf("register: issued licence %s:0", txid)
+		next.Devices[at].LicenceTxid = txid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.people.put(next); err != nil {
+		log.Printf("register: licence %s:0 was issued and not stored: %v", next.Devices[at].LicenceTxid, err)
+		return Result{}, err
+	}
+	return Result{PersonID: next.PersonID, Devices: append([]Device(nil), next.Devices...), Issued: true}, nil
+}
+
+// plan is the person p joins, a clone holding p's device (new, or as it was).
+func (s *Service) plan(p *pending, userAgent string) (*person, error) {
 	fpE, fpP := s.fpEmail(p.email), s.fpPhone(p.phone)
 
 	s.mu.Lock()
@@ -350,32 +401,73 @@ func (s *Service) join(p *pending, userAgent string) (Result, error) {
 	var next *person
 	switch {
 	case byP != nil && byE != nil && byP != byE, byP == nil && byE != nil:
-		return Result{}, ErrEmailTaken
+		return nil, ErrEmailTaken
 	case byP != nil:
 		next = byP.clone()
 	default:
 		id, err := randomID()
 		if err != nil {
-			return Result{}, err
+			return nil, err
 		}
 		next = &person{PersonID: id, FpE: fpE, FpP: fpP, DailyLimit: DefaultDailyLimit, CreatedAt: now}
 	}
 	if owner := s.people.byKey[p.key]; owner != nil && owner.PersonID != next.PersonID {
-		return Result{}, ErrDeviceTaken
+		return nil, ErrDeviceTaken
 	}
 	if !next.hasEmail(fpE) {
 		next.MoreFpE = append(next.MoreFpE, fpE)
 	}
-	known := false
-	for _, d := range next.Devices {
-		known = known || d.Key == p.key
-	}
-	if !known {
+	if next.device(p.key) < 0 {
 		if len(next.Devices) >= MaxDevices {
-			return Result{}, ErrFull
+			return nil, ErrFull
 		}
 		next.Devices = append(next.Devices, Device{Key: p.key, Name: deviceName(userAgent, len(next.Devices)+1), AddedAt: now})
 	}
+	return next, nil
+}
+
+// RemoveDevice takes deviceKey off personID's licence at the word of
+// signerKey, which must be a device on that licence (itself included): the
+// site issuer revokes the device's licence, and the device is dropped, which
+// frees its slot. A device the site issuer never licensed is dropped only.
+// Nothing changes when the revoke fails (ErrRevoke).
+func (s *Service) RemoveDevice(personID, signerKey, deviceKey string) (Result, error) {
+	signer, err := normaliseKey(signerKey)
+	if err != nil {
+		return Result{}, ErrNotYours
+	}
+	if deviceKey, err = normaliseKey(deviceKey); err != nil {
+		return Result{}, err
+	}
+	s.changing.Lock()
+	defer s.changing.Unlock()
+
+	s.mu.Lock()
+	owner := s.people.byKey[signer]
+	if owner == nil || owner.PersonID != personID {
+		s.mu.Unlock()
+		return Result{}, ErrNotYours
+	}
+	next := owner.clone()
+	s.mu.Unlock()
+	at := next.device(deviceKey)
+	if at < 0 {
+		return Result{}, ErrNoDevice
+	}
+	if txid := next.Devices[at].LicenceTxid; txid != "" {
+		if !s.Issuing() {
+			return Result{}, ErrByHand
+		}
+		revoke, err := s.issuer.Revoke(txid + ":0")
+		if err != nil {
+			log.Printf("register: revoking licence %s:0: %v", txid, err)
+			return Result{}, ErrRevoke
+		}
+		log.Printf("register: revoked licence %s:0 in %s", txid, revoke)
+	}
+	next.Devices = append(next.Devices[:at], next.Devices[at+1:]...)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := s.people.put(next); err != nil {
 		return Result{}, err
 	}

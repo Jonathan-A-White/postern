@@ -235,6 +235,9 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	mux.HandleFunc("POST /api/register/start", handleRegisterStart(o.register, o.registerIPHeader))
 	mux.HandleFunc("POST /api/register/confirm", handleRegisterConfirm(o.register, o.registerIPHeader))
 	mux.HandleFunc("GET /api/register/person", handleRegisterPerson(o.register))
+	// Removing a device needs a proof, but no licence on the chain: the
+	// signer must be a device of the same person, which register checks.
+	mux.HandleFunc("DELETE /api/register/device", handleRegisterDevice(o.register, nonces))
 	// The routes and who each admits are routeTable's: nothing is registered
 	// here that the table does not name, and the table names nothing that is
 	// not registered, so LicenceMap (postern rights) reads the same gate.
@@ -309,32 +312,10 @@ func AuthenticatedKey(ctx context.Context) string {
 // with rightsOf.
 func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *options, who access, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authorization := r.Header.Get("Authorization")
-		if strings.HasPrefix(authorization, authSchemeV1) {
-			refuse(w, r, http.StatusUnauthorized, reasonSignatureV1, "the v1 'Postern' scheme is no longer accepted; sign with 'Postern2'", v1KeyPrefix(authorization))
-			return
-		}
-		pubKeyHex, nonce, sigHex, ok := parseAuthorization(authorization)
-		if !ok {
-			refuse(w, r, http.StatusUnauthorized, reasonMalformed, "missing or malformed Authorization header", "")
-			return
-		}
-		if err := nonces.Spend(nonce); err != nil {
-			// The wire reason is always "nonce" (every client retries once on
-			// it); the log says whether it was another host's or an earlier life's.
-			refuseLogged(w, r, http.StatusUnauthorized, reasonNonce, err.Error(), "nonce is missing, expired, or already used", pubKeyHex)
-			return
-		}
-		body, ok := readSignedBody(w, r)
+		key, ok := verifyProof(w, r, nonces)
 		if !ok {
 			return
 		}
-		valid, err := auth.VerifySignature(pubKeyHex, auth.MessageV2(r.Method, r.RequestURI, body, nonce), sigHex)
-		if err != nil || !valid {
-			refuse(w, r, http.StatusUnauthorized, reasonSignature, "signature does not verify", pubKeyHex)
-			return
-		}
-		key := strings.ToLower(pubKeyHex)
 		granted, err := rightsForRoute(key, checker, o, who)
 		if err != nil && !who.admits(granted) {
 			writeError(w, http.StatusBadGateway, "checking licence: "+err.Error())
@@ -352,6 +333,39 @@ func requireLicence(nonces *auth.NonceStore, checker auth.LicenceChecker, o *opt
 		ctx := context.WithValue(r.Context(), authKey{}, key)
 		next(w, r.WithContext(context.WithValue(ctx, rightsKey{}, granted)))
 	}
+}
+
+// verifyProof checks a request's 'Postern2' proof: a fresh nonce, spent here,
+// and a signature over the request as received by the key it names. It
+// answers the key, lower-cased, or answers 401 itself and reports false. The
+// body is read and put back for the route.
+func verifyProof(w http.ResponseWriter, r *http.Request, nonces *auth.NonceStore) (string, bool) {
+	authorization := r.Header.Get("Authorization")
+	if strings.HasPrefix(authorization, authSchemeV1) {
+		refuse(w, r, http.StatusUnauthorized, reasonSignatureV1, "the v1 'Postern' scheme is no longer accepted; sign with 'Postern2'", v1KeyPrefix(authorization))
+		return "", false
+	}
+	pubKeyHex, nonce, sigHex, ok := parseAuthorization(authorization)
+	if !ok {
+		refuse(w, r, http.StatusUnauthorized, reasonMalformed, "missing or malformed Authorization header", "")
+		return "", false
+	}
+	if err := nonces.Spend(nonce); err != nil {
+		// The wire reason is always "nonce" (every client retries once on
+		// it); the log says whether it was another host's or an earlier life's.
+		refuseLogged(w, r, http.StatusUnauthorized, reasonNonce, err.Error(), "nonce is missing, expired, or already used", pubKeyHex)
+		return "", false
+	}
+	body, ok := readSignedBody(w, r)
+	if !ok {
+		return "", false
+	}
+	valid, err := auth.VerifySignature(pubKeyHex, auth.MessageV2(r.Method, r.RequestURI, body, nonce), sigHex)
+	if err != nil || !valid {
+		refuse(w, r, http.StatusUnauthorized, reasonSignature, "signature does not verify", pubKeyHex)
+		return "", false
+	}
+	return strings.ToLower(pubKeyHex), true
 }
 
 // readSignedBody reads a v2 request's whole body so its hash can be checked,

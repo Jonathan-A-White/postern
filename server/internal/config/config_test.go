@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -420,5 +421,24 @@ func TestLoadRegistrationRejectsBadLimits(t *testing.T) {
 				t.Errorf("%s=%q: err = %v, want one naming it", name, bad, err)
 			}
 		}
+	}
+}
+
+func TestLoadReadsTheSiteIssuerKeyTrimmedAndNeverPrintsIt(t *testing.T) {
+	const wif = "cNotARealKeyButSecretAllTheSameXXXXXXXXXXXXXXXXXXXXX"
+	cfg, err := Load(registerEnv(map[string]string{"POSTERN_SITE_ISSUER_KEY": "  " + wif + "\n"}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if string(cfg.SiteIssuerKey) != wif {
+		t.Fatalf("SiteIssuerKey = %q", string(cfg.SiteIssuerKey))
+	}
+	for _, printed := range []string{fmt.Sprint(cfg), fmt.Sprintf("%+v", cfg), fmt.Sprintf("%#v", cfg), fmt.Sprint(cfg.SiteIssuerKey)} {
+		if strings.Contains(printed, wif) {
+			t.Fatalf("printing the config shows the key: %s", printed)
+		}
+	}
+	if cfg, _ := Load(registerEnv(nil)); cfg.SiteIssuerKey != "" {
+		t.Fatalf("unset SiteIssuerKey = %q", string(cfg.SiteIssuerKey))
 	}
 }

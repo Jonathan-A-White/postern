@@ -14,11 +14,14 @@ import (
 // fingerprint. No email or phone is ever written to it.
 const PeopleFile = "register-people.json"
 
-// Device is one key on a person's licence.
+// Device is one key on a person's licence. LicenceTxid is the mint the site
+// issuer licensed it with (its licence's origin is LicenceTxid:0); empty for
+// a device added before the site issuer licensed any.
 type Device struct {
-	Key     string    `json:"key"`
-	Name    string    `json:"name"`
-	AddedAt time.Time `json:"addedAt"`
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	AddedAt     time.Time `json:"addedAt"`
+	LicenceTxid string    `json:"licenceTxid,omitempty"`
 }
 
 // person is one human who proved an email and a phone: the keyed
@@ -40,6 +43,16 @@ func (p *person) clone() *person {
 	c.MoreFpE = append([]string(nil), p.MoreFpE...)
 	c.Devices = append([]Device(nil), p.Devices...)
 	return &c
+}
+
+// device is the index of key among p's devices, or -1.
+func (p *person) device(key string) int {
+	for i, d := range p.Devices {
+		if d.Key == key {
+			return i
+		}
+	}
+	return -1
 }
 
 func (p *person) hasEmail(fp string) bool {

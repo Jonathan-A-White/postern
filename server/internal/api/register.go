@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/register"
 )
 
@@ -118,6 +119,39 @@ func handleRegisterPerson(svc *register.Service) http.HandlerFunc {
 	}
 }
 
+// handleRegisterDevice is DELETE /api/register/device {deviceKey, personId}:
+// signed ('Postern2') by a device of that person, it has the site issuer
+// revoke deviceKey's licence and frees its slot, and answers the person's
+// devices left.
+func handleRegisterDevice(svc *register.Service, nonces *auth.NonceStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			writeError(w, http.StatusServiceUnavailable, register.ErrClosed.Error())
+			return
+		}
+		signer, ok := verifyProof(w, r, nonces)
+		if !ok {
+			return
+		}
+		var in struct {
+			DeviceKey string `json:"deviceKey"`
+			PersonID  string `json:"personId"`
+		}
+		if !readRegisterBody(w, r, &in) {
+			return
+		}
+		result, err := svc.RemoveDevice(in.PersonID, signer, in.DeviceKey)
+		if err != nil {
+			writeRegisterError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			PersonID string            `json:"personId"`
+			Devices  []register.Device `json:"devices"`
+		}{result.PersonID, result.Devices})
+	}
+}
+
 func readRegisterBody(w http.ResponseWriter, r *http.Request, into any) bool {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRegisterBodyBytes))
 	if err != nil || json.Unmarshal(body, into) != nil {
@@ -144,10 +178,14 @@ func writeRegisterError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusGone, err.Error())
 	case errors.Is(err, register.ErrEmailTaken), errors.Is(err, register.ErrFull), errors.Is(err, register.ErrDeviceTaken):
 		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, register.ErrClosed), errors.Is(err, register.ErrBusy):
+	case errors.Is(err, register.ErrClosed), errors.Is(err, register.ErrBusy), errors.Is(err, register.ErrByHand):
 		writeError(w, http.StatusServiceUnavailable, err.Error())
-	case errors.Is(err, register.ErrUpstream):
+	case errors.Is(err, register.ErrUpstream), errors.Is(err, register.ErrIssue), errors.Is(err, register.ErrRevoke):
 		writeError(w, http.StatusBadGateway, err.Error())
+	case errors.Is(err, register.ErrNotYours):
+		writeError(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, register.ErrNoDevice):
+		writeError(w, http.StatusNotFound, err.Error())
 	default:
 		log.Printf("register: %v", err)
 		writeError(w, http.StatusInternalServerError, "registration failed")

@@ -26,6 +26,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
 	"github.com/Jonathan-A-White/postern/server/internal/register"
+	"github.com/Jonathan-A-White/postern/server/internal/setup"
 	"github.com/Jonathan-A-White/postern/server/internal/standby"
 	"github.com/Jonathan-A-White/postern/server/internal/view"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
@@ -178,7 +179,12 @@ func newApp(cfg config.Config) (*app, error) {
 	licenceChecker := auth.NewCachedChecker(licence.NewTxCache(client, filepath.Join(cfg.DataDir, licenceTxDir)), licenceCacheTTL,
 		auth.WithRule(rule), auth.WithPersistence(filepath.Join(cfg.DataDir, licenceAnswersFile)))
 
-	registration, err := newRegistration(cfg)
+	siteIssuer, err := newSiteIssuer(cfg, client)
+	if err != nil {
+		store.Close()
+		return nil, err
+	}
+	registration, err := newRegistration(cfg, siteIssuer)
 	if err != nil {
 		store.Close()
 		return nil, err
@@ -211,6 +217,9 @@ func newApp(cfg config.Config) (*app, error) {
 			go noteMillLicence(licenceChecker, cfg.MillKey, cfg.Apps)
 		}
 		go home.Run(stop, standby.DefaultInterval)
+		if siteIssuer != nil {
+			go siteIssuer.WarnIfLow(log.Printf) // 'site issuer low: <sats>', which the Mayor watches
+		}
 		ideasStore.Start()
 		go func() { <-stop; ideasStore.Stop() }()
 		if cfg.ViewFile != "" {
@@ -221,12 +230,41 @@ func newApp(cfg config.Config) (*app, error) {
 	return &app{handler: standby.Middleware(home, handler, standby.WithPeers(cfg.Peers)), start: start, close: func() { store.Close() }}, nil
 }
 
+// newSiteIssuer is the site issuer POSTERN_SITE_ISSUER_KEY names, which
+// signs the Lampas licences registration issues, or nil when it is unset
+// (registration then answers 'licensed by hand: ask the Governor'). A key that
+// is not a testnet WIF, or is the Governor's own issuer (POSTERN_ISSUER_KEY),
+// is refused; no error or line names the key itself.
+func newSiteIssuer(cfg config.Config, client chain.Chain) (*register.Issuer, error) {
+	if cfg.SiteIssuerKey == "" {
+		log.Printf("site issuer: POSTERN_SITE_ISSUER_KEY is not set, so registration answers 503 %q", register.ErrByHand.Error())
+		return nil, nil
+	}
+	key, err := setup.ParseWIF(string(cfg.SiteIssuerKey))
+	if err != nil {
+		return nil, fmt.Errorf("POSTERN_SITE_ISSUER_KEY is not a testnet WIF private key (its value is not shown)")
+	}
+	issuer, err := register.NewIssuer(key, cfg.Anchor, client)
+	if err != nil {
+		return nil, err
+	}
+	if issuer.PublicKey() == cfg.IssuerKey {
+		return nil, fmt.Errorf("POSTERN_SITE_ISSUER_KEY is the key POSTERN_ISSUER_KEY names; the site issuer has a key of its own")
+	}
+	log.Printf("site issuer: %s at %s (Lampas names it VITE_LAMPAS_SITE_ISSUER; fund the address)", issuer.PublicKey(), issuer.Address())
+	return issuer, nil
+}
+
 // newRegistration opens Lampas self-registration (internal/register): its
 // people and fingerprint key under POSTERN_DATA, and Twilio Verify when all
 // three POSTERN_TWILIO_* names are set. Without them it is closed (start and
-// confirm answer 503) and the rest of the backend is unaffected.
-func newRegistration(cfg config.Config) (*register.Service, error) {
+// confirm answer 503) and the rest of the backend is unaffected. siteIssuer
+// licenses the devices it adds; without one it is licensed by hand.
+func newRegistration(cfg config.Config, siteIssuer *register.Issuer) (*register.Service, error) {
 	opts := []register.Option{register.WithLimits(cfg.RegisterStartsPerHour, cfg.RegisterConfirmsPerHour)}
+	if siteIssuer != nil {
+		opts = append(opts, register.WithIssuer(siteIssuer))
+	}
 	if cfg.TwilioConfigured() {
 		opts = append(opts, register.WithVerifier(register.NewTwilio(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioVerifySID)))
 	} else {

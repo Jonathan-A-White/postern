@@ -23,6 +23,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/ideasonly"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
+	"github.com/Jonathan-A-White/postern/server/internal/setup"
 	"github.com/Jonathan-A-White/postern/server/internal/standby"
 	"github.com/Jonathan-A-White/postern/server/internal/woc"
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -1086,8 +1087,16 @@ func TestAppRegistrationIsClosedWithoutTwilioAndOpenWithIt(t *testing.T) {
 	if got := start(map[string]string{}); got != http.StatusServiceUnavailable {
 		t.Fatalf("no Twilio env: start = %d, want 503", got)
 	}
-	open := map[string]string{"POSTERN_TWILIO_ACCOUNT_SID": "AC1", "POSTERN_TWILIO_AUTH_TOKEN": "t", "POSTERN_TWILIO_VERIFY_SID": "VA1"}
+	twilio := func() map[string]string {
+		return map[string]string{"POSTERN_TWILIO_ACCOUNT_SID": "AC1", "POSTERN_TWILIO_AUTH_TOKEN": "t", "POSTERN_TWILIO_VERIFY_SID": "VA1"}
+	}
+	// Twilio alone is not enough since mw-cvwm1u.3: no site issuer key, no licence to give.
+	if got := start(twilio()); got != http.StatusServiceUnavailable {
+		t.Fatalf("Twilio env set, no site issuer key: start = %d, want 503 (licensed by hand)", got)
+	}
+	open := twilio()
+	open["POSTERN_SITE_ISSUER_KEY"] = setup.NewKey().WIF()
 	if got := start(open); got != http.StatusBadRequest {
-		t.Fatalf("Twilio env set: start of bad input = %d, want 400 (open, and validating)", got)
+		t.Fatalf("Twilio env and site issuer key set: start of bad input = %d, want 400 (open, and validating)", got)
 	}
 }

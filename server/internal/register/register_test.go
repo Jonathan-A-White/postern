@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -86,11 +87,33 @@ func newService(t *testing.T) (*Service, *fakeVerifier, *clock, string) {
 	dir := t.TempDir()
 	v := &fakeVerifier{}
 	c := &clock{now: time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)}
-	s, err := Open(dir, WithVerifier(v), WithClock(c.Now))
+	s, err := Open(dir, WithVerifier(v), WithIssuer(&stubIssuer{}), WithClock(c.Now))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	return s, v, c, dir
+}
+
+// stubIssuer stands in for the site issuer where the chain is not the
+// point: each licence gets a txid of its own (issue_test.go has the real one).
+type stubIssuer struct {
+	mu      sync.Mutex
+	issued  []string
+	revoked []string
+}
+
+func (s *stubIssuer) Issue(holderKey string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.issued = append(s.issued, holderKey)
+	return fmt.Sprintf("%064x", len(s.issued)), nil
+}
+
+func (s *stubIssuer) Revoke(origin string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.revoked = append(s.revoked, origin)
+	return fmt.Sprintf("%064x", 1000+len(s.revoked)), nil
 }
 
 // register runs start and a correct confirm.
@@ -115,8 +138,8 @@ func TestStartThenConfirmMakesAPersonWithOneDevice(t *testing.T) {
 	if res.Devices[0].Name == "" || res.Devices[0].AddedAt.IsZero() {
 		t.Fatalf("device = %+v, want a name and a time", res.Devices[0])
 	}
-	if res.Issued {
-		t.Fatal("issued = true; issuing is the next story")
+	if !res.Issued || res.Devices[0].LicenceTxid == "" {
+		t.Fatal("the new device was not issued a licence")
 	}
 	if len(v.sent) != 2 {
 		t.Fatalf("sent %v, want a code to the email and one to the phone", v.sent)
@@ -334,7 +357,7 @@ func TestPeopleSurviveARestartAndKeepTheirFingerprints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := Open(dir, WithVerifier(v), WithClock(c.Now))
+	again, err := Open(dir, WithVerifier(v), WithIssuer(&stubIssuer{}), WithClock(c.Now))
 	if err != nil {
 		t.Fatal(err)
 	}

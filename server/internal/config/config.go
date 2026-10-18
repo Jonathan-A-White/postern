@@ -98,7 +98,26 @@ type Config struct {
 	// sets to the caller's address (nginx: X-Real-IP), which the per-IP limits
 	// read. Empty counts the connection's own address.
 	RegisterIPHeader string
+	// SiteIssuerKey is POSTERN_SITE_ISSUER_KEY: the site issuer's private
+	// key, a testnet WIF, trimmed, which signs the Lampas licences
+	// self-registration issues (cmd/postern parses it). Empty means
+	// registration is licensed by hand. A Secret: it never prints.
+	SiteIssuerKey Secret
 }
+
+// Secret is a value that must never reach a log: printed with any verb it
+// shows only whether it is set. string(s) is the value.
+type Secret string
+
+func (s Secret) String() string {
+	if s == "" {
+		return "(unset)"
+	}
+	return "(secret)"
+}
+
+// GoString keeps %#v from printing the value too.
+func (s Secret) GoString() string { return s.String() }
 
 // TwilioConfigured reports whether registration has everything it needs from
 // Twilio: all three of its names are set.
@@ -131,6 +150,7 @@ func Load(getenv func(string) string) (Config, error) {
 		TwilioAuthToken:  strings.TrimSpace(getenv("POSTERN_TWILIO_AUTH_TOKEN")),
 		TwilioVerifySID:  strings.TrimSpace(getenv("POSTERN_TWILIO_VERIFY_SID")),
 		RegisterIPHeader: strings.TrimSpace(getenv("POSTERN_REGISTER_IP_HEADER")),
+		SiteIssuerKey:    Secret(strings.TrimSpace(getenv("POSTERN_SITE_ISSUER_KEY"))),
 	}
 
 	if cfg.Anchor == "" {

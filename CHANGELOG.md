@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.17
+_2026-10-18_
+- Fixed: Needs you opens again when hundreds of cards are waiting, instead of freezing the app.
+
 ## 0.8.16
 _2026-10-18_
 - Fixed: Text buttons with no phone number no longer send him to the Play Store; they copy the draft and open Google Voice, and with a number the draft is also handed to Voice as its message.

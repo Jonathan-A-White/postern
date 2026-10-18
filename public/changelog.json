@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.17",
+    "date": "2026-10-18",
+    "story": "mw-ev7oyy.43",
+    "kind": "fixed",
+    "text": "Needs you opens again when hundreds of cards are waiting, instead of freezing the app."
+  },
+  {
     "version": "0.8.16",
     "date": "2026-10-18",
     "story": "mw-ev7oyy.28",

@@ -272,7 +272,7 @@ Feature: The To do board holds the Governor's own outside things, a column per l
     And the card "mw-list.1" has the notes "Text: Matthew Steele | Hi Matthew, are we on for Friday?"
     When the To do tab opens
     Then the card "Title of mw-list.1" shows a Text button named "Text Matthew Steele" under its title
-    And the Text button "Text Matthew Steele" opens "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.google.android.apps.googlevoice;S.browser_fallback_url=sms%3A%3Fbody%3DHi%2520Matthew%252C%2520are%2520we%2520on%2520for%2520Friday%253F;end" in the same tab
+    And the Text button "Text Matthew Steele" opens "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.google.android.apps.googlevoice;S.browser_fallback_url=https%3A%2F%2Fvoice.google.com%2Fmessages;end" in the same tab
     When he taps the Text button "Text Matthew Steele" on the card "Title of mw-list.1"
     Then the clipboard holds "Hi Matthew, are we on for Friday?" and a toast says "Draft copied: pick Matthew Steele and paste"
 

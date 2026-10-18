@@ -95,11 +95,16 @@ function voiceIntent(url: string, scheme: string, extras = ''): string {
   return `intent:${url.slice(scheme.length + 1)}#Intent;scheme=${scheme};package=${GOOGLE_VOICE};${extras}S.browser_fallback_url=${encodeURIComponent(url)};end`;
 }
 
-/** Google Voice's own launcher as an intent: link (mw-ev7oyy.28): the one thing Voice always resolves, so a text with no
- * recipient opens the app itself, never its Play Store page. The draft cannot ride along (Voice reads none without a
+/** Google Voice on the web: where Chrome goes if the launcher intent below resolves nothing. Chrome takes only an http(s)
+ * S.browser_fallback_url, and without one sends a named package that resolves nothing to its Play Store page. */
+const VOICE_WEB = 'https://voice.google.com/messages';
+
+/** Google Voice's own launcher as an intent: link (mw-ev7oyy.28): a text with no recipient opens the app itself. Should Chrome
+ * find nothing to resolve (it adds the BROWSABLE category, which a launcher entry may lack), the https fallback opens Voice's
+ * page (the app, where it claims that link) instead of the Play Store. The draft cannot ride along (Voice reads none without a
  * recipient), so the board copies it first (textCopyDraft) and says so. */
-function voiceLauncher(url: string): string {
-  return `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${GOOGLE_VOICE};S.browser_fallback_url=${encodeURIComponent(url)};end`;
+function voiceLauncher(): string {
+  return `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${GOOGLE_VOICE};S.browser_fallback_url=${encodeURIComponent(VOICE_WEB)};end`;
 }
 
 /** An sms: or smsto: link taken apart: the recipient (after the scheme, before any '?') and the decoded body. */
@@ -125,7 +130,7 @@ function smsParts(url: string, scheme: string): { recipient: string; body: strin
  * else Voice's launcher (smsParts, voiceLauncher). */
 function androidSmsHref(url: string, scheme: string): string {
   const { recipient, body } = smsParts(url, scheme);
-  return recipient ? voiceIntent(url, scheme, body ? `S.sms_body=${encodeDraft(body)};` : '') : voiceLauncher(url);
+  return recipient ? voiceIntent(url, scheme, body ? `S.sms_body=${encodeDraft(body)};` : '') : voiceLauncher();
 }
 
 /** The attributes of the anchor that opens a link on a phone with this user agent: what the board spreads onto its <a>.
@@ -253,7 +258,7 @@ function smsHref(action: TextAction): string {
 export function textHref(action: TextAction, userAgent: string): string {
   const sms = smsHref(action);
   if (!onAndroid(userAgent)) return sms;
-  return action.number ? voiceIntent(sms, 'sms', action.draft ? `S.sms_body=${encodeDraft(action.draft)};` : '') : voiceLauncher(sms);
+  return action.number ? voiceIntent(sms, 'sms', action.draft ? `S.sms_body=${encodeDraft(action.draft)};` : '') : voiceLauncher();
 }
 
 /** The draft a tap on the Text button copies before Voice opens: on Android, a line with no number (Voice opens without a

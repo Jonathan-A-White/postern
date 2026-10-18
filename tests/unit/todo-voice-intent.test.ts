@@ -67,6 +67,8 @@ describe('a Text with a name and no number never ends at the Play Store (mw-ev7o
     expect(fields.action).toBe('android.intent.action.MAIN');
     expect(fields.category).toBe('android.intent.category.LAUNCHER');
     expect(fields).not.toHaveProperty('scheme');
+    // Chrome takes only an http(s) fallback; with anything else a launcher it cannot resolve ends at the Play Store.
+    expect(fields['S.browser_fallback_url']).toBe('https://voice.google.com/messages');
   });
 
   it('says the draft is to be copied before Voice opens, and which draft', () => {

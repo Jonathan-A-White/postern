@@ -25,9 +25,10 @@ import { dueToInput, dueWords, inputToDue, isOverdue, sortByDue } from './due';
 import { moveFor, realIndex } from './edits';
 import { isRowOpen, keepRowOpen, readRowsOpen, type FoldedRow, type RowsOpen } from './kept';
 import { googleCalendarHref, icsHref, parseWhen, type When } from './calendar';
-import { copyNotice, emailHref, emailLabel, linkCopyDraft, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textCopyDraft, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
+import { copyNotice, emailHref, needsNumber, emailLabel, linkCopyDraft, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textCopyDraft, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
 import { beadsNamed, boardRows, type RowCard, type TodoCard, type TodoList, type TodoSize } from './lists';
 import { usePosternTodoStore } from './posternStore';
+import { TextNumber } from './TextNumber';
 import type { TodoDone, TodoStore } from './store';
 import { useCardDrag, type DragState } from './useDrag';
 
@@ -318,14 +319,29 @@ function LinkChips({ links, text, email, listen, calendar }: { links: OpenLink[]
 function FullNotesChips({ store, card }: { store: TodoStore; card: TodoCard }) {
   const back = store.useBack(card.id);
   return back.status === 'ready' ? (
-    <LinkChips links={parseOpenLinks(back.description)} text={parseTextAction(back.description)} email={parseEmailAction(back.description)} listen={parseListenAction(back.description)} calendar={{ id: card.id, title: card.title, when: parseWhen(back.description) }} />
+    <>
+      <LinkChips links={parseOpenLinks(back.description)} text={parseTextAction(back.description)} email={parseEmailAction(back.description)} listen={parseListenAction(back.description)} calendar={{ id: card.id, title: card.title, when: parseWhen(back.description) }} />
+      <NumberUnderText store={store} card={card} text={parseTextAction(back.description)} />
+    </>
   ) : (
     <LinkChips links={card.links ?? []} />
   );
 }
 
+/** A Text: line with a name and no number gets, under the chips, the home's reason and the field that adds the number (TextNumber, mw-ev7oyy.35). */
+function NumberUnderText({ store, card, text }: { store: TodoStore; card: TodoCard; text?: TextAction }) {
+  return needsNumber(text) ? <TextNumber store={store} card={card} text={text} /> : null;
+}
+
 function CardLinks({ store, card }: { store: TodoStore; card: TodoCard }) {
-  return card.summaryCut ? <FullNotesChips store={store} card={card} /> : <LinkChips links={card.links ?? []} text={card.text} email={card.email} listen={card.listen} calendar={{ id: card.id, title: card.title, when: card.when }} />;
+  return card.summaryCut ? (
+    <FullNotesChips store={store} card={card} />
+  ) : (
+    <>
+      <LinkChips links={card.links ?? []} text={card.text} email={card.email} listen={card.listen} calendar={{ id: card.id, title: card.title, when: card.when }} />
+      <NumberUnderText store={store} card={card} text={card.text} />
+    </>
+  );
 }
 
 /** The back's Done: a labelled button, as it was before the card's front became one row. */

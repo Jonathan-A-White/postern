@@ -197,3 +197,29 @@ func TestCachedCollectionsNeverWaitsAndWarmsAColdKey(t *testing.T) {
 }
 
 func writeFile(path, content string) error { return os.WriteFile(path, []byte(content), 0o600) }
+
+// mw-cvwm1u.12: answers kept under a rule with one issuer are not served
+// under a rule that also names the site issuer (and back), but a rule with no
+// extra issuer is stamped as it always was, so a restart keeps its answers.
+func TestKeptAnswersAreDroppedWhenTheSiteIssuerJoinsOrLeavesTheRule(t *testing.T) {
+	key := testPubKeyHex(t)
+	his, site := testPubKeyHex(t), testPubKeyHex(t)
+	one := licence.Rule{IssuerKey: his}
+	two := licence.Rule{IssuerKey: his, ExtraIssuerKeys: []string{site}}
+
+	path := firstLife(t, key, []string{"postern"}, WithRule(one))
+	checker := NewCachedChecker(&countingReader{}, time.Minute, WithPersistence(path), WithRule(one))
+	if entry, ok := checker.cache[key]; !ok || !reflect.DeepEqual(entry.collections, []string{"postern"}) {
+		t.Fatalf("the same rule lost its kept answer: %v, %v", entry.collections, ok)
+	}
+	checker = NewCachedChecker(&countingReader{}, time.Minute, WithPersistence(path), WithRule(two))
+	if _, ok := checker.cache[key]; ok {
+		t.Fatal("an answer kept under his key alone was served under his key and the site's")
+	}
+
+	path = firstLife(t, key, []string{"postern"}, WithRule(two))
+	checker = NewCachedChecker(&countingReader{}, time.Minute, WithPersistence(path), WithRule(one))
+	if _, ok := checker.cache[key]; ok {
+		t.Fatal("an answer kept under two issuers was served under his key alone")
+	}
+}

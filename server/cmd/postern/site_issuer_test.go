@@ -87,3 +87,36 @@ func TestABadSiteIssuerKeyIsRefusedWithoutBeingShown(t *testing.T) {
 		t.Fatalf("err = %v, want a refusal of the Governor's own issuer key", err)
 	}
 }
+
+// mw-cvwm1u.12: the licence checker's rule names the site issuer's public
+// key (never its private half) beside the Governor's, once the site issuer is
+// on; without it, only his.
+func TestTheLicenceRuleNamesTheSiteIssuersPublicKeyBesideHis(t *testing.T) {
+	his, site := setup.NewKey(), setup.NewKey()
+	cfg := siteIssuerConfig(t, site.WIF(), his.Public())
+	issuer, err := newSiteIssuer(cfg, newChain(cfg))
+	if err != nil || issuer == nil {
+		t.Fatalf("newSiteIssuer = %v, %v", issuer, err)
+	}
+
+	rule := licenceRule(cfg, []string{"postern"}, issuer)
+	if rule.IssuerKey != his.Public() || len(rule.ExtraIssuerKeys) != 1 || rule.ExtraIssuerKeys[0] != site.Public() {
+		t.Fatalf("rule issuers = %q + %q, want his then the site's public key", rule.IssuerKey, rule.ExtraIssuerKeys)
+	}
+	priv, _ := setup.ParseWIF(site.WIF())
+	for _, k := range append([]string{rule.IssuerKey}, rule.ExtraIssuerKeys...) {
+		if k == site.WIF() || k == hex.EncodeToString(priv.Serialize()) {
+			t.Fatal("the rule carries the site key's private half")
+		}
+	}
+
+	if rule := licenceRule(cfg, []string{"postern"}, nil); rule.IssuerKey != his.Public() || len(rule.ExtraIssuerKeys) != 0 {
+		t.Fatalf("with no site issuer the rule is %+v, want his key alone", rule)
+	}
+
+	// Without his key the rule is the open one; the site key must not narrow it.
+	noHis := siteIssuerConfig(t, site.WIF(), "")
+	if rule := licenceRule(noHis, []string{"postern"}, issuer); len(rule.IssuerKeys()) != 0 {
+		t.Fatalf("with POSTERN_ISSUER_KEY unset the rule names issuers %q, want none (the open rule)", rule.IssuerKeys())
+	}
+}

@@ -26,8 +26,21 @@ Environment:
 | `POSTERN_TWILIO_VERIFY_SID` | the Verify service SID (email and SMS channels enabled) |
 | `POSTERN_REGISTER_STARTS_PER_HOUR` | starts one IP may make an hour (default 10) |
 | `POSTERN_REGISTER_CONFIRMS_PER_HOUR` | confirms one IP may make an hour (default 30) |
-| `POSTERN_REGISTER_IP_HEADER` | the header the proxy sets to the caller's address, for the limits (nginx: `proxy_set_header X-Real-IP $remote_addr;` and `X-Real-IP`); unset counts the connection's own address, which behind nginx is every caller at once |
+| `POSTERN_REGISTER_SENDS_PER_HOUR` | starts all callers together may make an hour (default 30). Each start has Twilio send one SMS and one email, so this caps what SMS can cost in an hour, whatever the IPs |
+| `POSTERN_REGISTER_IP_HEADER` | the header the proxy sets to the caller's address, for the limits (nginx: `proxy_set_header X-Real-IP $remote_addr;` and `X-Real-IP`); unset counts the connection's own address, which behind nginx is every caller at once, and with Twilio set the backend logs one `warning: POSTERN_REGISTER_IP_HEADER is not set` line at start |
 | `POSTERN_SITE_ISSUER_KEY` | the site issuer's private key, a testnet WIF: it signs the Lampas licence each confirmed device gets, and revokes it when the device is removed. A key of its own, never the Governor's issuer (`POSTERN_ISSUER_KEY`, which the backend refuses here) |
+
+**Limits on what a start may cost.** Every start sends an SMS, and SMS costs
+money, so an IP's limit is not enough: callers on many IPs could have codes sent
+to one paid number again and again, or to many (SMS pumping). Besides the per-IP
+limits above, one email and one phone may each have codes sent at most 3 times an
+hour and 10 times a day (fixed, counted by the address's keyed fingerprint, never
+the address), and all callers together at most `POSTERN_REGISTER_SENDS_PER_HOUR`
+starts an hour. A start over any of them is `429` and nothing is sent; the first
+start the hourly cap refuses logs one line,
+`register: the send cap of <n> starts an hour (POSTERN_REGISTER_SENDS_PER_HOUR) is reached`,
+with no address, and the next start it allows lets it say so again. Twilio
+Verify's own fraud guard is welcome too but is not counted on.
 
 With any of the three Twilio names missing, registration is closed: start and
 confirm answer `503 {"error":"registration closed"}` and nothing else changes.
@@ -76,14 +89,17 @@ spent coin, and leaves out fresh change, for a while after a broadcast; a
 restart forgets, so an issue right after a restart may be refused until the
 change is in a block (the caller is told to try again).
 
-Start, confirm and person are open (no licence proof); removing a device is
-signed but needs no licence on the chain. CORS applies as for the rest.
+Start and confirm are open (no licence proof). Person and removing a device are
+signed (`Postern2`, the same proof as the licensed routes) but need no licence
+on the chain: person answers the mill's key (`POSTERN_MILL_KEY`) for any key, and
+a device of a person for that person's keys only, because it links a person's
+devices. CORS applies as for the rest.
 
 | Route | Answers |
 |---|---|
-| `POST /api/register/start` `{email, phone, deviceKey}` | `200 {registrationId}` after Twilio sends a code to the email and one to the phone; `400` bad input (`phone` in E.164, `deviceKey` a compressed public key); `429` over the hourly limit; `502` Twilio could not be asked; `503` closed |
+| `POST /api/register/start` `{email, phone, deviceKey}` | `200 {registrationId}` after Twilio sends a code to the email and one to the phone; `400` bad input (`phone` in E.164, `deviceKey` a compressed public key); `429` over the IP's hourly limit, the email's or the phone's (3 an hour, 10 a day) or the send cap; `502` Twilio could not be asked; `503` closed, or 10,000 registrations already waiting |
 | `POST /api/register/confirm` `{registrationId, emailCode, phoneCode}` | `200 {personId, devices:[{key,name,addedAt,licenceTxid}], issued:true}` once the site issuer has broadcast the device's licence (its origin is `licenceTxid:0`; a device that holds one is not issued another); `400 {error, triesLeft}` a wrong code (5 wrong confirms end the registration; a code already right need not be sent again); `409` `that email is already registered`, `This licence already has 3 devices. Remove one first.` or the device is another licence's; `410` the registration expired (10 minutes), was used or ended; `429`; `502` the licence could not be issued (nothing stored; the registration stays, so confirm again without codes); `503` closed, or licensed by hand |
-| `GET /api/register/person?key=<deviceKey>` | `200 {known:false}` or `200 {known:true, personId, keys:[...], dailyLimit}` (the mill's lookup; works with registration closed) |
+| `GET /api/register/person?key=<deviceKey>`, signed `Postern2` by the mill's key or by a device of that person | the mill: `200 {known:false}` or `200 {known:true, personId, keys:[...], dailyLimit}`; a device of the person `key` is on (itself too): `200 {known:true, personId, keys, dailyLimit}`; `401` no or a bad proof; `403` any other signer, the same for a registered key and an unknown one. Works with registration closed |
 | `DELETE /api/register/device` `{deviceKey, personId}`, signed `Postern2` by a device of that person (itself too) | `200 {personId, devices}` after the site issuer's revoke of that device's licence is broadcast and the device dropped, which frees its slot; `401` no or a bad proof; `403` the signer is not a device of that person; `404` the device is not theirs; `502` the revoke could not be sent (nothing changed); `503` licensed by hand |
 
 ## Saved prompts

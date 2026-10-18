@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -79,6 +80,30 @@ type Config struct {
 	// allowed to call the backend from a browser on another origin,
 	// lower-cased.
 	CORSOrigins []string
+
+	// TwilioAccountSID, TwilioAuthToken and TwilioVerifySID are
+	// POSTERN_TWILIO_ACCOUNT_SID, POSTERN_TWILIO_AUTH_TOKEN and
+	// POSTERN_TWILIO_VERIFY_SID: the Twilio Verify service self-registration
+	// sends its codes through. Registration is closed unless all three are set.
+	TwilioAccountSID string
+	TwilioAuthToken  string
+	TwilioVerifySID  string
+	// RegisterStartsPerHour and RegisterConfirmsPerHour are
+	// POSTERN_REGISTER_STARTS_PER_HOUR (default 10) and
+	// POSTERN_REGISTER_CONFIRMS_PER_HOUR (default 30): how many of each one IP
+	// may make an hour.
+	RegisterStartsPerHour   int
+	RegisterConfirmsPerHour int
+	// RegisterIPHeader is POSTERN_REGISTER_IP_HEADER: the header the proxy
+	// sets to the caller's address (nginx: X-Real-IP), which the per-IP limits
+	// read. Empty counts the connection's own address.
+	RegisterIPHeader string
+}
+
+// TwilioConfigured reports whether registration has everything it needs from
+// Twilio: all three of its names are set.
+func (c Config) TwilioConfigured() bool {
+	return c.TwilioAccountSID != "" && c.TwilioAuthToken != "" && c.TwilioVerifySID != ""
 }
 
 // Load reads Config from the environment via getenv (os.LookupEnv-style
@@ -101,6 +126,11 @@ func Load(getenv func(string) string) (Config, error) {
 		Collections:     splitList(orDefault(getenv("POSTERN_COLLECTIONS"), defaultCollections)),
 		OnGrist:         strings.TrimSpace(getenv("POSTERN_ON_GRIST")),
 		CORSOrigins:     splitList(getenv("POSTERN_CORS_ORIGINS")),
+
+		TwilioAccountSID: strings.TrimSpace(getenv("POSTERN_TWILIO_ACCOUNT_SID")),
+		TwilioAuthToken:  strings.TrimSpace(getenv("POSTERN_TWILIO_AUTH_TOKEN")),
+		TwilioVerifySID:  strings.TrimSpace(getenv("POSTERN_TWILIO_VERIFY_SID")),
+		RegisterIPHeader: strings.TrimSpace(getenv("POSTERN_REGISTER_IP_HEADER")),
 	}
 
 	if cfg.Anchor == "" {
@@ -155,7 +185,28 @@ func Load(getenv func(string) string) (Config, error) {
 		cfg.CORSOrigins[i] = strings.ToLower(origin)
 	}
 
+	if cfg.RegisterStartsPerHour, err = perHour("POSTERN_REGISTER_STARTS_PER_HOUR", getenv("POSTERN_REGISTER_STARTS_PER_HOUR"), 10); err != nil {
+		return Config{}, err
+	}
+	if cfg.RegisterConfirmsPerHour, err = perHour("POSTERN_REGISTER_CONFIRMS_PER_HOUR", getenv("POSTERN_REGISTER_CONFIRMS_PER_HOUR"), 30); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+// perHour parses a per-hour limit: a whole number of 1 or more, fallback if
+// unset.
+func perHour(name, value string, fallback int) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, nil
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("%s must be a whole number of 1 or more, not %q", name, value)
+	}
+	return n, nil
 }
 
 // appPairs parses POSTERN_APPS: "collection=app" pairs, comma-separated,

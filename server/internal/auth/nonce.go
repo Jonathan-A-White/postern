@@ -118,7 +118,14 @@ func NewNonceStore(ttl time.Duration, opts ...NonceStoreOption) *NonceStore {
 // runs. The boost needs the same key, so the mirror copies the file with the
 // rest of the data directory.
 func LoadOrCreateNonceKey(dataDir string) ([]byte, error) {
-	path := filepath.Join(dataDir, NonceKeyFile)
+	return LoadOrCreateKey(dataDir, NonceKeyFile)
+}
+
+// LoadOrCreateKey is LoadOrCreateNonceKey for any 32-byte key file under
+// dataDir: dataDir/name, created the first time with random bytes (hex, mode
+// 600), linked into place so two starts never read half a key.
+func LoadOrCreateKey(dataDir, name string) ([]byte, error) {
+	path := filepath.Join(dataDir, name)
 	key, err := readNonceKey(path)
 	if err == nil || !errors.Is(err, fs.ErrNotExist) {
 		return key, err
@@ -129,11 +136,11 @@ func LoadOrCreateNonceKey(dataDir string) ([]byte, error) {
 	}
 	key = make([]byte, nonceKeySize)
 	if _, err := rand.Read(key); err != nil {
-		return nil, fmt.Errorf("generating nonce key: %w", err)
+		return nil, fmt.Errorf("generating key for %s: %w", name, err)
 	}
 	// Written whole to a temporary file and linked into place, so a second
 	// start racing this one never reads half a key and never replaces it.
-	tmp, err := os.CreateTemp(dataDir, NonceKeyFile+".tmp*")
+	tmp, err := os.CreateTemp(dataDir, name+".tmp*")
 	if err != nil {
 		return nil, fmt.Errorf("writing %s: %w", path, err)
 	}

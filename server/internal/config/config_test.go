@@ -371,3 +371,54 @@ func TestParseEnvFileNamesTheLineNotItsContent(t *testing.T) {
 		t.Fatalf("err = %v, want one naming line 2 and not the line's text", err)
 	}
 }
+
+func registerEnv(extra map[string]string) func(string) string {
+	env := map[string]string{"POSTERN_ANCHOR": "mAnchorAddress"}
+	for k, v := range extra {
+		env[k] = v
+	}
+	return func(key string) string { return env[key] }
+}
+
+func TestLoadRegistrationDefaultsToClosedWithTheStatedLimits(t *testing.T) {
+	cfg, err := Load(registerEnv(nil))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.TwilioConfigured() || cfg.RegisterStartsPerHour != 10 || cfg.RegisterConfirmsPerHour != 30 || cfg.RegisterIPHeader != "" {
+		t.Fatalf("defaults = %+v", cfg)
+	}
+}
+
+func TestLoadRegistrationReadsTwilioAndTheKnobs(t *testing.T) {
+	cfg, err := Load(registerEnv(map[string]string{
+		"POSTERN_TWILIO_ACCOUNT_SID": " ACabc ", "POSTERN_TWILIO_AUTH_TOKEN": "tok", "POSTERN_TWILIO_VERIFY_SID": "VAxyz",
+		"POSTERN_REGISTER_STARTS_PER_HOUR": "5", "POSTERN_REGISTER_CONFIRMS_PER_HOUR": "7", "POSTERN_REGISTER_IP_HEADER": "X-Real-IP",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.TwilioConfigured() || cfg.TwilioAccountSID != "ACabc" || cfg.TwilioAuthToken != "tok" || cfg.TwilioVerifySID != "VAxyz" {
+		t.Fatalf("twilio = %+v", cfg)
+	}
+	if cfg.RegisterStartsPerHour != 5 || cfg.RegisterConfirmsPerHour != 7 || cfg.RegisterIPHeader != "X-Real-IP" {
+		t.Fatalf("knobs = %+v", cfg)
+	}
+}
+
+func TestLoadRegistrationIsClosedUnlessAllThreeTwilioNamesAreSet(t *testing.T) {
+	cfg, err := Load(registerEnv(map[string]string{"POSTERN_TWILIO_ACCOUNT_SID": "ACabc", "POSTERN_TWILIO_AUTH_TOKEN": "tok"}))
+	if err != nil || cfg.TwilioConfigured() {
+		t.Fatalf("two of three: configured=%v err=%v", cfg.TwilioConfigured(), err)
+	}
+}
+
+func TestLoadRegistrationRejectsBadLimits(t *testing.T) {
+	for _, name := range []string{"POSTERN_REGISTER_STARTS_PER_HOUR", "POSTERN_REGISTER_CONFIRMS_PER_HOUR"} {
+		for _, bad := range []string{"0", "-1", "ten"} {
+			if _, err := Load(registerEnv(map[string]string{name: bad})); err == nil || !strings.Contains(err.Error(), name) {
+				t.Errorf("%s=%q: err = %v, want one naming it", name, bad, err)
+			}
+		}
+	}
+}

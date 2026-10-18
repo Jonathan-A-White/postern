@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.26
+_2026-10-18_
+- Fixed: Tapping 'Update ready, tap to reload' no longer gets stuck on 'Updating…'; if the new version is slow to take over, the app reloads on its own after a few seconds.
+
 ## 0.8.19
 _2026-10-18_
 - New: A To do text to a person with no number on file now asks for the number once, right on the card, and from then on opens Google Voice to them with the message ready.

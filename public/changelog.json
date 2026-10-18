@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.26",
+    "date": "2026-10-18",
+    "story": "mw-he81zu",
+    "kind": "fixed",
+    "text": "Tapping 'Update ready, tap to reload' no longer gets stuck on 'Updating…'; if the new version is slow to take over, the app reloads on its own after a few seconds."
+  },
+  {
     "version": "0.8.19",
     "date": "2026-10-18",
     "story": "mw-ev7oyy.35",

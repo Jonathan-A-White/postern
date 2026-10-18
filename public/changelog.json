@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.18",
+    "date": "2026-10-18",
+    "story": "mw-ev7oyy.40",
+    "kind": "fixed",
+    "text": "A Kindle link (or a phone, text or email link) in a post now opens the app it names instead of an empty page."
+  },
+  {
     "version": "0.8.17",
     "date": "2026-10-18",
     "story": "mw-ev7oyy.43",

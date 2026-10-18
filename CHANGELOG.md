@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.18
+_2026-10-18_
+- Fixed: A Kindle link (or a phone, text or email link) in a post now opens the app it names instead of an empty page.
+
 ## 0.8.17
 _2026-10-18_
 - Fixed: Needs you opens again when hundreds of cards are waiting, instead of freezing the app.

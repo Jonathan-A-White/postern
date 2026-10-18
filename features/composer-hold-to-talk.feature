@@ -169,18 +169,17 @@ Feature: The composer's mic is the Talk line's hold-to-talk (mw-q6n8m0.3)
     Then the recogniser was started 3 times in the one hold
     And one message is delivered with the words "first the build then the tests then the landing"
 
-  Scenario: AC-17b: on a phone that can record, a recogniser that ends by itself mid-hold is not started again, so no start tone rings; the rest of the hold is recorded and the words before go (mw-q6n8m0.16)
+  Scenario: AC-17b: on a phone that can record, a recogniser that ends by itself mid-hold is started again and the rest of the hold is not recorded, so the words after the pause join the message (mw-gq6.570)
     Given the composer is open
     When he taps the mic beside Send
     And he presses and holds the bar
     And the recogniser hears "first the build"
-    And a minute and a half passes and the recogniser ends by itself, his finger still on the bar
-    Then the recogniser has been started once in the hold
-    And a recorder has opened the microphone for the rest of the hold
-    And the bar reads "Release to send"
+    And a minute and a half passes and the recogniser ends by itself
+    And the recogniser hears "then the tests" after it starts again
+    Then only the hold's own voice note is being recorded, not the rest of the hold
     When he lets go on the bar
-    Then the recogniser was started 1 times in the one hold
-    And one message is delivered with the words "first the build"
+    Then the recogniser was started 2 times in the one hold
+    And one message is delivered with the words "first the build then the tests"
 
   Scenario: AC-18: a language-not-supported that every route fails with says what was tried, and the bar says Try again (mw-hgtlf5.2)
     Given the composer is open

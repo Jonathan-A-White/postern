@@ -2,8 +2,8 @@
 // line and the real hold (voice-kit/composer) on voice-kit's honest microphone (voice-kit/testing/mic), whose
 // recogniser, getUserMedia and MediaRecorder behave like Android Chrome's, on a clock the test moves. The recogniser
 // ends by itself 1.5 s after the clip, as Android's does on a pause. Only the delivery of a turn is a double.
-// jsdom has no AudioContext, so the rest of the hold cannot be played back into a recogniser here: the words after
-// the pause are the phone's to check (the story's HOW TO CHECK IT); this pins the bell, the recording and the turn.
+// (mw-gq6.570 replaced the scenario of mw-q6n8m0.16, which pinned the rest of a hold being recorded: that recording came back
+// empty on Android, so the words after a pause were lost.)
 import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, expect, vi, type MockInstance } from 'vitest';
@@ -81,10 +81,11 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     window.history.replaceState(null, '', '/?v=line');
   });
 
-  Scenario('mw-q6n8m0.16 AC-1: a pause that ends the recogniser mid-hold does not start it again; the rest of the hold is recorded, and the words before the pause go as the turn', ({ Given, And, When, Then }) => {
+  Scenario('mw-gq6.570 AC-1: a 3 second pause mid-sentence ends the recogniser; it is started again, and the words before and after the pause go as one turn', ({ Given, And, When, Then }) => {
     Given("the phone's microphone is voice-kit's honest one, hearing {string}", (_c, words: string) => {
       clock = manualClock();
-      mic = installMic(window, { clip: clips.english, clock });
+      // the honest clip plays whatever words the test names: its audio is only the length of the clip
+      mic = installMic(window, { clip: { ...clips.english, transcript: words }, clock });
       expect(mic.clip.transcript).toBe(words);
       // every start() of a recogniser is the start tone on Android
       starts = vi.spyOn(mic.SpeechRecognition.prototype, 'start');
@@ -101,44 +102,44 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the live transcript reads {string}', async (_c, words: string) => {
       await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
     });
-    When('he pauses for {int} seconds and the recogniser ends by itself', async (_c, seconds: number) => {
+    When('he pauses for {int} seconds and then says {string}', async (_c, seconds: number, words: string) => {
       expect(seconds * 1000).toBeGreaterThan(mic!.options.silenceMs);
-      // the recogniser ends silenceMs after the clip; the recording's getUserMedia answers grantMs later, inside the pause
-      await advance(seconds * 1000);
+      // what the microphone hears from here on is the second half
+      mic!.options.clip = { ...clips.english, transcript: words };
+      // the recogniser ends silenceMs after the first half; the second is heard by the one that listens on, within the pause and after it
+      await advance(seconds * 1000 + mic!.options.openMs + mic!.clip.durationMs);
     });
-    Then('the recogniser has been started once in the hold, so no start tone rang mid-hold', () => {
-      expect(starts).toHaveBeenCalledTimes(1);
-      expect(mic!.recognitions).toHaveLength(1);
+    Then('the recogniser was started again, so the hold went on listening', () => {
+      expect(starts!.mock.calls.length).toBeGreaterThan(1);
     });
-    And('the rest of the hold is being recorded from the microphone', async () => {
-      await waitFor(() => expect(mic!.recorders).toHaveLength(1));
-      expect(mic!.recorders[0].state).toBe('recording');
-      expect(mic!.recorders[0].stream.active).toBe(true);
+    And('no recording of the rest of the hold was started', () => {
+      expect(mic!.recorders).toHaveLength(0);
+    });
+    And('the live transcript reads {string}', async (_c, words: string) => {
+      await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
     });
     And('the talk button reads {string}', async (_c, name: string) => {
       expect(await talkButton(name)).toBeInTheDocument();
     });
-    When('he speaks on for {int} seconds and lets go of the talk button', async (_c, seconds: number) => {
-      await advance(seconds * 1000);
+    And('no turn has been sent', () => {
+      expect(sendTurn).not.toHaveBeenCalled();
+    });
+    When('he lets go of the talk button', async () => {
       fireEvent.pointerUp(await talkButton('Release to send'));
-      // the recorder stops on the microphone's clock: move it on until the turn has gone
+      // the recogniser's last words arrive on the microphone's clock: move it on until the turn has gone
       await waitFor(async () => {
-        await advance(0);
+        await advance(100);
         expect(sendTurn).toHaveBeenCalledTimes(1);
       });
     });
-    Then('one turn is sent, starting with {string}', (_c, words: string) => {
+    Then('one turn is sent with the words {string}', (_c, words: string) => {
       expect(sendTurn).toHaveBeenCalledTimes(1);
       const turn = sendTurn.mock.calls[0][0] as TalkTurn;
       expect(turn).toMatchObject({ role: 'turn', talk: { turn: 1 } });
-      expect(turn.text.startsWith(words)).toBe(true);
+      expect(turn.text).toBe(words);
     });
-    And('the recording of the rest has stopped', () => {
-      expect(mic!.recorders[0].state).toBe('inactive');
-      expect(mic!.recorders[0].stream.active).toBe(false);
-    });
-    And('the recogniser was still started only once', () => {
-      expect(starts).toHaveBeenCalledTimes(1);
+    And('the screen does not say that words after the pause could not be made out', () => {
+      expect(screen.queryByText(/could not be made out/)).not.toBeInTheDocument();
     });
   });
 });

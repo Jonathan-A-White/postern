@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.14",
+    "date": "2026-10-17",
+    "story": "mw-gq6.570",
+    "kind": "fixed",
+    "text": "Talk and the message mic now keep listening through a pause, so what you say after it is in the same message instead of lost."
+  },
+  {
     "version": "0.8.13",
     "date": "2026-10-17",
     "story": "mw-ev7oyy.42",

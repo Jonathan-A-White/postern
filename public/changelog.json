@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.19",
+    "date": "2026-10-18",
+    "story": "mw-ev7oyy.35",
+    "kind": "new",
+    "text": "A To do text to a person with no number on file now asks for the number once, right on the card, and from then on opens Google Voice to them with the message ready."
+  },
+  {
     "version": "0.8.18",
     "date": "2026-10-18",
     "story": "mw-ev7oyy.40",

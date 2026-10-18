@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.19
+_2026-10-18_
+- New: A To do text to a person with no number on file now asks for the number once, right on the card, and from then on opens Google Voice to them with the message ready.
+
 ## 0.8.18
 _2026-10-18_
 - Fixed: A Kindle link (or a phone, text or email link) in a post now opens the app it names instead of an empty page.

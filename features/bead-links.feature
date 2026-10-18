@@ -17,3 +17,9 @@ Feature: Every bead id in a message or card is a link (mw-tbx1n.11)
     When the general thread is opened and Read aloud is tapped on the message
     Then the phone speaks aloud "Landed: A decision card answered in words never goes dead"
     And the message still shows link "mw-gq6.222"
+
+  Scenario: mw-ev7oyy.40: a Kindle link in a Talk message is handed to the phone, not routed to the Thread screen
+    Given the Mayor's message in the general thread is "Read it: [Kindle](kindle://book?action=open&asin=B0C74TJ712)"
+    When the general thread is opened and the link "Kindle" is tapped
+    Then the link "Kindle" goes to "kindle://book?action=open&asin=B0C74TJ712" in this tab
+    And the tap was left to the phone and "That post is not on this phone" is not shown

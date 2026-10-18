@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.16",
+    "date": "2026-10-18",
+    "story": "mw-ev7oyy.28",
+    "kind": "fixed",
+    "text": "Text buttons with no phone number no longer send him to the Play Store; they copy the draft and open Google Voice, and with a number the draft is also handed to Voice as its message."
+  },
+  {
     "version": "0.8.14",
     "date": "2026-10-17",
     "story": "mw-gq6.570",

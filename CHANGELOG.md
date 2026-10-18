@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.16
+_2026-10-18_
+- Fixed: Text buttons with no phone number no longer send him to the Play Store; they copy the draft and open Google Voice, and with a number the draft is also handed to Voice as its message.
+
 ## 0.8.14
 _2026-10-17_
 - Fixed: Talk and the message mic now keep listening through a pause, so what you say after it is in the same message instead of lost.

@@ -12,6 +12,7 @@ import { forgetTaps } from '../../src/cockpit/oneTap';
 import { db } from '../../src/data/db';
 import type { ConversationItem } from '../../src/model/conversation';
 import type { Need } from '../../src/model/view';
+import { freezeClock, thawClock } from '../../tests/support/freeze-clock';
 
 const sendAnswer = vi.fn<(bead: string, answer: string) => Promise<{ txid: string; channel: string }>>();
 vi.mock('../../src/cockpit/send', async (importOriginal) => ({
@@ -46,6 +47,7 @@ function need(options: string[], sinceMinutesAgo: number): Need {
 }
 
 async function fresh(): Promise<void> {
+  freezeClock();
   cleanup();
   forgetTaps();
   sendAnswer.mockReset();
@@ -56,6 +58,7 @@ async function fresh(): Promise<void> {
 }
 
 afterAll(() => {
+  thawClock();
   cleanup();
 });
 
@@ -63,8 +66,9 @@ const options = () => within(screen.getByTestId('conversation')).getAllByRole('b
 
 const feature = await loadFeature('features/answered-once.feature');
 
-describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
+describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) => {
   BeforeEachScenario(fresh);
+  AfterEachScenario(thawClock);
 
   Scenario('mw-f758y.32: a question in the conversation answers once and a second tap sends nothing', ({ Given, When, And, Then }) => {
     Given('a question in the conversation with the options {string} and {string}', async (_c, a: string, b: string) => {
@@ -164,6 +168,18 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the card says {string} and the time as HH:MM', async (_c, line: string) => {
       await waitFor(() => expect(screen.getByTestId('need-card').textContent).toMatch(new RegExp(`${line} ${HH_MM.source}`)));
+    });
+  });
+
+  Scenario('mw-ev7oyy.44: an answer given on an earlier day reads with its weekday', ({ Given, When, Then }) => {
+    Given('a question in the conversation that he answered {string} the day before', async (_c, answer: string) => {
+      items = [asked('q1', ['Yes', 'No'], 24 * 60 + 35), answeredItem(answer, 24 * 60 + 30)];
+    });
+    When('the conversation is shown', async () => {
+      render(<Conversation items={items} />);
+    });
+    Then('the conversation card says {string} and the weekday and the time', async (_c, line: string) => {
+      expect(screen.getByRole('status').textContent).toMatch(new RegExp(`${line} Wed \\d{2}:\\d{2}`));
     });
   });
 });

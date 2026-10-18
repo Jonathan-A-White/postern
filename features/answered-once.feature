@@ -31,3 +31,8 @@ Feature: A question is answered once, in the conversation and on a card, and it 
     When the card is shown
     Then every option and "Answer in words" is disabled
     And the card says "Answered: No" and the time as HH:MM
+
+  Scenario: mw-ev7oyy.44: an answer given on an earlier day reads with its weekday
+    Given a question in the conversation that he answered "Yes" the day before
+    When the conversation is shown
+    Then the conversation card says "Answered: Yes" and the weekday and the time

@@ -94,6 +94,10 @@ type Config struct {
 	// may make an hour.
 	RegisterStartsPerHour   int
 	RegisterConfirmsPerHour int
+	// RegisterSendsPerHour is POSTERN_REGISTER_SENDS_PER_HOUR (default 30):
+	// how many starts all callers together may make an hour, each of which
+	// has Twilio send one SMS and one email, so it caps what SMS can cost.
+	RegisterSendsPerHour int
 	// RegisterIPHeader is POSTERN_REGISTER_IP_HEADER: the header the proxy
 	// sets to the caller's address (nginx: X-Real-IP), which the per-IP limits
 	// read. Empty counts the connection's own address.
@@ -209,6 +213,9 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	if cfg.RegisterConfirmsPerHour, err = perHour("POSTERN_REGISTER_CONFIRMS_PER_HOUR", getenv("POSTERN_REGISTER_CONFIRMS_PER_HOUR"), 30); err != nil {
+		return Config{}, err
+	}
+	if cfg.RegisterSendsPerHour, err = perHour("POSTERN_REGISTER_SENDS_PER_HOUR", getenv("POSTERN_REGISTER_SENDS_PER_HOUR"), 30); err != nil {
 		return Config{}, err
 	}
 

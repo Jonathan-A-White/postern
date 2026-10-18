@@ -261,12 +261,18 @@ func newSiteIssuer(cfg config.Config, client chain.Chain) (*register.Issuer, err
 // confirm answer 503) and the rest of the backend is unaffected. siteIssuer
 // licenses the devices it adds; without one it is licensed by hand.
 func newRegistration(cfg config.Config, siteIssuer *register.Issuer) (*register.Service, error) {
-	opts := []register.Option{register.WithLimits(cfg.RegisterStartsPerHour, cfg.RegisterConfirmsPerHour)}
+	opts := []register.Option{
+		register.WithLimits(cfg.RegisterStartsPerHour, cfg.RegisterConfirmsPerHour),
+		register.WithSendLimits(0, 0, cfg.RegisterSendsPerHour),
+	}
 	if siteIssuer != nil {
 		opts = append(opts, register.WithIssuer(siteIssuer))
 	}
 	if cfg.TwilioConfigured() {
 		opts = append(opts, register.WithVerifier(register.NewTwilio(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioVerifySID)))
+		if cfg.RegisterIPHeader == "" {
+			log.Printf("warning: POSTERN_REGISTER_IP_HEADER is not set, so registration's per-IP limits count the connection's own address, which behind nginx is every caller at once: set it to the header nginx sets to the caller's address (X-Real-IP)")
+		}
 	} else {
 		log.Printf("registration closed: set POSTERN_TWILIO_ACCOUNT_SID, POSTERN_TWILIO_AUTH_TOKEN and POSTERN_TWILIO_VERIFY_SID to open it")
 	}

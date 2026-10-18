@@ -1079,8 +1079,9 @@ func TestAppRegistrationIsClosedWithoutTwilioAndOpenWithIt(t *testing.T) {
 			t.Fatal(err)
 		}
 		person.Body.Close()
-		if person.StatusCode != http.StatusOK {
-			t.Fatalf("person lookup = %d, want 200 either way", person.StatusCode)
+		// Wired either way, and signed since mw-cvwm1u.9: unsigned is 401.
+		if person.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("unsigned person lookup = %d, want 401 either way", person.StatusCode)
 		}
 		return resp.StatusCode
 	}

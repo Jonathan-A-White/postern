@@ -290,7 +290,9 @@ func newIssuingService(t *testing.T, key *btcec.PrivateKey, c *fakeChain) (*Serv
 		t.Fatalf("NewIssuer: %v", err)
 	}
 	dir := t.TempDir()
-	s, err := Open(dir, WithVerifier(&fakeVerifier{}), WithIssuer(issuer))
+	// These tests join one phone more often than an hour's send limit lets
+	// a phone have codes: they are about issuing, not the limit.
+	s, err := Open(dir, WithVerifier(&fakeVerifier{}), WithIssuer(issuer), WithSendLimits(10, 10, 0))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

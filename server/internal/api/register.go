@@ -17,9 +17,10 @@ import (
 // hundred bytes.
 const maxRegisterBodyBytes = 1 << 12
 
-// WithRegistration sets the service behind POST /api/register/start,
-// POST /api/register/confirm and GET /api/register/person, which are open
-// (no licence: the caller has none yet). ipHeader names the header the
+// WithRegistration sets the service behind POST /api/register/start and
+// POST /api/register/confirm, which are open (no licence: the caller has none
+// yet), and GET /api/register/person and DELETE /api/register/device, which
+// are signed but need no licence on the chain. ipHeader names the header the
 // proxy in front sets to the caller's address (nginx: X-Real-IP, POSTERN_REGISTER_IP_HEADER),
 // for the per-IP limits; "" uses the connection's own address, which behind
 // a proxy is every caller at once. Without it start and confirm answer 503.
@@ -100,23 +101,47 @@ func handleRegisterConfirm(svc *register.Service, ipHeader string) http.HandlerF
 }
 
 // handleRegisterPerson answers whether a key belongs to a registered person
-// and, if so, the keys that share its budget: the mill's lookup. It works
-// with registration closed, since people already registered stay known.
-func handleRegisterPerson(svc *register.Service) http.HandlerFunc {
+// and, if so, the keys that share its budget. The answer links a person's
+// devices, so it is signed ('Postern2'): the mill's key (POSTERN_MILL_KEY)
+// may ask after any key, the mill's lookup; one of the person's own devices
+// may ask after its person's keys (Lampas's My devices). Anyone else is 403,
+// the same for a registered key as for an unknown one, and an unsigned
+// request 401. It works with registration closed, since people already
+// registered stay known.
+func handleRegisterPerson(svc *register.Service, nonces *auth.NonceStore, millKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		signer, ok := verifyProof(w, r, nonces)
+		if !ok {
+			return
+		}
+		key := r.URL.Query().Get("key")
+		if millKey != "" && signer == millKey {
+			if svc != nil {
+				if person, ok := svc.Person(key); ok {
+					writePerson(w, person)
+					return
+				}
+			}
+			writeJSON(w, http.StatusOK, struct {
+				Known bool `json:"known"`
+			}{})
+			return
+		}
 		if svc != nil {
-			if person, ok := svc.Person(r.URL.Query().Get("key")); ok {
-				writeJSON(w, http.StatusOK, struct {
-					Known bool `json:"known"`
-					register.PersonView
-				}{Known: true, PersonView: person})
+			if person, err := svc.PersonForDevice(signer, key); err == nil {
+				writePerson(w, person)
 				return
 			}
 		}
-		writeJSON(w, http.StatusOK, struct {
-			Known bool `json:"known"`
-		}{})
+		refuse(w, r, http.StatusForbidden, reasonForbidden, "only the mill, or a device of that person, may ask after a key", signer)
 	}
+}
+
+func writePerson(w http.ResponseWriter, person register.PersonView) {
+	writeJSON(w, http.StatusOK, struct {
+		Known bool `json:"known"`
+		register.PersonView
+	}{Known: true, PersonView: person})
 }
 
 // handleRegisterDevice is DELETE /api/register/device {deviceKey, personId}:
@@ -182,6 +207,8 @@ func writeRegisterError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, register.ErrUpstream), errors.Is(err, register.ErrIssue), errors.Is(err, register.ErrRevoke):
 		writeError(w, http.StatusBadGateway, err.Error())
+	case errors.Is(err, register.ErrTooMany), errors.Is(err, register.ErrSendCap):
+		writeError(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, register.ErrNotYours):
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, register.ErrNoDevice):

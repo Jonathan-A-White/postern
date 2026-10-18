@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/register"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
@@ -97,7 +98,7 @@ func TestRegisterStartThenConfirmAnswersThePerson(t *testing.T) {
 }
 
 func TestRegisterRefusalsAreConflicts(t *testing.T) {
-	url, _ := newRegistrationServer(t, register.WithVerifier(regVerifier{}), register.WithIssuer(&regIssuer{}))
+	url, clock := newRegistrationServer(t, register.WithVerifier(regVerifier{}), register.WithIssuer(&regIssuer{}))
 	confirm := func(email, phone string, key byte) (int, map[string]any) {
 		_, started := regPost(t, url, "/api/register/start", "", map[string]string{"email": email, "phone": phone, "deviceKey": regKey(key)})
 		id, _ := started["registrationId"].(string)
@@ -112,6 +113,7 @@ func TestRegisterRefusalsAreConflicts(t *testing.T) {
 	}
 	confirm("b@example.com", regPhone, 2)
 	confirm("c@example.com", regPhone, 3)
+	clock.now = clock.now.Add(time.Hour) // a phone has codes sent at most 3 times an hour (mw-cvwm1u.9)
 	status, body = confirm("d@example.com", regPhone, 4)
 	if status != http.StatusConflict || body["error"] != "This licence already has 3 devices. Remove one first." {
 		t.Fatalf("fourth = %d %v", status, body)
@@ -149,8 +151,10 @@ func TestRegisterBadInputIs400(t *testing.T) {
 
 func TestRegisterEleventhStartFromOneIPInAnHourIs429(t *testing.T) {
 	url, clock := newRegistrationServer(t, register.WithVerifier(regVerifier{}), register.WithIssuer(&regIssuer{}))
+	n := 0
 	start := func(ip string) int {
-		status, _ := regPost(t, url, "/api/register/start", ip, map[string]string{"email": regEmail, "phone": regPhone, "deviceKey": regKey(0)})
+		n++ // each start to a destination of its own: a destination has its own limit (mw-cvwm1u.9)
+		status, _ := regPost(t, url, "/api/register/start", ip, map[string]string{"email": fmt.Sprintf("s%d@example.com", n), "phone": fmt.Sprintf("+1415555%04d", 100+n), "deviceKey": regKey(0)})
 		return status
 	}
 	for i := 1; i <= 10; i++ {
@@ -209,9 +213,15 @@ func TestRegisterWithoutTwilioIsClosedAndTheRestOfTheBackendIsNot(t *testing.T) 
 }
 
 func TestRegisterPersonLookup(t *testing.T) {
-	url, _ := newRegistrationServer(t, register.WithVerifier(regVerifier{}), register.WithIssuer(&regIssuer{}))
+	mill, millPub := newKey(t)
+	svc, err := register.Open(t.TempDir(), register.WithVerifier(regVerifier{}), register.WithIssuer(&regIssuer{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, _ := newServerWithOptions(t, WithRegistration(svc, "X-Real-IP"), WithGrist(millPub, nil))
 	get := func(key string) (int, map[string]any) {
-		req, _ := http.NewRequest(http.MethodGet, url+"/api/register/person?key="+key, nil)
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/register/person?key="+key, nil)
+		signRequest(t, server, mill, req)
 		return regDo(t, req)
 	}
 	status, body := get(regKey(0))
@@ -219,8 +229,8 @@ func TestRegisterPersonLookup(t *testing.T) {
 		t.Fatalf("stranger = %d %v, want only known:false", status, body)
 	}
 	for i, email := range []string{"a@example.com", "b@example.com"} {
-		_, started := regPost(t, url, "/api/register/start", "", map[string]string{"email": email, "phone": regPhone, "deviceKey": regKey(byte(i))})
-		regPost(t, url, "/api/register/confirm", "", map[string]string{"registrationId": started["registrationId"].(string), "emailCode": "111111", "phoneCode": "222222"})
+		_, started := regPost(t, server.URL, "/api/register/start", "", map[string]string{"email": email, "phone": regPhone, "deviceKey": regKey(byte(i))})
+		regPost(t, server.URL, "/api/register/confirm", "", map[string]string{"registrationId": started["registrationId"].(string), "emailCode": "111111", "phoneCode": "222222"})
 	}
 	status, body = get(regKey(1))
 	keys, _ := body["keys"].([]any)
@@ -298,7 +308,7 @@ func TestRegisterWithoutTheSiteIssuerKeyIsLicensedByHand(t *testing.T) {
 	if status != http.StatusServiceUnavailable || body["error"] != "licensed by hand: ask the Governor" {
 		t.Fatalf("confirm = %d %v, want 503 licensed by hand", status, body)
 	}
-	for _, path := range []string{"/healthz", "/api/challenge", "/api/register/person?key=" + regKey(0)} {
+	for _, path := range []string{"/healthz", "/api/challenge"} {
 		resp, err := http.Get(url + path)
 		if err != nil {
 			t.Fatal(err)
@@ -314,7 +324,7 @@ func TestRegisterWithoutTheSiteIssuerKeyIsLicensedByHand(t *testing.T) {
 // same person, revokes the other's licence and frees its slot.
 func TestRegisterDeleteDeviceRevokesAndFreesTheSlot(t *testing.T) {
 	issuer := &regIssuer{}
-	svc, err := register.Open(t.TempDir(), register.WithVerifier(regVerifier{}), register.WithIssuer(issuer))
+	svc, err := register.Open(t.TempDir(), register.WithVerifier(regVerifier{}), register.WithIssuer(issuer), register.WithSendLimits(5, 10, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,5 +383,196 @@ func TestRegisterDeleteDeviceRevokesAndFreesTheSlot(t *testing.T) {
 	}
 	if status, body := join(3); status != http.StatusOK {
 		t.Fatalf("fourth after a removal = %d %v, want 200", status, body)
+	}
+}
+
+// countingVerifier is regVerifier that remembers each "channel:to" it was
+// asked to send a code to.
+type countingVerifier struct {
+	regVerifier
+	mu   sync.Mutex
+	sent []string
+}
+
+func (c *countingVerifier) Start(_ context.Context, channel register.Channel, to string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sent = append(c.sent, string(channel)+":"+to)
+	return nil
+}
+
+func (c *countingVerifier) sentTo(dest string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, s := range c.sent {
+		if s == dest {
+			n++
+		}
+	}
+	return n
+}
+
+// AC1 (mw-cvwm1u.9): rotating IPs cannot pump SMS. The 4th start in an hour
+// to one phone, or to one email, from 4 different IPs is 429 and Twilio sends
+// 3; a new destination still starts; the global send cap refuses the next
+// start with 429; no log line holds an address.
+func TestRegisterStartsAreLimitedPerDestinationAndInAll(t *testing.T) {
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	v := &countingVerifier{}
+	url, _ := newRegistrationServer(t, register.WithVerifier(v), register.WithIssuer(&regIssuer{}))
+	start := func(ip, email, phone string) (int, map[string]any) {
+		return regPost(t, url, "/api/register/start", ip, map[string]string{"email": email, "phone": phone, "deviceKey": regKey(0)})
+	}
+	for i := 1; i <= 3; i++ {
+		if status, body := start(fmt.Sprintf("198.51.100.%d", i), fmt.Sprintf("p%d@example.com", i), regPhone); status != http.StatusOK {
+			t.Fatalf("start %d to the phone = %d %v", i, status, body)
+		}
+	}
+	if status, body := start("198.51.100.4", "p4@example.com", regPhone); status != http.StatusTooManyRequests || body["error"] == "" {
+		t.Fatalf("4th start to the phone from a 4th IP = %d %v, want 429", status, body)
+	}
+	if n := v.sentTo("sms:" + regPhone); n != 3 {
+		t.Fatalf("Twilio sent %d codes to the phone, want 3", n)
+	}
+	for i := 1; i <= 3; i++ {
+		if status, body := start(fmt.Sprintf("203.0.113.%d", i), regEmail, fmt.Sprintf("+1415555%04d", 600+i)); status != http.StatusOK {
+			t.Fatalf("start %d to the email = %d %v", i, status, body)
+		}
+	}
+	if status, _ := start("203.0.113.4", regEmail, "+14155550604"); status != http.StatusTooManyRequests {
+		t.Fatalf("4th start to the email from a 4th IP = %d, want 429", status)
+	}
+	if n := v.sentTo("email:" + regEmail); n != 3 {
+		t.Fatalf("Twilio sent %d codes to the email, want 3", n)
+	}
+	if status, body := start("192.0.2.1", "new@example.com", "+14155550700"); status != http.StatusOK {
+		t.Fatalf("a new destination = %d %v, want 200", status, body)
+	}
+
+	// The global cap: a knob, here 2 an hour.
+	capped := &countingVerifier{}
+	capURL, _ := newRegistrationServer(t, register.WithVerifier(capped), register.WithIssuer(&regIssuer{}), register.WithSendLimits(0, 0, 2))
+	for i := 1; i <= 3; i++ {
+		status, body := regPost(t, capURL, "/api/register/start", fmt.Sprintf("192.0.2.%d", i), map[string]string{"email": fmt.Sprintf("c%d@example.com", i), "phone": fmt.Sprintf("+1415555%04d", 800+i), "deviceKey": regKey(0)})
+		want := http.StatusOK
+		if i == 3 {
+			want = http.StatusTooManyRequests
+		}
+		if status != want {
+			t.Fatalf("start %d under a cap of 2 = %d %v, want %d", i, status, body, want)
+		}
+	}
+	if len(capped.sent) != 4 {
+		t.Fatalf("Twilio sent %v under a cap of 2 starts, want 4 codes", capped.sent)
+	}
+	for _, secret := range []string{"example.com", "4155550"} {
+		if strings.Contains(logged.String(), secret) {
+			t.Errorf("the log holds %q: %s", secret, logged.String())
+		}
+	}
+}
+
+// AC2 (mw-cvwm1u.9): GET /api/register/person links a person's devices, so
+// it answers only the mill's key, or one of that person's own device keys for
+// that person; anyone else learns nothing, the same for a registered key as
+// for an unknown one.
+func TestRegisterPersonAnswersOnlyTheMillOrThePersonsOwnDevices(t *testing.T) {
+	mill, millPub := newKey(t)
+	svc, err := register.Open(t.TempDir(), register.WithVerifier(regVerifier{}), register.WithIssuer(&regIssuer{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, _ := newServerWithOptions(t, WithRegistration(svc, "X-Real-IP"), WithGrist(millPub, nil))
+	a0, a0Pub := newKey(t)
+	_, a1Pub := newKey(t)
+	b0, b0Pub := newKey(t)
+	stranger, _ := newKey(t)
+	_, unknownPub := newKey(t)
+	for _, join := range []struct{ email, phone, key string }{
+		{"a0@example.com", regPhone, a0Pub},
+		{"a1@example.com", regPhone, a1Pub},
+		{"b0@example.com", "+14155550999", b0Pub},
+	} {
+		_, started := regPost(t, server.URL, "/api/register/start", "", map[string]string{"email": join.email, "phone": join.phone, "deviceKey": join.key})
+		if status, body := regPost(t, server.URL, "/api/register/confirm", "", map[string]string{"registrationId": started["registrationId"].(string), "emailCode": "111111", "phoneCode": "222222"}); status != http.StatusOK {
+			t.Fatalf("join %s = %d %v", join.email, status, body)
+		}
+	}
+	get := func(signer *btcec.PrivateKey, key string) (int, string) {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/register/person?key="+key, nil)
+		if signer != nil {
+			signRequest(t, server, signer, req)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		data, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(data)
+	}
+
+	// Unsigned: 401, the same for a registered key and an unknown one.
+	regStatus, regBody := get(nil, a0Pub)
+	unkStatus, unkBody := get(nil, unknownPub)
+	if regStatus != http.StatusUnauthorized || unkStatus != regStatus || unkBody != regBody || strings.Contains(regBody, "personId") {
+		t.Fatalf("unsigned: registered = %d %s, unknown = %d %s; want the same 401", regStatus, regBody, unkStatus, unkBody)
+	}
+	// Signed by a key that is no one's device: 403, the same for both.
+	regStatus, regBody = get(stranger, a0Pub)
+	unkStatus, unkBody = get(stranger, unknownPub)
+	if regStatus != http.StatusForbidden || unkStatus != regStatus || unkBody != regBody || strings.Contains(regBody, "personId") {
+		t.Fatalf("a stranger: registered = %d %s, unknown = %d %s; want the same 403", regStatus, regBody, unkStatus, unkBody)
+	}
+	// Another person's device may not ask after this one, nor the other way.
+	if status, body := get(b0, a0Pub); status != http.StatusForbidden || strings.Contains(body, "personId") {
+		t.Fatalf("b0 asking for a0 = %d %s, want 403", status, body)
+	}
+	if status, body := get(a0, b0Pub); status != http.StatusForbidden || strings.Contains(body, "personId") {
+		t.Fatalf("a0 asking for b0 = %d %s, want 403", status, body)
+	}
+	if status, body := get(a0, unknownPub); status != http.StatusForbidden {
+		t.Fatalf("a0 asking for an unknown key = %d %s, want 403", status, body)
+	}
+	// One of the person's own devices sees the person, itself included.
+	for _, key := range []string{a1Pub, a0Pub} {
+		status, body := get(a0, key)
+		var out struct {
+			Known    bool     `json:"known"`
+			PersonID string   `json:"personId"`
+			Keys     []string `json:"keys"`
+		}
+		if status != http.StatusOK || json.Unmarshal([]byte(body), &out) != nil || !out.Known || out.PersonID == "" || len(out.Keys) != 2 {
+			t.Fatalf("a0 asking for %s = %d %s, want its person with two keys", key[:8], status, body)
+		}
+	}
+	// The mill answers as before, an unknown key too.
+	if status, body := get(mill, b0Pub); status != http.StatusOK || !strings.Contains(body, `"known":true`) {
+		t.Fatalf("the mill = %d %s", status, body)
+	}
+	if status, body := get(mill, unknownPub); status != http.StatusOK || body != "{\"known\":false}\n" {
+		t.Fatalf("the mill, an unknown key = %d %q", status, body)
+	}
+}
+
+// AC3 (mw-cvwm1u.9): once the nonce store is full a signed request is 429,
+// not a store that grows without end.
+func TestASignedRequestIs429WhenTheNonceStoreIsFull(t *testing.T) {
+	server, _ := newServerWithNonces(t, auth.NewNonceStore(time.Minute, auth.WithMaxSpent(2)))
+	key, _ := newKey(t)
+	statuses := []int{}
+	var last map[string]any
+	for i := 0; i < 3; i++ {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/api/me", nil)
+		signRequest(t, server, key, req)
+		var status int
+		status, last = regDo(t, req)
+		statuses = append(statuses, status)
+	}
+	if statuses[0] != http.StatusOK || statuses[1] != http.StatusOK || statuses[2] != http.StatusTooManyRequests || last["reason"] != "busy" {
+		t.Fatalf("statuses = %v, last = %v; want 200, 200, then 429 reason busy", statuses, last)
 	}
 }

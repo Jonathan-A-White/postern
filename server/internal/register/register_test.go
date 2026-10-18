@@ -197,12 +197,13 @@ func TestAnEmailAlreadyAnotherPersonsIsRefused(t *testing.T) {
 }
 
 func TestAFourthDeviceIsRefusedWithTheExactMessage(t *testing.T) {
-	s, _, _, _ := newService(t)
+	s, _, c, _ := newService(t)
 	for i := byte(0); i < 3; i++ {
 		if _, err := register(t, s, email1, phone1, deviceKey(i)); err != nil {
 			t.Fatalf("device %d: %v", i, err)
 		}
 	}
+	c.Advance(time.Hour) // a phone has codes sent at most 3 times an hour
 	_, err := register(t, s, email1, phone1, deviceKey(3))
 	if !errors.Is(err, ErrFull) || err.Error() != "This licence already has 3 devices. Remove one first." {
 		t.Fatalf("fourth device: err = %v", err)
@@ -493,6 +494,245 @@ func TestDeviceNamesComeFromTheUserAgentOrAreNumbered(t *testing.T) {
 	} {
 		if got := deviceName(ua, 3); got != want {
 			t.Errorf("deviceName(%q) = %q, want %q", ua, got, want)
+		}
+	}
+}
+
+// numberedKey is a valid compressed key for any i (deviceKey's run out at f).
+func numberedKey(i int) string { return fmt.Sprintf("02%064x", i+1) }
+
+// sentTo counts the codes the fake was asked to send to "channel:to".
+func (f *fakeVerifier) sentTo(dest string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, s := range f.sent {
+		if s == dest {
+			n++
+		}
+	}
+	return n
+}
+
+// AC1 (mw-cvwm1u.9): a destination has codes sent to it at most 3 times an
+// hour and 10 a day, however many callers ask; the refusal sends nothing, not
+// even to the other destination, and logs no address.
+func TestADestinationGetsAtMostThreeStartsAnHourAndTenADay(t *testing.T) {
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name         string
+		email, phone func(i int) string
+		dest         string
+	}{
+		{"phone", func(i int) string { return fmt.Sprintf("p%d@example.com", i) }, func(int) string { return phone1 }, "sms:" + phone1},
+		{"email", func(int) string { return "same@example.com" }, func(i int) string { return fmt.Sprintf("+1415555%04d", 200+i) }, "email:same@example.com"},
+	} {
+		s, v, c, _ := newService(t)
+		start := func(i int) error {
+			_, err := s.Start(ctx, tc.email(i), tc.phone(i), numberedKey(i))
+			return err
+		}
+		for i := 0; i < 3; i++ {
+			if err := start(i); err != nil {
+				t.Fatalf("%s: start %d: %v", tc.name, i+1, err)
+			}
+		}
+		if err := start(3); !errors.Is(err, ErrTooMany) {
+			t.Fatalf("%s: 4th start in an hour: err = %v, want ErrTooMany", tc.name, err)
+		}
+		if n := v.sentTo(tc.dest); n != 3 {
+			t.Fatalf("%s: %d codes sent there, want 3", tc.name, n)
+		}
+		if len(v.sent) != 6 {
+			t.Fatalf("%s: sent %v, want nothing for the refused start", tc.name, v.sent)
+		}
+		// Ten a day: three an hour for three hours, then one more.
+		for i := 4; i < 11; i++ {
+			if (i-4)%3 == 0 {
+				c.Advance(time.Hour + time.Second)
+			}
+			if err := start(i); err != nil {
+				t.Fatalf("%s: start %d of the day: %v", tc.name, v.sentTo(tc.dest)+1, err)
+			}
+		}
+		if n := v.sentTo(tc.dest); n != 10 {
+			t.Fatalf("%s: %d codes sent there, want 10", tc.name, n)
+		}
+		c.Advance(time.Hour + time.Second)
+		if err := start(11); !errors.Is(err, ErrTooMany) {
+			t.Fatalf("%s: 11th start in a day: err = %v, want ErrTooMany", tc.name, err)
+		}
+		c.Advance(24 * time.Hour)
+		if err := start(12); err != nil {
+			t.Fatalf("%s: a day later: %v", tc.name, err)
+		}
+	}
+	for _, secret := range []string{"example.com", "4155550101", "4155550"} {
+		if strings.Contains(logged.String(), secret) {
+			t.Errorf("the log holds %q: %s", secret, logged.String())
+		}
+	}
+}
+
+// AC1 (mw-cvwm1u.9): all callers together may start at most the send cap an
+// hour; the next is refused, logged once without an address, and the hour
+// after it may start again.
+func TestTheGlobalSendCapRefusesTheNextStart(t *testing.T) {
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	dir := t.TempDir()
+	v := &fakeVerifier{}
+	c := &clock{now: time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)}
+	s, err := Open(dir, WithVerifier(v), WithIssuer(&stubIssuer{}), WithClock(c.Now), WithSendLimits(0, 0, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	start := func(i int) error {
+		_, err := s.Start(ctx, fmt.Sprintf("g%d@example.com", i), fmt.Sprintf("+1415555%04d", 300+i), numberedKey(i))
+		return err
+	}
+	for i := 0; i < 5; i++ {
+		if err := start(i); err != nil {
+			t.Fatalf("start %d: %v", i+1, err)
+		}
+	}
+	for i := 5; i < 8; i++ {
+		if err := start(i); !errors.Is(err, ErrSendCap) {
+			t.Fatalf("start %d over the cap: err = %v, want ErrSendCap", i+1, err)
+		}
+	}
+	if len(v.sent) != 10 {
+		t.Fatalf("sent %d codes, want 10 (5 starts)", len(v.sent))
+	}
+	if n := strings.Count(logged.String(), "send cap"); n != 1 {
+		t.Fatalf("the cap was logged %d times, want once:\n%s", n, logged.String())
+	}
+	if strings.Contains(logged.String(), "example.com") || strings.Contains(logged.String(), "+1415") {
+		t.Fatalf("the log holds an address: %s", logged.String())
+	}
+	c.Advance(time.Hour + time.Second)
+	if err := start(9); err != nil {
+		t.Fatalf("an hour later: %v", err)
+	}
+}
+
+func TestTheSendCapDefaultsTo30AnHour(t *testing.T) {
+	s, _, _, _ := newService(t)
+	if s.sends.limit != DefaultSendsPerHour || DefaultSendsPerHour != 30 {
+		t.Fatalf("send cap = %d, want %d", s.sends.limit, DefaultSendsPerHour)
+	}
+}
+
+// gateVerifier holds every Start until arrive calls have come in, or a
+// moment has passed: so concurrent starts all pass whatever check comes
+// before Twilio before any of them goes on.
+type gateVerifier struct {
+	fakeVerifier
+	arrive int
+
+	once    sync.Once
+	arrived chan struct{}
+	count   int
+}
+
+func (g *gateVerifier) Start(ctx context.Context, channel Channel, to string) error {
+	g.mu.Lock()
+	g.count++
+	if g.count >= g.arrive {
+		g.once.Do(func() { close(g.arrived) })
+	}
+	g.mu.Unlock()
+	select {
+	case <-g.arrived:
+	case <-time.After(300 * time.Millisecond):
+	}
+	return g.fakeVerifier.Start(ctx, channel, to)
+}
+
+// AC4 (mw-cvwm1u.9): the pending cap is checked and the registration
+// inserted under one lock, so N concurrent starts with room for N-1 leave
+// exactly N-1 pending. Run it with -race too.
+func TestConcurrentStartsNeverOvershootMaxPending(t *testing.T) {
+	const n = 6
+	s, _, _, _ := newService(t)
+	gate := &gateVerifier{arrive: n, arrived: make(chan struct{})}
+	s.verifier = gate
+	s.maxPending = n - 1
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = s.Start(context.Background(), fmt.Sprintf("c%d@example.com", i), fmt.Sprintf("+1415555%04d", 400+i), numberedKey(i))
+		}(i)
+	}
+	wg.Wait()
+	busy := 0
+	for _, err := range errs {
+		if errors.Is(err, ErrBusy) {
+			busy++
+		} else if err != nil {
+			t.Fatalf("start: %v", err)
+		}
+	}
+	s.mu.Lock()
+	pending := len(s.pending)
+	s.mu.Unlock()
+	if pending != n-1 || busy != 1 {
+		t.Fatalf("%d pending and %d busy, want %d pending and 1 busy", pending, busy, n-1)
+	}
+}
+
+// A start Twilio could not send frees the place it held.
+func TestAStartTwilioRefusedHoldsNoPlace(t *testing.T) {
+	s, v, _, _ := newService(t)
+	s.maxPending = 1
+	v.startErr = ErrRejected
+	if _, err := s.Start(context.Background(), email1, phone1, deviceKey(0)); !errors.Is(err, ErrRejected) {
+		t.Fatalf("err = %v, want ErrRejected", err)
+	}
+	v.startErr = nil
+	if _, err := s.Start(context.Background(), email2, phone2, deviceKey(1)); err != nil {
+		t.Fatalf("after a refused start: %v", err)
+	}
+}
+
+// AC2 (mw-cvwm1u.9): a device may see its own person, and no other.
+func TestPersonForADeviceAnswersOnlyItsOwnPerson(t *testing.T) {
+	s, _, c, _ := newService(t)
+	if _, err := register(t, s, email1, phone1, deviceKey(0)); err != nil {
+		t.Fatal(err)
+	}
+	c.Advance(time.Minute)
+	if _, err := register(t, s, email2, phone1, deviceKey(1)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := register(t, s, email3, phone2, deviceKey(2)); err != nil {
+		t.Fatal(err)
+	}
+	view, err := s.PersonForDevice(deviceKey(0), deviceKey(1))
+	if err != nil || len(view.Keys) != 2 || view.PersonID == "" {
+		t.Fatalf("a sibling = %+v, %v", view, err)
+	}
+	if view, err := s.PersonForDevice(deviceKey(1), deviceKey(1)); err != nil || len(view.Keys) != 2 {
+		t.Fatalf("itself = %+v, %v", view, err)
+	}
+	for _, tc := range []struct{ name, signer, key string }{
+		{"another person's device", deviceKey(2), deviceKey(0)},
+		{"asking for another person", deviceKey(0), deviceKey(2)},
+		{"an unknown key", deviceKey(0), numberedKey(9)},
+		{"an unknown signer", numberedKey(9), deviceKey(0)},
+		{"an unknown signer and key", numberedKey(9), numberedKey(8)},
+		{"not a key", deviceKey(0), "nope"},
+	} {
+		if view, err := s.PersonForDevice(tc.signer, tc.key); !errors.Is(err, ErrNotYours) || view.PersonID != "" {
+			t.Errorf("%s = %+v, %v; want ErrNotYours and nothing", tc.name, view, err)
 		}
 	}
 }

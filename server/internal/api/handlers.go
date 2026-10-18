@@ -231,10 +231,13 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.HandleFunc("GET /api/challenge", handleChallenge(nonces))
 	// Registration is open: the caller has no licence yet. Its own per-IP
-	// limits and 5-try codes are what guard it (internal/register).
+	// and per-destination limits, its send cap and 5-try codes are what guard
+	// it (internal/register).
 	mux.HandleFunc("POST /api/register/start", handleRegisterStart(o.register, o.registerIPHeader))
 	mux.HandleFunc("POST /api/register/confirm", handleRegisterConfirm(o.register, o.registerIPHeader))
-	mux.HandleFunc("GET /api/register/person", handleRegisterPerson(o.register))
+	// A person's devices are linked only for the mill's key or one of the
+	// person's own devices: signed, but no licence on the chain.
+	mux.HandleFunc("GET /api/register/person", handleRegisterPerson(o.register, nonces, o.millKey))
 	// Removing a device needs a proof, but no licence on the chain: the
 	// signer must be a device of the same person, which register checks.
 	mux.HandleFunc("DELETE /api/register/device", handleRegisterDevice(o.register, nonces))
@@ -350,7 +353,12 @@ func verifyProof(w http.ResponseWriter, r *http.Request, nonces *auth.NonceStore
 		refuse(w, r, http.StatusUnauthorized, reasonMalformed, "missing or malformed Authorization header", "")
 		return "", false
 	}
-	if err := nonces.Spend(nonce); err != nil {
+	if err := nonces.Spend(nonce); errors.Is(err, auth.ErrNonceFull) {
+		// GET /api/challenge is open, so the store of spent nonces has a cap
+		// (mw-cvwm1u.9): a flood fills it, and is told to wait.
+		refuseLogged(w, r, http.StatusTooManyRequests, reasonBusy, err.Error(), "too many requests; try again in a minute", pubKeyHex)
+		return "", false
+	} else if err != nil {
 		// The wire reason is always "nonce" (every client retries once on
 		// it); the log says whether it was another host's or an earlier life's.
 		refuseLogged(w, r, http.StatusUnauthorized, reasonNonce, err.Error(), "nonce is missing, expired, or already used", pubKeyHex)
@@ -421,6 +429,8 @@ const (
 	reasonSignatureV1 = "signature-v1"
 	reasonNoLicence   = "no_licence"
 	reasonForbidden   = "forbidden"
+	// reasonBusy: the backend remembers as many spent nonces as it may (429).
+	reasonBusy = "busy"
 )
 
 // refuse answers a refused request and logs it as one line: the status, the

@@ -28,6 +28,12 @@ import (
 // with the given handler options, answering WhatsOnChain calls with 404.
 func newServerWithOptions(t *testing.T, opts ...Option) (*httptest.Server, *index.Store) {
 	t.Helper()
+	return newServerWithNonces(t, auth.NewNonceStore(time.Minute), opts...)
+}
+
+// newServerWithNonces is newServerWithOptions with the nonce store given.
+func newServerWithNonces(t *testing.T, nonces *auth.NonceStore, opts ...Option) (*httptest.Server, *index.Store) {
+	t.Helper()
 	wocServer := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(wocServer.Close)
 	client := woc.NewClient(wocServer.URL, woc.WithMinSpacing(0), woc.WithSleep(func(time.Duration) {}))
@@ -46,7 +52,7 @@ func newServerWithOptions(t *testing.T, opts ...Option) (*httptest.Server, *inde
 		t.Fatalf("blobs.OpenStore: %v", err)
 	}
 
-	handler := NewHandler(store, client, "test-vapid-public-key", pushStore, blobStore, auth.NewNonceStore(time.Minute), &stubChecker{held: true}, opts...)
+	handler := NewHandler(store, client, "test-vapid-public-key", pushStore, blobStore, nonces, &stubChecker{held: true}, opts...)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return server, store

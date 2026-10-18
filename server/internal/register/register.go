@@ -43,6 +43,17 @@ const (
 	DefaultStartsPerHour   = 10
 	DefaultConfirmsPerHour = 30
 
+	// Every start has Twilio send a code to an email and one to a phone,
+	// and each SMS costs money, so an IP's limit is not enough: callers on
+	// many IPs could have codes sent to one paid number many times, or to many
+	// (SMS pumping). DefaultDestinationStartsPerHour and
+	// DefaultDestinationStartsPerDay are the starts one email, and one phone,
+	// may have; DefaultSendsPerHour is the starts all callers together may
+	// have an hour (POSTERN_REGISTER_SENDS_PER_HOUR).
+	DefaultDestinationStartsPerHour = 3
+	DefaultDestinationStartsPerDay  = 10
+	DefaultSendsPerHour             = 30
+
 	maxPending = 10000
 )
 
@@ -61,6 +72,11 @@ var (
 	ErrBusy = errors.New("registration is busy; try again in a few minutes")
 	// ErrUpstream: Twilio could not be asked.
 	ErrUpstream = errors.New("the verification service could not be reached; try again")
+	// ErrTooMany: the email or the phone has had all the codes it may for now.
+	ErrTooMany = errors.New("too many codes have gone to that email or phone; wait an hour and try again")
+	// ErrSendCap: all callers together have had all the codes they may this
+	// hour.
+	ErrSendCap = errors.New("registration is busy; try again in an hour")
 )
 
 // InvalidError says in one line what is wrong with the input.
@@ -113,6 +129,23 @@ func WithLimits(startsPerHour, confirmsPerHour int) Option {
 	}
 }
 
+// WithSendLimits sets the starts one email or one phone may have an hour and
+// a day, and the starts all callers together may have an hour; a value under
+// 1 keeps the default.
+func WithSendLimits(perDestinationHour, perDestinationDay, perHour int) Option {
+	return func(s *Service) {
+		if perDestinationHour > 0 {
+			s.destHour.limit = perDestinationHour
+		}
+		if perDestinationDay > 0 {
+			s.destDay.limit = perDestinationDay
+		}
+		if perHour > 0 {
+			s.sends.limit = perHour
+		}
+	}
+}
+
 // Service is registration: pending registrations in memory, people on disk.
 // Safe for concurrent use.
 type Service struct {
@@ -128,9 +161,15 @@ type Service struct {
 
 	starts, confirms *limiter
 
-	mu      sync.Mutex // guards pending and people
+	mu      sync.Mutex // guards pending, people, the send limits and capped
 	pending map[string]*pending
 	people  *people
+
+	// The send limits, by keyed fingerprint ("e:" or "p:" and the HMAC) and
+	// in all ("").
+	destHour, destDay, sends *limiter
+	capped                   bool // the send cap has refused, and said so, since it last allowed
+	maxPending               int
 }
 
 // pending is one registration waiting for its codes. Its fields are guarded
@@ -155,6 +194,11 @@ func Open(dir string, opts ...Option) (*Service, error) {
 		starts:   newLimiter(DefaultStartsPerHour),
 		confirms: newLimiter(DefaultConfirmsPerHour),
 		pending:  map[string]*pending{},
+
+		destHour:   newLimiter(DefaultDestinationStartsPerHour),
+		destDay:    newWindowLimiter(DefaultDestinationStartsPerDay, 24*time.Hour),
+		sends:      newLimiter(DefaultSendsPerHour),
+		maxPending: maxPending,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -168,6 +212,9 @@ func Open(dir string, opts ...Option) (*Service, error) {
 	}
 	return s, nil
 }
+
+// SendsPerHour is the starts all callers together may have an hour.
+func (s *Service) SendsPerHour() int { return s.sends.limit }
 
 // Open reports whether registration is open: Twilio is configured.
 func (s *Service) Open() bool { return s.verifier != nil }
@@ -223,7 +270,10 @@ func (s *Service) mac(text string) string {
 }
 
 // Start validates the input, has Twilio send a code to the email and one to
-// the phone, and answers the registration id Confirm takes.
+// the phone, and answers the registration id Confirm takes. It refuses
+// before anything is sent when the email or the phone has had its starts
+// (ErrTooMany), all callers together have (ErrSendCap), or too many
+// registrations wait (ErrBusy).
 func (s *Service) Start(ctx context.Context, email, phone, deviceKey string) (string, error) {
 	if !s.Open() {
 		return "", ErrClosed
@@ -246,6 +296,12 @@ func (s *Service) Start(ctx context.Context, email, phone, deviceKey string) (st
 		return "", err
 	}
 
+	destinations := []string{"e:" + s.fpEmail(email), "p:" + s.fpPhone(phone)}
+
+	// The place is checked for and taken under one lock, so concurrent starts
+	// cannot overshoot maxPending or the send limits; no one knows id until
+	// Start answers it, so the registration cannot be confirmed before its
+	// codes are sent.
 	s.mu.Lock()
 	now := s.now()
 	for k, p := range s.pending {
@@ -253,22 +309,54 @@ func (s *Service) Start(ctx context.Context, email, phone, deviceKey string) (st
 			delete(s.pending, k)
 		}
 	}
-	if len(s.pending) >= maxPending {
+	if err := s.admit(destinations, now); err != nil {
 		s.mu.Unlock()
-		return "", ErrBusy
+		return "", err
 	}
-	s.mu.Unlock()
-
-	if err := s.verifier.Start(ctx, ChannelEmail, email); err != nil {
-		return "", s.upstream(err)
-	}
-	if err := s.verifier.Start(ctx, ChannelSMS, phone); err != nil {
-		return "", s.upstream(err)
-	}
-	s.mu.Lock()
 	s.pending[id] = &pending{email: email, phone: phone, key: deviceKey, expires: now.Add(TTL)}
 	s.mu.Unlock()
+
+	err = s.verifier.Start(ctx, ChannelEmail, email)
+	if err == nil {
+		err = s.verifier.Start(ctx, ChannelSMS, phone)
+	}
+	if err != nil {
+		s.mu.Lock()
+		delete(s.pending, id)
+		s.mu.Unlock()
+		return "", s.upstream(err)
+	}
 	return id, nil
+}
+
+// admit takes a place for one more pending registration and counts one start
+// to each of destinations, and one in all, against the send limits: all of
+// them, or, with the reason, none. Called with mu held. A start Twilio then
+// fails still counts, since Twilio may have sent its code.
+func (s *Service) admit(destinations []string, now time.Time) error {
+	if len(s.pending) >= s.maxPending {
+		return ErrBusy
+	}
+	for _, d := range destinations {
+		if !s.destHour.room(d, now) || !s.destDay.room(d, now) {
+			return ErrTooMany
+		}
+	}
+	if !s.sends.room("", now) {
+		if !s.capped {
+			// Said once, until the cap allows again, and with no address.
+			log.Printf("register: the send cap of %d starts an hour (POSTERN_REGISTER_SENDS_PER_HOUR) is reached; starts are refused until the hour frees one", s.sends.limit)
+			s.capped = true
+		}
+		return ErrSendCap
+	}
+	s.capped = false
+	for _, d := range destinations {
+		s.destHour.take(d, now)
+		s.destDay.take(d, now)
+	}
+	s.sends.take("", now)
+	return nil
 }
 
 // upstream logs a Twilio failure (its errors never carry an address) and
@@ -487,11 +575,36 @@ func (s *Service) Person(key string) (PersonView, bool) {
 	if p == nil {
 		return PersonView{}, false
 	}
+	return p.view(), true
+}
+
+// PersonForDevice is Person asked by one of that person's own devices:
+// signerKey must be a device on the licence that holds key (key itself
+// included). Anything else, a stranger, another person's device or a key no
+// one registered, is ErrNotYours, so a refusal says nothing about key.
+func (s *Service) PersonForDevice(signerKey, key string) (PersonView, error) {
+	signer, err := normaliseKey(signerKey)
+	if err != nil {
+		return PersonView{}, ErrNotYours
+	}
+	if key, err = normaliseKey(key); err != nil {
+		return PersonView{}, ErrNotYours
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := s.people.byKey[signer]
+	if owner == nil || s.people.byKey[key] != owner {
+		return PersonView{}, ErrNotYours
+	}
+	return owner.view(), nil
+}
+
+func (p *person) view() PersonView {
 	view := PersonView{PersonID: p.PersonID, DailyLimit: p.DailyLimit, Keys: make([]string, len(p.Devices))}
 	for i, d := range p.Devices {
 		view.Keys[i] = d.Key
 	}
-	return view, true
+	return view
 }
 
 // deviceName names a new device from its user agent, or "Device n".
@@ -515,37 +628,69 @@ func deviceName(userAgent string, n int) string {
 	return fmt.Sprintf("Device %d", n)
 }
 
-// limiter allows limit requests an hour per key (an IP), by a sliding
-// window.
+// limiter allows limit requests a window (an hour, unless said) per key (an
+// IP, or a destination's fingerprint), by a sliding window.
 type limiter struct {
-	limit int
+	limit  int
+	window time.Duration
 
 	mu   sync.Mutex
 	seen map[string][]time.Time
 }
 
-func newLimiter(limit int) *limiter { return &limiter{limit: limit, seen: map[string][]time.Time{}} }
+func newLimiter(limit int) *limiter { return newWindowLimiter(limit, time.Hour) }
 
+func newWindowLimiter(limit int, window time.Duration) *limiter {
+	return &limiter{limit: limit, window: window, seen: map[string][]time.Time{}}
+}
+
+// allow counts one request by key and says whether it is within the limit; a
+// request over it is not counted.
 func (l *limiter) allow(key string, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	kept := l.recent(key, now)
+	if len(kept) >= l.limit {
+		return false
+	}
+	l.seen[key] = append(kept, now)
+	return true
+}
+
+// room says whether key may make one more request, counting nothing.
+func (l *limiter) room(key string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.recent(key, now)) < l.limit
+}
+
+// take counts one request by key, whatever the limit.
+func (l *limiter) take(key string, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.seen[key] = append(l.recent(key, now), now)
+}
+
+// recent drops key's requests older than the window and answers those left;
+// a key with none is forgotten. Called with mu held.
+func (l *limiter) recent(key string, now time.Time) []time.Time {
 	if len(l.seen) > 4096 {
 		for k, stamps := range l.seen {
-			if now.Sub(stamps[len(stamps)-1]) >= time.Hour {
+			if len(stamps) == 0 || now.Sub(stamps[len(stamps)-1]) >= l.window {
 				delete(l.seen, k)
 			}
 		}
 	}
 	kept := l.seen[key][:0]
 	for _, at := range l.seen[key] {
-		if now.Sub(at) < time.Hour {
+		if now.Sub(at) < l.window {
 			kept = append(kept, at)
 		}
 	}
-	if len(kept) >= l.limit {
+	if len(kept) == 0 {
+		delete(l.seen, key)
+	} else {
 		l.seen[key] = kept
-		return false
 	}
-	l.seen[key] = append(kept, now)
-	return true
+	return kept
 }

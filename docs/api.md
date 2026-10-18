@@ -19,7 +19,7 @@ Every error response, from every endpoint below, is:
 
 ## Authentication
 
-Every endpoint below except `GET /healthz`, `GET /api/challenge` and the open `/api/register/*` routes (`server/README.md`, Self-registration) requires proof
+Every endpoint below except `GET /healthz`, `GET /api/challenge` and the `/api/register/*` routes (`server/README.md`, Self-registration: open, but for removing a device, which is signed and needs no licence) requires proof
 that the caller holds a licensed key: an `Authorization` header of the form
 
 ```

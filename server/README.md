@@ -27,17 +27,64 @@ Environment:
 | `POSTERN_REGISTER_STARTS_PER_HOUR` | starts one IP may make an hour (default 10) |
 | `POSTERN_REGISTER_CONFIRMS_PER_HOUR` | confirms one IP may make an hour (default 30) |
 | `POSTERN_REGISTER_IP_HEADER` | the header the proxy sets to the caller's address, for the limits (nginx: `proxy_set_header X-Real-IP $remote_addr;` and `X-Real-IP`); unset counts the connection's own address, which behind nginx is every caller at once |
+| `POSTERN_SITE_ISSUER_KEY` | the site issuer's private key, a testnet WIF: it signs the Lampas licence each confirmed device gets, and revokes it when the device is removed. A key of its own, never the Governor's issuer (`POSTERN_ISSUER_KEY`, which the backend refuses here) |
 
 With any of the three Twilio names missing, registration is closed: start and
 confirm answer `503 {"error":"registration closed"}` and nothing else changes.
+With Twilio set but `POSTERN_SITE_ISSUER_KEY` not, start and confirm answer
+`503 {"error":"licensed by hand: ask the Governor"}` (no code is sent), and
+nothing else changes. A key that is not a testnet WIF stops the backend at
+start, with an error that names the variable and not its value.
 
-All three routes are open (no licence proof); CORS applies as for the rest.
+### The site issuer key
+
+Make it once, on the backend's host, into a file only you can read:
+
+```bash
+postern keygen --out ~/.config/postern/site-issuer.wif
+```
+
+It prints the public key (Lampas names it `VITE_LAMPAS_SITE_ISSUER`) and never
+the private one. Put the file's one line in the backend's environment file as
+`POSTERN_SITE_ISSUER_KEY=<wif>`. At start the backend logs
+`site issuer: <public key> at <address>`: fund that testnet address. The key
+itself is never logged, printed with the config, or put in an error.
+
+The backend builds and signs the licences itself, in Go (`internal/register`
+tx.go: btcec for the key and signatures, the transaction, BIP-143 FORKID
+sighash and @bsv/sdk's fee arithmetic written out). A mint is the same bytes
+the TS issuer writes (spell-forge-bsv's `buildContractMintTransaction`, as
+`src/services/issue.ts` calls it): the 1-sat License owned by the device key,
+its Fuel (10,000 sat), the M record `{"collection":"lampas","holder":<address>}`
+and the change; a revoke is `revokeLicence`'s W record
+`{"kind":"revoke","origin":"<mint txid>:0"}`, 1 sat to `POSTERN_ANCHOR` and the
+change. `internal/register/testdata/site-issuer-golden.json` holds one of each
+as the TS code builds them (`tests/unit/site-issuer-golden.test.ts` keeps it so;
+`UPDATE_SITE_ISSUER_GOLDEN=1` rewrites it) and the Go test compares byte for byte.
+
+**Low balance.** A licence costs about 10,008 sat (the Fuel, the License and a
+few sat of fee). At every start, when the site address holds less than 10
+licences' worth (100,080 sat), the backend logs one line:
+
+```
+site issuer low: <sats>
+```
+
+The issuer spends every coin the address has and keeps one change. It remembers
+what it spent and the change it made for a day, because WhatsOnChain lists a
+spent coin, and leaves out fresh change, for a while after a broadcast; a
+restart forgets, so an issue right after a restart may be refused until the
+change is in a block (the caller is told to try again).
+
+Start, confirm and person are open (no licence proof); removing a device is
+signed but needs no licence on the chain. CORS applies as for the rest.
 
 | Route | Answers |
 |---|---|
 | `POST /api/register/start` `{email, phone, deviceKey}` | `200 {registrationId}` after Twilio sends a code to the email and one to the phone; `400` bad input (`phone` in E.164, `deviceKey` a compressed public key); `429` over the hourly limit; `502` Twilio could not be asked; `503` closed |
-| `POST /api/register/confirm` `{registrationId, emailCode, phoneCode}` | `200 {personId, devices:[{key,name,addedAt}], issued:false}` (issuing is a later step); `400 {error, triesLeft}` a wrong code (5 wrong confirms end the registration; a code already right need not be sent again); `409` `that email is already registered`, `This licence already has 3 devices. Remove one first.` or the device is another licence's; `410` the registration expired (10 minutes), was used or ended; `429`; `503` |
+| `POST /api/register/confirm` `{registrationId, emailCode, phoneCode}` | `200 {personId, devices:[{key,name,addedAt,licenceTxid}], issued:true}` once the site issuer has broadcast the device's licence (its origin is `licenceTxid:0`; a device that holds one is not issued another); `400 {error, triesLeft}` a wrong code (5 wrong confirms end the registration; a code already right need not be sent again); `409` `that email is already registered`, `This licence already has 3 devices. Remove one first.` or the device is another licence's; `410` the registration expired (10 minutes), was used or ended; `429`; `502` the licence could not be issued (nothing stored; the registration stays, so confirm again without codes); `503` closed, or licensed by hand |
 | `GET /api/register/person?key=<deviceKey>` | `200 {known:false}` or `200 {known:true, personId, keys:[...], dailyLimit}` (the mill's lookup; works with registration closed) |
+| `DELETE /api/register/device` `{deviceKey, personId}`, signed `Postern2` by a device of that person (itself too) | `200 {personId, devices}` after the site issuer's revoke of that device's licence is broadcast and the device dropped, which frees its slot; `401` no or a bad proof; `403` the signer is not a device of that person; `404` the device is not theirs; `502` the revoke could not be sent (nothing changed); `503` licensed by hand |
 
 ## Saved prompts
 

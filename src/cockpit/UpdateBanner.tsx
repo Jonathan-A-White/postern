@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { UpdateSummary, WhatsNewSheet, useChangelog } from 'pwa-kit/whats-new';
 import { Icon } from '../ui';
-import { applyUpdate, useUpdateState } from '../services/appUpdate';
+import { applyUpdate, useUpdateState } from 'pwa-kit/app-update';
 import { APP_VERSION, WHATS_NEW_STORAGE_KEY } from '../services/whatsNew';
 
 /** Mounted only while a build waits, so the changelog it reads is the waiting build's (fetched no-store). */

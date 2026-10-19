@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { readFileSync } from 'node:fs';
-import { startAppUpdates } from '../../src/services/appUpdate';
+import { startAppUpdates } from 'pwa-kit/app-update';
 import { UpdateBanner } from '../../src/cockpit/UpdateBanner';
 import { WhatsNewOnUpdate } from '../../src/cockpit/WhatsNew';
 import { AboutScreen } from '../../src/cockpit/AboutScreen';

@@ -4,7 +4,7 @@
 import '@testing-library/react/dont-cleanup-after-each';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { startAppUpdates, TAKE_OVER_PATIENCE_MS, UPDATE_CHECK_EVERY_MS } from '../../src/services/appUpdate';
+import { startAppUpdates, TAKE_OVER_PATIENCE_MS, UPDATE_CHECK_EVERY_MS } from 'pwa-kit/app-update';
 import { UpdateBanner } from '../../src/cockpit/UpdateBanner';
 import { fakeSetup, fakeWorker, type FakeSetup } from '../support/fake-registration';
 

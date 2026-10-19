@@ -1,11 +1,11 @@
 // features/steps/app-update.steps.tsx — runs features/app-update.feature under vitest via
-// @amiceli/vitest-cucumber: the real update logic (src/services/appUpdate.ts) and banner on a
+// @amiceli/vitest-cucumber: the real update logic (pwa-kit/app-update) and banner on a
 // fake service worker container (tests/support/fake-registration.ts).
 import '@testing-library/react/dont-cleanup-after-each';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
-import { startAppUpdates, TAKE_OVER_PATIENCE_MS, UPDATE_CHECK_EVERY_MS } from '../../src/services/appUpdate';
+import { startAppUpdates, TAKE_OVER_PATIENCE_MS, UPDATE_CHECK_EVERY_MS } from 'pwa-kit/app-update';
 import { UpdateBanner } from '../../src/cockpit/UpdateBanner';
 import { fakeSetup, fakeWorker, type FakeSetup, type FakeWorker } from '../../tests/support/fake-registration';
 

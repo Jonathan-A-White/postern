@@ -1,5 +1,5 @@
 // tests/support/fake-registration.ts — a service worker container and registration the app-update
-// logic (src/services/appUpdate.ts) can watch: a worker can be put in waiting, an update found, and a
+// logic (pwa-kit/app-update) can watch: a worker can be put in waiting, an update found, and a
 // new worker take control, as the browser would, without a browser.
 import { vi, type Mock } from 'vitest';
 

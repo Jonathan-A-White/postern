@@ -54,7 +54,7 @@ Ten folders under `src/` (`cockpit`, `model`, `services`, `data`, `nav`, `ui`, `
 `src/services/wakeLock.ts`, `src/services/idleHold.ts`, `src/services/standby.ts`); **the
 factory's data on the phone** (`src/services/view.ts`, `src/services/beads.ts`,
 `src/services/events.ts`, `src/services/cards.ts`, `src/services/me.ts`, `src/services/prompts.ts`);
-**app life** (`src/services/appUpdate.ts`, `src/services/whatsNew.ts`, `src/services/push.ts`,
+**app life** (`src/cockpit/UpdateBanner.tsx` over pwa-kit/app-update, `src/services/whatsNew.ts`, `src/services/push.ts`,
 `src/services/seen.ts`, `src/services/ringIn.ts`, `src/services/presence.ts`).
 
 `src/cockpit/` sorts into **places** (`src/cockpit/NeedsScreen.tsx`, `src/cockpit/MapScreen.tsx`,

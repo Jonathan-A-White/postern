@@ -318,7 +318,7 @@ stylesheet whose content type does not fit its extension.
 again, so one bad copy cached (a server answering a missing file with the app page) breaks the
 app until the cache is cleared by hand.
 
-**In Postern.** [src/services/appUpdate.ts](../src/services/appUpdate.ts),
+**In Postern.** pwa-kit's `app-update` package (the state machine since mw-ti1qik.3),
 [src/cockpit/UpdateBanner.tsx](../src/cockpit/UpdateBanner.tsx),
 [src/precacheGuard.ts](../src/precacheGuard.ts). Scenarios:
 [features/app-update.feature](../features/app-update.feature),

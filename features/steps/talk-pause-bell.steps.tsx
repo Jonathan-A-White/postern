@@ -115,6 +115,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('no recording of the rest of the hold was started', () => {
       expect(mic!.recorders).toHaveLength(0);
     });
+    And('the page still has its recorder, because the kit listens through the pause by itself', () => {
+      // voice-kit's throughPauses default does the work; the app no longer hides MediaRecorder (mw-06ggew.4)
+      expect(window.MediaRecorder).toBe(mic!.MediaRecorder);
+    });
     And('the live transcript reads {string}', async (_c, words: string) => {
       await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
     });

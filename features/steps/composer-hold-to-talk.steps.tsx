@@ -32,8 +32,8 @@ const doubles = vi.hoisted(() => ({
   recorderStarvesRecogniser: false,
   // On letting go the recogniser's last result is blank, after words were shown (mw-f7gmps.3).
   blankFinal: false,
-  // The page can record (MediaRecorder and getUserMedia). The composer's hold hides MediaRecorder while it listens, so a recogniser
-  // that ended by itself is started again whatever this says (mw-gq6.570); a page without it never had one to hide.
+  // The page can record (MediaRecorder and getUserMedia). The kit listens through a pause by default (throughPauses), so a recogniser
+  // that ended by itself is started again whatever this says (mw-gq6.570, mw-06ggew.4); a page without MediaRecorder cannot record.
   canRecord: true,
 }));
 
@@ -57,7 +57,7 @@ vi.mock('../../src/services/deliver', async (importOriginal) => ({
 // the recorder the package's hold uses (voice-kit/composer's own module; vitest.config.ts runs the package through vite)
 vi.mock('../../node_modules/voice-kit/packages/composer/dist/recorder.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../node_modules/voice-kit/packages/composer/dist/recorder.js')>()),
-  // as the package's own: a page that has no MediaRecorder cannot record (the Talk line and the composer hide it while a hold listens)
+  // as the package's own: a page that has no MediaRecorder cannot record (canRecord below)
   canRecord: () => doubles.canRecord && typeof window.MediaRecorder !== 'undefined',
   VoiceRecorder: class {
     private ownMic = false;
@@ -82,6 +82,7 @@ vi.mock('../../node_modules/voice-kit/packages/composer/dist/recorder.js', async
 }));
 
 // The browser's speech recogniser, as a fake that opens its mic and hears what a step says.
+let stubbedRecorder: unknown;
 let recognizers: FakeRecognizer[] = [];
 class FakeRecognizer {
   lang = '';
@@ -190,7 +191,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     doubles.recorderStarvesRecogniser = false;
     doubles.blankFinal = false;
     doubles.canRecord = true;
-    vi.stubGlobal('MediaRecorder', class {});
+    stubbedRecorder = class {};
+    vi.stubGlobal('MediaRecorder', stubbedRecorder);
     await settlePhone();
     forgetOutboxState();
     await Promise.all([db.settings.clear(), db.messages.clear(), db.outbox.clear()]);
@@ -654,6 +656,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     Then("only the hold's own voice note is being recorded, not the rest of the hold", () => {
       // the one recorder the hold opened at its start for the voice note; a second would be the recogniser's rest
       expect(doubles.recorderMics).toBe(1);
+    });
+    And('the page still has its recorder, because the kit listens through the pause by itself', () => {
+      expect(window.MediaRecorder).toBe(stubbedRecorder);
     });
     When('he lets go on the bar', letGoOnTheBar);
     Then('the recogniser was started {int} times in the one hold', (_c, times: number) => {

@@ -15,6 +15,7 @@ Feature: A pause while he holds the Talk line keeps listening, and the words aft
     When he pauses for 3 seconds and then says "called buy milk"
     Then the recogniser was started again, so the hold went on listening
     And no recording of the rest of the hold was started
+    And the page still has its recorder, because the kit listens through the pause by itself
     And the live transcript reads "create a to-do for me called buy milk"
     And the talk button reads "Release to send"
     And no turn has been sent

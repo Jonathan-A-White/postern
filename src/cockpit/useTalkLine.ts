@@ -26,7 +26,6 @@ import { useMayorHere } from './useMayorHere';
 import { useRecordedWords } from './useIdeasOnly';
 import { useHold } from 'voice-kit/composer';
 import { APP_NAME } from './holdBar';
-import { listensThroughPauses } from '../services/listening';
 
 function pageHidden(): boolean {
   return typeof document !== 'undefined' && document.visibilityState === 'hidden';
@@ -56,7 +55,7 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   const stored = useTalkTurns();
   const turns = stored ?? NO_ROWS;
   // Listening while the button is held is the hold's (useHold, shared with the composer); a recogniser that fails mid-hold ends the turn.
-  const hold = useHold({ appName: APP_NAME, transcriber: listensThroughPauses, onFailed: () => feed({ type: 'cancel' }) });
+  const hold = useHold({ appName: APP_NAME, onFailed: () => feed({ type: 'cancel' }) });
   const handled = useRef(new Set<string>());
   const sending = useRef<TalkTurn | undefined>(undefined);
   // Bead titles for the voice (mw-gq6.224): read through a ref so a view refresh never restarts speech.

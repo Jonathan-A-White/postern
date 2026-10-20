@@ -177,6 +177,7 @@ Feature: The composer's mic is the Talk line's hold-to-talk (mw-q6n8m0.3)
     And a minute and a half passes and the recogniser ends by itself
     And the recogniser hears "then the tests" after it starts again
     Then only the hold's own voice note is being recorded, not the rest of the hold
+    And the page still has its recorder, because the kit listens through the pause by itself
     When he lets go on the bar
     Then the recogniser was started 2 times in the one hold
     And one message is delivered with the words "first the build then the tests"

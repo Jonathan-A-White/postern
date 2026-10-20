@@ -334,10 +334,10 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Then the last turn sent says "Hello there" as turn 1
     And the talk button reads "Waiting for the Mayor…"
 
-  Scenario: AC-1: a hold of about 2,000 words is cut at the cap with "..." and still sent
+  Scenario: AC-1: a hold of about 2,000 words is sent in parts, none cut (mw-8ifimx.16)
     Given the Talk line is open with a believable speech recogniser
     When he holds the talk button and says 2000 words and lets go
-    Then the last turn sent is cut at the cap and ends with "..."
+    Then the turn is sent as parts that join to every word he said
     And the talk button reads "Waiting for the Mayor…"
 
   Scenario: AC-1: a browser that cannot listen says so instead of a dead button

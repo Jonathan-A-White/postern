@@ -1,47 +1,19 @@
 // A long hold must always send (mw-j0f2d.15). The cause of the old 'Could not send' was
 // the record's size limit: spell-forge-bsv's encodeRecordScript throws when a record's payload
 // (the envelope with the base64 ciphertext) passes 10,240 bytes, which is about 7,250 bytes of
-// the turn's JSON. So a turn is cut at TURN_TEXT_MAX_BYTES with '...', and still goes.
+// the turn's JSON. So a turn over TURN_TEXT_MAX_BYTES goes as several records, part k of n (mw-8ifimx.16), and every one goes.
 import { describe, it, expect, vi } from 'vitest';
 import { PrivateKey, Script, Utils } from '@bsv/sdk';
 import { decodeRecordScript } from 'spell-forge-bsv';
 import { deliverTurn, decodeTurn } from '../../src/services/talk';
 import { decryptMessage, type MessagePayload } from '../../src/services/messages';
-import { capTurnText, TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
+import { turnRecords, TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 import { challengeResponse, isChallengeRequest } from '../support/challenge-fetch';
 
 const RECORD_PAYLOAD_LIMIT = 10 * 1024;
 const GOV = PrivateKey.fromRandom();
 const MAYOR = PrivateKey.fromRandom();
-/** The bytes the text takes inside the turn's JSON plaintext (escapes count). */
-const bytes = (text: string) => new TextEncoder().encode(JSON.stringify(text)).length - 2;
 const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i % 97}`).join(' ');
-
-describe('capTurnText', () => {
-  it('leaves a turn that fits exactly as it was said', () => {
-    const text = words(900);
-    expect(bytes(text)).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
-    expect(capTurnText(text)).toBe(text);
-  });
-
-  it('cuts a ~2,000-word turn at the cap and ends it with "..."', () => {
-    const text = words(2000);
-    const capped = capTurnText(text);
-    expect(capped.endsWith('...')).toBe(true);
-    expect(bytes(capped)).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
-    expect(text.startsWith(capped.slice(0, -3))).toBe(true);
-    expect(capped.split(' ').length).toBeGreaterThan(900);
-  });
-
-  it('counts bytes as the JSON carries them, and never splits a character', () => {
-    const capped = capTurnText('é'.repeat(TURN_TEXT_MAX_BYTES) + '😀'.repeat(10));
-    expect(bytes(capped)).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
-    expect(capped.endsWith('...')).toBe(true);
-    const emoji = capTurnText('😀'.repeat(TURN_TEXT_MAX_BYTES));
-    expect(bytes(emoji)).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
-    expect(emoji).not.toContain('�');
-  });
-});
 
 describe('a long turn is delivered, never refused', () => {
   /** Delivers a turn the way the app does and answers with the payload the backend would have been given. */
@@ -65,16 +37,19 @@ describe('a long turn is delivered, never refused', () => {
     await expect(post(turnWith(words(2000)))).rejects.toThrow(/over the 10240-byte cap/);
   });
 
-  it('a 2,000-word turn, cut at the cap, goes out and reads back with its "..."', async () => {
-    const payload = await post(turnWith(capTurnText(words(2000))));
-    const back = decodeTurn(decryptMessage(payload, MAYOR.toHex()));
-    expect(back?.text.endsWith('...')).toBe(true);
-    expect(back?.text.length).toBeGreaterThan(5000);
+  it('a 2,000-word turn goes as parts that each go out and read back, joined to what he said', async () => {
+    const text = words(2000);
+    const records = turnRecords(turnWith(text), false);
+    expect(records.length).toBeGreaterThan(1);
+    const back: TalkTurn[] = [];
+    for (const record of records) back.push(decodeTurn(decryptMessage(await post(record), MAYOR.toHex()))!);
+    expect(back.map((part) => [part.part, part.parts])).toEqual(records.map((_, i) => [i + 1, records.length]));
+    expect(back.map((part) => part.text).join('')).toBe(text);
   });
 
-  it('the biggest turn the line can make still goes, even when every character is escaped', async () => {
-    await post(turnWith(capTurnText('"'.repeat(TURN_TEXT_MAX_BYTES * 2))));
-    await post(turnWith(capTurnText('\n'.repeat(TURN_TEXT_MAX_BYTES * 2))));
-    await post(turnWith(capTurnText('😀'.repeat(TURN_TEXT_MAX_BYTES))));
+  it('the biggest parts the line can make still go, even when every character is escaped', async () => {
+    for (const text of ['"'.repeat(TURN_TEXT_MAX_BYTES * 2), '\n'.repeat(TURN_TEXT_MAX_BYTES * 2), '😀'.repeat(TURN_TEXT_MAX_BYTES)]) {
+      for (const record of turnRecords(turnWith(text), false)) await post(record);
+    }
   });
 });

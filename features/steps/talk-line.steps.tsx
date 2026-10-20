@@ -19,7 +19,7 @@ import { deliver, deliverThreaded, settledWrites, type Delivered } from '../../s
 import { itemFromMessage } from '../../src/model/conversation';
 import type { Attachment } from '../../src/services/threads';
 import { notificationSpecForTalkAnswer } from '../../src/push/classOptions';
-import { initialTalkLine, isLateAnswer, talkLine, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
+import { initialTalkLine, isLateAnswer, talkLine, turnRecords, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
 import { challengeResponse, isChallengeRequest } from '../../tests/support/challenge-fetch';
 import { backendDownWoc, type BackendDownWoc } from '../../tests/support/fake-woc';
 
@@ -492,17 +492,20 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And('the line holds no unsent words', () => expect(line.unsent).toBeUndefined());
   });
 
-  Scenario('AC-1: a turn longer than the cap is cut with "..." and still sent', ({ Given, When, And, Then }) => {
+  Scenario('AC-1: a turn longer than the cap is sent as parts, none cut, and still sent (mw-8ifimx.16)', ({ Given, When, And, Then }) => {
     Given('the line is idle', () => {
       line = initialTalkLine;
     });
     When('he holds the button for talk {string}', (_c, id: string) => feed({ type: 'hold', talkId: id }));
     And('he releases with {number} words', (_c, n: number) => feed({ type: 'release', text: Array.from({ length: Number(n) }, (_, i) => `word${i % 97}`).join(' ') }));
     Then('the line is sending', () => expect(line.phase).toBe('sending'));
-    And('the turn to send ends with {string} and is within the cap', (_c, tail: string) => {
-      const text = line.outgoing?.text ?? '';
-      expect(text.endsWith(tail)).toBe(true);
-      expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
+    And('the turn goes as several records numbered part 1 to n of n, each within the cap, joining to every word', () => {
+      const said = Array.from({ length: 40000 }, (_, i) => `word${i % 97}`).join(' ');
+      const records = turnRecords(line.outgoing!, false);
+      expect(records.length).toBeGreaterThan(1);
+      expect(records.map((r) => [r.part, r.parts])).toEqual(records.map((_, i) => [i + 1, records.length]));
+      for (const r of records) expect(new TextEncoder().encode(JSON.stringify(r.text)).length - 2).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
+      expect(records.map((r) => r.text).join('')).toBe(said);
     });
   });
 

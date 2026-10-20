@@ -37,15 +37,16 @@ interface Accumulated {
   ended: boolean;
   lastTs: number;
   lastIndex: number;
-  his: Map<number, { turn: TalkTurn; ts: number }>;
+  his: Map<number, { turn: TalkTurn; ts: number; parts?: Map<number, string> }>;
   answers: Map<number, { turn: TalkTurn; ts: number; row: string; heard?: boolean; firstTs: number }>;
 }
 
 function entryOf(talk: Accumulated, number: number): TalkLogEntry | undefined {
   const his = talk.his.get(number);
   if (!his) return undefined;
-  const { turn, ts } = his;
-  const entry: TalkLogEntry = { turn: number, said: turn.text, cut: turn.cut === true, asked: turn.model, releasedAt: ts * 1000, ...(turn.attachment ? { attachment: turn.attachment } : {}) };
+  const { turn, ts, parts } = his;
+  const said = parts ? [...parts.keys()].sort((a, b) => a - b).map((part) => parts.get(part)).join('') : turn.text;
+  const entry: TalkLogEntry = { turn: number, said,  cut: turn.cut === true, asked: turn.model, releasedAt: ts * 1000, ...(turn.attachment ? { attachment: turn.attachment } : {}) };
   const answer = talk.answers.get(number);
   if (!answer) return entry;
   entry.answer = answer.turn.text;
@@ -79,7 +80,16 @@ export function talksFromRows(rows: TalkRow[]): RecordedTalk[] {
       talk.lastIndex = index;
     }
     if (turn.role === 'end') talk.ended = true;
-    else if (row.direction === 'sent' && turn.role === 'turn') talk.his.set(turn.talk.turn, { turn, ts: row.ts });
+    else if (row.direction === 'sent' && turn.role === 'turn') {
+      // A turn too long for one record is several rows, part k of n: they read back as one turn, as his words in order.
+      const before = talk.his.get(turn.talk.turn);
+      if (turn.part === undefined) talk.his.set(turn.talk.turn, { turn, ts: row.ts });
+      else {
+        const parts = new Map(before?.parts ?? []).set(turn.part, turn.text);
+        const first = turn.part === 1 || !before ? turn : before.turn;
+        talk.his.set(turn.talk.turn, { turn: first, ts: turn.part === 1 ? row.ts : Math.min(before?.ts ?? row.ts, row.ts), parts });
+      }
+    }
     else if (row.direction === 'received' && (turn.role === 'answer' || turn.role === 'holding')) {
       const before = talk.answers.get(turn.talk.turn);
       // A real answer is never replaced by a holding one; of two of a kind the later row wins.

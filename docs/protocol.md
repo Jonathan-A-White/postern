@@ -1610,9 +1610,11 @@ What `ct` seals to the recipient:
   end, and `turn`, the turn's number within it. An answer carries the `id` and `turn`
   of the Governor's turn it answers.
 - `text` — the words, as spoken or to be spoken. A record's payload may not pass 10,240 bytes
-  (spell-forge-bsv's `encodeRecordScript`), so the Governor's turn carries at most 7,000
-  bytes of text (as JSON writes it; about 1,100 words): a longer turn is cut at that and
-  ends with `...`, and is still sent.
+  (spell-forge-bsv's `encodeRecordScript`), so one record of the Governor's turn carries at most 7,000
+  bytes of text (as JSON writes it; about 1,100 words). A longer turn is never cut: it is sent as several
+  records (see *A turn in parts*).
+- `part`, `parts` — optional, on a `turn` of his too long for one record (`mw-8ifimx.16`): this record is
+  part `part` of `parts`. See *A turn in parts*. A turn that fits one record has neither key.
 - `role`:
   - `turn`: the Governor's spoken turn.
   - `answer`: the Mayor's answer to it.
@@ -1629,6 +1631,28 @@ What `ct` seals to the recipient:
   tappable chip under the answer; a tap opens that bead's page. The ids are never spoken
   (the voice drops bead ids before speaking). Empty entries and non-strings are
   dropped; absent means no chips.
+
+### A turn in parts
+
+The Governor, 2026-10-20 (`mw-8ifimx.16`): a turn of several minutes lost its tail to the old cut (`...` at 7,000
+bytes), and nothing told the Mayor words were missing. A turn whose text passes 7,000 bytes is now sent as
+**several records of the same `talk.id` and `talk.turn`**, numbered by two integer keys:
+
+```json
+{ "talk": { "id": "<id>", "turn": 4 }, "text": "<the first 7,000 bytes or so>", "role": "turn", "part": 1, "parts": 3 }
+```
+
+- `part` is 1-based, `parts` is the number of records (at least 2), and `1 <= part <= parts`. Both keys are
+  written together or not at all; a record whose pair does not fit that is read as a whole turn.
+- The records are sent in order, part 1 first, each with at most 7,000 bytes of text (as JSON writes it).
+  The text is cut on whole characters, after a space where one is near the end; **the parts' texts joined, in
+  order and with nothing added, are exactly what he said.** No part ends in `...`.
+- Part 1 alone carries `model`, `cut`, `about` and `attachment`; later parts carry only `talk`, `text`, `role`,
+  `part` and `parts`. With a picture on part 1, its text is 600 bytes shorter (see *Picture on a turn*).
+- A turn with one record is unchanged on the wire: no `part`, no `parts`.
+- A reader joins the records of one `talk.turn` by `part` and treats the turn as arrived once it has all
+  `parts`; if one is missing it uses what came and says which part is missing (`mw talk wait`: `missing part
+  k of n`, after waiting up to 60 s from the first part).
 
 ### Picture on a turn
 
@@ -1649,8 +1673,8 @@ or take a photo, and the picture goes with the turn. A turn of his carries an op
   `attachment` is never an array and never has `attachments`. Absent means no picture, and a turn
   with none has no `attachment` key at all. An `attachment` missing a key is read as none.
 - With a picture chosen and nothing said, the turn is sent with `"text": ""` and `"role": "turn"`.
-- The `attachment` object takes about 170 bytes of the record's 10,240, so the phone cuts the words of a turn that carries a
-  picture 600 bytes sooner than the 7,000 above.
+- The `attachment` object takes about 170 bytes of the record's 10,240, so the phone makes part 1 of a turn that carries a
+  picture 600 bytes shorter than the 7,000 above.
 - **Direct only, phone to Mayor only**, like every blob (§8): the Mayor's `answer` turns carry no picture.
 - The Mayor's side (`mw talk wait` printing the picture as a file path) is not part of this
   protocol note; a Mayor that does not know the field reads the turn as before.

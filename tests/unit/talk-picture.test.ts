@@ -1,6 +1,6 @@
 // mw-q6n8m0.14: a Talk turn may carry one picture, in §8's shape; the line holds one chosen picture at a time.
 import { describe, expect, it } from 'vitest';
-import { ATTACHMENT_ROOM_BYTES, TURN_TEXT_MAX_BYTES, initialTalkLine, talkLine, type TalkLineState, type TalkPicture } from '../../src/model/talkLine';
+import { ATTACHMENT_ROOM_BYTES, TURN_TEXT_MAX_BYTES, initialTalkLine, talkLine, turnRecords, type TalkLineState, type TalkPicture } from '../../src/model/talkLine';
 import { decodeTurn, encodeTurn } from '../../src/services/talk';
 
 const attachment = { hash: 'ab'.repeat(32), size: 1234, mime: 'image/jpeg', name: 'screen.jpg' };
@@ -89,12 +89,13 @@ describe('the line and its one picture', () => {
     expect(chosen.picture?.name).toBe('a.jpg');
   });
 
-  it('cuts his words sooner when a picture goes with them, so the sealed record stays under its limit', () => {
-    const long = 'a'.repeat(TURN_TEXT_MAX_BYTES + 100);
+  it('sends his words in parts sooner when a picture goes with them, so the sealed record stays under its limit', () => {
+    const long = 'a'.repeat(TURN_TEXT_MAX_BYTES - 100);
     const withPicture = talkLine(listening(talkLine(initialTalkLine, { type: 'attach', picture: picture('a.jpg') })), { type: 'release', text: long });
     const without = talkLine(listening(), { type: 'release', text: long });
-    expect(new TextEncoder().encode(withPicture.outgoing?.text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES);
-    expect(withPicture.outgoing?.text.endsWith('...')).toBe(true);
-    expect(new TextEncoder().encode(without.outgoing?.text).length).toBeGreaterThan(TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES);
+    expect(turnRecords(withPicture.outgoing!, true).map((r) => r.text).join('')).toBe(long);
+    expect(turnRecords(withPicture.outgoing!, true).length).toBe(2);
+    expect(turnRecords(without.outgoing!, false)).toHaveLength(1);
+    expect(new TextEncoder().encode(turnRecords(withPicture.outgoing!, true)[0].text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES);
   });
 });

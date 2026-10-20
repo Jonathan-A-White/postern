@@ -4,7 +4,7 @@
 // answers from the stored `talk` records, speak them, count the wait, and keep the
 // screen awake while a talk is open.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { initialTalkLine, endTurn, isLateAnswer, talkLine, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
+import { initialTalkLine, endTurn, isLateAnswer, talkLine, turnRecords, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
 import { initialTalkScreen, talkScreenReducer } from '../model/talkScreen';
 import { earlierTalks, openTalk } from '../model/talkLog';
 import { messagesRepo } from '../data/repositories';
@@ -113,7 +113,12 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   useEffect(() => {
     if (!outgoing || sending.current === outgoing) return;
     sending.current = outgoing;
-    sendTurn(outgoing, outgoingPicture).then(
+    // A turn too long for one record goes as its parts, queued in order; the picture goes with part 1 (docs/protocol.md §20).
+    const queue = async () => {
+      const records = turnRecords(outgoing, outgoingPicture !== undefined);
+      for (const [index, record] of records.entries()) await sendTurn(record, index === 0 ? outgoingPicture : undefined);
+    };
+    queue().then(
       () => {
         const recorded = recordedNow.current;
         feed({ type: 'sent', at: now(), here: hereNow.current, ...(recorded !== undefined ? { recorded } : {}) });

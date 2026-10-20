@@ -196,12 +196,12 @@ Feature: Talk line turns are records of their own, and the line is a small state
     Then the line is waiting
     And the line holds no unsent words
 
-  Scenario: AC-1: a turn longer than the cap is cut with "..." and still sent
+  Scenario: AC-1: a turn longer than the cap is sent as parts, none cut, and still sent (mw-8ifimx.16)
     Given the line is idle
     When he holds the button for talk "talk-31"
     And he releases with 40000 words
     Then the line is sending
-    And the turn to send ends with "..." and is within the cap
+    And the turn goes as several records numbered part 1 to n of n, each within the cap, joining to every word
 
   Scenario: AC-3: Call me while the backend is unreachable goes on chain (mw-a0ih0.4)
     Given the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin

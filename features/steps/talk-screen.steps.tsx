@@ -1330,14 +1330,15 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('AC-1: a hold of about 2,000 words is cut at the cap with "..." and still sent', ({ Given, When, Then, And }) => {
+  Scenario('AC-1: a hold of about 2,000 words is sent in parts, none cut (mw-8ifimx.16)', ({ Given, When, Then, And }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     When('he holds the talk button and says {number} words and lets go', async (_c, n: number) => holdAndSay(longSpeech(Number(n))));
-    Then('the last turn sent is cut at the cap and ends with {string}', (_c, tail: string) => {
-      const text = lastSent().text;
-      expect(text.endsWith(tail)).toBe(true);
-      expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
-      expect(text.length).toBeGreaterThan(5000);
+    Then('the turn is sent as parts that join to every word he said', async () => {
+      await waitFor(() => expect(sendTurn.mock.calls.length).toBeGreaterThan(1));
+      const sent = sendTurn.mock.calls.map((call) => call[0] as TalkTurn);
+      expect(sent.map((turn) => [turn.part, turn.parts])).toEqual(sent.map((_, i) => [i + 1, sent.length]));
+      for (const turn of sent) expect(new TextEncoder().encode(turn.text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
+      expect(sent.map((turn) => turn.text).join('')).toBe(longSpeech(2000));
     });
     And('the talk button reads {string}', async (_c, name: string) => {
       expect(await talkButton(name)).toBeInTheDocument();

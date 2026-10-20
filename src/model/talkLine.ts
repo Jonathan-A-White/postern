@@ -24,6 +24,9 @@ export interface TalkTurn {
   about?: TalkAbout;
   /** The one picture that goes with a turn of his, in §8's shape (never more than one): uploaded before the turn is delivered. */
   attachment?: Attachment;
+  /** On a turn of his too long for one record: this record is part `part` of `parts` (1-based), the words in order; absent on a turn sent whole. */
+  part?: number;
+  parts?: number;
 }
 
 /** A picture chosen for the next turn, on the phone: the JPEG bytes to upload, and a local preview to show in the thumbnail and the bubble. */
@@ -133,7 +136,7 @@ export const NOT_KEPT = 'Could not keep that on this phone. Try again.';
  * (spell-forge-bsv's encodeRecordScript throws past it, which was the send failure of
  * mw-j0f2d.15): the envelope, the BRC-78 header and base64 leave room for about 7,250 bytes
  * of turn JSON, whose own fields take a hundred and some. 7,000 keeps a margin; it is about
- * 1,100 spoken words, several minutes of talk. A turn over it is cut and ends with "...".
+ * 1,100 spoken words, several minutes of talk. A turn over it goes as several records (turnRecords), none cut.
  */
 export const TURN_TEXT_MAX_BYTES = 7_000;
 
@@ -169,8 +172,53 @@ export function capText(text: string, maxBytes: number): string {
   return kept.trimEnd() + CUT_MARK;
 }
 
-/** His turn's words, cut at the turn cap. */
-export const capTurnText = (text: string): string => capText(text, TURN_TEXT_MAX_BYTES);
+/** How far back from a part's end its break may move to land after a space, so a part does not end mid-word. */
+const BREAK_LOOKBACK = 200;
+
+/**
+ * `text` as pieces that each fit their cap (as JSON writes them; the first piece's is `firstMax`, the rest's `max`),
+ * cut on whole characters, after a space where one is near the end of a piece. The pieces joined are `text`.
+ */
+export function splitText(text: string, firstMax: number, max: number): string[] {
+  const chars = [...text];
+  const pieces: string[] = [];
+  let start = 0;
+  while (start < chars.length) {
+    const room = pieces.length === 0 ? firstMax : max;
+    let size = 0;
+    let end = start;
+    while (end < chars.length && size + jsonBytes(chars[end]) <= room) size += jsonBytes(chars[end++]);
+    if (end < chars.length) {
+      // Cut after the last space or newline within the lookback, when there is one.
+      for (let at = end; at > Math.max(start, end - BREAK_LOOKBACK); at--) {
+        if (/\s/.test(chars[at - 1])) {
+          end = at;
+          break;
+        }
+      }
+    }
+    if (end === start) end = start + 1; // a cap smaller than one character cannot happen; never loop on it
+    pieces.push(chars.slice(start, end).join(''));
+    start = end;
+  }
+  return pieces.length ? pieces : [''];
+}
+
+/**
+ * The records a turn of his goes as (docs/protocol.md §20): one when its words fit the cap, otherwise several of the same
+ * talk and turn, `part` k of `parts` n, in order, each within the cap and none cut. The picture, model, cut mark and about
+ * go on part 1 only, so part 1's words are ATTACHMENT_ROOM_BYTES shorter when a picture goes with the turn.
+ */
+export function turnRecords(turn: TalkTurn, hasPicture: boolean): TalkTurn[] {
+  const firstMax = hasPicture ? TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES : TURN_TEXT_MAX_BYTES;
+  const pieces = splitText(turn.text, firstMax, TURN_TEXT_MAX_BYTES);
+  if (pieces.length === 1) return [turn];
+  return pieces.map((text, index) => {
+    const { model, cut, about, links, attachment, ...rest } = turn;
+    const first = index === 0 ? { ...(model ? { model } : {}), ...(cut ? { cut } : {}), ...(about ? { about } : {}), ...(links ? { links } : {}), ...(attachment ? { attachment } : {}) } : {};
+    return { ...rest, ...first, text, part: index + 1, parts: pieces.length };
+  });
+}
 
 export const initialTalkLine: TalkLineState = { phase: 'idle', cutPending: false };
 
@@ -245,7 +293,7 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
     }
     case 'release': {
       if (state.phase !== 'listening' || !state.talk) return state;
-      const text = capText(event.text.trim(), state.picture ? TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES : TURN_TEXT_MAX_BYTES);
+      const text = event.text.trim();
       if (!text && !state.picture) return idle(state, { talk: state.talk.turn > 0 ? state.talk : undefined });
       const talk = { id: state.talk.id, turn: state.talk.turn + 1 };
       const about = talk.turn === 1 ? state.about : undefined;

@@ -20,6 +20,7 @@ export function encodeTurn(turn: TalkTurn): string {
     ...(turn.links?.length ? { links: turn.links } : {}),
     ...(turn.about ? { about: { kind: turn.about.kind, id: turn.about.id, title: turn.about.title } } : {}),
     ...(turn.attachment ? { attachment: writeAttachment(turn.attachment) } : {}),
+    ...(turn.parts !== undefined && turn.parts > 1 && turn.part !== undefined ? { part: turn.part, parts: turn.parts } : {}),
   });
 }
 
@@ -61,6 +62,8 @@ export function decodeTurn(plaintext: string | undefined): TalkTurn | undefined 
   if (typeof talk.id !== 'string' || talk.id === '' || typeof talk.turn !== 'number' || !Number.isInteger(talk.turn)) return undefined;
   if (typeof candidate.text !== 'string') return undefined;
   if (typeof candidate.role !== 'string' || !ROLES.includes(candidate.role as TalkRole)) return undefined;
+  const { part, parts } = candidate;
+  const partOf = typeof part === 'number' && typeof parts === 'number' && Number.isInteger(part) && Number.isInteger(parts) && parts > 1 && part >= 1 && part <= parts;
   const links = Array.isArray(candidate.links) ? candidate.links.filter((id): id is string => typeof id === 'string' && id !== '') : [];
   return {
     talk: { id: talk.id, turn: talk.turn },
@@ -71,6 +74,7 @@ export function decodeTurn(plaintext: string | undefined): TalkTurn | undefined 
     ...(links.length ? { links } : {}),
     ...(readAbout(candidate.about) ? { about: readAbout(candidate.about) } : {}),
     ...(readAttachment(candidate.attachment) ? { attachment: readAttachment(candidate.attachment) } : {}),
+    ...(partOf ? { part, parts } : {}),
   };
 }
 

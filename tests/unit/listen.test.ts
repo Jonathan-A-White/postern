@@ -581,7 +581,14 @@ describe('listen', () => {
         throw new Error('busy');
       });
       recognizer.onend?.();
-      expect(await begin.session.stop()).toEqual({ ok: true, text: 'some words', mode: 'on-device' });
+      // the words after the pause are lost, and the result says so (voice-kit 0.4.0, mw-06ggew.1)
+      expect(await begin.session.stop()).toEqual({
+        ok: true,
+        text: 'some words',
+        mode: 'on-device',
+        missed: true,
+        missedNote: expect.stringMatching(/could not be made out/),
+      });
     });
   });
 

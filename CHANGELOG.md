@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.33
+_2026-10-20_
+- New: The message bar in every channel is now the shared bar your other apps will use; it looks and works as before.
+
 ## 0.8.30
 _2026-10-20_
 - Fixed: A long thing you say in Talk is no longer cut off with "..." at the end; the whole of it is sent to the Mayor.

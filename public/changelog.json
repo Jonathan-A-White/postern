@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.33",
+    "date": "2026-10-20",
+    "story": "mw-06ggew.5",
+    "kind": "new",
+    "text": "The message bar in every channel is now the shared bar your other apps will use; it looks and works as before."
+  },
+  {
     "version": "0.8.30",
     "date": "2026-10-20",
     "story": "mw-8ifimx.16",

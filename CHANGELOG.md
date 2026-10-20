@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.34
+_2026-10-20_
+- New: Me has a Talk section where you choose whether to hold or tap the mic, and whether talking sends on release or waits for the Send button.
+
 ## 0.8.33
 _2026-10-20_
 - New: The message bar in every channel is now the shared bar your other apps will use; it looks and works as before.

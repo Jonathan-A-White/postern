@@ -96,8 +96,9 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     if (!sent) return false;
     draft.discard();
     others.current.clear();
+    if (!alive()) return true;
     setOpen(root.current?.querySelector<HTMLElement>('[data-testid="composer"]')?.dataset.layout === 'bar' ? 'bar' : 'box');
-    if (alive()) onClearQuote?.();
+    onClearQuote?.();
     return true;
   }
 

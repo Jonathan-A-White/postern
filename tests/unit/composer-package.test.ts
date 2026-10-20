@@ -56,14 +56,17 @@ describe("the compose bar is the kit's Composer with Postern's settings", () => 
   it("renders the kit's Composer with those settings and has no press, attach, camera or Send logic of its own", () => {
     const composer = source('src/cockpit/Composer.tsx');
     expect(composer).toMatch(/import \{[^}]*\bComposer as KitComposer\b[^}]*\} from 'voice-kit\/composer'/);
-    expect(composer).toContain('settings={POSTERN_COMPOSER_SETTINGS}');
+    expect(composer).toContain('settings={settings}');
+    expect(composer).toContain('useComposerSettings()');
     for (const own of ['useHold', 'HoldToTalkBar', 'type="file"', 'capture=', 'onPaste', 'onDrop', 'aria-label="Send"']) {
       expect(composer, own).not.toContain(own);
     }
     expect(composer.split('\n').length).toBeLessThan(200);
   });
 
-  it("the Talk line's hold bar takes the same settings", () => {
-    expect(source('src/cockpit/TalkLineScreen.tsx')).toMatch(/<HoldToTalkBar[^>]*settings=\{POSTERN_COMPOSER_SETTINGS\}/);
+  it("the Talk line's hold bar takes the same settings, with his Talk and Send choices from Me over them (mw-06ggew.6)", () => {
+    const line = source('src/cockpit/TalkLineScreen.tsx');
+    expect(line).toMatch(/<HoldToTalkBar[^>]*settings=\{composerSettings\}/);
+    expect(line).toContain('composerSettings = useComposerSettings()');
   });
 });

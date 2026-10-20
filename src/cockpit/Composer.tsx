@@ -1,6 +1,7 @@
 // src/cockpit/Composer.tsx — how he talks to the Mayor anywhere in the tree (plans/0021 decisions 10–12). The bar is
-// voice-kit's Composer (mw-06ggew.5), set by POSTERN_COMPOSER_SETTINGS: hold to talk and let go to send (the words, the
-// voice note and whatever is attached go as one message; a slide off keeps the words in the box, unsent), typing,
+// voice-kit's Composer (mw-06ggew.5), set by POSTERN_COMPOSER_SETTINGS with his Talk and Send choices from Me over it
+// (talkSettings.ts, mw-06ggew.6): by default hold to talk and let go to send (the words, the voice note and whatever is
+// attached go as one message; a slide off keeps the words in the box, unsent), typing,
 // any file from the picker, a paste or a drop, a photo from the camera, and the Send arrow beside the bar for files
 // with no words. It opens on the text box, the mic standing in for Send until there is something to send.
 // What is Postern's own rides on the kit's ways in: the words are this component's (a draft kept per channel, a
@@ -17,7 +18,8 @@ import type { ThreadRef } from '../services/threads';
 import { takePendingShare } from './shareInbox';
 import { quoteBlock } from './quote';
 import { usePromptCall } from './usePromptCall';
-import { APP_NAME, POSTERN_COMPOSER_SETTINGS } from './holdBar';
+import { APP_NAME } from './holdBar';
+import { useComposerSettings } from './talkSettings';
 import { useDraft } from './useDraft';
 import { ImageViewer } from './ImageViewer';
 import { useViewer } from './useViewer';
@@ -52,6 +54,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   // What he has typed and not sent waits on the phone, per channel (and per post for a reply), through a lock-out or a reload.
   const draft = useDraft(draftsRepo.keyFor(thread, re), text, (saved) => setText((current) => current || saved), prefill);
   const prompt = usePromptCall(text, setText);
+  const settings = useComposerSettings();
   const { run } = useSend();
   const alive = useAlive();
   const viewer = useViewer();
@@ -105,7 +108,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   return (
     <div ref={root} className="contents">
       <KitComposer
-        settings={POSTERN_COMPOSER_SETTINGS}
+        settings={settings}
         open={open}
         appName={APP_NAME}
         text={text}

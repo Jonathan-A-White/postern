@@ -100,6 +100,7 @@ What makes each a collision, in one line:
 - `src/App.tsx`: the route-to-screen switch, the startup wiring and two service-worker message listeners; a new place or a new notification tap edits it.
 - `src/cockpit/NeedCard.tsx`, `src/cockpit/Conversation.tsx`: both render a question's options and both read aloud; one carries attachments, the other the question block, each in the same file as the screen's own layout.
 - `src/key/KeyVault.tsx`: the whole key flow (create, restore, passkey, mint, balance) as one component with its own state machine.
+- `src/cockpit/talkSettings.ts` and `src/cockpit/TalkSection.tsx`: Me > Talk, his Talk (Hold or Tap) and Send (On release or By button) kept in localStorage and read live by the compose bar and the Talk line's bar (mw-06ggew.6).
 - `src/cockpit/Composer.tsx`: voice-kit's Composer with POSTERN_COMPOSER_SETTINGS (mw-06ggew.5); drafts, quotes, share-in, the file viewer and the send ride on its ways in, the saved prompts in `src/cockpit/usePromptCall.tsx`.
 - `src/push/classOptions.ts`: a table per notification trait (titles, vibrate, urls, defaults) plus a switch; a new message class edits all of them.
 - `src/cockpit/hooks.ts`: every live-query hook for every table.

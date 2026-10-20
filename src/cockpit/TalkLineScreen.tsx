@@ -11,7 +11,7 @@ import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
 import { useTalkLine } from './useTalkLine';
 import { HoldToTalkBar, micName } from 'voice-kit/composer';
-import { HOLD_BAR_CLASS } from './holdBar';
+import { HOLD_BAR_CLASS, POSTERN_COMPOSER_SETTINGS } from './holdBar';
 import { useSpeech } from './useSpeaking';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
 import { useRecordedWords } from './useIdeasOnly';
@@ -669,7 +669,7 @@ export function TalkLineScreen() {
 
         <PictureRow talk={talk} />
 
-        <HoldToTalkBar label={label} listening={listening} disabled={dead} onPress={talk.press} onRelease={() => void talk.release()} onAbort={talk.abort} className={HOLD_BAR_CLASS} />
+        <HoldToTalkBar settings={POSTERN_COMPOSER_SETTINGS} label={label} listening={listening} disabled={dead} onPress={talk.press} onRelease={() => void talk.release()} onAbort={talk.abort} className={cx(HOLD_BAR_CLASS, 'flex-none')} />
 
         <div className="flex h-10 items-center gap-2">
           {line.phase === 'waiting' && <Button onClick={talk.cut}>Stop waiting</Button>}

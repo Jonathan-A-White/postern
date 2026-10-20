@@ -24,6 +24,12 @@ export type TodoSize = 'quick' | 'hour' | 'half-day';
 /** The rows the nightly ranking pass puts a card in (docs/protocol.md §11 todo_row), in the order the board shows them (Later last but one). */
 export type TodoRow = 'now' | 'make-time' | 'later' | 'let-go';
 
+/** A bead a card waits on: its id and its title (the id again when the view does not hold the bead). */
+export interface WaitsOn {
+  id: string;
+  title: string;
+}
+
 export interface TodoCard {
   id: string;
   title: string;
@@ -32,6 +38,8 @@ export interface TodoCard {
   rank?: number | string;
   /** When it is due, an RFC 3339 UTC time (the bead's todo_due), absent when it has none. */
   due?: string;
+  /** The unfinished beads it waits on (the bead's `waits`, less those the view shows closed), each with its title: it is not doable until they finish, so it sits below the doable cards and offers no Done (mw-bdxfn5). Absent when it waits on nothing. */
+  waitsOn?: WaitsOn[];
   /** He has starred it (the bead's todo_important): it sorts above the cards that are neither starred nor due soon. */
   important?: boolean;
   /** How big it is (the bead's todo_size), absent when it has none (mw-ht6gsw.4). */
@@ -99,6 +107,16 @@ function rankOrder(a: TodoCard, b: TodoCard): number {
   return 0;
 }
 
+/** Whether a card can be done now: it waits on no unfinished bead (mw-bdxfn5). */
+export function isDoable(card: Pick<TodoCard, 'waitsOn'>): boolean {
+  return !card.waitsOn?.length;
+}
+
+/** The cards that can be done now, then those that wait on an unfinished bead, each part in the order it came in. The cards given are not changed. */
+function doableFirst(cards: TodoCard[]): TodoCard[] {
+  return [...cards.filter(isDoable), ...cards.filter((card) => !isDoable(card))];
+}
+
 /** The order a list shows its cards: todo_rank, then priority, then the oldest first. */
 export function cardOrder(a: TodoCard, b: TodoCard): number {
   return rankOrder(a, b) || a.priority - b.priority || a.created.localeCompare(b.created) || a.id.localeCompare(b.id, undefined, { numeric: true });
@@ -110,7 +128,7 @@ export function cardOrder(a: TodoCard, b: TodoCard): number {
 export function orderCards(cards: readonly TodoCard[], now: number): TodoCard[] {
   const soon = cards.filter((card) => isDueSoon(card.due, now)).sort((a, b) => (dueMs(a.due) as number) - (dueMs(b.due) as number));
   const rest = cards.filter((card) => !isDueSoon(card.due, now));
-  return [...soon, ...rest.filter((card) => card.important), ...rest.filter((card) => !card.important)];
+  return doableFirst([...soon, ...rest.filter((card) => card.important), ...rest.filter((card) => !card.important)]);
 }
 
 /** THE order of a list's cards with the Today taps (mw-ht6gsw.5): orderCards' order, the cards he has tapped into Today (for the day he tapped
@@ -118,7 +136,7 @@ export function orderCards(cards: readonly TodoCard[], now: number): TodoCard[] 
 export function pickCards(cards: readonly TodoCard[], now: number, picks: TodayPicks): TodoCard[] {
   const ordered = orderCards(cards, now);
   const tapped = (card: TodoCard) => picks[card.id] === dayKey(now);
-  return [...ordered.filter(tapped).map((card): TodoCard => ({ ...card, tapped: true })), ...ordered.filter((card) => !tapped(card))];
+  return doableFirst([...ordered.filter(tapped).map((card): TodoCard => ({ ...card, tapped: true })), ...ordered.filter((card) => !tapped(card))]);
 }
 
 /** How many cards each of Do now and Make time holds at most. A card past that goes to Later. */
@@ -130,8 +148,9 @@ export interface RowCard {
   list: TodoList;
 }
 
-/** Do now: the card due soonest first, then the starred ones, then the longest waiting. */
+/** Do now: the cards that can be done now before those that wait on an unfinished bead (mw-bdxfn5), each part with the card due soonest first, then the starred ones, then the longest waiting. */
 function doNowOrder(a: RowCard, b: RowCard): number {
+  if (isDoable(a.card) !== isDoable(b.card)) return isDoable(a.card) ? -1 : 1;
   const due = (entry: RowCard) => dueMs(entry.card.due) ?? Infinity;
   if (due(a) !== due(b)) return due(a) < due(b) ? -1 : 1;
   return waitingOrder(a, b, true);
@@ -139,6 +158,7 @@ function doNowOrder(a: RowCard, b: RowCard): number {
 
 /** The longest waiting first (the oldest bead), then the star first when asked; the id last so the order is whole. */
 function waitingOrder(a: RowCard, b: RowCard, starFirst = false): number {
+  if (isDoable(a.card) !== isDoable(b.card)) return isDoable(a.card) ? -1 : 1;
   if (starFirst && a.card.important !== b.card.important) return a.card.important ? -1 : 1;
   return a.card.created.localeCompare(b.card.created) || a.card.id.localeCompare(b.card.id, undefined, { numeric: true });
 }
@@ -167,7 +187,9 @@ export function summaryMayBeCut(summary: string): boolean {
   return [...summary].length >= SUMMARY_RUNES - 20;
 }
 
-function cardOf(bead: ViewBead): TodoCard {
+function cardOf(bead: ViewBead, index: ViewIndex): TodoCard {
+  const unfinished = bead.waits.filter((id) => index.byId.get(id)?.status !== 'closed');
+  const waitsOn = unfinished.map((id): WaitsOn => ({ id, title: index.byId.get(id)?.title ?? id }));
   const links = openLinksOf(bead.summary);
   const cut = summaryMayBeCut(bead.summary);
   // a summary cut short may have cut the draft short too: the board reads the whole notes for it then
@@ -175,7 +197,7 @@ function cardOf(bead: ViewBead): TodoCard {
   const email = cut ? undefined : parseEmailAction(bead.summary);
   const listen = cut ? undefined : parseListenAction(bead.summary);
   const when = cut ? undefined : parseWhen(bead.summary);
-  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(bead.todo_important ? { important: true } : {}), ...(bead.todo_row ? { row: bead.todo_row } : {}), ...(bead.todo_row_why ? { rowWhy: bead.todo_row_why } : {}), ...(bead.todo_size ? { size: bead.todo_size } : {}), ...(bead.todo_then ? { then: bead.todo_then } : {}), ...(links.length ? { links } : {}), ...(text ? { text } : {}), ...(email ? { email } : {}), ...(listen ? { listen } : {}), ...(when ? { when } : {}), ...(cut ? { summaryCut: true } : {}) };
+  return { id: bead.id, title: bead.title, priority: bead.priority, created: bead.created, ...(bead.todo_rank !== undefined ? { rank: bead.todo_rank } : {}), ...(bead.todo_due ? { due: bead.todo_due } : {}), ...(waitsOn.length ? { waitsOn } : {}), ...(bead.todo_important ? { important: true } : {}), ...(bead.todo_row ? { row: bead.todo_row } : {}), ...(bead.todo_row_why ? { rowWhy: bead.todo_row_why } : {}), ...(bead.todo_size ? { size: bead.todo_size } : {}), ...(bead.todo_then ? { then: bead.todo_then } : {}), ...(links.length ? { links } : {}), ...(text ? { text } : {}), ...(email ? { email } : {}), ...(listen ? { listen } : {}), ...(when ? { when } : {}), ...(cut ? { summaryCut: true } : {}) };
 }
 
 /** The open hitl:todo beads of the view grouped under their parent epic: newest list first, Other last,
@@ -192,7 +214,7 @@ export function todoListsFromView(index: ViewIndex, now: number): TodoList[] {
       list = epic ? { id: epic.id, title: epic.title, name: shortName(epic.title, epic.todo_name), epic: epic.id, created: epic.created, cards: [] } : { id: OTHER_LIST, title: 'Other', name: 'Other', created: '', cards: [] };
       lists.set(key, list);
     }
-    list.cards.push(cardOf(bead));
+    list.cards.push(cardOf(bead, index));
   }
   for (const list of lists.values()) list.cards = orderCards([...list.cards].sort(cardOrder), now);
   const newestFirst = (a: TodoList, b: TodoList) => b.created.localeCompare(a.created) || b.id.localeCompare(a.id, undefined, { numeric: true });

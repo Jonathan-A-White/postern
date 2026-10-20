@@ -13,7 +13,7 @@
 // a Listen in Audible button, its link built by audible-kit when tapped (mw-ev7oyy.24); one with a 'Text:' line shows a Text button first, which opens his
 // texting app to the person with the message filled in (mw-ev7oyy.22); one with an 'Email:' line shows an Email button after it, which opens his mail app to the
 // person with the subject and the draft filled in (mw-ev7oyy.26). A card's back has a Size row (Quick, an Hour, a Half day: a tap sets one, a second clears it) and a Then line, and its front a small size mark (Q, 1h, half) when set (mw-ht6gsw.4). Draws only what a TodoStore gives it.
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Button, Chip, EmptyState, Icon, IconButton, LengthNote, Spinner, cx, isTooLong } from '../ui';
 import { useNow } from '../ui/useNow';
 import { copyText } from '../ui/copyText';
@@ -26,7 +26,7 @@ import { moveFor, realIndex } from './edits';
 import { isRowOpen, keepRowOpen, readRowsOpen, type FoldedRow, type RowsOpen } from './kept';
 import { googleCalendarHref, icsHref, parseWhen, type When } from './calendar';
 import { copyNotice, emailHref, needsNumber, emailLabel, linkCopyDraft, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, textCopyDraft, textHref, textLabel, type EmailAction, type ListenAction, type OpenLink, type TextAction } from './links';
-import { beadsNamed, boardRows, type RowCard, type TodoCard, type TodoList, type TodoSize } from './lists';
+import { beadsNamed, boardRows, isDoable, type RowCard, type TodoCard, type TodoList, type TodoSize, type WaitsOn } from './lists';
 import { usePosternTodoStore } from './posternStore';
 import { TextNumber } from './TextNumber';
 import type { TodoDone, TodoStore } from './store';
@@ -344,8 +344,26 @@ function CardLinks({ store, card }: { store: TodoStore; card: TodoCard }) {
   );
 }
 
+/** The words under a card that waits on an unfinished bead (mw-bdxfn5): 'Waits on:' and each blocker's title as a link to its page. */
+function WaitsOnLine({ waitsOn }: { waitsOn: WaitsOn[] }) {
+  return (
+    <p data-testid="card-waits" className="mt-1 text-[12.5px] leading-snug text-muted wrap-anywhere">
+      Waits on:{' '}
+      {waitsOn.map((bead, at) => (
+        <Fragment key={bead.id}>
+          {at > 0 && ', '}
+          <a href={beadHref(bead.id)} className="underline">
+            {bead.title}
+          </a>
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
 /** The back's Done: a labelled button, as it was before the card's front became one row. */
-function DoneControl({ state: { waiting, note, done } }: { state: TodoDone }) {
+function DoneControl({ card, state: { waiting, note, done } }: { card: TodoCard; state: TodoDone }) {
+  if (card.waitsOn?.length) return <WaitsOnLine waitsOn={card.waitsOn} />;
   if (note) return <div className="mt-2">{note}</div>;
   if (waiting) {
     return (
@@ -366,7 +384,15 @@ function DoneControl({ state: { waiting, note, done } }: { state: TodoDone }) {
 
 /** The card's front Done: a 24 px round check at the row's left, named 'Done: <title>' for a screen reader (its tap area is wider than it looks).
  * Waiting, it is a spinning ring and the row says why; when the tap came to grief it is a dead ring and the note says what to do. */
-function DoneCheck({ title, state: { waiting, note, done } }: { title: string; state: TodoDone }) {
+function DoneCheck({ card, state: { waiting, note, done } }: { card: TodoCard; state: TodoDone }) {
+  const title = card.title;
+  if (!isDoable(card)) {
+    return (
+      <span aria-hidden data-testid="done-check-dead" className="mt-px flex size-6 shrink-0 items-center justify-center text-muted">
+        <span className="size-6 rounded-full border-2 border-dashed border-current opacity-50" />
+      </span>
+    );
+  }
   if (waiting || note) {
     return (
       <span aria-hidden data-testid="done-check-dead" className={cx('mt-px flex size-6 shrink-0 items-center justify-center', note ? 'text-danger' : 'text-muted')}>
@@ -648,7 +674,7 @@ function Card({ store, card, place, drag, onPress, wasDragged, showList, letGo }
         <div className="flex items-start gap-2.5">
           {!letGo && (
             <div data-nodrag className="flex shrink-0">
-              <DoneCheck title={card.title} state={state} />
+              <DoneCheck card={card} state={state} />
             </div>
           )}
           <div className="min-w-0 flex-1">
@@ -674,6 +700,7 @@ function Card({ store, card, place, drag, onPress, wasDragged, showList, letGo }
               </div>
             )}
             <CardLinks store={store} card={card} />
+            {card.waitsOn?.length ? <WaitsOnLine waitsOn={card.waitsOn} /> : null}
             {!letGo && (
               <div data-nodrag>
                 <DoneStatus state={state} />
@@ -685,7 +712,7 @@ function Card({ store, card, place, drag, onPress, wasDragged, showList, letGo }
           </div>
         </div>
       )}
-      {over && !letGo && <DoneControl state={state} />}
+      {over && !letGo && <DoneControl card={card} state={state} />}
       {letGo && !card.adding && <LetGoActions card={card} state={state} onKeep={() => void store.edit(card.id, { row: 'later' })} />}
     </li>
   );

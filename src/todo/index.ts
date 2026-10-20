@@ -7,5 +7,5 @@ export { DUE_SOON_MS, byDue, dayKey, dueDays, dueToInput, dueWords, formatDue, i
 export { isRowOpen, keepRowOpen, keepTodayPick, readRowsOpen, readTodayPicks, type FoldedRow, type RowsOpen } from './kept';
 export { googleCalendarHref, icsHref, icsText, parseWhen, type CalendarEntry, type When } from './calendar';
 export { LINK_KINDS, MAX_OPEN_LINKS, copyNotice, emailHref, emailLabel, linkCopyDraft, linkKind, linkOpens, linkProps, listenHref, openLinkLabel, openLinkName, parseEmailAction, parseListenAction, parseOpenLinks, parseTextAction, parsePhoneNumber, needsNumber, textCopyDraft, textHref, textLabel, textNumberLabel, withTextNumber, type EmailAction, type LinkKind, type LinkOpens, type ListenAction, type OpenLink, type TextAction } from './links';
-export { TODO_LABEL, OTHER_LIST, isOpenTodo, ROW_LIMIT, beadsNamed, boardRows, openLinksOf, openTodoCount, orderCards, pickCards, shortName, todoListsFromView, type RowCard, type TodayPicks, type TodoCard, type TodoList, type TodoRow } from './lists';
+export { TODO_LABEL, OTHER_LIST, isDoable, isOpenTodo, ROW_LIMIT, beadsNamed, boardRows, openLinksOf, openTodoCount, orderCards, pickCards, shortName, todoListsFromView, type RowCard, type TodayPicks, type TodoCard, type TodoList, type TodoRow, type WaitsOn } from './lists';
 export type { TodoStore, TodoBack, TodoDone, TodoNote } from './store';

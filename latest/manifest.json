@@ -1,7 +1,7 @@
 {
-  "version": "0.8.33",
-  "commit": "9acf653e",
-  "published_at": "2026-10-20T15:36:59.029Z",
+  "version": "0.8.34",
+  "commit": "fc7ea1b2",
+  "published_at": "2026-10-20T16:10:58.368Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1514,6 +1514,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/talk-line-with-history.png"
+    },
+    {
+      "name": "390x844/talk-settings.png",
+      "screen": "talk-settings",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/talk-settings.png"
+    },
+    {
+      "name": "360x640/talk-settings.png",
+      "screen": "talk-settings",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/talk-settings.png"
+    },
+    {
+      "name": "1280x800/talk-settings.png",
+      "screen": "talk-settings",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/talk-settings.png"
     },
     {
       "name": "390x844/tap-alarm.png",

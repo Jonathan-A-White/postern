@@ -7,11 +7,11 @@ Feature: A banner on every screen while Ideas only is on (mw-8ifimx.4)
   Scenario: mw-8ifimx.4 AC-1: the banner shows on the channel, a bead page and the Talk line
     Given Ideas only is on until 21:00 and the phone's clock says 14:00
     When the General channel is open
-    Then the banner says "Ideas only until 21:00" and "Ideas are kept; nothing is acted on until then"
+    Then the banner says "Ideas only until 21:00" and "Ideas are kept; to-dos still work"
     When a bead page is open
-    Then the bead page wears the banner "Ideas only until 21:00" and "Ideas are kept; nothing is acted on until then"
+    Then the bead page wears the banner "Ideas only until 21:00" and "Ideas are kept; to-dos still work"
     When the Talk line is open
-    Then the Talk line wears the banner "Ideas only until 21:00" and "Ideas are kept; nothing is acted on until then"
+    Then the Talk line wears the banner "Ideas only until 21:00" and "Ideas are kept; to-dos still work"
 
   Scenario: mw-8ifimx.4 AC-1: with the mode off there is no banner
     Given Ideas only is off and the phone's clock says 14:00
@@ -21,7 +21,7 @@ Feature: A banner on every screen while Ideas only is on (mw-8ifimx.4)
   Scenario: mw-8ifimx.4 AC-1: an end on another day names the day
     Given Ideas only is on until tomorrow 07:00 and the phone's clock says 14:00
     When the General channel is open
-    Then the banner says "Ideas only until Fri 07:00" and "Ideas are kept; nothing is acted on until then"
+    Then the banner says "Ideas only until Fri 07:00" and "Ideas are kept; to-dos still work"
 
   Scenario: mw-8ifimx.4 AC-1: a tap on the banner opens Settings
     Given Ideas only is on until 21:00 and the phone's clock says 14:00

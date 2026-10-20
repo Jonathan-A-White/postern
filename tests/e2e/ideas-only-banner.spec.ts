@@ -37,7 +37,7 @@ test('the Ideas only banner sits on the channel, and a message sent under it say
   const banner = page.getByTestId('ideas-only-banner');
   await expect(banner).toBeVisible();
   await expect(banner).toContainText('Ideas only until');
-  await expect(banner).toContainText('Ideas are kept; nothing is acted on until then');
+  await expect(banner).toContainText('Ideas are kept; to-dos still work');
   const box = await banner.boundingBox();
   expect(box?.x).toBeGreaterThanOrEqual(0);
   const viewWidth = page.viewportSize()?.width ?? 390;

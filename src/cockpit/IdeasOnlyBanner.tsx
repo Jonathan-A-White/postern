@@ -21,7 +21,7 @@ export function IdeasOnlyBanner() {
         <Icon name="clock" size={18} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="font-semibold">Ideas only until {untilClock(on.until, on.nowMs)}</span>
-          <span className="text-[12.5px] text-muted">Ideas are kept; nothing is acted on until then</span>
+          <span className="text-[12.5px] text-muted">Ideas are kept; to-dos still work</span>
         </span>
       </button>
     </section>

@@ -318,3 +318,42 @@ describe("a card's chips from the view's summary (mw-ev7oyy.17)", () => {
     expect(cardOf('Open: Deep Discipleship [Kindle](kindle://a) · [Audible](https://www.audible.com/pd/B0CC36V9KG)').links?.map(openLinkLabel)).toEqual(['Kindle', 'Audible']);
   });
 });
+
+describe('a card that waits on an unfinished bead (mw-bdxfn5)', () => {
+  const waiting = () => [
+    bead('mw-e', { type: 'epic' }),
+    bead('mw-blk', { title: 'Build the command' }),
+    bead('mw-done', { status: 'closed', closed: at(5) }),
+    todo('mw-e.1', { parent: 'mw-e', created: at(300), waits: ['mw-blk'] }),
+    todo('mw-e.2', { parent: 'mw-e', created: at(200) }),
+    todo('mw-e.3', { parent: 'mw-e', created: at(100), waits: ['mw-done'] }),
+  ];
+
+  it('carries its unfinished blockers with their titles, and not the closed ones', () => {
+    const cards = listsOf(waiting())[0].cards;
+    expect(cards.find((card) => card.id === 'mw-e.1')?.waitsOn).toEqual([{ id: 'mw-blk', title: 'Build the command' }]);
+    expect(cards.find((card) => card.id === 'mw-e.3')?.waitsOn).toBeUndefined();
+  });
+
+  it('puts it below the doable cards of its list, though it is the oldest', () => {
+    expect(listsOf(waiting())[0].cards.map((card) => card.id)).toEqual(['mw-e.2', 'mw-e.3', 'mw-e.1']);
+  });
+
+  it('keeps it below the doable cards through the Today taps', () => {
+    const cards = listsOf(waiting())[0].cards;
+    const picked = pickCards(cards, NOW, { 'mw-e.1': dayKey(NOW) });
+    expect(picked.map((card) => card.id)).toEqual(['mw-e.2', 'mw-e.3', 'mw-e.1']);
+  });
+
+  it('puts it below the doable cards of a row', () => {
+    const lists = listsOf(waiting().map((b) => (b.id.startsWith('mw-e.') ? { ...b, todo_row: 'now' as const } : b)));
+    expect(boardRows(lists).doNow.map((entry) => entry.card.id)).toEqual(['mw-e.2', 'mw-e.3', 'mw-e.1']);
+  });
+
+  it('is an ordinary card again once the view shows the blocker closed', () => {
+    const closed = waiting().map((b) => (b.id === 'mw-blk' ? { ...b, status: 'closed', closed: at(1) } : b));
+    const cards = listsOf(closed)[0].cards;
+    expect(cards.every((card) => card.waitsOn === undefined)).toBe(true);
+    expect(cards.map((card) => card.id)).toEqual(['mw-e.1', 'mw-e.2', 'mw-e.3']);
+  });
+});

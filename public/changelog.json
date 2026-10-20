@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.36",
+    "date": "2026-10-20",
+    "story": "mw-bdxfn5",
+    "kind": "fixed",
+    "text": "A to do that waits on an unfinished job now says what it waits on, sits below the ones you can do, and has no Done until the wait is over."
+  },
+  {
     "version": "0.8.34",
     "date": "2026-10-20",
     "story": "mw-06ggew.6",

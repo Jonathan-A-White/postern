@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.36
+_2026-10-20_
+- Fixed: A to do that waits on an unfinished job now says what it waits on, sits below the ones you can do, and has no Done until the wait is over.
+
 ## 0.8.34
 _2026-10-20_
 - New: Me has a Talk section where you choose whether to hold or tap the mic, and whether talking sends on release or waits for the Send button.

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.28",
+    "date": "2026-10-20",
+    "story": "mw-8ifimx.14",
+    "kind": "fixed",
+    "text": "The Ideas only banner now says 'to-dos still work' instead of 'nothing is acted on until then'."
+  },
+  {
     "version": "0.8.26",
     "date": "2026-10-18",
     "story": "mw-he81zu",

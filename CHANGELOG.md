@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.28
+_2026-10-20_
+- Fixed: The Ideas only banner now says 'to-dos still work' instead of 'nothing is acted on until then'.
+
 ## 0.8.26
 _2026-10-18_
 - Fixed: Tapping 'Update ready, tap to reload' no longer gets stuck on 'Updating…'; if the new version is slow to take over, the app reloads on its own after a few seconds.

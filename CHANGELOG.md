@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.37
+_2026-10-20_
+- Fixed: a to-do that is waiting on an unfinished story no longer offers Done on its own page or its Needs you card; it says what it waits on.
+
 ## 0.8.36
 _2026-10-20_
 - Fixed: A to do that waits on an unfinished job now says what it waits on, sits below the ones you can do, and has no Done until the wait is over.

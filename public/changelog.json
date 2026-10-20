@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.37",
+    "date": "2026-10-20",
+    "story": "mw-ea9izd",
+    "kind": "fixed",
+    "text": "a to-do that is waiting on an unfinished story no longer offers Done on its own page or its Needs you card; it says what it waits on."
+  },
+  {
     "version": "0.8.36",
     "date": "2026-10-20",
     "story": "mw-bdxfn5",

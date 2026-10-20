@@ -553,6 +553,26 @@ func TestARequestStatusFromTheMillIsStoredAndReturnedToItsKeyOnly(t *testing.T) 
 		}
 	}
 
+	// §19: a landed record always has a commit; its version is there only when the rig
+	// writes one, so the vectors hold a landed record both with and without it.
+	withVersion, withoutVersion := 0, 0
+	for name, plaintext := range v.RequestStatus {
+		if plaintext["status"] != "landed" {
+			continue
+		}
+		if commit, _ := plaintext["commit"].(string); commit == "" {
+			t.Fatalf("requestStatus.%s is landed with no commit, which §19 always sends", name)
+		}
+		if _, has := plaintext["version"]; has {
+			withVersion++
+		} else {
+			withoutVersion++
+		}
+	}
+	if withVersion == 0 || withoutVersion == 0 {
+		t.Fatalf("landed vectors: %d with a version, %d without; §19 wants both", withVersion, withoutVersion)
+	}
+
 	// The third key holds an app licence of its own, so it is an app key, not a cockpit one.
 	s := newGristServerHolding(t, map[string][]string{"stranger": {"cairn"}})
 	if resp := s.deliver(t, "grist", "mill", "cairnPhone"); resp.StatusCode != http.StatusCreated {

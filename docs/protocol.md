@@ -1501,8 +1501,10 @@ Its plaintext, what `ct` seals to the app's key:
 - `request` — the `txid` (`direct:…`) of the grist that carried the request.
 - `bead` — the bead the factory filed for it.
 - `status` — one of `filed`, `building`, `landed`, `declined`, `adopted-as-setting`.
-- `version`, `commit`, `url` — present when `landed`: the app's version it shipped in,
-  the commit, and its link on GitHub.
+- `version`, `commit`, `url` — for `landed`. `commit` is always present: the commit it
+  landed in. `version`, the app's version it shipped in, is present only when the rig
+  writes one; a rig with no version leaves it out, so an app must not expect it. `url`,
+  the commit's link on GitHub, is present only when the rig names a public address.
 - `reason` — present when `declined`: one plain sentence, fit to show the person.
 - `setting` — present when `adopted-as-setting`: the name of the setting that answers it.
 - `ts` — when the mill sent it, unix milliseconds.

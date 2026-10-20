@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/data/db';
 import { chain } from '../../src/chain';
 import { addressForPublicKey } from '../../src/services/licence';
-import { setChainReadGapMs, CHAIN_READ_GAP_MS } from '../../src/services/chainPacer';
+import { setChainReadGapMs, resetChainPacer, CHAIN_READ_GAP_MS } from '../../src/services/chainPacer';
 import { resetSharedChainReads } from '../../src/services/sharedChainReads';
 import { signedRecordTxHex } from '../support/nftgate-fixtures';
 import { wocStub, type WocStub } from '../support/woc-stub';
@@ -39,6 +39,21 @@ async function openKeyScreen(): Promise<void> {
   ]);
 }
 
+/**
+ * The Key screen open on a clock the test moves (useFakeClock first), not the wall's: the pacer's waits and the stub's arrival
+ * stamps (performance.now) are both fake time, so a loaded host cannot stretch or shrink a gap.
+ */
+function useFakeClock(): void {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+}
+
+async function openKeyScreenOnFakeClock(): Promise<void> {
+  let done = false;
+  const opened = openKeyScreen().finally(() => { done = true; });
+  while (!done) await vi.advanceTimersByTimeAsync(5);
+  await opened;
+}
+
 /** The most requests one open may make: the balance, the pages of confirmed history, the mempool list, each transaction once. */
 const budget = (pages: number, transactions: number) => 1 + pages + 1 + transactions;
 
@@ -48,9 +63,11 @@ describe('one Key screen open asks WhatsOnChain for each thing once', () => {
   beforeEach(async () => {
     await db.settings.clear();
     resetSharedChainReads();
+    resetChainPacer();
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     setChainReadGapMs(0);
@@ -109,21 +126,24 @@ describe('one Key screen open asks WhatsOnChain for each thing once', () => {
   it('spaces every request, history pages included, at least the gap apart', async () => {
     serve(await history(6, 2));
     setChainReadGapMs(25);
-    await openKeyScreen();
+    useFakeClock();
+    await openKeyScreenOnFakeClock();
     const gaps = stub.at.slice(1).map((time, i) => time - stub.at[i]);
-    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(20);
+    expect(gaps.length).toBeGreaterThan(5);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(25);
   });
 
   it('still spaces every request the gap apart when the wall clock steps backwards (WSL2 resync)', async () => {
     serve(await history(6, 2));
     setChainReadGapMs(25);
     // Every read of the wall clock is 3 s earlier than the one before: only a monotonic clock can measure a gap.
+    useFakeClock();
     let wall = 1_800_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => (wall -= 3000));
-    await openKeyScreen();
+    await openKeyScreenOnFakeClock();
     const gaps = stub.at.slice(1).map((time, i) => time - stub.at[i]);
     expect(gaps.length).toBeGreaterThan(5);
-    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(20);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(25);
   });
 
   it('spaces requests 350 ms apart in production', () => {

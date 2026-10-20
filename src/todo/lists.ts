@@ -187,9 +187,15 @@ export function summaryMayBeCut(summary: string): boolean {
   return [...summary].length >= SUMMARY_RUNES - 20;
 }
 
-function cardOf(bead: ViewBead, index: ViewIndex): TodoCard {
+/** The unfinished beads a bead waits on (its `waits`, less those the view shows closed), each with its title: the one reading of a wait,
+ * shared by the board's cards and by the Done on a bead's page and its Needs you card (mw-ea9izd). Empty when it waits on nothing. */
+export function waitsOnOf(bead: Pick<ViewBead, 'waits'>, index: ViewIndex): WaitsOn[] {
   const unfinished = bead.waits.filter((id) => index.byId.get(id)?.status !== 'closed');
-  const waitsOn = unfinished.map((id): WaitsOn => ({ id, title: index.byId.get(id)?.title ?? id }));
+  return unfinished.map((id): WaitsOn => ({ id, title: index.byId.get(id)?.title ?? id }));
+}
+
+function cardOf(bead: ViewBead, index: ViewIndex): TodoCard {
+  const waitsOn = waitsOnOf(bead, index);
   const links = openLinksOf(bead.summary);
   const cut = summaryMayBeCut(bead.summary);
   // a summary cut short may have cut the draft short too: the board reads the whole notes for it then

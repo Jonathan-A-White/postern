@@ -345,7 +345,7 @@ function CardLinks({ store, card }: { store: TodoStore; card: TodoCard }) {
 }
 
 /** The words under a card that waits on an unfinished bead (mw-bdxfn5): 'Waits on:' and each blocker's title as a link to its page. */
-function WaitsOnLine({ waitsOn }: { waitsOn: WaitsOn[] }) {
+export function WaitsOnLine({ waitsOn }: { waitsOn: WaitsOn[] }) {
   return (
     <p data-testid="card-waits" className="mt-1 text-[12.5px] leading-snug text-muted wrap-anywhere">
       Waits on:{' '}

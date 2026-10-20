@@ -192,7 +192,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('he attaches the picture {string}', async (_c, name: string) => {
       const input = document.querySelector('input[type="file"][multiple]') as HTMLInputElement;
       await act(async () => fireEvent.change(input, { target: { files: [new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' })] } }));
-      await screen.findByLabelText('Remove photo.jpg');
+      await screen.findByLabelText('Remove photo.png');
     });
     And('he taps the mic', tapMic);
     And('he taps the Send arrow', async () => {

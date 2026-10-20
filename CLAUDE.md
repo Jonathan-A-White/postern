@@ -103,8 +103,10 @@ server/
 There is **no** deploy script and **no** ssh key in this rig. `npm run build` must produce a
 self-contained `dist/` (relative or root-absolute asset paths — it is served at
 https://postern.allmymind.org/ by nginx). The Laptop builds `dist/` after every landing
-(`npm ci && npm run build` in the rig checkout, run by mw's `after_landing`); the Mayor pulls
-`dist/` to the VPS over the reverse tunnel. Do not add a `deploy` script or wire up CI deploys.
+(`npm ci && npm run build` in the rig checkout). mw's `after_landing` command for postern, the
+`[after_landing]` table of the Laptop's `~/.config/mw/config.toml` (outside this repo), then keeps the
+VPS's `/var/www/postern` as `postern.prev` and rsyncs `dist/` over ssh to `/var/www/postern`, so a landing
+is live at once with no hand step. Do not add a `deploy` script or wire up CI deploys.
 
 ## Never
 

@@ -2244,7 +2244,10 @@ leaves You and shows under `Done · N`.
 
 The Governor, 2026-10-12 (Talk `38dc7b04`; map `mw-8ifimx`): boundaries from Postern. In Ideas
 only he may still send an idea if one comes, and the factory still runs, but nothing is pushed
-to him, and nothing he sends is acted on until the mode is over. The mode is **per key**, kept
+to him. What he sends is held and recorded until the mode is over, except what is about a to-do: a
+tap on a `hitl:todo` bead (close, done, snooze, a reply on its thread), and a Talk turn or a message
+about a to-do, pass to the Mayor and are acted on at once (the hold lives in `mw`; `mw-8ifimx.12`,
+`mw-8ifimx.13`). Any other message is held and recorded. The mode is **per key**, kept
 on the backend like saved prompts (§23), so a phone, a second phone and the Mayor's `mw` all
 see the same one, and a second person's Postern would have a mode of its own. This section is
 the backend's half: the setting, the state worked out from it, the routes and the event. What

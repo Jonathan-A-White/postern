@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* voice-kit's compose bar (mw-06ggew.5), in the components layer so a screen's own utilities (the Talk line's bar) win over it. */
+@import "voice-kit/composer/styles.css" layer(components);
 
 /* The cockpit's design tokens (plans/0021, decision 9). Every colour the app uses
  * is one of these, so dark and light stay one system: the utilities read
@@ -265,6 +267,36 @@ html {
   --bk-whats-new-radius: 0.75rem;
   --bk-whats-new-font-size: 14px;
   --bk-whats-new-small-font-size: 12px;
+}
+
+/* voice-kit's compose bar wears Postern's tokens, as its own composer did before it moved to the package (mw-06ggew.5). */
+:root {
+  --bk-composer-surface: var(--pc-surface);
+  --bk-composer-fg: var(--pc-fg);
+  --bk-composer-muted: var(--pc-muted);
+  --bk-composer-faint: var(--pc-faint);
+  --bk-composer-line: var(--pc-line);
+  --bk-composer-sunken: var(--pc-sunken);
+  --bk-composer-accent: var(--pc-accent);
+  --bk-composer-accent-fg: var(--pc-accent-fg);
+  --bk-composer-listening: var(--pc-needs);
+  --bk-composer-danger: var(--pc-danger);
+  --bk-composer-on-strong: var(--pc-canvas);
+  --bk-composer-radius: 1rem;
+  --bk-composer-bar-radius: 1.5rem;
+  --bk-composer-bar-height: 6rem;
+  --bk-composer-max-width: 36rem;
+  --bk-composer-small-font-size: 12.5px;
+}
+
+@layer components {
+  .bk-composer__bar {
+    font-size: 16px;
+  }
+  .bk-composer__field:focus {
+    border-color: var(--pc-line-strong);
+    outline: none;
+  }
 }
 
 /* voice-kit's speaking bar (Pause/Resume, Restart, Stop) wears Postern's tokens, as the buttons did before it moved to the package. */

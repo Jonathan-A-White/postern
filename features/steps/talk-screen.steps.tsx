@@ -382,14 +382,17 @@ afterAll(() => {
 
 const talkButton = (name: string) => screen.findByRole('button', { name });
 
-async function holdAndSay(words: string): Promise<void> {
+/** A hold that says `words` and lets go; it waits for the turn to be queued (its first part, when `parts`: a long turn's parts
+ * are queued in one go, and the scenario's Then counts them). */
+async function holdAndSay(words: string, parts = false): Promise<void> {
   const before = sendTurn.mock.calls.length;
   const button = await talkButton('Hold to talk');
   fireEvent.pointerDown(button);
   await waitFor(() => expect(recognizers.at(-1)?.started).toBe(true));
   await hear(words);
   fireEvent.pointerUp(button);
-  await waitFor(() => expect(sendTurn.mock.calls.length).toBe(before + 1));
+  if (parts) await waitFor(() => expect(sendTurn.mock.calls.length).toBeGreaterThan(before));
+  else await waitFor(() => expect(sendTurn.mock.calls.length).toBe(before + 1));
 }
 
 const longSpeech = (n: number) => Array.from({ length: n }, (_, i) => `word${i % 97}`).join(' ');
@@ -1332,7 +1335,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
   Scenario('AC-1: a hold of about 2,000 words is sent in parts, none cut (mw-8ifimx.16)', ({ Given, When, Then, And }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
-    When('he holds the talk button and says {number} words and lets go', async (_c, n: number) => holdAndSay(longSpeech(Number(n))));
+    When('he holds the talk button and says {number} words and lets go', async (_c, n: number) => holdAndSay(longSpeech(Number(n)), true));
     Then('the turn is sent as parts that join to every word he said', async () => {
       await waitFor(() => expect(sendTurn.mock.calls.length).toBeGreaterThan(1));
       const sent = sendTurn.mock.calls.map((call) => call[0] as TalkTurn);

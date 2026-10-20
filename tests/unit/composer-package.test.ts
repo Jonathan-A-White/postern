@@ -41,7 +41,29 @@ describe('the composer comes from voice-kit/composer', () => {
 
   it('passes the app name, so the microphone help names Postern', () => {
     expect(source('src/cockpit/holdBar.ts')).toContain("APP_NAME = 'Postern'");
-    expect(source('src/cockpit/Composer.tsx')).toContain('appName: APP_NAME');
+    expect(source('src/cockpit/Composer.tsx')).toContain('appName={APP_NAME}');
     expect(source('src/cockpit/useTalkLine.ts')).toContain('appName: APP_NAME');
+  });
+});
+
+// mw-06ggew.5: the compose bar is the kit's Composer, driven by one settings object; the Talk line's bar reads the same.
+describe("the compose bar is the kit's Composer with Postern's settings", () => {
+  it('POSTERN_COMPOSER_SETTINGS: hold to talk, send on release, type, attach, camera and a voice note', async () => {
+    const { POSTERN_COMPOSER_SETTINGS } = await import('../../src/cockpit/holdBar');
+    expect(POSTERN_COMPOSER_SETTINGS).toEqual({ talk: 'hold', send: 'release', type: true, attach: true, camera: true, voiceNote: true });
+  });
+
+  it("renders the kit's Composer with those settings and has no press, attach, camera or Send logic of its own", () => {
+    const composer = source('src/cockpit/Composer.tsx');
+    expect(composer).toMatch(/import \{[^}]*\bComposer as KitComposer\b[^}]*\} from 'voice-kit\/composer'/);
+    expect(composer).toContain('settings={POSTERN_COMPOSER_SETTINGS}');
+    for (const own of ['useHold', 'HoldToTalkBar', 'type="file"', 'capture=', 'onPaste', 'onDrop', 'aria-label="Send"']) {
+      expect(composer, own).not.toContain(own);
+    }
+    expect(composer.split('\n').length).toBeLessThan(200);
+  });
+
+  it("the Talk line's hold bar takes the same settings", () => {
+    expect(source('src/cockpit/TalkLineScreen.tsx')).toMatch(/<HoldToTalkBar[^>]*settings=\{POSTERN_COMPOSER_SETTINGS\}/);
   });
 });

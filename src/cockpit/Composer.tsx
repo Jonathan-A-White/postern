@@ -1,77 +1,38 @@
-// src/cockpit/Composer.tsx — how he talks to the Mayor anywhere in the tree
-// (plans/0021 decisions 10–12): words, a voice note recorded right here, photos
-// from the camera, any file from the picker, a paste, a
-// drop, or files shared in from another app. Whatever he quotes rides at the
-// top of what he sends. All the files go as one message, the words its caption.
-// The mic beside Send opens the Talk line's hold-to-talk bar (mw-q6n8m0.3): hold it and the words
-// stream on screen, let go and the words, the voice note and whatever is attached go as one message;
-// slide off the bar first and nothing goes. Whatever ends a hold without sending it (a slide off, the phone
-// taking the touch, the app hidden, the recogniser failing, a release it settles with no words) leaves the
-// words heard so far in the box, unsent, saying 'Kept what you said: tap Send.' (mw-f7gmps.3).
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { flushSync } from 'react-dom';
-import { Button, Chip, Icon, IconButton, cx, useAlive } from '../ui';
-import { focusQuietly } from '../ui/focus';
+// src/cockpit/Composer.tsx — how he talks to the Mayor anywhere in the tree (plans/0021 decisions 10–12). The bar is
+// voice-kit's Composer (mw-06ggew.5), set by POSTERN_COMPOSER_SETTINGS: hold to talk and let go to send (the words, the
+// voice note and whatever is attached go as one message; a slide off keeps the words in the box, unsent), typing,
+// any file from the picker, a paste or a drop, a photo from the camera, and the Send arrow beside the bar for files
+// with no words. It opens on the text box, the mic standing in for Send until there is something to send.
+// What is Postern's own rides on the kit's ways in: the words are this component's (a draft kept per channel, a
+// saved prompt's '/name'), whatever he quotes sits on top and leads what he sends, files shared in from another app
+// arrive after mount (and bring the bar out when they came with no words), a tap on a waiting picture opens the
+// viewer and on any other file opens or downloads it, a picture is cut down on Send, and the send is Postern's.
+import { useEffect, useRef, useState } from 'react';
+import { Composer as KitComposer, isListenSupported, type ComposerMessage, type ComposerOpen, type WaitingFile } from 'voice-kit/composer';
+import { Icon, IconButton, cx, useAlive } from '../ui';
 import { useWide } from './hooks';
-import { HoldToTalkBar, formatDuration, isListenSupported, micName, useHold, type Recording } from 'voice-kit/composer';
-import { refuseFile, sendToThread, useSend, type OutgoingFile } from './send';
+import { refuseFile, sendToThread, useSend } from './send';
 import { toast } from '../ui/toastStore';
 import type { ThreadRef } from '../services/threads';
 import { takePendingShare } from './shareInbox';
 import { quoteBlock } from './quote';
-import { usePrompts } from './usePrompts';
-import { APP_NAME, HOLD_BAR_CLASS } from './holdBar';
+import { usePromptCall } from './usePromptCall';
+import { APP_NAME, POSTERN_COMPOSER_SETTINGS } from './holdBar';
 import { useDraft } from './useDraft';
 import { ImageViewer } from './ImageViewer';
 import { useViewer } from './useViewer';
 import { openFile } from './openFile';
-import { toPicked } from './pickedFile';
+import { toSent } from './pickedFile';
 import { draftsRepo } from '../data/repositories';
-import { beginsCall, checkPromptCall, halfTypedOption, matchPrompts, suggestNext } from '../model/prompts';
-import { optionChip } from '../services/prompts';
-
-interface Pending extends OutgoingFile {
-  id: string;
-  preview?: string;
-  durationMs?: number;
-}
-
-let nextId = 1;
 
 /** How long a file's object URL lives after a tap opened or downloaded it: the new tab or the save has read it by then. */
 const OPENED_URL_MS = 60_000;
 
 /** A tap on an attached file that is not a picture: the browser's own tab for a PDF or text, a download for any other. */
-function openPending(file: Pending): void {
-  const url = URL.createObjectURL(new Blob([file.bytes as BlobPart], { type: file.type }));
-  openFile(url, file.type, file.name);
+function openWaiting(blob: Blob, type: string, name: string): void {
+  const url = URL.createObjectURL(blob);
+  openFile(url, type, name);
   setTimeout(() => URL.revokeObjectURL(url), OPENED_URL_MS);
-}
-
-/** What the composer says when a hold ended without sending and its words wait in the box. */
-const KEPT = 'Kept what you said: tap Send.';
-
-/** How long Send is held, while grey from a failed check, before it sends anyway. */
-const FORCE_SEND_MS = 600;
-
-/** What the hold-to-talk bar says a hold will do (or why it cannot be held now); after a hold that ended with a message it says Try again. */
-function barLabel(listening: boolean, micOpen: boolean, holdFailed: boolean): string {
-  if (!listening) return holdFailed ? 'Try again' : 'Hold to talk';
-  return micOpen ? 'Release to send' : 'Starting the mic…';
-}
-
-async function toPending(original: File | Blob, name: string, durationMs?: number): Promise<Pending> {
-  return { ...(await toPicked(original, name)), id: String(nextId++), durationMs };
-}
-
-/** The voice note a hold recorded, as a file for the message. */
-function voiceFile(recording: Recording): Promise<Pending | undefined> {
-  const refusal = refuseFile({ name: 'Voice note', type: recording.mime, size: recording.blob.size });
-  if (refusal) {
-    toast(`${refusal} The words went without the voice note.`, 'error');
-    return Promise.resolve(undefined);
-  }
-  return toPending(recording.blob, `voice-${new Date().toISOString()}.${recording.mime.split('/')[1]}`, recording.durationMs);
 }
 
 export interface ComposerProps {
@@ -88,453 +49,96 @@ export interface ComposerProps {
 
 export function Composer({ thread, placeholder = 'Message the Mayor…', quote, onClearQuote, autoFocus, re, prefill }: ComposerProps) {
   const [text, setText] = useState(prefill ?? '');
-  const [files, setFiles] = useState<Pending[]>([]);
-  // The hold-to-talk bar is out in place of the text box: the mic opened it, or a shared file arrived with no words.
-  const [voice, setVoice] = useState(false);
-  const [holding, setHolding] = useState(false);
-  // A hold ended without sending and its words wait in the box (until they are sent).
-  const [kept, setKept] = useState(false);
-  const textarea = useRef<HTMLTextAreaElement>(null);
   // What he has typed and not sent waits on the phone, per channel (and per post for a reply), through a lock-out or a reload.
   const draft = useDraft(draftsRepo.keyFor(thread, re), text, (saved) => setText((current) => current || saved), prefill);
-  const picker = useRef<HTMLInputElement>(null);
-  const camera = useRef<HTMLInputElement>(null);
-  const { busy, run } = useSend();
+  const prompt = usePromptCall(text, setText);
+  const { run } = useSend();
   const alive = useAlive();
   const viewer = useViewer();
-  const hold = useHold({
-    appName: APP_NAME,
-    record: true,
-    onFailed: (said) => {
-      setHolding(false);
-      keep(said);
-    },
-    onHidden: (said) => {
-      setHolding(false);
-      keep(said);
-    },
-  });
   // On a phone the tab bar sits below the composer and keeps the bottom safe-area inset.
   const wide = useWide();
+  const [shared, setShared] = useState<File[]>();
+  const [open, setOpen] = useState<ComposerOpen>('box');
+  // The kit goes back to `open` after a send: the bar stays out after a send from the bar, as it always has here, the box after one from the box.
+  const root = useRef<HTMLDivElement>(null);
+  // The files waiting to go that are not pictures, by name: the kit hands a tap back with a URL only for a picture or a voice note.
+  const others = useRef(new Map<string, Blob>());
 
   useEffect(() => {
-    if (autoFocus) focusQuietly(textarea.current);
-    // only when it opens
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const area = textarea.current;
-    if (!prefill || !area) return;
-    focusQuietly(area);
-    area.setSelectionRange(area.value.length, area.value.length);
-    // only when it opens: what he types after is his
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const shared = takePendingShare();
-    if (!shared) return;
-    let cancelled = false;
-    void Promise.all(shared.files.map((file) => toPending(new Blob([file.bytes], { type: file.type }), file.name))).then((pending) => {
-      if (cancelled) return;
-      setFiles((current) => [...current, ...pending]);
-      if (shared.text) setText((current) => current || shared.text || '');
-      // a file shared in with no words: the bar is ready, one hold sends the file with what he says
-      else if (isListenSupported()) setVoice(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    const area = textarea.current;
-    if (!area) return;
-    area.style.height = 'auto';
-    area.style.height = `${Math.min(area.scrollHeight, 200)}px`;
-  }, [text]);
-
-  async function addFiles(list: FileList | File[]) {
-    const accepted: Pending[] = [];
-    for (const file of Array.from(list)) {
-      const refusal = refuseFile(file);
-      if (refusal) {
-        toast(refusal, 'error');
-        continue;
-      }
-      accepted.push(await toPending(file, file.name));
-    }
-    if (alive()) setFiles((current) => [...current, ...accepted]);
-  }
-
-  function press() {
-    if (holding) return;
-    setHolding(hold.begin());
-  }
-
-  /** The words of a hold that ended without sending go in the box, unsent; the box shows in place of the bar. */
-  function keep(said: string, voiceNote?: Pending) {
-    if (voiceNote) setFiles((current) => [...current, voiceNote]);
-    if (!said) return;
-    setText((current) => (current.trim() ? `${current.trim()} ${said}` : said));
-    setVoice(false);
-    setKept(true);
-  }
-
-  async function release() {
-    setHolding(false);
-    const released = await hold.finish();
-    if (released.status === 'kept') {
-      const voiceNote = released.recording ? await voiceFile(released.recording) : undefined;
-      if (alive()) keep(released.text, voiceNote);
-      return;
-    }
-    if (released.status !== 'heard') return;
-    const body = `${quote ? quoteBlock(quote) : ''}${released.text.trim()}`;
-    const voiceNote = released.recording ? await voiceFile(released.recording) : undefined;
-    const sent = await run(() => sendToThread(thread, body, voiceNote ? [...files, voiceNote] : files, re));
-    if (sent) files.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
-    if (!alive()) return;
-    if (sent) {
-      setFiles([]);
-      onClearQuote?.();
-    } else {
-      // it did not go: the words and the voice note wait in the box, nothing he said is lost
-      setText(released.text.trim());
-      if (voiceNote) setFiles((current) => [...current, voiceNote]);
-      setVoice(false);
-    }
-  }
-
-  // Android Chrome raises the keyboard only for a focus inside the tap itself: draw the box now, then focus it.
-  function typeInstead() {
-    flushSync(() => setVoice(false));
-    const area = textarea.current;
-    if (!area) return;
-    focusQuietly(area);
-    area.setSelectionRange(area.value.length, area.value.length);
-  }
-
-  function drop() {
-    setHolding(false);
-    keep(hold.drop() ?? '');
-  }
-
-  // A text beginning '/' is a call to a saved prompt: it is checked against the signature before it can go.
-  const call = text.trimStart();
-  const calling = beginsCall(call);
-  const { prompts, fresh } = usePrompts(calling);
-  const offered = calling && prompts ? matchPrompts(call, prompts) : [];
-  const verdict = calling && prompts ? checkPromptCall(call, prompts) : undefined;
-  const checking = calling && prompts === undefined && fresh === undefined;
-  // the grey text after the cursor: what one tap (or Tab, or →) adds to the box
-  const suggestion = calling && prompts ? suggestNext(call, prompts) : undefined;
-  // a half-typed option, or an option whose value is on offer in grey, is not an error yet (Send waits)
-  const unfinished = suggestion !== undefined || (calling && prompts ? halfTypedOption(call, prompts) : false);
-  const callError = verdict && !verdict.ok && offered.length === 0 && !unfinished ? verdict.error : undefined;
-  const callFailed = verdict !== undefined && !verdict.ok;
-  const callBlocked = checking || callFailed;
-
-  function choosePrompt(name: string) {
-    setText(`/${name} `);
-    const area = textarea.current;
-    if (!area) return;
-    focusQuietly(area);
-    // the box has not re-rendered yet: put the caret after the words once it has
-    requestAnimationFrame(() => area.setSelectionRange(area.value.length, area.value.length));
-  }
-
-  function takeSuggestion() {
-    if (!suggestion) return;
-    setText(text + suggestion.rest);
-    const area = textarea.current;
-    if (!area) return;
-    focusQuietly(area);
-    requestAnimationFrame(() => area.setSelectionRange(area.value.length, area.value.length));
-  }
-
-  // a failed check only warns: holding the grey Send sends the text as typed anyway
-  const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  function releaseSend() {
-    clearTimeout(holdTimer.current);
-    holdTimer.current = undefined;
-  }
-  function holdSend() {
-    releaseSend();
-    holdTimer.current = setTimeout(() => {
-      holdTimer.current = undefined;
-      void send(true);
-    }, FORCE_SEND_MS);
-  }
-  useEffect(() => releaseSend, []);
-
-  async function send(force = false) {
-    if (callBlocked && !(force && callFailed)) return;
-    if (force && busy) return;
-    const body = `${quote ? quoteBlock(quote) : ''}${text.trim()}`;
-    if (!body.trim() && files.length === 0) return;
-    const sent = await run(() => sendToThread(thread, body, files, re));
-    if (sent) {
-      files.forEach((file) => file.preview && URL.revokeObjectURL(file.preview));
-      draft.discard();
+    const share = takePendingShare();
+    if (!share) return;
+    // taken once: alive(), not a cancelled flag, so a StrictMode remount (which finds nothing left to take) still gets it
+    void Promise.resolve().then(() => {
       if (!alive()) return;
-      setText('');
-      setKept(false);
-      setFiles([]);
-      onClearQuote?.();
-    }
+      setShared(share.files.map((file) => new File([file.bytes as BlobPart], file.name, { type: file.type })));
+      if (share.text) setText((current) => current || share.text || '');
+      // a file shared in with no words: the bar is ready, one hold sends the file with what he says
+      else if (isListenSupported()) setOpen('bar');
+    });
+  }, [alive]);
+
+  function refuse(file: { name: string; type: string; size: number }): string | undefined {
+    const refusal = refuseFile(file);
+    if (!refusal && file instanceof Blob && !file.type.startsWith('image/')) others.current.set(file.name, file);
+    return refusal;
   }
 
-  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    const area = event.currentTarget;
-    const atEnd = area.selectionStart === area.value.length && area.selectionEnd === area.value.length;
-    if (suggestion && atEnd && (event.key === 'Tab' || event.key === 'ArrowRight') && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
-      event.preventDefault();
-      takeSuggestion();
-      return;
-    }
-    if (event.key === 'Enter' && !event.shiftKey && (event.metaKey || event.ctrlKey || window.matchMedia?.('(pointer: fine)').matches)) {
-      event.preventDefault();
-      void send();
-    }
+  function tap(file: WaitingFile) {
+    const blob = others.current.get(file.name);
+    if (file.type.startsWith('image/') && file.preview) viewer.open({ src: file.preview, name: file.name, type: file.type });
+    else if (blob) openWaiting(blob, file.type, file.name);
+    else if (file.preview) openFile(file.preview, file.type, file.name);
   }
 
-  function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
-    const pasted = Array.from(event.clipboardData.files);
-    if (pasted.length) {
-      event.preventDefault();
-      void addFiles(pasted);
-    }
+  async function send({ text: words, files }: ComposerMessage): Promise<boolean> {
+    const body = `${quote ? quoteBlock(quote) : ''}${words}`;
+    const sent = await run(async () => sendToThread(thread, body, await Promise.all(files.map(toSent)), re));
+    if (!sent) return false;
+    draft.discard();
+    others.current.clear();
+    if (!alive()) return true;
+    setOpen(root.current?.querySelector<HTMLElement>('[data-testid="composer"]')?.dataset.layout === 'bar' ? 'bar' : 'box');
+    onClearQuote?.();
+    return true;
   }
-
-  function onDrop(event: DragEvent<HTMLDivElement>) {
-    if (event.dataTransfer.files.length) {
-      event.preventDefault();
-      void addFiles(event.dataTransfer.files);
-    }
-  }
-
-  const canSend = (text.trim().length > 0 || files.length > 0 || !!quote);
-  // The bar takes the text box's place while there are no words in it (a draft that comes back from storage puts the box back).
-  const barOut = voice && text.trim().length === 0 && hold.supported;
-  // Pictures or files alone in the draft leave the mic beside Send; a voice note recorded in the draft (one per message), or words, take it away.
-  const micBesideSend = text.trim().length === 0 && !quote && files.length > 0 && !files.some((file) => file.durationMs !== undefined);
-  const mic = <IconButton icon="mic" label="Speak a message" size="lg" disabled={!hold.supported} onClick={() => setVoice(true)} className={cx(!hold.supported && 'opacity-40')} />;
 
   return (
-    <div className={cx(wide && 'pb-safe', 'shrink-0 border-t border-line bg-surface')} onDragOver={(event) => event.preventDefault()} onDrop={onDrop} data-testid="composer">
-      {quote && (
-        <div className="flex items-start gap-2 border-b border-line px-3 py-2 text-[12.5px] text-muted">
-          <Icon name="quote" size={14} className="mt-0.5 shrink-0" />
-          <p className="line-clamp-2 flex-1">
-            <span className="font-semibold">{quote.speaker}:</span> {quote.text}
-          </p>
-          <IconButton icon="x" label="Remove quote" size="sm" onClick={onClearQuote} />
-        </div>
-      )}
-      {files.length > 0 && (
-        <div className="no-scrollbar flex gap-2 overflow-x-auto px-3 pt-3" aria-label="To send">
-          {files.map((file) => (
-            <div key={file.id} className="relative flex h-16 shrink-0 items-center gap-2 rounded-xl border border-line bg-sunken px-2">
-              {file.type.startsWith('image/') && file.preview ? (
-                <button type="button" aria-label={`View ${file.name}`} className="block rounded-lg" onClick={() => viewer.open({ src: file.preview as string, name: file.name, type: file.type })}>
-                  <img src={file.preview} alt={file.name} className="h-12 w-12 rounded-lg object-cover" />
-                </button>
-              ) : file.type.startsWith('audio/') ? (
-                <span className="flex items-center gap-1.5 pr-2 text-[12.5px] text-muted">
-                  <Icon name="mic" size={16} className="text-accent" />
-                  Voice note {file.durationMs !== undefined ? formatDuration(file.durationMs) : ''}
-                </span>
-              ) : (
-                <button type="button" aria-label={`Open ${file.name}`} className="flex max-w-40 items-center gap-1.5 pr-2 text-[12.5px] text-muted" onClick={() => openPending(file)}>
-                  <Icon name="file" size={16} />
-                  <span className="truncate">{file.name}</span>
-                </button>
-              )}
-              <button
-                type="button"
-                aria-label={`Remove ${file.name}`}
-                className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-line bg-raised text-muted"
-                onClick={() => setFiles((current) => current.filter((f) => f.id !== file.id))}
-              >
-                <Icon name="x" size={11} strokeWidth={2.4} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      {offered.length > 0 && (
-        <div role="listbox" aria-label="Saved prompts" className="flex max-h-56 flex-col overflow-y-auto border-b border-line">
-          {offered.map((prompt) => (
-            <button
-              key={prompt.name}
-              type="button"
-              role="option"
-              aria-selected={false}
-              className="flex flex-col gap-1 px-4 py-2 text-left active:bg-sunken"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => choosePrompt(prompt.name)}
-            >
-              <span className="font-mono text-[14px] font-semibold">/{prompt.name}</span>
-              <span className="text-[13px] text-muted">{prompt.summary}</span>
-              {prompt.signature.length > 0 && (
-                <span className="flex flex-wrap gap-1.5">
-                  {prompt.signature.map((option) => (
-                    <Chip key={option.flag} mono tone={option.required ? 'needs' : 'neutral'}>
-                      {optionChip(option)}
-                    </Chip>
-                  ))}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-      {barOut ? (
-        <div className="flex flex-col items-center gap-2 px-4 pt-3 pb-3">
-          <div role="status" aria-live="polite" className="min-h-[2.75rem] w-full max-w-xl text-center text-[14px]">
-            {holding ? (
-              <>
-                <p data-testid="live-transcript" className="text-fg">
-                  {hold.mic === 'ready' ? hold.transcript || 'Listening…' : 'Starting the mic…'}
+    <div ref={root} className="contents">
+      <KitComposer
+        settings={POSTERN_COMPOSER_SETTINGS}
+        open={open}
+        appName={APP_NAME}
+        text={text}
+        onTextChange={setText}
+        onSend={send}
+        refuseFile={refuse}
+        onNotice={(message) => toast(message, 'error')}
+        labels={{ placeholder, view: (name) => (others.current.has(name) ? `Open ${name}` : `View ${name}`) }}
+        autoFocus={autoFocus || !!prefill}
+        canSendEmpty={!!quote}
+        incomingFiles={shared}
+        onFileTap={tap}
+        onKeyDown={prompt.onKeyDown}
+        fieldOverlay={prompt.overlay}
+        sendBlocked={prompt.blocked}
+        renderSend={prompt.renderSend}
+        className={cx(wide && 'pb-safe')}
+        top={
+          <>
+            {quote && (
+              <div className="flex items-start gap-2 border-b border-line px-3 py-2 text-[12.5px] text-muted">
+                <Icon name="quote" size={14} className="mt-0.5 shrink-0" />
+                <p className="line-clamp-2 flex-1">
+                  <span className="font-semibold">{quote.speaker}:</span> {quote.text}
                 </p>
-                {hold.mic === 'ready' && (
-                  <p data-testid="mic-name" className="text-[11.5px] text-faint">
-                    {micName(hold.input)}
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className={hold.notice ? 'text-danger' : 'text-muted'}>{hold.notice ?? 'Hold the bar and speak. Slide off it to keep the words unsent.'}</p>
-            )}
-          </div>
-          <div className="flex w-full max-w-xl items-center gap-2">
-            <HoldToTalkBar
-              label={barLabel(holding, hold.mic === 'ready', hold.notice !== undefined)}
-              listening={holding}
-              disabled={busy}
-              onPress={press}
-              onRelease={() => void release()}
-              onAbort={drop}
-              dropOnSlideOff
-              className={cx(HOLD_BAR_CLASS, 'min-w-0 flex-1')}
-            />
-            {files.length > 0 && (
-              // A picture is attached and nothing typed: one tap sends it. The bar stays the big button; the arrow only takes its width.
-              <button
-                type="button"
-                aria-label="Send"
-                title="Send"
-                disabled={busy || holding}
-                onClick={() => void send()}
-                className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition-colors hover:brightness-110 disabled:opacity-40"
-              >
-                <Icon name="send" size={22} />
-              </button>
-            )}
-          </div>
-          <div className="flex w-full max-w-xl items-center gap-1">
-            <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />
-            <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} className="lg:hidden" />
-            <Button variant="ghost" size="sm" className="ml-auto" disabled={holding} onClick={typeInstead}>
-              Type a message
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-end gap-1 px-2 py-2">
-          <IconButton icon="attach" label="Attach files" onClick={() => picker.current?.click()} />
-          <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} className="lg:hidden" />
-          <div className="relative min-w-0 flex-1">
-            <textarea
-              ref={textarea}
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-              rows={1}
-              aria-label="Message"
-              placeholder={placeholder}
-              className="max-h-[200px] min-h-11 w-full resize-none rounded-2xl py-2.5 leading-snug"
-            />
-            {suggestion && (
-              <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border border-transparent px-3 py-2.5 text-base leading-snug wrap-anywhere whitespace-pre-wrap">
-                <span className="invisible">{text}</span>
-                <button
-                  type="button"
-                  data-testid="grey-suggestion"
-                  aria-label={`Add ${suggestion.text}`}
-                  tabIndex={-1}
-                  className="pointer-events-auto cursor-pointer text-faint"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={takeSuggestion}
-                >
-                  {suggestion.rest}
-                </button>
+                <IconButton icon="x" label="Remove quote" size="sm" onClick={onClearQuote} />
               </div>
             )}
-          </div>
-          {canSend && callFailed ? (
-            <span
-              data-testid="send-force"
-              className="inline-flex shrink-0 touch-none select-none"
-              onPointerDown={holdSend}
-              onPointerUp={releaseSend}
-              onPointerLeave={releaseSend}
-              onPointerCancel={releaseSend}
-              onContextMenu={(event) => event.preventDefault()}
-            >
-              <IconButton icon="send" label="Send (hold to send anyway)" tone="accent" size="lg" disabled className="pointer-events-none [-webkit-touch-callout:none]" />
-            </span>
-          ) : canSend ? (
-            <>
-              {micBesideSend && mic}
-              <IconButton icon="send" label="Send" tone="accent" size="lg" disabled={busy || !canSend || callBlocked} onClick={() => void send()} />
-            </>
-          ) : (
-            mic
-          )}
-        </div>
-      )}
-      {kept && text.trim().length > 0 && (
-        <p role="status" className="px-4 pb-2 text-[12.5px] text-muted">
-          {hold.notice && <span className="text-danger">{hold.notice} </span>}
-          <span>{KEPT}</span>
-        </p>
-      )}
-      {callError && (
-        <p role="alert" className="px-4 pb-2 text-[12.5px] text-danger">
-          {callError}
-        </p>
-      )}
-      {checking && (
-        <p role="status" className="px-4 pb-2 text-[12.5px] text-muted">
-          Checking the saved prompts…
-        </p>
-      )}
+            {prompt.top}
+          </>
+        }
+      />
       {viewer.shown && <ImageViewer {...viewer.shown} onClose={viewer.close} />}
-      <input
-        ref={picker}
-        type="file"
-        multiple
-        hidden
-        onChange={(event) => {
-          if (event.target.files) void addFiles(event.target.files);
-          event.target.value = '';
-        }}
-      />
-      <input
-        ref={camera}
-        type="file"
-        hidden
-        accept="image/*"
-        capture="environment"
-        onChange={(event) => {
-          if (event.target.files) void addFiles(event.target.files);
-          event.target.value = '';
-        }}
-      />
     </div>
   );
 }

@@ -63,7 +63,7 @@ factory's data on the phone** (`src/services/view.ts`, `src/services/beads.ts`,
 **the composer and conversation** (`src/cockpit/Composer.tsx`, `src/cockpit/Conversation.tsx`),
 **cards on a place** (`src/cockpit/NeedCard.tsx`, `src/cockpit/LiveCard.tsx`,
 `src/cockpit/BeadCards.tsx`) and **hooks** (`src/cockpit/hooks.ts`, `src/cockpit/useTalkLine.ts`,
-`src/cockpit/usePrompts.ts`, `src/cockpit/useDraft.ts`).
+`src/cockpit/usePrompts.ts`, `src/cockpit/usePromptCall.tsx`, `src/cockpit/useDraft.ts`).
 
 The intended direction is `cockpit → model, services, ui → data → db`, with `model` pure. Section
 4 lists where the code runs the other way.
@@ -100,7 +100,7 @@ What makes each a collision, in one line:
 - `src/App.tsx`: the route-to-screen switch, the startup wiring and two service-worker message listeners; a new place or a new notification tap edits it.
 - `src/cockpit/NeedCard.tsx`, `src/cockpit/Conversation.tsx`: both render a question's options and both read aloud; one carries attachments, the other the question block, each in the same file as the screen's own layout.
 - `src/key/KeyVault.tsx`: the whole key flow (create, restore, passkey, mint, balance) as one component with its own state machine.
-- `src/cockpit/Composer.tsx`: the composer around voice-kit's hold-to-talk; attachments, drafts, quotes, replies and send all live in it.
+- `src/cockpit/Composer.tsx`: voice-kit's Composer with POSTERN_COMPOSER_SETTINGS (mw-06ggew.5); drafts, quotes, share-in, the file viewer and the send ride on its ways in, the saved prompts in `src/cockpit/usePromptCall.tsx`.
 - `src/push/classOptions.ts`: a table per notification trait (titles, vibrate, urls, defaults) plus a switch; a new message class edits all of them.
 - `src/cockpit/hooks.ts`: every live-query hook for every table.
 - `src/model/conversation.ts`, `src/services/live.ts`, `src/services/inbox.ts`: the conversation timeline, the live connection, the record intake; each is one concern, long but not yet split by anything a story would change separately.

@@ -180,6 +180,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await sync([eventsRecord([beadEvent(bead, 'landed', 'verified')])]);
     });
     Then('item 1 shows a tick and the time as HH:MM', async () => {
+      // Two waits on the preset's 20 s budget, one per half of the path, so a failure on a starved host says which half
+      // never came: the tick the event put in IndexedDB, then the page showing it (a 199 s gate run once lost this step
+      // with the page still as it was at the Given, and nothing said which; mw-gq6.684).
+      await waitFor(async () => expect((await db.cards.get(cardTxid))?.ticks[1]).toBeGreaterThan(0));
       await waitFor(() => expect(within(itemRows()[0]).getByRole('status').textContent).toMatch(/^Done \d{2}:\d{2}/));
       expect(itemRows()[0]).toHaveAttribute('data-done', 'true');
     });

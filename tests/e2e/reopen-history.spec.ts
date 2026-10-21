@@ -7,6 +7,7 @@ import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
+import { draftIsStored } from './stored-draft';
 
 test.use({ serviceWorkers: 'block', viewport: sized({ width: 360, height: 640 }) });
 
@@ -52,7 +53,7 @@ test('close and reopen keeps the scroll and unsent text of each channel, and Bac
   const box = page.getByRole('textbox', { name: 'Message' });
   await expect(box).toBeVisible();
   await box.fill(WORDS);
-  await page.waitForTimeout(800);
+  await expect.poll(() => draftIsStored(page, WORDS)).toBe(true);
 
   // closed and opened again at the home-screen icon's address
   await page.goto('/');

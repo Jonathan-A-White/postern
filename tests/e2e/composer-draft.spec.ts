@@ -6,6 +6,7 @@ import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot } from './shot';
+import { draftIsStored } from './stored-draft';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -31,7 +32,7 @@ test('a draft survives Lock now and a reload, is cleared by Send, and is never i
   const box = page.getByRole('textbox', { name: 'Message' });
   await expect(box).toHaveValue('');
   await box.fill(WORDS);
-  await page.waitForTimeout(800);
+  await expect.poll(() => draftIsStored(page, WORDS)).toBe(true);
 
   // Lock now, from Me, and unlock again: back in the channel, the words are in the box
   await page.getByRole('navigation', { name: 'Places' }).getByRole('link', { name: /Me$/ }).click();

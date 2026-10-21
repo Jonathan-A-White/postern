@@ -1,10 +1,13 @@
 // tests/e2e/launch-big-history.spec.ts — mw-4gkijo.1: a phone with a large history (5000 messages, a fifth of
 // them twins an older build kept twice) opens on the app's own screen at once and reaches the door without
 // waiting on the history-wide cleanups. The times are logged for the closing comment.
+// The 1 s and 3 s are real time (a timing test: docs/timing-tests.md), scaled by how slow the host is when they are
+// read (host-slowdown.ts), so a loaded host cannot fail them. covers: src/App.tsx, src/main.tsx, src/data/**, src/cockpit/Gate*
 import { test, expect, type Page } from '@playwright/test';
 import { createMnemonic } from '../../src/services/vault';
 import { seedVault } from './cockpit-stub';
 import { shot, sized } from './shot';
+import { hostSlowdown } from './host-slowdown';
 
 test.use({ serviceWorkers: 'block', viewport: sized({ width: 390, height: 844 }) });
 
@@ -88,8 +91,9 @@ test(`${MESSAGES} stored messages: the app paints within 1 s of load and the doo
   await expect(page.getByLabel('Recovery phrase')).toBeVisible({ timeout: 20_000 });
   const marks = await page.evaluate(() => (window as unknown as { __marks: Record<string, number> }).__marks);
   console.log(`launch with ${MESSAGES} messages: first paint ${Math.round(marks.paint)} ms, door ${Math.round(marks.door)} ms`);
-  expect(marks.paint, 'the app paints its own screen').toBeLessThan(1000);
-  expect(marks.door, 'the door is reached').toBeLessThan(3000);
+  const slowdown = await hostSlowdown(page);
+  expect(marks.paint, 'the app paints its own screen').toBeLessThan(1000 * slowdown);
+  expect(marks.door, 'the door is reached').toBeLessThan(3000 * slowdown);
   // The clean-ups ran after the door was shown: the events rows and the twins are gone, the real messages stay.
   // 1 in 50 is an events row and 1 in 5 a chain twin (seedHistory).
   await expect.poll(() => storedCount(page), { timeout: 30_000 }).toBe(MESSAGES - MESSAGES / 50 - MESSAGES / 5);

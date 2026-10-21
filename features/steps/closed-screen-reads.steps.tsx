@@ -1,7 +1,7 @@
 // features/steps/closed-screen-reads.steps.tsx — runs features/closed-screen-reads.feature under vitest via
 // @amiceli/vitest-cucumber (mw-ev7oyy.21): a read the Key screen started that answers after the screen has
 // closed, and after the page is torn down, sets nothing. The chain and /api/me are held on deferreds the
-// scenario settles by hand; tests/support/after-teardown.ts takes `window` away as vitest's teardown does.
+// scenario settles by hand; pwa-kit/test-preset's settleAfterTeardown takes `window` away as vitest's teardown does.
 // See gate.steps.tsx for why dont-cleanup-after-each is imported and cleanup() called by hand.
 import '@testing-library/react/dont-cleanup-after-each';
 import { render, screen, cleanup } from '@testing-library/react';
@@ -16,7 +16,18 @@ import { lock, setKey } from '../../src/services/keySession';
 import { COCKPIT_COLLECTION } from '../../src/services/collections';
 import type { Me } from '../../src/services/me';
 import type { IssuedLicenceEntry } from '../../src/services/issue';
-import { deferred, settleAfterTeardown } from '../../tests/support/after-teardown';
+import { settleAfterTeardown } from 'pwa-kit/test-preset';
+
+/** A promise the scenario settles by hand. */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason: unknown) => void } {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 const services = vi.hoisted(() => ({ fetchMe: vi.fn() }));
 

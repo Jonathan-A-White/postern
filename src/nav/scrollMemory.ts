@@ -21,6 +21,8 @@ const moved = new Set<string>();
 function keepNow(): void {
   clearTimeout(keepTimer);
   keepTimer = undefined;
+  // The timer outlives a test file's page: it fires with no window left (tests/unit/timers-after-teardown.test.ts).
+  if (typeof window === 'undefined') return;
   moved.add(window.location.search);
   for (const search of moved) saveScrolls(offsets, search);
   moved.clear();

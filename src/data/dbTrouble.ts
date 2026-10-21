@@ -53,7 +53,10 @@ export function noteDbChanged(): void {
   } catch {
     // As above.
   }
-  setTimeout(reloadPage, RELOAD_AFTER_MS);
+  // The timer outlives a test file's page: it fires with no window left (tests/unit/timers-after-teardown.test.ts).
+  setTimeout(() => {
+    if (typeof window !== 'undefined') reloadPage();
+  }, RELOAD_AFTER_MS);
 }
 
 /** Forgets the trouble and the once-only mark (tests). */

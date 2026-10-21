@@ -15,6 +15,7 @@
 // nothing about this bug.
 import { describe, it, expect, afterAll } from 'vitest';
 import { build } from 'vite';
+import { HOOK_TIMEOUT_MS } from 'pwa-kit/test-preset';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -28,7 +29,7 @@ describe('vite.config.ts events alias for spell-forge-bsv', () => {
 
   afterAll(() => {
     rmSync(tmpDir, { recursive: true, force: true });
-  });
+  }, HOOK_TIMEOUT_MS);
 
   // A real vite build, run alongside the rest of the suite, comfortably exceeds vitest's
   // default 5s test timeout.

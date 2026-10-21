@@ -2,6 +2,7 @@ import { getConfig } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'fs';
 import path from 'path';
+import { playwrightTimeouts, vitestTimeouts } from 'pwa-kit/test-preset';
 
 // The landing gate runs the whole suite on a loaded host. testing-library's default 1 s
 // waitFor/findBy timeout flaked three screens in one day (mw-gq6.212), and the 5 s that replaced it
@@ -35,14 +36,16 @@ describe('tests/setup.ts', () => {
     expect(getConfig().asyncUtilTimeout).toBe(BUDGET_MS);
   });
 
+  // Both configs take their numbers from pwa-kit/test-preset (mw-gq6.679): read that they spread it, and what it holds.
+  // (The config itself is not imported: this file runs in jsdom, where esbuild refuses to load.)
   it('keeps vitest testTimeout above asyncUtilTimeout, so a wait spends its whole budget before the test dies', () => {
-    const config = readFileSync('vitest.config.ts', 'utf-8');
-    expect(numberOf(/testTimeout:\s*([\d_]+)/.exec(config)?.[1])).toBeGreaterThanOrEqual(BUDGET_MS * 2);
+    expect(readFileSync('vitest.config.ts', 'utf-8')).toMatch(/\.\.\.vitestTimeouts/);
+    expect(vitestTimeouts.testTimeout).toBeGreaterThanOrEqual(BUDGET_MS * 2);
   });
 
   it("gives playwright's expect() the same 20 s, so an e2e spec does not fail on the 5 s default", () => {
-    const config = readFileSync('playwright.config.ts', 'utf-8');
-    expect(numberOf(/expect:\s*\{\s*timeout:\s*([\d_]+)/.exec(config)?.[1])).toBeGreaterThanOrEqual(BUDGET_MS);
+    expect(readFileSync('playwright.config.ts', 'utf-8')).toMatch(/\.\.\.playwrightTimeouts/);
+    expect(playwrightTimeouts.expect.timeout).toBeGreaterThanOrEqual(BUDGET_MS);
   });
 
   it('has no step file, unit test or e2e spec waiting on a real clock for less than 20 s', () => {

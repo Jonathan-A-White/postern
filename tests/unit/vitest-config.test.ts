@@ -72,7 +72,10 @@ describe('real-build test files run one at a time (mw-5zn0f3)', () => {
   it('keeps every other test file in the main project, so none is dropped or run twice', async () => {
     const main = (await loadProjects()).find((p) => p.test?.name === 'main');
     expect(main).toBeDefined();
-    expect([...(main?.test?.exclude ?? [])].sort()).toEqual(allFiles.filter(runsARealBuild).sort());
+    // MW_TIMING=skip adds the rig's timing-test globs to exclude (pwa-kit/test-preset): those are not build files.
+    const timingGlobs = (process.env.MW_TIMING === 'skip' ? (process.env.MW_TIMING_TESTS ?? '') : '').split(',').filter(Boolean);
+    const excluded = [...(main?.test?.exclude ?? [])].filter((glob) => !timingGlobs.includes(glob));
+    expect(excluded.sort()).toEqual(allFiles.filter(runsARealBuild).sort());
     expect(main?.test?.include).toEqual(
       expect.arrayContaining(['tests/unit/**/*.test.ts', 'features/steps/**/*.steps.ts']),
     );

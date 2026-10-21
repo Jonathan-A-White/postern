@@ -24,6 +24,12 @@ describe('playwright.config.ts shots project', () => {
     const shotsProject = projectsBlock.slice(shotsIndex, shotsIndex + 400);
     expect(shotsProject).toMatch(/viewport:\s*shotSize\(\)\s*\?\?\s*\{\s*width:\s*390,\s*height:\s*844\s*\}/);
   });
+
+  // mw-gq6.684: the run after a landing meets a loaded host; a starved page setup outran the preset's 60 s.
+  it('gives the shots project twice the preset\'s test budget', () => {
+    const shotsProject = source.slice(source.indexOf("name: 'shots'"));
+    expect(shotsProject).toMatch(/timeout:\s*2 \* playwrightTimeouts\.timeout/);
+  });
 });
 
 // mw-gq6.403: the preview server goes through scripts/preview-guard.mjs, which stops a leftover

@@ -239,11 +239,26 @@ test('talk line: hold to talk, a spoken answer with its timing, and a tap that c
   await expect.poll(() => posted.length).toBe(2);
 });
 
+// The press is timed by the page's clock (LONG_PRESS_MS, 500 ms), which the test holds still while it presses: a tap that
+// takes this host 800 ms to deliver is still a tap, and a hold is exactly as long as the test lets the clock run, so the
+// outcome does not depend on how fast a loaded host clicks (mw-gq6.679; the real clock this test used to race).
+const LONG_PRESS_MS = 500; // src/cockpit/Shell.tsx (not imported: it pulls the whole app in)
+const PAUSE_AHEAD_MS = 5_000;
+async function pausedClock<T>(page: Page, press: () => Promise<T>): Promise<T> {
+  await page.clock.pauseAt(new Date(Date.now() + PAUSE_AHEAD_MS));
+  try {
+    return await press();
+  } finally {
+    await page.clock.resume();
+  }
+}
+
 test('the Channels tab: a short tap lists the channels, a long press opens the Talk line', async ({ page }) => {
   await unlocked(page);
+  await page.clock.install();
   const tab = page.getByRole('navigation', { name: 'Places' }).getByRole('link', { name: /Channels$/ });
 
-  await tab.click();
+  await pausedClock(page, () => tab.click({ delay: 800 })); // slower than a long press on a real clock, still a tap on this one
   await expect(page).toHaveURL(/\?v=talk$/);
   await expect(page.getByRole('heading', { name: 'Channels' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Talk to the Mayor' })).toBeVisible();
@@ -252,9 +267,11 @@ test('the Channels tab: a short tap lists the channels, a long press opens the T
   await page.goto('/?v=needs');
   const box = (await tab.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(700);
-  await page.mouse.up();
+  await pausedClock(page, async () => {
+    await page.mouse.down();
+    await page.clock.runFor(LONG_PRESS_MS + 200);
+    await page.mouse.up();
+  });
   await expect(page).toHaveURL(/\?v=line$/);
   await expect(page.getByRole('button', { name: 'Hold to talk' })).toBeVisible();
   expect(await page.evaluate(() => window.__vibrations.length)).toBe(1);

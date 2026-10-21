@@ -11,6 +11,7 @@
 // cap and actually appears in the generated service worker's precache list.
 import { describe, it, expect, afterAll } from 'vitest';
 import { build } from 'vite';
+import { HOOK_TIMEOUT_MS } from 'pwa-kit/test-preset';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { injectManifestOptions } from '../../pwa-precache';
@@ -20,7 +21,7 @@ describe('the built mermaid chunks precache past workbox\'s default size cap', (
 
   afterAll(() => {
     rmSync(outDir, { recursive: true, force: true });
-  });
+  }, HOOK_TIMEOUT_MS);
 
   it('raises maximumFileSizeToCacheInBytes past every built chunk, and the service worker precaches all of them', async () => {
     await build({

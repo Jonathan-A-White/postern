@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { playwrightTimeouts, playwrightTimingFilter } from 'pwa-kit/test-preset';
 import { stopLeftoverPreview } from './scripts/preview-guard.mjs';
 import { previewPort, reuseExistingPreview } from './tests/support/preview-port';
 import { shotSize } from './tests/support/shot-size';
@@ -24,11 +25,13 @@ const browserEnv = existsSync(extraLibDir)
   ? { ...process.env, LD_LIBRARY_PATH: [extraLibDir, process.env.LD_LIBRARY_PATH].filter(Boolean).join(':') }
   : undefined;
 
+// MW_TIMING=skip|only (the rig's timing tests: pwa-kit/test-preset) is read per project; no spec is tagged yet.
+const timing = playwrightTimingFilter({ testMatch: ['**/*.spec.ts'] });
+
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 60_000,
-  // expect()'s own wait is 5 s unless told: a loaded host outruns that (mw-40qzg4.1).
-  expect: { timeout: 20_000 },
+  // pwa-kit/test-preset: a test's 60 s and expect()'s 20 s (its own wait is 5 s) on a loaded host (mw-40qzg4.1).
+  ...playwrightTimeouts,
   fullyParallel: false,
   reporter: 'list',
   use: {
@@ -40,12 +43,14 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      ...timing,
       use: { ...devices['Desktop Chrome'], channel: 'chromium', launchOptions: { env: browserEnv } },
     },
     // Used only by `npm run shots` (--project=shots): every e2e spec's screenshot
     // (tests/e2e/shot.ts) at the size scripts/run-shots.mjs is on (SHOT_SIZE), else a 390px iPhone width.
     {
       name: 'shots',
+      ...timing,
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chromium',

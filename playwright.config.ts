@@ -51,6 +51,9 @@ export default defineConfig({
     {
       name: 'shots',
       ...timing,
+      // The run after every landing, which publishes the shots, meets the host at its busiest: a worker starved while it
+      // set a page up outran the preset's 60 s ("setting up page", key-vault, mw-gq6.684). Twice the preset's test budget.
+      timeout: 2 * playwrightTimeouts.timeout,
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chromium',

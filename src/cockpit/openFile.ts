@@ -1,6 +1,6 @@
 // src/cockpit/openFile.ts — what a tap on an attached file does (mw-jtzpw0.5): a type the browser
 // shows (a PDF, plain text) opens in a new tab; any other file downloads under its own name. A
-// picture is not here: it opens in the full-screen viewer (ImageViewer.tsx).
+// picture is not here: it opens in the full-screen viewer (PosternPictureViewer.tsx, the kit's pwa-kit/picture-viewer).
 
 /** Whether a type is shown by the browser itself (a picture, a recording, a PDF, plain text). */
 export function browserShows(mime: string): boolean {

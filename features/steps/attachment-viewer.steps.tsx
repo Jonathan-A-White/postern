@@ -7,7 +7,7 @@ import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { Composer } from '../../src/cockpit/Composer';
 import { Conversation } from '../../src/cockpit/Conversation';
-import { ImageViewer } from '../../src/cockpit/ImageViewer';
+import { PosternPictureViewer } from '../../src/cockpit/PosternPictureViewer';
 import { db, type MessageRow } from '../../src/data/db';
 import { mergeConversation } from '../../src/model/conversation';
 import { lock, setKey } from '../../src/services/keySession';
@@ -264,7 +264,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
   Scenario('AC-1: pinching spreads and squeezes the picture between its size and six times that', ({ Given, When, Then }) => {
     Given('a picture shown full screen', () => {
-      render(<ImageViewer src="blob:p" name="shot.png" onClose={() => {}} />);
+      render(<PosternPictureViewer picture={{ src: 'blob:p', name: 'shot.png' }} onClose={() => {}} />);
     });
     When('two fingers spread to {int} times their distance', (_c, times: number) => {
       const surface = screen.getByTestId('viewer-surface');
@@ -291,7 +291,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
   Scenario('AC-1: a double tap zooms the picture in and the next one back out', ({ Given, When, Then }) => {
     Given('a picture shown full screen', () => {
-      render(<ImageViewer src="blob:p" name="shot.png" onClose={() => {}} />);
+      render(<PosternPictureViewer picture={{ src: 'blob:p', name: 'shot.png' }} onClose={() => {}} />);
     });
     When('he double-taps the picture', () => {
       fireEvent.doubleClick(screen.getByTestId('viewer-surface'));
@@ -350,7 +350,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   Scenario('AC-2: a picture with no name of its own is saved as postern and the date (mw-jtzpw0.7)', ({ Given, When, Then }) => {
     Given('a picture with no name shown full screen on 2026-10-10', () => {
       freezeClock('2026-10-10T00:25:00Z');
-      render(<ImageViewer src="blob:p" onClose={() => {}} />);
+      render(<PosternPictureViewer picture={{ src: 'blob:p' }} onClose={() => {}} />);
     });
     When('he taps Save picture', tapSave);
     Then('a link downloads {string}', async (_c, name: string) => {
@@ -397,7 +397,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   Scenario('AC-3: a phone that can neither download nor share says the picture was not saved (mw-jtzpw0.7)', ({ Given, And, When, Then }) => {
     Given('a phone that can neither download nor share', noDownload);
     And('a picture {string} shown full screen', (_c, name: string) => {
-      render(<ImageViewer src="blob:p" name={name} type="image/png" onClose={() => {}} />);
+      render(<PosternPictureViewer picture={{ src: 'blob:p', name, type: 'image/png' }} onClose={() => {}} />);
     });
     When('he taps Save picture', tapSave);
     Then('the viewer says the picture could not be saved', async () => {

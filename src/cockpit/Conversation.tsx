@@ -19,8 +19,8 @@ import { FailedNote, OutboxMark, WaitLine } from './OutboxMark';
 import { PendingMark } from './PendingMark';
 import { ShareButton } from './ShareButton';
 import { VoicePlayer } from './VoicePlayer';
-import { ImageViewer } from './ImageViewer';
-import { useViewer } from './useViewer';
+import { usePictureViewer } from 'pwa-kit/picture-viewer';
+import { PosternPictureViewer } from './PosternPictureViewer';
 import { openFile } from './openFile';
 import { messageShareText } from '../model/shareText';
 import { sendAnswer } from './send';
@@ -74,7 +74,7 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
   const [error, setError] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const inline = attachment.mime.startsWith('image/') || attachment.mime.startsWith('audio/');
-  const viewer = useViewer();
+  const viewer = usePictureViewer();
   const { reconnects } = useLive();
   // A failed load is tried again by itself once, when the stream reconnects or
   // the app returns to the foreground; after that it waits for a tap on Retry.
@@ -157,7 +157,7 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
         <button type="button" aria-label="View picture" onClick={() => void open()} className="block overflow-hidden rounded-xl">
           <img src={url} alt="Attached image" className="max-h-80 w-auto max-w-full object-contain" />
         </button>
-        {viewer.shown && <ImageViewer {...viewer.shown} onClose={viewer.close} />}
+        {viewer.shown && <PosternPictureViewer picture={viewer.shown} onClose={viewer.close} />}
       </>
     ) : (
       <div className="flex h-40 w-56 max-w-full items-center justify-center rounded-xl bg-sunken text-faint">

@@ -21,8 +21,8 @@ import { usePromptCall } from './usePromptCall';
 import { APP_NAME } from './holdBar';
 import { useComposerSettings } from './talkSettings';
 import { useDraft } from './useDraft';
-import { ImageViewer } from './ImageViewer';
-import { useViewer } from './useViewer';
+import { usePictureViewer } from 'pwa-kit/picture-viewer';
+import { PosternPictureViewer } from './PosternPictureViewer';
 import { openFile } from './openFile';
 import { toSent } from './pickedFile';
 import { draftsRepo } from '../data/repositories';
@@ -57,7 +57,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const settings = useComposerSettings();
   const { run } = useSend();
   const alive = useAlive();
-  const viewer = useViewer();
+  const viewer = usePictureViewer();
   // On a phone the tab bar sits below the composer and keeps the bottom safe-area inset.
   const wide = useWide();
   const [shared, setShared] = useState<File[]>();
@@ -141,7 +141,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
           </>
         }
       />
-      {viewer.shown && <ImageViewer {...viewer.shown} onClose={viewer.close} />}
+      {viewer.shown && <PosternPictureViewer picture={viewer.shown} onClose={viewer.close} />}
     </div>
   );
 }

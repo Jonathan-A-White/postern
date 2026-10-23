@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.43",
+    "date": "2026-10-23",
+    "story": "mw-gq6.718",
+    "kind": "fixed",
+    "text": "the app no longer keeps every factory event for good, and its lists of messages open faster on a phone with a long history."
+  },
+  {
     "version": "0.8.42",
     "date": "2026-10-23",
     "story": "mw-gq6.712",

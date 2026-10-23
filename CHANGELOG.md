@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.43
+_2026-10-23_
+- Fixed: the app no longer keeps every factory event for good, and its lists of messages open faster on a phone with a long history.
+
 ## 0.8.42
 _2026-10-23_
 - Fixed: Tapping the Emergency banner now clears it at once, even when the phone holds a long history, and it stays gone after reopening.

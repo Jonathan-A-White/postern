@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.42",
+    "date": "2026-10-23",
+    "story": "mw-gq6.712",
+    "kind": "fixed",
+    "text": "Tapping the Emergency banner now clears it at once, even when the phone holds a long history, and it stays gone after reopening."
+  },
+  {
     "version": "0.8.37",
     "date": "2026-10-20",
     "story": "mw-ea9izd",

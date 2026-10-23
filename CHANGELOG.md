@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.42
+_2026-10-23_
+- Fixed: Tapping the Emergency banner now clears it at once, even when the phone holds a long history, and it stays gone after reopening.
+
 ## 0.8.37
 _2026-10-20_
 - Fixed: a to-do that is waiting on an unfinished story no longer offers Done on its own page or its Needs you card; it says what it waits on.

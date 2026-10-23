@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.46
+_2026-10-23_
+- Fixed: When two decision cards are open on one channel, answering one no longer marks the other as answered, so the other can still be tapped.
+
 ## 0.8.43
 _2026-10-23_
 - Fixed: the app no longer keeps every factory event for good, and its lists of messages open faster on a phone with a long history.

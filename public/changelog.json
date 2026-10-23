@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.46",
+    "date": "2026-10-23",
+    "story": "mw-gq6.733",
+    "kind": "fixed",
+    "text": "When two decision cards are open on one channel, answering one no longer marks the other as answered, so the other can still be tapped."
+  },
+  {
     "version": "0.8.43",
     "date": "2026-10-23",
     "story": "mw-gq6.718",

@@ -101,7 +101,8 @@ export const eventsRepo = {
   },
 
   /** The newest held event of an emergency record (§22) that he has not tapped away and that is not over:
-   * an information emergency (its job done) is over ten minutes after its time (mw-gq6.277). */
+   * an information emergency (its job done) is over ten minutes after its time (mw-gq6.277), a seat_limited one at its
+   * until time (mw-gq6.712). */
   async latestEmergency(now: number = Date.now()): Promise<EventRow | undefined> {
     const cleared = await eventsRepo.emergencyCleared();
     const held = await emergencies().toArray();

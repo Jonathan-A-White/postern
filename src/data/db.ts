@@ -392,6 +392,24 @@ class PosternDB extends Dexie {
       cards: 'id, thread',
     });
 
+    // mw-gq6.712: events indexed by lane, so the banner, the Emergency screen and Needs you's count read the few
+    // emergencies and not the whole history: a scan of every event took so long on his phone that a tapped banner stayed.
+    this.version(12).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read, thread',
+      snapshot: 'id',
+      answers: 'bead',
+      pendingSpends: 'txid',
+      view: 'id',
+      beadDetails: 'id, fetchedAt',
+      session: 'id',
+      shares: 'id, createdAt',
+      events: 'seq, kind, bead, detail, lane',
+      outbox: '++id, state, bead',
+      cards: 'id, thread',
+    });
+
     // mw-jrx0s.22 and mw-f758y.40: the old events rows and twin messages are removed by src/data/tidy.ts, once the
     // app is shown; a `ready` hook here would hold every query of every open behind a scan of the whole history (mw-4gkijo.1).
     // An open another window blocks, and a copy another window upgrades, are handled in src/data/dbTrouble.ts.

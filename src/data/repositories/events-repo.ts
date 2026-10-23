@@ -12,18 +12,35 @@ const CLEARED_SETTING_KEY = 'emergency-cleared';
 /** How long an information emergency (its job done) stays in the banner: ten minutes from its time. */
 export const INFORMATION_EMERGENCY_MS = 10 * 60 * 1000;
 
-/** An emergency whose job is done tells him something and needs nothing of him, unlike a failed one. */
+/** A seat_limited event's reset time (millwright's domain/events/seatlimited.go: "<seat> in <window> until
+ * <RFC 3339>", then ": " and the harness's words): ms since the epoch, or undefined when it is no such event. */
+function seatLimitedUntil(event: EventRow): number | undefined {
+  if (event.kind !== 'seat_limited') return undefined;
+  const fields = event.detail.split(': ')[0].trim().split(/\s+/);
+  if (fields.length !== 5 || fields[1] !== 'in' || fields[3] !== 'until') return undefined;
+  const until = Date.parse(fields[4]);
+  return Number.isNaN(until) ? undefined : until;
+}
+
+/** An emergency whose job is done tells him something and needs nothing of him, unlike a failed one; so does a
+ * seat at its usage limit, which ends by itself when the limit resets (mw-gq6.712). */
 export function isInformation(event: EventRow): boolean {
-  return event.to === 'done';
+  return event.to === 'done' || seatLimitedUntil(event) !== undefined;
 }
 
 /** How long an information emergency still has in the banner (zero or less: it is over); undefined when
- * it has no time limit, which is a failed one or any other emergency and one whose time is unreadable. */
+ * it has no time limit, which is a failed one or any other emergency and one whose time is unreadable.
+ * A seat_limited one stays until its until time, the rest ten minutes from their own time. */
 export function bannerMsLeft(event: EventRow, now: number = Date.now()): number | undefined {
+  const until = seatLimitedUntil(event);
+  if (until !== undefined) return until - now;
   const at = Date.parse(event.ts);
   if (!isInformation(event) || Number.isNaN(at)) return undefined;
   return at + INFORMATION_EMERGENCY_MS - now;
 }
+
+/** The held events of emergency records, by the lane index (mw-gq6.712): never a walk of the whole history. */
+const emergencies = () => db.events.where('lane').equals('emergency');
 
 /** mw-jrx0s.7: the factory's events (docs/protocol.md §22), kept once each by seq. */
 export const eventsRepo = {
@@ -87,26 +104,20 @@ export const eventsRepo = {
    * an information emergency (its job done) is over ten minutes after its time (mw-gq6.277). */
   async latestEmergency(now: number = Date.now()): Promise<EventRow | undefined> {
     const cleared = await eventsRepo.emergencyCleared();
-    return db.events
-      .orderBy('seq')
-      .reverse()
-      .filter((event) => event.lane === 'emergency' && event.seq > cleared && (bannerMsLeft(event, now) ?? 1) > 0)
-      .first();
+    const held = await emergencies().toArray();
+    return held
+      .filter((event) => event.seq > cleared && (bannerMsLeft(event, now) ?? 1) > 0)
+      .reduce<EventRow | undefined>((newest, event) => (newest && newest.seq > event.seq ? newest : event), undefined);
   },
 
   /** The held events of emergency records, newest first, tapped away or not: what the Emergency screen lists. */
   async recentEmergencies(limit: number): Promise<EventRow[]> {
-    return db.events
-      .orderBy('seq')
-      .reverse()
-      .filter((event) => event.lane === 'emergency')
-      .limit(limit)
-      .toArray();
+    return (await emergencies().toArray()).sort((a, b) => b.seq - a.seq).slice(0, limit);
   },
 
   /** How many emergency events the phone holds, tapped away or not: the count on Needs you's Emergencies row. */
   async emergencyCount(): Promise<number> {
-    return db.events.filter((event) => event.lane === 'emergency').count();
+    return emergencies().count();
   },
 
   async emergencyCleared(): Promise<number> {

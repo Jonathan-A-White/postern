@@ -44,3 +44,26 @@ Feature: An emergency record shows at the top of every open screen at once, ahea
     And the sync pages the Mayor's later emergency "Boost is down" about "mw-f758y.30.2"
     And the sync pages the factory's normal event "answers again" that clears emergency 7
     Then the banner at the top of the Map says "Boost is down"
+
+  Scenario: mw-gq6.712: on a phone that holds a long history of events, his tap clears the banner and it stays gone after the app opens again
+    Given the Map is open on a phone that holds a long history of the factory's events, read at his phone's pace
+    When the sync pages the Mayor's emergency "Call me now" about no bead after that history
+    Then the banner at the top of the Map says "Call me now"
+    When he taps the banner
+    Then the banner is gone
+    When the app is opened again on the Map
+    Then no banner shows
+
+  Scenario: mw-gq6.712: a seat_limited emergency leaves the banner by itself when its until time passes
+    Given the Map is open on a phone, with a batch of events pending in the same sync
+    When the sync pages a seat_limited emergency for "millhand" until 10 seconds from now
+    Then the banner at the top of the Map says "millhand in millhand until"
+    And the banner offers Dismiss
+    Then the banner is gone
+    When the app is opened again on the Map
+    Then no banner shows
+
+  Scenario: mw-gq6.712: a seat_limited emergency whose until time has passed shows no banner
+    Given the Map is open on a phone, with a batch of events pending in the same sync
+    When the sync pages a seat_limited emergency for "mayor" until 60 seconds ago
+    Then no banner shows

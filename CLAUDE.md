@@ -67,7 +67,7 @@ src/
 ├── ui/                  # design system: Icon set, primitives (Button, Chip, Card…), tokens, toasts
 ├── key/                 # KeyVault: create, restore, passkey, licence mint
 ├── data/
-│   ├── db.ts           # Dexie schema (v11): settings, vault, messages, view, beadDetails, session, shares, events, outbox, cards…
+│   ├── db.ts           # Dexie schema (v12): settings, vault, messages, view, beadDetails, session, shares, events (by lane too), outbox, cards…
 │   └── repositories/   # Repository pattern; barrel index.ts
 ├── sw.ts                # push per class, tap lands in place, share_target parking
 └── index.css            # Tailwind 4 + the design tokens (dark default, light by the phone's setting)

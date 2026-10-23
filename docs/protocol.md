@@ -2091,6 +2091,12 @@ with its `detail`, its `actor` and its time (tapped away or not). An emergency w
 for ten minutes from its `ts`, or until he taps Dismiss (which clears it as his tap does, without
 leaving the screen); a failed one, or any other, shows until it is cleared, as before.
 
+`mw-gq6.712`. A `seat_limited` event in the emergency lane (its detail `<seat> in <window> until <RFC 3339>`,
+millwright's `domain/events/seatlimited.go`) is information too: it has Dismiss, and it leaves the banner by
+itself at its until time, when the limit lifts. The banner, the Emergency screen and Needs you's count read the
+emergencies by the events table's `lane` index, never by a walk of every event held: his phone keeps them all,
+and that walk took long enough there that a tapped banner stayed.
+
 ### The chain road, while the backend is out of reach
 
 `mw-jrx0s.9`. The phone's own read of the chain (§21, "The phone reads the chain itself")

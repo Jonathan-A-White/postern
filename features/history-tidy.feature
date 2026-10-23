@@ -23,3 +23,14 @@ Feature: The phone's history does not grow without end, and tidying it never wal
     When every list of messages, the Talk line, the unread count and a thread being read are asked for, at his phone's pace
     Then each list holds the rows it always held, in its own order, and the unread rows of the thread are marked read
     And the reading took only a few steps of a cursor
+
+  Scenario: mw-gq6.719 AC-1: a reply held direct and on chain is told from the rest by one look at each message, and the direct copy stays
+    Given the phone holds a very long history of messages, some answers held twice: on chain first, direct first, and a third copy
+    When the app is shown and tidies its history, at his phone's pace
+    Then every answer held twice is held once, the direct copy, and every other message is still held
+    And the twin step read the table once and took only a few steps of a cursor
+
+  Scenario: mw-gq6.719 AC-2: finding the twins among twenty thousand messages takes a fraction of a second
+    Given the phone holds twenty thousand messages, a few of them twins
+    When the twins among them are asked for
+    Then they are named in under 200 milliseconds, and only the chain copies

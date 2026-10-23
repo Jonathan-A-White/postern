@@ -108,4 +108,19 @@ describe('the conversation shows a direct+chain pair once (mw-f758y.40)', () => 
     const bare = { ...chainRow, ciphertext: '' };
     expect(twinsToDrop([bare, { ...directRow, ciphertext: '' }])).toEqual([]);
   });
+
+  it('twinsToDrop lets a direct twin replace a relayed one, whichever came first, and keeps the first of two relayed copies', () => {
+    expect(twinsToDrop([chainRow, directRow])).toEqual([chainRow]);
+    expect(twinsToDrop([directRow, chainRow])).toEqual([chainRow]);
+    const second: MessageRow = { ...chainRow, id: `${CHAIN}x:0`, txid: `${CHAIN}x` };
+    expect(twinsToDrop([chainRow, second])).toEqual([second]);
+    expect(twinsToDrop([chainRow, second, directRow])).toEqual([second, chainRow]);
+    expect(twinsToDrop([directRow, chainRow, second])).toEqual([chainRow, second]);
+  });
+
+  it('twinsToDrop tells messages apart by any of ciphertext, sender, recipient and time', () => {
+    for (const other of [{ ciphertext: 'other-ct' }, { from: 'g' }, { to: 'u' }, { ts: base.ts + 1 }]) {
+      expect(twinsToDrop([chainRow, { ...directRow, ...other }])).toEqual([]);
+    }
+  });
 });

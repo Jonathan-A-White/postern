@@ -1,10 +1,11 @@
 // features/steps/history-tidy.steps.ts — runs features/history-tidy.feature (mw-gq6.718): the real Dexie store with
 // its cursor stepping at his phone's pace (tests/support/phone-cursor.ts), the real tidyHistory and the real banner read.
-import { afterAll, afterEach, expect } from 'vitest';
+import { afterAll, afterEach, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { db, type EventRow, type MessageRow } from '../../src/data/db';
 import { EVENTS_KEPT, tidyHistory } from '../../src/data/tidy';
 import { eventsRepo, messagesRepo } from '../../src/data/repositories';
+import { twinsToDrop } from '../../src/model/twins';
 import { cursorStepsTaken, phonePaceCursors } from '../../tests/support/phone-cursor';
 
 const LONG = EVENTS_KEPT + 500;
@@ -29,6 +30,25 @@ function longConversation(): MessageRow[] {
     const cls = classes[i % classes.length];
     return { ...message(i + 1, cls), ts: 1000 + Math.floor(i / 2), thread: i % 3 === 0 ? THREAD : undefined, read: i % 2 === 0, direction: i % 4 === 0 ? 'sent' : 'received' } as MessageRow;
   });
+}
+
+const TWIN_PAIRS = 100;
+const TWIN_MESSAGES = 20_000;
+
+/** TWIN_MESSAGES rows in which TWIN_PAIRS * 3 answers are each also held under a chain txid (a third of them first, a third twice over). */
+function twinned(): MessageRow[] {
+  const rows: MessageRow[] = [];
+  const copy = (row: MessageRow, txid: string): MessageRow => ({ ...row, id: `${txid}:0`, txid });
+  for (let i = 0; i < TWIN_PAIRS * 3; i += 1) {
+    const base = message(i + 1, 'message');
+    const direct = copy(base, `direct:${i}`);
+    if (i % 3 === 0) rows.push(copy(base, `chain:${i}`), direct);
+    else if (i % 3 === 1) rows.push(direct, copy(base, `chain:${i}`));
+    else rows.push(direct, copy(base, `chain:${i}`), copy(base, `chain:${i}b`));
+  }
+  const held = rows.length;
+  for (let n = 1; rows.length < TWIN_MESSAGES + (held - TWIN_PAIRS * 3); n += 1) rows.push(message(10_000 + n, 'message'));
+  return rows;
 }
 
 let restore: (() => void) | undefined;
@@ -150,6 +170,54 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the reading took only a few steps of a cursor', () => {
       expect(cursorStepsTaken()).toBeLessThan(A_FEW_STEPS);
+    });
+  });
+
+  Scenario('mw-gq6.719 AC-1: a reply held direct and on chain is told from the rest by one look at each message, and the direct copy stays', ({ Given, When, Then, And }) => {
+    let tableReads = 0;
+    Given('the phone holds a very long history of messages, some answers held twice: on chain first, direct first, and a third copy', async () => {
+      await db.messages.bulkAdd(twinned());
+    });
+    When('the app is shown and tidies its history, at his phone\'s pace', async () => {
+      const reads = vi.spyOn(db.messages, 'toArray');
+      await tidyAtHisPace();
+      tableReads = reads.mock.calls.length;
+      reads.mockRestore();
+    });
+    Then('every answer held twice is held once, the direct copy, and every other message is still held', async () => {
+      const held = await db.messages.toArray();
+      expect(held).toHaveLength(TWIN_MESSAGES);
+      expect(held.filter((row) => row.txid.startsWith('chain:'))).toEqual([]);
+      expect(held.filter((row) => row.txid.startsWith('direct:')).map((row) => row.id).sort()).toEqual(
+        Array.from({ length: TWIN_PAIRS * 3 }, (_, i) => `direct:${i}:0`).sort(),
+      );
+    });
+    And('the twin step read the table once and took only a few steps of a cursor', () => {
+      expect(tableReads).toBe(1);
+      expect(cursorStepsTaken()).toBeLessThan(A_FEW_STEPS);
+    });
+  });
+
+  Scenario('mw-gq6.719 AC-2: finding the twins among twenty thousand messages takes a fraction of a second', ({ Given, When, Then }) => {
+    let rows: MessageRow[] = [];
+    let dropped: MessageRow[] = [];
+    let ms = Infinity;
+    Given('the phone holds twenty thousand messages, a few of them twins', () => {
+      rows = Array.from({ length: 20_000 }, (_, i) => ({ ...message(i + 1, 'message'), ts: 1000 + Math.floor(i / 50) }));
+      for (let i = 0; i < 20; i += 1) {
+        const twin = { ...rows[i * 900] };
+        rows.splice(i * 900 + 1, 0, { ...twin, id: `chain-copy:${i}:0`, txid: `chain-copy:${i}`, vout: 0 });
+        rows[i * 900] = { ...twin, id: `direct:${i}:0`, txid: `direct:${i}` };
+      }
+    });
+    When('the twins among them are asked for', () => {
+      const started = performance.now();
+      dropped = twinsToDrop(rows);
+      ms = performance.now() - started;
+    });
+    Then('they are named in under 200 milliseconds, and only the chain copies', () => {
+      expect(dropped.map((row) => row.id)).toEqual(Array.from({ length: 20 }, (_, i) => `chain-copy:${i}:0`));
+      expect(ms).toBeLessThan(200);
     });
   });
 });

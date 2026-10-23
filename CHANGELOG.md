@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.47
+_2026-10-23_
+- Fixed: When two questions are open on the same bead, answering one no longer makes the other disappear from Needs you, its badge or the bead page.
+
 ## 0.8.46
 _2026-10-23_
 - Fixed: When two decision cards are open on one channel, answering one no longer marks the other as answered, so the other can still be tapped.

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.47",
+    "date": "2026-10-23",
+    "story": "mw-gq6.735",
+    "kind": "fixed",
+    "text": "When two questions are open on the same bead, answering one no longer makes the other disappear from Needs you, its badge or the bead page."
+  },
+  {
     "version": "0.8.46",
     "date": "2026-10-23",
     "story": "mw-gq6.733",

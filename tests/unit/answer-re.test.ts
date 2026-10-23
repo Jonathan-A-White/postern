@@ -108,3 +108,43 @@ describe('sendAnswer', () => {
     expect((await db.outbox.get(id))?.payload).not.toHaveProperty('re');
   });
 });
+
+// mw-gq6.733: his case. Choice 3 (asked 09:38) sits above Choice 2 (asked 15:37); he tapped A on Choice 3 at 15:42.
+// The factory wrote an ANSWER comment on the bead naming that answer's txid, not the card, and it was read as Choice 2's answer too.
+describe('two cards on one bead, the factory\'s ANSWER comment (mw-gq6.733)', () => {
+  const OLDER = `direct:${'f'.repeat(64)}`;
+  const NEWER = `direct:${'1'.repeat(64)}`;
+  const ANSWER_TX = `direct:${'9'.repeat(64)}`;
+  const question = { bead: BEAD, q: 'Which?', rec: '', options: ['A: Every matched book turns On', 'B: Leave it'] };
+  const comment = { at: `2026-10-23T${'15:42'}:30Z`, author: 'mw@laptop', text: `ANSWER 2026-10-23T15:42:00Z from 02ab, txid ${ANSWER_TX}: A: Every matched book turns On` };
+  const day = (hhmm: string) => Date.parse(`2026-10-23T${hhmm}:00Z`) / 1000;
+  const evidence = (re?: string) => ({
+    sent: [{ bead: BEAD, answer: 'A: Every matched book turns On', txid: ANSWER_TX, ts: day('15:42'), ...(re !== undefined ? { re } : {}) }],
+    comments: [comment],
+    messages: [],
+    outbox: [],
+    soleQuestion: false,
+  });
+
+  it('marks the older card, which the answer names, and leaves the newer one open', () => {
+    const older = needOfQuestion(question, day('09:38') * 1000);
+    const newer = needOfQuestion(question, day('15:37') * 1000);
+    expect(answeredQuestion(older, { ...evidence(OLDER), txid: OLDER }, day('15:37') * 1000)).toMatchObject({ label: 'A: Every matched book turns On' });
+    expect(answeredQuestion(newer, { ...evidence(OLDER), txid: NEWER })).toBeUndefined();
+  });
+
+  it('still marks a card from the comment when the answer names no card', () => {
+    const newer = needOfQuestion(question, day('15:37') * 1000);
+    expect(answeredQuestion(newer, { ...evidence(), txid: NEWER })).toMatchObject({ label: 'A: Every matched book turns On' });
+  });
+
+  it('still marks a card from a comment whose answer this phone did not send', () => {
+    const newer = needOfQuestion(question, day('15:37') * 1000);
+    expect(answeredQuestion(newer, { ...evidence(OLDER), sent: [], txid: NEWER })).toMatchObject({ label: 'A: Every matched book turns On' });
+  });
+
+  it('marks the newer card from the comment when the answer names it', () => {
+    const newer = needOfQuestion(question, day('15:37') * 1000);
+    expect(answeredQuestion(newer, { ...evidence(NEWER), txid: NEWER })).toMatchObject({ label: 'A: Every matched book turns On' });
+  });
+});

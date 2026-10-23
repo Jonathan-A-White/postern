@@ -18,7 +18,7 @@ import { messagesRepo } from '../data/repositories';
 import { sendAction, sendAnswer, sendToThread, useSend } from './send';
 import { isSupported as canSpeak, speak, stop as stopSpeaking } from '../services/speech';
 import type { Need } from '../model/view';
-import { answeredByComment, answeredInWords, hitlParts, orderedOptions, questionTxidOf, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
+import { answeredByComment, answersNamingOtherCards, answeredInWords, hitlParts, orderedOptions, questionTxidOf, releaseState, waitsFor, waitsOnLinks } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
 import { HandsSteps } from './HandsSteps';
 import { useOneTap } from './oneTap';
@@ -103,7 +103,8 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   // The card's txid at the moment of the tap: the thread read above lands a beat after the post does, and an answer sent in that
   // beat would name no card (mw-s8ksjw). A phone that holds the post names it; one that does not yet, sends the answer bare.
   const cardTxidNow = async () => cardTxid ?? questionTxidOf(need, await messagesRepo.inThread(threadKey({ bead: need.bead })));
-  const sentRow = useAnswers().find((row) => row.bead === need.bead && row.ts * 1000 >= Date.parse(need.since) && namesCard(row.re, cardTxid));
+  const answersSent = useAnswers();
+  const sentRow = answersSent.find((row) => row.bead === need.bead && row.ts * 1000 >= Date.parse(need.since) && namesCard(row.re, cardTxid));
   // An answer the factory has heard (a card_answered event, §22, on the view's copy) is dead too, whichever device sent it.
   const heard = need.answered;
   // An answer still in the outbox (mw-jrx0s.10) is dead and says so too: it is marked pending until it has gone.
@@ -114,8 +115,8 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
   const comments = useStoredComments(asks ? need.bead : '');
   const soleQuestion = index !== undefined && index.view.needs.filter((n) => n.kind === 'question' && n.bead !== '').length === 1;
   const inWords = useMemo(
-    () => (asks ? (answeredByComment(need, comments) ?? answeredInWords(need, [...inBeadThread, ...inFactory], outbox, soleQuestion)) : undefined),
-    [asks, need, comments, inBeadThread, inFactory, outbox, soleQuestion],
+    () => (asks ? (answeredByComment(need, comments, answersNamingOtherCards(answersSent, [...inBeadThread, ...inFactory], cardTxid)) ?? answeredInWords(need, [...inBeadThread, ...inFactory], outbox, soleQuestion)) : undefined),
+    [asks, need, comments, inBeadThread, inFactory, outbox, soleQuestion, answersSent, cardTxid],
   );
   const answered = asks && (answerTap.waiting || sentRow !== undefined || heard !== undefined || pendingRow !== undefined || inWords !== undefined);
   const saidWhat = answerTap.said

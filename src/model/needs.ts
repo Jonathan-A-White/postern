@@ -101,16 +101,38 @@ export interface SaidAnswer {
 
 const ANSWER_COMMENT = /^answer\b/i;
 const ANSWER_AFTER_TXID = /^answer\b.*?\btxid\s+\S+:\s+/is;
+const ANSWER_TXID = /^answer\b.*?\btxid\s+(\S+):\s/is;
+
+/** The txids of the answers this phone holds that name a question card other than `card` (their `re`), lowercased.
+ * An ANSWER comment on the bead names its answer's txid and no card, so one of these is not `card`'s answer.
+ * Empty when `card` is not known: nothing can then be told apart. */
+export function answersNamingOtherCards(sent: AnswerRow[], messages: MessageRow[], card: string | undefined): Set<string> {
+  const other = new Set<string>();
+  if (card === undefined || card === '') return other;
+  const mine = card.toLowerCase();
+  const note = (txid: string, re: string | undefined) => {
+    if (re !== undefined && re !== '' && re.toLowerCase() !== mine) other.add(txid.toLowerCase());
+  };
+  for (const row of sent) note(row.txid, row.re);
+  for (const row of messages) {
+    if (row.direction !== 'sent' || row.class !== 'message' || row.plaintext === undefined) continue;
+    note(row.txid, decodeReply(row.plaintext)?.re);
+  }
+  return other;
+}
 
 /** The ANSWER comment the factory wrote on the bead for this question (`ANSWER <ts> from <key>, txid <txid>: <answer>`),
- * made after it was asked: the answer reached the factory, whichever way it was sent. */
-export function answeredByComment(need: Need, comments: BeadComment[]): SaidAnswer | undefined {
+ * made after it was asked: the answer reached the factory, whichever way it was sent. A comment whose answer names
+ * another card (`otherCards`, from answersNamingOtherCards) is that card's, not this one's. */
+export function answeredByComment(need: Need, comments: BeadComment[], otherCards: ReadonlySet<string> = new Set()): SaidAnswer | undefined {
   const since = Date.parse(need.since);
   for (const comment of comments) {
     if (!ANSWER_COMMENT.test(comment.text.trim())) continue;
     const at = Date.parse(comment.at);
     if (Number.isNaN(at) || (!Number.isNaN(since) && at < since)) continue;
     const text = comment.text.trim();
+    const txid = ANSWER_TXID.exec(text)?.[1];
+    if (txid !== undefined && otherCards.has(txid.toLowerCase())) continue;
     const words = ANSWER_AFTER_TXID.test(text) ? text.replace(ANSWER_AFTER_TXID, '') : text.replace(/^answer\b[\s:-]*/i, '');
     return { label: words.trim().split('\n')[0], at };
   }
@@ -234,7 +256,8 @@ export function answeredQuestion(
   const comments = evidence.comments.filter((comment) => !(Date.parse(comment.at) >= until));
   const messages = evidence.messages.filter((row) => row.ts * 1000 < until);
   const outbox = evidence.outbox.filter((row) => row.created < until);
-  return answeredByComment(need, comments) ?? answeredInWords(need, messages, outbox, evidence.soleQuestion);
+  const otherCards = answersNamingOtherCards(evidence.sent, evidence.messages, evidence.txid);
+  return answeredByComment(need, comments, otherCards) ?? answeredInWords(need, messages, outbox, evidence.soleQuestion);
 }
 
 /** One labelled part of a hitl:<kind> need's body: Do this, Verified or Done when. */

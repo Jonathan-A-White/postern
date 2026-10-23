@@ -6,6 +6,7 @@
 // when an event names something only the home builds (mw-7dige5.5), or at the home's next `view` event when that something is a card (mw-ev7oyy.39), adds a new bead from its own detail (mw-ev7oyy.37), and tells each
 // useEvents subscriber of the events it asked for.
 import { useMemo, useSyncExternalStore } from 'react';
+import type { AnswerRow } from '../data/db';
 import { answersRepo, eventsRepo, messagesRepo, viewRepo } from '../data/repositories';
 import { addBead, applyBeadDetail, projectEvents, type AddedBead, type EventBatch, type FactoryEvent, type Projection } from '../model/events';
 import { decodeView } from '../model/view';
@@ -36,7 +37,9 @@ export interface ProjectedBatches {
 async function questionsAndAnswers(events: FactoryEvent[]): Promise<{ questions: Map<string, QuestionBody>; answers: Map<string, string> }> {
   const questions = new Map<string, QuestionBody>();
   const answers = new Map<string, string>();
-  const sent = events.some((e) => e.kind === 'card_answered') ? await answersRepo.getAll() : [];
+  // The answers he sent, by txid (the first of any txid wins): one look per answered-card event, not a walk of every answer sent (mw-gq6.719).
+  const sent = new Map<string, AnswerRow>();
+  if (events.some((e) => e.kind === 'card_answered')) for (const row of await answersRepo.getAll()) if (!sent.has(row.txid)) sent.set(row.txid, row);
   for (const event of events) {
     if (!event.detail) continue;
     if (event.kind === 'card_asked') {
@@ -44,7 +47,7 @@ async function questionsAndAnswers(events: FactoryEvent[]): Promise<{ questions:
       const body = row?.plaintext ? decodeQuestion(row.plaintext) : undefined;
       if (body) questions.set(event.detail, body);
     } else if (event.kind === 'card_answered') {
-      const mine = sent.find((row) => row.txid === event.detail);
+      const mine = sent.get(event.detail);
       const row = mine ? undefined : await messagesRepo.getByTxid(event.detail);
       const answer = mine?.answer ?? (row?.plaintext ? decodeReply(row.plaintext)?.answer : undefined);
       if (answer !== undefined) answers.set(event.detail, answer);

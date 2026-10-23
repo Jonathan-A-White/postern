@@ -234,10 +234,11 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
   const view = useViewIndex();
   const live = useLive();
   const answers = useAnswers();
+  const messages = useMessages();
   const [refreshing, setRefreshing] = useState(false);
   const alive = useAlive();
   const index = view?.index;
-  const apart = useMemo(() => splitFolded(index ? unsettledNeeds(index.view.needs, answers) : []), [index, answers]);
+  const apart = useMemo(() => splitFolded(index ? unsettledNeeds(index.view.needs, answers, messages) : []), [index, answers, messages]);
   const split = useMemo(() => needsByWaiter(apart.open), [apart]);
   const needs = split[who];
   const folded = useMemo(() => needsByWaiter(apart.folded)[who], [apart, who]);

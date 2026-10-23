@@ -195,7 +195,8 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
   const chain = index ? ancestors(id, index) : [];
   // What he has answered or acted on since it was raised is gone from here as it is from Needs you.
   const answers = useAnswers();
-  const needs = unsettledNeeds(index?.needsByBead.get(id) ?? [], answers);
+  const thread = useThreadMessages(speakKey);
+  const needs = unsettledNeeds(index?.needsByBead.get(id) ?? [], answers, thread);
   const waits = detail?.waits ?? bead?.waits ?? [];
   const blocks = detail?.blocks.length ? detail.blocks : (index?.waitedOnBy.get(id) ?? []);
   const children = detail?.children.length ? detail.children : (index?.children.get(id)?.map((b) => b.id) ?? []);
@@ -338,7 +339,7 @@ export function BeadScreen({ id, msg }: { id: string; msg?: string }) {
   const stepUnder = (item: ConversationItem) => {
     const id = /^HANDS STEP (\S+) on /.exec(item.text.trimStart())?.[1];
     if (!id) return null;
-    const need = unsettledNeeds(index?.needsByBead.get(threadId) ?? [], answers).find((n) => n.kind === 'hands' && n.steps.some((s) => s.id === id));
+    const need = unsettledNeeds(index?.needsByBead.get(threadId) ?? [], answers, rows).find((n) => n.kind === 'hands' && n.steps.some((s) => s.id === id));
     const step = need?.steps.find((s) => s.id === id);
     if (!need || !step) return null;
     const notReady = waitsFor(need) !== 'you' || need.not_ready === true;
@@ -346,7 +347,7 @@ export function BeadScreen({ id, msg }: { id: string; msg?: string }) {
   };
   // The Verified button sits under the newest post carrying HOW TO CHECK IT while the story waits to be verified.
   const howToId = useMemo(() => howToCheckItemId(posts), [posts]);
-  const verifyOpen = unsettledNeeds(index?.needsByBead.get(threadId) ?? [], answers).some((n) => n.kind === 'verify');
+  const verifyOpen = unsettledNeeds(index?.needsByBead.get(threadId) ?? [], answers, rows).some((n) => n.kind === 'verify');
   const verifiedUnder = (item: ConversationItem) =>
     verifyOpen && item.id === howToId ? (
       <div data-testid="verified-under-how-to">

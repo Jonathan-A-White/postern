@@ -78,7 +78,7 @@ function useBadges(): Partial<Record<TopView, number>> {
   const answers = useAnswers();
   const todo = useTodoCount();
   const unread = messages.filter((row) => row.direction === 'received' && !row.read).length;
-  return { needs: view ? needsByWaiter(splitFolded(unsettledNeeds(view.index.view.needs, answers)).open).you.length : 0, todo, talk: unread };
+  return { needs: view ? needsByWaiter(splitFolded(unsettledNeeds(view.index.view.needs, answers, messages)).open).you.length : 0, todo, talk: unread };
 }
 
 export function LiveBadge({ compact }: { compact?: boolean }) {

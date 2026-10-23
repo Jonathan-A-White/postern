@@ -2,18 +2,30 @@
 // decision 8). One he has answered or acted on since it was raised leaves the
 // queue at once, before the Mayor's host has applied it and the view drops it.
 import type { AnswerRow, MessageRow, OutboxRow } from '../data/db';
-import { decodeQuestion, decodeReply } from '../services/questions';
+import { decodeQuestion, decodeReply, namesCard } from '../services/questions';
 import { decodeThreadedMessage } from '../services/threads';
 import { isEpic, type ViewIndex } from './tree';
 import type { QuestionBody } from '../services/questions';
 import type { BeadComment, Need, WaitsFor } from './view';
 
-export function unsettledNeeds(needs: Need[], answers: AnswerRow[]): Need[] {
-  const answered = new Map(answers.map((row) => [row.bead, row.ts * 1000]));
+/**
+ * The needs still waiting on him. A question card an answer settles is one the answer names (its `re`, by namesCard, as
+ * the card's own 'Answered' mark reads it): an answer that names another card on the bead leaves this one open. An answer
+ * that names no card, or a card whose txid this phone cannot tell (`messages`, the question posts it holds), keeps the
+ * bead-and-time rule.
+ */
+export function unsettledNeeds(needs: Need[], answers: AnswerRow[], messages: MessageRow[] = []): Need[] {
+  const byBead = new Map<string, AnswerRow[]>();
+  for (const row of answers) byBead.set(row.bead, [...(byBead.get(row.bead) ?? []), row]);
   return needs.filter((need) => {
-    const at = answered.get(need.bead);
+    const rows = byBead.get(need.bead);
     // A bead waiting on others keeps its line whatever he tapped on it since (it is not a card he answers); the view drops it.
-    if (at === undefined || !need.bead || need.kind === 'waiting') return true;
+    if (rows === undefined || !need.bead || need.kind === 'waiting') return true;
+    // The card's txid is read only for a bead with an answer that names a card: Needs you shows hundreds of cards.
+    const txid = rows.some((row) => row.re !== undefined && row.re !== '') ? questionTxidOf(need, messages) : undefined;
+    const mine = rows.filter((row) => namesCard(row.re, txid));
+    if (mine.length === 0) return true;
+    const at = mine[mine.length - 1].ts * 1000;
     const since = Date.parse(need.since);
     return !Number.isNaN(since) && since > at;
   });

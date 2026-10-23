@@ -39,7 +39,7 @@ const (
 	SeenEvery = time.Minute
 
 	// MaxDevices is how many keys one licence may hold.
-	MaxDevices = 3
+	MaxDevices = 5
 	// DefaultDailyLimit is a new person's tutor answers a day, shared by
 	// their devices.
 	DefaultDailyLimit = 50
@@ -74,7 +74,7 @@ var (
 	// ErrEmailTaken: the email belongs to another person.
 	ErrEmailTaken = errors.New("that email is already registered")
 	// ErrFull: the person already has MaxDevices devices.
-	ErrFull = errors.New("This licence already has 3 devices. Remove one first.")
+	ErrFull = errors.New("This licence already has 5 devices. Remove one first.")
 	// ErrDeviceTaken: the device key is on another person's licence.
 	ErrDeviceTaken = errors.New("this device already belongs to another licence")
 	// ErrBusy: too many registrations are waiting.

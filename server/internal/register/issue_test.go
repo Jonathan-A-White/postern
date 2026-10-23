@@ -381,28 +381,28 @@ func TestAFailedIssueKeepsTheRegistrationForARetry(t *testing.T) {
 }
 
 // AC2: removing a device revokes its licence with the site key, drops it, and
-// a fourth device then joins.
+// a sixth device then joins.
 func TestRemovingADeviceRevokesItsLicenceAndFreesTheSlot(t *testing.T) {
 	key, _ := btcec.NewPrivateKey()
 	c := &fakeChain{utxos: []chain.Utxo{{TxHash: strings.Repeat("ab", 32), TxPos: 0, Value: 1_000_000, Height: 100}}}
 	s, issuer, _ := newIssuingService(t, key, c)
 	var first Result
-	for n := byte(0); n < 3; n++ {
+	for n := byte(0); n < 5; n++ {
 		res, err := register(t, s, email1, phone1, realKey(n))
 		if err != nil {
 			t.Fatalf("device %d: %v", n, err)
 		}
 		first = res
 	}
-	if _, err := register(t, s, email1, phone1, realKey(3)); !errors.Is(err, ErrFull) {
-		t.Fatalf("fourth = %v, want ErrFull", err)
+	if _, err := register(t, s, email1, phone1, realKey(5)); !errors.Is(err, ErrFull) {
+		t.Fatalf("sixth = %v, want ErrFull", err)
 	}
 	mints := c.sent()
-	if len(mints) != 3 {
-		t.Fatalf("%d mints, want 3", len(mints))
+	if len(mints) != 5 {
+		t.Fatalf("%d mints, want 5", len(mints))
 	}
 	// Each mint spends the one before's change: the list never shows it here.
-	for i := 1; i < 3; i++ {
+	for i := 1; i < 5; i++ {
 		if in := parseTx(t, mints[i]).inputs; len(in) != 1 || in[0].txid != txidOfHex(mints[i-1]) {
 			t.Fatalf("mint %d spends %+v, want the change of mint %d", i, in, i-1)
 		}
@@ -414,10 +414,10 @@ func TestRemovingADeviceRevokesItsLicenceAndFreesTheSlot(t *testing.T) {
 		t.Fatalf("RemoveDevice: %v", err)
 	}
 	sent := c.sent()
-	if len(sent) != 4 {
-		t.Fatalf("%d broadcasts, want the 3 mints and a revoke", len(sent))
+	if len(sent) != 6 {
+		t.Fatalf("%d broadcasts, want the 5 mints and a revoke", len(sent))
 	}
-	revoke := parseTx(t, sent[3])
+	revoke := parseTx(t, sent[5])
 	kind, payload := record(revoke.outputs[0])
 	if kind != "W" || payload["kind"] != "revoke" || payload["origin"] != removed.LicenceTxid+":0" {
 		t.Fatalf("record %q %v, want a revoke of %s:0", kind, payload, removed.LicenceTxid)
@@ -426,14 +426,14 @@ func TestRemovingADeviceRevokesItsLicenceAndFreesTheSlot(t *testing.T) {
 	if !signedByKey(revoke, pub) {
 		t.Fatal("the revoke is not signed by the site key")
 	}
-	if len(res.Devices) != 2 {
-		t.Fatalf("devices %+v, want two left", res.Devices)
+	if len(res.Devices) != 4 {
+		t.Fatalf("devices %+v, want four left", res.Devices)
 	}
 	if _, ok := s.Person(removed.Key); ok {
 		t.Fatal("the removed key still belongs to the person")
 	}
-	if _, err := register(t, s, email1, phone1, realKey(3)); err != nil {
-		t.Fatalf("fourth device after a removal: %v", err)
+	if _, err := register(t, s, email1, phone1, realKey(5)); err != nil {
+		t.Fatalf("sixth device after a removal: %v", err)
 	}
 }
 

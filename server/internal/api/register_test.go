@@ -115,9 +115,11 @@ func TestRegisterRefusalsAreConflicts(t *testing.T) {
 	confirm("b@example.com", regPhone, 2)
 	confirm("c@example.com", regPhone, 3)
 	clock.now = clock.now.Add(time.Hour) // a phone has codes sent at most 3 times an hour (mw-cvwm1u.9)
-	status, body = confirm("d@example.com", regPhone, 4)
-	if status != http.StatusConflict || body["error"] != "This licence already has 3 devices. Remove one first." {
-		t.Fatalf("fourth = %d %v", status, body)
+	confirm("d@example.com", regPhone, 4)
+	confirm("e@example.com", regPhone, 5)
+	status, body = confirm("f@example.com", regPhone, 1) // key 1 was refused above, so it joined nothing
+	if status != http.StatusConflict || body["error"] != "This licence already has 5 devices. Remove one first." {
+		t.Fatalf("sixth = %d %v", status, body)
 	}
 }
 
@@ -325,13 +327,13 @@ func TestRegisterWithoutTheSiteIssuerKeyIsLicensedByHand(t *testing.T) {
 // same person, revokes the other's licence and frees its slot.
 func TestRegisterDeleteDeviceRevokesAndFreesTheSlot(t *testing.T) {
 	issuer := &regIssuer{}
-	svc, err := register.Open(t.TempDir(), register.WithVerifier(regVerifier{}), register.WithIssuer(issuer), register.WithSendLimits(5, 10, 0))
+	svc, err := register.Open(t.TempDir(), register.WithVerifier(regVerifier{}), register.WithIssuer(issuer), register.WithSendLimits(10, 10, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
 	server, _ := newServerWithOptions(t, WithRegistration(svc, ""))
-	keys := make([]*btcec.PrivateKey, 4)
-	pubs := make([]string, 4)
+	keys := make([]*btcec.PrivateKey, 6)
+	pubs := make([]string, 6)
 	for i := range keys {
 		keys[i], _ = btcec.NewPrivateKey()
 		pubs[i] = hex.EncodeToString(keys[i].PubKey().SerializeCompressed())
@@ -342,7 +344,7 @@ func TestRegisterDeleteDeviceRevokesAndFreesTheSlot(t *testing.T) {
 	}
 	var person string
 	var second map[string]any
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 5; i++ {
 		status, body := join(i)
 		if status != http.StatusOK {
 			t.Fatalf("join %d = %d %v", i, status, body)
@@ -352,8 +354,8 @@ func TestRegisterDeleteDeviceRevokesAndFreesTheSlot(t *testing.T) {
 			second = body["devices"].([]any)[1].(map[string]any)
 		}
 	}
-	if status, _ := join(3); status != http.StatusConflict {
-		t.Fatalf("fourth = %d, want 409", status)
+	if status, body := join(5); status != http.StatusConflict || body["error"] != "This licence already has 5 devices. Remove one first." {
+		t.Fatalf("sixth = %d %v, want 409", status, body)
 	}
 
 	remove := func(signer *btcec.PrivateKey, deviceKey string) (int, map[string]any) {
@@ -373,8 +375,8 @@ func TestRegisterDeleteDeviceRevokesAndFreesTheSlot(t *testing.T) {
 	}
 	status, body := remove(keys[0], pubs[1])
 	devices, _ := body["devices"].([]any)
-	if status != http.StatusOK || len(devices) != 2 {
-		t.Fatalf("remove = %d %v, want 200 and two devices", status, body)
+	if status != http.StatusOK || len(devices) != 4 {
+		t.Fatalf("remove = %d %v, want 200 and four devices", status, body)
 	}
 	if want := second["licenceTxid"].(string) + ":0"; len(issuer.revoked) != 1 || issuer.revoked[0] != want {
 		t.Fatalf("revoked %v, want %s", issuer.revoked, want)
@@ -382,8 +384,8 @@ func TestRegisterDeleteDeviceRevokesAndFreesTheSlot(t *testing.T) {
 	if status, body := remove(keys[0], pubs[1]); status != http.StatusNotFound {
 		t.Fatalf("remove again = %d %v, want 404", status, body)
 	}
-	if status, body := join(3); status != http.StatusOK {
-		t.Fatalf("fourth after a removal = %d %v, want 200", status, body)
+	if status, body := join(5); status != http.StatusOK {
+		t.Fatalf("sixth after a removal = %d %v, want 200", status, body)
 	}
 }
 

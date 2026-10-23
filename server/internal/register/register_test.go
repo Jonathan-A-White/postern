@@ -196,7 +196,7 @@ func TestAnEmailAlreadyAnotherPersonsIsRefused(t *testing.T) {
 	}
 }
 
-func TestAFourthDeviceIsRefusedWithTheExactMessage(t *testing.T) {
+func TestASixthDeviceIsRefusedWithTheExactMessage(t *testing.T) {
 	s, _, c, _ := newService(t)
 	for i := byte(0); i < 3; i++ {
 		if _, err := register(t, s, email1, phone1, deviceKey(i)); err != nil {
@@ -204,17 +204,23 @@ func TestAFourthDeviceIsRefusedWithTheExactMessage(t *testing.T) {
 		}
 	}
 	c.Advance(time.Hour) // a phone has codes sent at most 3 times an hour
-	_, err := register(t, s, email1, phone1, deviceKey(3))
-	if !errors.Is(err, ErrFull) || err.Error() != "This licence already has 3 devices. Remove one first." {
-		t.Fatalf("fourth device: err = %v", err)
+	for i := byte(3); i < 5; i++ {
+		if _, err := register(t, s, email1, phone1, deviceKey(i)); err != nil {
+			t.Fatalf("device %d: %v", i, err)
+		}
+	}
+	_, err := register(t, s, email1, phone1, deviceKey(5))
+	if !errors.Is(err, ErrFull) || err.Error() != "This licence already has 5 devices. Remove one first." {
+		t.Fatalf("sixth device: err = %v", err)
 	}
 	person, _ := s.Person(deviceKey(0))
-	if len(person.Keys) != 3 {
-		t.Fatalf("keys = %v, want still three", person.Keys)
+	if len(person.Keys) != 5 {
+		t.Fatalf("keys = %v, want still five", person.Keys)
 	}
-	// A device already on the licence registering again is not a fourth.
+	c.Advance(time.Hour)
+	// A device already on the licence registering again is not a sixth.
 	res, err := register(t, s, email1, phone1, deviceKey(1))
-	if err != nil || len(res.Devices) != 3 {
+	if err != nil || len(res.Devices) != 5 {
 		t.Fatalf("again: %+v, %v", res, err)
 	}
 }

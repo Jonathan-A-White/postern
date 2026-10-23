@@ -67,12 +67,13 @@ function post(text: string, thread: string | undefined, read: boolean): MessageR
   };
 }
 
-/** Lets the Dexie reads and live-query updates that are ready run to the end. */
+/** Lets the Dexie reads and live-query updates that are ready run to the end. A table read in one call (mw-gq6.718) needs
+ * a few ms of the faked setTimeout clock to arrive, as a cursor walk did not; the backoff waits seconds, so 5 ms moves nothing else. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 8; i += 1) {
     await act(async () => {
       await new Promise((resolve) => setImmediate(resolve));
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(5);
     });
   }
 }

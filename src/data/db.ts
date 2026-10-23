@@ -410,6 +410,24 @@ class PosternDB extends Dexie {
       cards: 'id, thread',
     });
 
+    // mw-gq6.718: messages indexed by class, so tidy.ts finds the events rows an older build stored by the index and
+    // not by a walk of every message (a cursor step is a round trip on his phone).
+    this.version(13).stores({
+      settings: 'key',
+      vault: 'id',
+      messages: 'id, seq, ts, read, thread, class',
+      snapshot: 'id',
+      answers: 'bead',
+      pendingSpends: 'txid',
+      view: 'id',
+      beadDetails: 'id, fetchedAt',
+      session: 'id',
+      shares: 'id, createdAt',
+      events: 'seq, kind, bead, detail, lane',
+      outbox: '++id, state, bead',
+      cards: 'id, thread',
+    });
+
     // mw-jrx0s.22 and mw-f758y.40: the old events rows and twin messages are removed by src/data/tidy.ts, once the
     // app is shown; a `ready` hook here would hold every query of every open behind a scan of the whole history (mw-4gkijo.1).
     // An open another window blocks, and a copy another window upgrades, are handled in src/data/dbTrouble.ts.

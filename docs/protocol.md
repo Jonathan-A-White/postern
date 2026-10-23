@@ -2094,8 +2094,13 @@ leaving the screen); a failed one, or any other, shows until it is cleared, as b
 `mw-gq6.712`. A `seat_limited` event in the emergency lane (its detail `<seat> in <window> until <RFC 3339>`,
 millwright's `domain/events/seatlimited.go`) is information too: it has Dismiss, and it leaves the banner by
 itself at its until time, when the limit lifts. The banner, the Emergency screen and Needs you's count read the
-emergencies by the events table's `lane` index, never by a walk of every event held: his phone keeps them all,
+emergencies by the events table's `lane` index, never by a walk of every event held: his phone kept them all,
 and that walk took long enough there that a tapped banner stayed.
+
+`mw-gq6.718`. The phone no longer keeps every event for good: once the app is shown, `tidyHistory` (src/data/tidy.ts)
+drops the oldest past the newest 5000 (`EVENTS_KEPT`), by the seq index. Every emergency stays, and so does every event
+above the events cursor (not yet applied to the view). A dropped event that a later sync brings again is kept once
+more and trimmed at the next open; nothing is applied twice, for the cursor has passed it.
 
 ### The chain road, while the backend is out of reach
 

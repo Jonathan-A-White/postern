@@ -4,13 +4,21 @@
 // microseconds, which hid it; this stalls each step for `ms` (Atomics.wait, so the transaction stays active).
 
 const stall = new Int32Array(new SharedArrayBuffer(4));
+let steps = 0;
+
+/** How many cursor steps were taken since phonePaceCursors was last called: a read by an index takes a few, a walk of a table one per row. */
+export function cursorStepsTaken(): number {
+  return steps;
+}
 
 /** Slows every cursor step to `ms`; returns what puts the fake's own pace back. */
 export function phonePaceCursors(ms: number): () => void {
   const proto = globalThis.IDBCursor.prototype;
+  steps = 0;
   const own = Object.getOwnPropertyDescriptor(proto, 'continue');
   const step = proto.continue;
   proto.continue = function (this: IDBCursor, key?: IDBValidKey) {
+    steps += 1;
     Atomics.wait(stall, 0, 0, ms);
     return step.call(this, key);
   };

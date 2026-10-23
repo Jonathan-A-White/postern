@@ -1,4 +1,4 @@
-import { db, type MessageRow } from '../db';
+import { db, type MessageClass, type MessageRow } from '../db';
 import { sameMessage } from '../../model/twins';
 
 /** The Talk line's turns (docs/protocol.md §20) and call records (§21) are records of their own:
@@ -19,37 +19,48 @@ const listed = (row: MessageRow) => isMessage(row) && !isCard(row);
  * channel list groups it (`row.thread ?? GENERAL`), so the list and the channel agree on Factory's posts. */
 const inThreadKey = (row: MessageRow, key: string | undefined) => (key === undefined ? row.thread == null : row.thread === key);
 
+/** Every stored row, oldest first (by ts, then id). Dexie reads a table in one call when nothing filters it; a
+ * `.filter()` makes it walk a cursor, a round trip to Chrome's database process for every message held, which holds
+ * the screen on his phone (mw-gq6.718, the class of mw-gq6.712). So the rows come whole and the callers pick in memory. */
+const heldOldestFirst = (): Promise<MessageRow[]> => db.messages.orderBy('ts').toArray();
+
+/** The rows of one class, from the class index (schema v13), oldest first. */
+const ofClass = async (cls: MessageClass): Promise<MessageRow[]> => (await db.messages.where('class').equals(cls).toArray()).sort(byTime);
+
+const byTime = (a: MessageRow, b: MessageRow) => a.ts - b.ts || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/** The rows an unread count and a mark-read both mean: received, not yet read, in a list (never the Talk line's or a card). */
+const unreadMessage = (row: MessageRow) => listed(row) && notTalk(row) && row.direction === 'received' && !row.read;
+
 export const messagesRepo = {
   async getAll(): Promise<MessageRow[]> {
-    return db.messages.orderBy('ts').reverse().filter(listed).toArray();
+    return (await heldOldestFirst()).filter(listed).reverse();
   },
 
   /** Every stored row that can be decrypted, cards included: what a later unlock reads again. */
   async getAllStored(): Promise<MessageRow[]> {
-    return db.messages.orderBy('ts').reverse().filter(isMessage).toArray();
+    return (await heldOldestFirst()).filter(isMessage).reverse();
   },
 
   /** Every message but the Talk line's turns, oldest first — the order a conversation reads in. */
   async getAllOldestFirst(): Promise<MessageRow[]> {
-    return db.messages.orderBy('ts').filter((row) => listed(row) && notTalk(row)).toArray();
+    return (await heldOldestFirst()).filter((row) => listed(row) && notTalk(row));
   },
 
   /** The Talk line's turns alone, oldest first. */
   async talkTurns(): Promise<MessageRow[]> {
-    return db.messages.orderBy('ts').filter((row) => row.class === 'talk').toArray();
+    return ofClass('talk');
   },
 
   /** The call records and the Talk line's turns, oldest first: what says whether a Call me has been answered. */
   async callLine(): Promise<MessageRow[]> {
-    return db.messages.orderBy('ts').filter((row) => !notTalk(row)).toArray();
+    const [turns, calls] = await Promise.all([ofClass('talk'), ofClass('call')]);
+    return [...turns, ...calls].sort(byTime);
   },
 
   /** One thread's messages, oldest first; undefined is the general thread. */
   async inThread(key: string | undefined): Promise<MessageRow[]> {
-    return db.messages
-      .orderBy('ts')
-      .filter((row) => listed(row) && notTalk(row) && inThreadKey(row, key))
-      .toArray();
+    return (await heldOldestFirst()).filter((row) => listed(row) && notTalk(row) && inThreadKey(row, key));
   },
 
   /** The same messages as `inThread`, picked from rows already in memory (oldest first, as `getAllOldestFirst` hands them). */
@@ -92,13 +103,12 @@ export const messagesRepo = {
 
   /** Marks the thread's received messages read; resolves with the txids it just marked. */
   async markThreadRead(key: string | undefined): Promise<string[]> {
-    const unread = db.messages.filter((row) => listed(row) && notTalk(row) && row.direction === 'received' && !row.read && row.thread === key);
-    const txids = (await unread.toArray()).map((row) => row.txid);
-    await unread.modify({ read: true });
-    return txids;
+    const unread = (await heldOldestFirst()).filter((row) => unreadMessage(row) && row.thread === key);
+    if (unread.length > 0) await db.messages.bulkUpdate(unread.map((row) => ({ key: row.id, changes: { read: true } })));
+    return unread.map((row) => row.txid);
   },
 
   async countUnread(): Promise<number> {
-    return db.messages.filter((row) => listed(row) && notTalk(row) && row.direction === 'received' && !row.read).count();
+    return (await heldOldestFirst()).filter(unreadMessage).length;
   },
 };

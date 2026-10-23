@@ -81,6 +81,23 @@ export const eventsRepo = {
     return (await db.events.where('detail').equals(txid).first())?.seq;
   },
 
+  /** Drops the oldest events past the newest `keep` (mw-gq6.718). Never an emergency (few, and the banner and the
+   * Emergency screen read them all), never one above the cursor (not applied to the view yet). Reads and deletes
+   * by the seq index: one step past `keep` finds the cut, the keys below it come back in one call. Resolves with
+   * how many it dropped. */
+  async trim(keep: number): Promise<number> {
+    return db.transaction('rw', db.events, db.settings, async () => {
+      const oldestKept = await db.events.orderBy('seq').reverse().offset(keep - 1).first();
+      if (!oldestKept) return 0;
+      const cut = Math.min(oldestKept.seq, (await eventsRepo.cursor()) + 1);
+      const [old, emergency] = await Promise.all([db.events.where('seq').below(cut).primaryKeys(), emergencies().primaryKeys()]);
+      const spared = new Set(emergency);
+      const drop = old.filter((seq) => !spared.has(seq));
+      await db.events.bulkDelete(drop);
+      return drop.length;
+    });
+  },
+
   async cursor(): Promise<number> {
     const row = await db.settings.get(CURSOR_SETTING_KEY);
     return typeof row?.value === 'number' ? row.value : 0;

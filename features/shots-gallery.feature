@@ -27,3 +27,13 @@ Feature: The published shots carry a gallery and a manifest, so another team can
     Given the shots branch holds an older latest/ set
     When the publish asks whether to commit
     Then it commits
+
+  Scenario: AC-1: a spec the branch changed is run again at the two other sizes (mw-pb8otc)
+    Given a branch that changed the e2e spec "tests/e2e/bottom-bar.spec.ts" and the source file "src/App.tsx"
+    When the gate plans its extra shots runs
+    Then it runs only that spec, once at 360x640 and once at 1280x800
+
+  Scenario: AC-2: a branch that changed no e2e spec adds no run (mw-pb8otc)
+    Given a branch that changed only the source file "src/App.tsx"
+    When the gate plans its extra shots runs
+    Then it plans no run and says that no e2e spec changed

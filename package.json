@@ -15,7 +15,7 @@
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:live": "playwright test --config=playwright.live.config.ts",
     "shots": "node scripts/run-shots.mjs",
-    "gate:shots": "npm run build && TZ=UTC playwright test --project=shots",
+    "gate:shots": "npm run build && TZ=UTC playwright test --project=shots && TZ=UTC node scripts/gate-shots-sizes.mjs",
     "shots:publish": "node scripts/publish-shots.mjs",
     "typecheck": "tsc -b --noEmit",
     "fixture": "tsx scripts/generate-fixture.ts"

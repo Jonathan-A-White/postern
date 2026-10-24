@@ -3,6 +3,7 @@
 import { expect } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { buildIndexHtml, buildManifest, shouldCommit } from '../../scripts/shots-gallery.mjs';
+import { changedSpecs, noExtraRunLine, planExtraRuns } from '../../scripts/gate-shots-sizes.mjs';
 
 const feature = await loadFeature('features/shots-gallery.feature');
 
@@ -99,6 +100,38 @@ describeFeature(feature, ({ Scenario }) => {
     });
     Then('it commits', () => {
       expect(decision).toBe(true);
+    });
+  });
+
+  Scenario('AC-1: a spec the branch changed is run again at the two other sizes (mw-pb8otc)', ({ Given, When, Then }) => {
+    let files: string[] = [];
+    let plan: ReturnType<typeof planExtraRuns> = [];
+    Given('a branch that changed the e2e spec "tests/e2e/bottom-bar.spec.ts" and the source file "src/App.tsx"', () => {
+      files = ['tests/e2e/bottom-bar.spec.ts', 'src/App.tsx'];
+    });
+    When('the gate plans its extra shots runs', () => {
+      plan = planExtraRuns(changedSpecs(files, () => true));
+    });
+    Then('it runs only that spec, once at 360x640 and once at 1280x800', () => {
+      expect(plan).toEqual([
+        { size: '360x640', specs: ['tests/e2e/bottom-bar.spec.ts'] },
+        { size: '1280x800', specs: ['tests/e2e/bottom-bar.spec.ts'] },
+      ]);
+    });
+  });
+
+  Scenario('AC-2: a branch that changed no e2e spec adds no run (mw-pb8otc)', ({ Given, When, Then }) => {
+    let files: string[] = [];
+    let plan: ReturnType<typeof planExtraRuns> = [];
+    Given('a branch that changed only the source file "src/App.tsx"', () => {
+      files = ['src/App.tsx'];
+    });
+    When('the gate plans its extra shots runs', () => {
+      plan = planExtraRuns(changedSpecs(files, () => true));
+    });
+    Then('it plans no run and says that no e2e spec changed', () => {
+      expect(plan).toEqual([]);
+      expect(noExtraRunLine()).toMatch(/no e2e spec changed/);
     });
   });
 });

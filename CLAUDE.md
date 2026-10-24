@@ -44,6 +44,8 @@ npm run test:e2e     # playwright, against `npm run preview`
   They end an utterance, open a recogniser and play a clip in time, as Android Chrome does.
 - End-to-end tests live in `tests/e2e/`, outside the gate command (run by hand with
   `npm run test:e2e`).
+- `npm run gate:shots` (the Laptop's gate) runs the shots project at 390x844, then (scripts/gate-shots-sizes.mjs)
+  the `tests/e2e/*.spec.ts` the branch changed at 360x640 and 1280x800 too; no changed spec, no extra run.
 
 ## Layout
 

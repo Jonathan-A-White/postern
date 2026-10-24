@@ -1,6 +1,6 @@
 // tests/e2e/screen-stays-put.spec.ts — mw-jkrnxu.2: the page is never left scrolled. On a 390x844 phone,
 // whatever the keyboard, the app switcher or a banner does, html, body and the Shell root sit at
-// scrollTop 0, the tab bar's bottom edge is the window's bottom edge and the screen's heading is on screen.
+// scrollTop 0, the tab bar's bottom edge is the window's bottom edge less the 48 px floor of the phone's navigation bar (mw-6yhrp1) and the screen's heading is on screen.
 // A phone's keyboard and focus scroll cannot be made here, so before each action the page is pushed by
 // hand the way they push it: a tall box inside body and the Shell root, and all three scrolled 300 px.
 import { test, expect, type Page } from '@playwright/test';
@@ -55,7 +55,8 @@ async function settled(page: Page, heading: string): Promise<void> {
     )
     .toEqual([0, 0, 0]);
   const nav = await page.locator('nav[aria-label=Places]').evaluate((el) => ({ bottom: el.getBoundingClientRect().bottom, inner: innerHeight }));
-  expect(nav.bottom).toBe(nav.inner);
+  // The bar's box ends 48 px above the window's foot (mw-6yhrp1): that strip is where the phone's own navigation bar may be drawn.
+  expect(nav.bottom).toBe(nav.inner - 48);
   const h1 = await page.getByRole('heading', { name: heading, level: 1 }).evaluate((el) => el.getBoundingClientRect().top);
   expect(h1).toBeGreaterThanOrEqual(0);
 }

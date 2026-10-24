@@ -122,8 +122,21 @@ html {
   }
 }
 
+/* What the phone's own navigation bar may cover at the foot of the window (mw-6yhrp1). Android Chrome with three-button
+ * navigation reports env(safe-area-inset-bottom) as 0 under viewport-fit=cover, yet draws its 48 px Back/Home/Recents bar over the
+ * page, so every bar at the foot has this floor, never the bare inset. */
+:root {
+  --pc-bar-inset: max(env(safe-area-inset-bottom), 48px);
+}
+
+/* The inset as padding inside a box that runs to the window's foot (the wide layout's composer). */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--pc-bar-inset);
+}
+
+/* The inset as room under a bar, outside its box: the bar's own box ends above the phone's navigation bar. */
+.mb-safe {
+  margin-bottom: var(--pc-bar-inset);
 }
 
 .pt-safe {

@@ -3,6 +3,7 @@
 // window.matchMedia answering as a 390 px phone or a wide screen.
 import '@testing-library/react/dont-cleanup-after-each';
 import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { BeadScreen } from '../../src/cockpit/BeadScreen';
@@ -90,7 +91,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     const nav = menu();
     expect(composer.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(composer.className).not.toContain('pb-safe');
-    expect(nav.className).toContain('pb-safe');
+    expect(nav.className).toContain('mb-safe');
   };
   const backStays = async () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument());
@@ -125,6 +126,28 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the composer keeps the bottom safe-area inset', async () => {
       expect((await screen.findByTestId('composer')).className).toContain('pb-safe');
+    });
+  });
+
+  Scenario("mw-6yhrp1: the inset every bar at the foot keeps is never less than a three-button bar's 48 px", ({ Given, Then, And }) => {
+    // Android Chrome with three-button navigation reports env(safe-area-inset-bottom) as 0 and still draws its bar over the page
+    // (the real proof is tests/e2e/bottom-bar.spec.ts); jsdom has no env(), so this reads the rule and where it is used.
+    const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
+    let css = '';
+    Given("the app's stylesheet", () => {
+      css = read('../../src/index.css');
+    });
+    Then("the bottom inset is the phone's reported one or 48 px, whichever is more", () => {
+      expect(css).toMatch(/--pc-bar-inset:\s*max\(env\(safe-area-inset-bottom\),\s*48px\)/);
+      expect(css).toMatch(/\.pb-safe\s*{\s*padding-bottom:\s*var\(--pc-bar-inset\)/);
+      expect(css).toMatch(/\.mb-safe\s*{\s*margin-bottom:\s*var\(--pc-bar-inset\)/);
+    });
+    And("the bottom menu, the composer on a wide screen, the toasts and the sidebar's foot all keep that inset", () => {
+      expect(read('../../src/cockpit/Shell.tsx')).toMatch(/aria-label="Places" className="mb-safe /);
+      expect(read('../../src/cockpit/Shell.tsx')).toContain('pb-[max(1rem,var(--pc-bar-inset))]');
+      expect(read('../../src/cockpit/Composer.tsx')).toContain("wide && 'pb-safe'");
+      expect(read('../../src/ui/toast.tsx')).toContain('var(--pc-bar-inset)');
+      expect(css).not.toMatch(/padding-bottom:\s*env\(safe-area-inset-bottom\)/);
     });
   });
 });

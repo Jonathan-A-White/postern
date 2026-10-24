@@ -110,7 +110,7 @@ function Badge({ count }: { count?: number }) {
 function TabBar({ current }: { current: TopView }) {
   const badges = useBadges();
   return (
-    <nav aria-label="Places" className="pb-safe shrink-0 border-t border-line bg-surface/95 backdrop-blur">
+    <nav aria-label="Places" className="mb-safe shrink-0 border-t border-line bg-surface/95 backdrop-blur">
       <ul className="mx-auto flex max-w-xl">
         {TABS.map((tab) => {
           const active = tab.view === current;
@@ -173,7 +173,7 @@ function Sidebar({ current }: { current: TopView }) {
           );
         })}
       </ul>
-      <div className="mt-auto p-4">
+      <div className="mt-auto p-4 pb-[max(1rem,var(--pc-bar-inset))]">
         <LiveBadge />
       </div>
     </nav>

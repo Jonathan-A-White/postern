@@ -21,3 +21,8 @@ Feature: The bottom menu stays on every screen (mw-tbx1n.12)
     When a thread opens inside the shell
     Then there is no bottom menu
     And the composer keeps the bottom safe-area inset
+
+  Scenario: mw-6yhrp1: the inset every bar at the foot keeps is never less than a three-button bar's 48 px
+    Given the app's stylesheet
+    Then the bottom inset is the phone's reported one or 48 px, whichever is more
+    And the bottom menu, the composer on a wide screen, the toasts and the sidebar's foot all keep that inset

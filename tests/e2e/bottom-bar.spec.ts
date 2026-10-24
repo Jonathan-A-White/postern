@@ -16,10 +16,10 @@ const SYSTEM_BAR = 48;
 const VISIBLE_BOTTOM = SCREEN.height - SYSTEM_BAR;
 
 /** The window the page gets: the whole screen when its viewport meta says cover, else the screen less the system bar. */
-async function windowFor(page: Page): Promise<void> {
+async function windowFor(page: Page, width = SCREEN.width): Promise<void> {
   const html = await (await page.request.get('/')).text();
   const cover = /<meta[^>]+name="viewport"[^>]+viewport-fit=cover/.test(html);
-  await page.setViewportSize({ width: SCREEN.width, height: cover ? SCREEN.height : VISIBLE_BOTTOM });
+  await page.setViewportSize({ width, height: cover ? SCREEN.height : VISIBLE_BOTTOM });
 }
 
 /** The page is told about the system bar through the safe-area inset (what Chrome does when it does report it). */
@@ -74,3 +74,17 @@ for (const reported of [0, 34, SYSTEM_BAR]) {
     }
   });
 }
+
+// From 1024 px the Places bar is the sidebar: its box runs to the window's foot, so what must clear the system bar is the last thing in it,
+// the live badge (mw-iablds). The same screen height, a wide window.
+test('the sidebar keeps its live badge above the phone navigation bar at a wide window', async ({ page }) => {
+  await windowFor(page, 1280);
+  await unlock(page);
+  for (const [name, url] of SCREENS.slice(0, 3)) {
+    await page.goto(url);
+    const bar = page.getByRole('navigation', { name: 'Places' });
+    await expect(bar, `${name}: the Places sidebar is shown`).toBeVisible();
+    const badge = (await bar.getByTestId('live-badge').boundingBox())!;
+    expect(badge.y + badge.height, `${name}: the live badge's foot (px) against the system bar's top edge`).toBeLessThanOrEqual(VISIBLE_BOTTOM);
+  }
+});

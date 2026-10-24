@@ -1,6 +1,8 @@
 // tests/e2e/screen-stays-put.spec.ts — mw-jkrnxu.2: the page is never left scrolled. On a 390x844 phone,
 // whatever the keyboard, the app switcher or a banner does, html, body and the Shell root sit at
-// scrollTop 0, the tab bar's bottom edge is the window's bottom edge less the 48 px floor of the phone's navigation bar (mw-6yhrp1) and the screen's heading is on screen.
+// scrollTop 0, the Places bar keeps the 48 px floor of the phone's navigation bar (mw-6yhrp1) and the screen's heading is on screen. Under 1024 px
+// the bar is the tab bar and its box ends 48 px above the window's foot; from 1024 px it is the sidebar, whose box runs to the window's foot and
+// whose last thing, the live badge, ends 48 px above it (mw-iablds).
 // A phone's keyboard and focus scroll cannot be made here, so before each action the page is pushed by
 // hand the way they push it: a tall box inside body and the Shell root, and all three scrolled 300 px.
 import { test, expect, type Page } from '@playwright/test';
@@ -54,9 +56,20 @@ async function settled(page: Page, heading: string): Promise<void> {
       }),
     )
     .toEqual([0, 0, 0]);
-  const nav = await page.locator('nav[aria-label=Places]').evaluate((el) => ({ bottom: el.getBoundingClientRect().bottom, inner: innerHeight }));
-  // The bar's box ends 48 px above the window's foot (mw-6yhrp1): that strip is where the phone's own navigation bar may be drawn.
-  expect(nav.bottom).toBe(nav.inner - 48);
+  const nav = await page.locator('nav[aria-label=Places]').evaluate((el) => ({
+    bottom: el.getBoundingClientRect().bottom,
+    badgeBottom: el.querySelector('[data-testid=live-badge]')?.getBoundingClientRect().bottom ?? null,
+    inner: innerHeight,
+    wide: matchMedia('(min-width: 1024px)').matches,
+  }));
+  if (nav.wide) {
+    // The sidebar runs to the window's foot; the floor is the room under its last thing (the live badge).
+    expect(nav.bottom).toBe(nav.inner);
+    expect(nav.badgeBottom).toBe(nav.inner - 48);
+  } else {
+    // The tab bar's box ends 48 px above the window's foot: that strip is where the phone's own navigation bar may be drawn.
+    expect(nav.bottom).toBe(nav.inner - 48);
+  }
   const h1 = await page.getByRole('heading', { name: heading, level: 1 }).evaluate((el) => el.getBoundingClientRect().top);
   expect(h1).toBeGreaterThanOrEqual(0);
 }

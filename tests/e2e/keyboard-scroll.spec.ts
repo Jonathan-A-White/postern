@@ -5,7 +5,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
-import { seedVault, stubBackend } from './cockpit-stub';
+import { seedVault, standbyWhile, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
 
 test.use({ serviceWorkers: 'block', viewport: sized({ width: 390, height: 844 }) });
@@ -27,7 +27,7 @@ async function inFactoryChannelWithBanner(page: Page): Promise<void> {
   await stubBackend(page, governor, undefined, { longThread: true });
   // The home goes down while the channel is open: 'Home is down' is a Shell banner like the update bar.
   let down = false;
-  await page.route(/\/api\/view(\?|$)/, (route) => (down ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ standby: true, home: 'desktop' }) }) : route.fallback()));
+  await standbyWhile(page, () => down);
   await seedVault(page, mnemonic);
   await page.goto('/');
   await page.getByLabel('Recovery phrase').fill(mnemonic);
@@ -97,4 +97,17 @@ test('with the layout taller than the window, a new message still never scrolls 
   expect(tops.root).toBe(0);
   expect(tops.body).toBe(0);
   expect(tops.others).toEqual([]);
+});
+
+// mw-ktphf8: a host that is not home answers 503 standby to every route but the ones a send needs
+// (src/services/standby.ts SERVED_IN_STANDBY). The stub used to 503 only /api/view, so the stream's
+// reconnect (/api/events, 200) ended 'Home is down' ~200 ms after the probe raised it and a loaded host's
+// poll missed it. While down, the stub answers as the real standby host does.
+test('while the home is down, the stub answers 503 standby on every route a standby host does not serve', async ({ page }) => {
+  await inFactoryChannelWithBanner(page);
+  const statuses = await page.evaluate(async () => {
+    const status = async (path: string) => (await fetch(`/api${path}`)).status;
+    return { events: await status('/events'), view: await status('/view'), beads: await status('/beads/x'), messages: await status('/messages') };
+  });
+  expect(statuses).toEqual({ events: 503, view: 503, beads: 503, messages: 200 });
 });

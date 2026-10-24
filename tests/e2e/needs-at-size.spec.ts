@@ -113,9 +113,11 @@ async function everyTabOpens(page: Page, name: string, size: ViewSize): Promise<
   const needs = await tapAndTime(page, 'Needs you', () => expect(page.getByTestId('need-card').first()).toBeVisible());
   console.log(`${name}: Needs you answered ${Math.round(needs.ms)} ms after the tap (host ${needs.slowdown.toFixed(1)}x)`);
   expect(needs.ms, 'Needs you opens and answers').toBeLessThan(within(needs.slowdown));
-  // The rest of his cards follow while the page answers: none is left out.
+  // The rest of his cards follow while the page answers: none is left out. They arrive a batch at a time, so on a browser slowed
+  // 20x the count is still climbing when the default 5 s ends (60 ... 116 of them, the landing gate on 2026-10-24); this wait is
+  // for the last card, not a promise about speed (the times above are), so it waits as long as the count keeps moving up to 60 s.
   const his = Number((await page.getByRole('tab', { name: /^You · / }).textContent())?.replace(/\D+/g, ''));
-  await expect(page.getByTestId('need-card')).toHaveCount(his);
+  await expect(page.getByTestId('need-card')).toHaveCount(his, { timeout: 60_000 });
   if (size === LIVE_SIZE) await shot(page, 'needs-at-size');
 
   // The folded verify cards (359 of them that day) open the same way: a tap on the foot line answers at once.

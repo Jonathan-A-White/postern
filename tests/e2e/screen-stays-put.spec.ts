@@ -8,7 +8,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
-import { seedVault, stubBackend } from './cockpit-stub';
+import { seedVault, standbyWhile, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
 
 test.use({ serviceWorkers: 'block', viewport: sized({ width: 390, height: 844 }) });
@@ -20,7 +20,7 @@ async function unlocked(page: Page): Promise<void> {
   const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
   await stubBackend(page, governor);
   down = false;
-  await page.route(/\/api\/view(\?|$)/, (route) => (down ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ standby: true, home: 'desktop' }) }) : route.fallback()));
+  await standbyWhile(page, () => down);
   await seedVault(page, mnemonic);
   await page.goto('/');
   await page.getByLabel('Recovery phrase').fill(mnemonic);

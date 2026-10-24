@@ -50,6 +50,23 @@ function withNeeds(view: View, needs: Need[] = [], beads: ViewBead[] = []): View
   return { ...view, needs: [...view.needs, ...needs], beads: [...view.beads, ...beads] };
 }
 
+/** The routes a standby host still serves (src/services/standby.ts SERVED_IN_STANDBY): matched by prefix, as it does. */
+const SERVED_IN_STANDBY = /^\/api\/(challenge|messages|me|utxos\/|broadcast)/;
+
+/**
+ * mw-ktphf8: a host that is not home, while `isDown()` is true: every route but the ones a send needs answers
+ * 503 {"standby": true} as the real standby host does (docs/api.md). Answering only /api/view left the event
+ * stream's reconnect (a 200 on /api/events) to end 'Home is down' ~200 ms after the probe raised it, so a loaded
+ * host's poll missed the banner. Call it after stubBackend (a later route is tried first).
+ */
+export async function standbyWhile(page: Page, isDown: () => boolean): Promise<void> {
+  await page.route(/\/api\//, (route) => {
+    const { pathname } = new URL(route.request().url());
+    if (!isDown() || SERVED_IN_STANDBY.test(pathname)) return route.fallback();
+    return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ standby: true, home: 'desktop' }) });
+  });
+}
+
 export interface StubExtras {
   /** What /api/me names as `collections`: a cockpit key's; leave unset for an app key's answer. */
   collections?: Array<{ name: string; app?: string }>;

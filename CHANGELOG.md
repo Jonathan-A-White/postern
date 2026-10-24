@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.48
+_2026-10-24_
+- Fixed: the bottom menu (Needs you, To do, Map, Channels, Search, Me) is no longer hidden behind the phone's Back, Home and Recents buttons.
+
 ## 0.8.47
 _2026-10-23_
 - Fixed: When two questions are open on the same bead, answering one no longer makes the other disappear from Needs you, its badge or the bead page.

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.48",
+    "date": "2026-10-24",
+    "story": "mw-6yhrp1",
+    "kind": "fixed",
+    "text": "the bottom menu (Needs you, To do, Map, Channels, Search, Me) is no longer hidden behind the phone's Back, Home and Recents buttons."
+  },
+  {
     "version": "0.8.47",
     "date": "2026-10-23",
     "story": "mw-gq6.735",

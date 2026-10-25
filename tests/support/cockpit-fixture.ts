@@ -302,6 +302,31 @@ export function longTokenComments(bead: string, now: number): BeadComment[] {
   ];
 }
 
+/** The txid of the General post in longLinkRecords when it follows the nine records of fixtureRecords alone (its seq 10). */
+export const LONG_LINK_ROOT_TXID = `direct:${hex64(10)}`;
+
+/** A General post from the Mayor holding a long unbroken link and a reply to it (its Thread) holding another: a link the width of
+ * a message must wrap inside its bubble in the channel and in the thread (mw-gm81b4). */
+export function longLinkRecords(governorKey: PrivateKey, now: number, firstSeq: number): FixtureRecord[] {
+  const governorPub = governorKey.toPublicKey().toString();
+  const root: FixtureRecord = {
+    seq: firstSeq + 1,
+    txid: `direct:${hex64(firstSeq + 1)}`,
+    vout: 0,
+    payload: { ...encryptMessage({ text: `The build is up: ${LONG_URL}`, class: 'message', senderPrivateKeyHex: MAYOR.toHex(), recipientPublicKeyHex: governorPub }), ts: Math.floor((now - 6 * 60_000) / 1000) },
+  };
+  const reply: FixtureRecord = {
+    seq: firstSeq + 2,
+    txid: `direct:${hex64(firstSeq + 2)}`,
+    vout: 0,
+    payload: {
+      ...encryptMessage({ text: encodeThreadedMessage({ text: `Details: ${LONG_URL}`, re: root.txid }), class: 'message', senderPrivateKeyHex: MAYOR.toHex(), recipientPublicKeyHex: governorPub }),
+      ts: Math.floor((now - 5 * 60_000) / 1000),
+    },
+  };
+  return [root, reply];
+}
+
 /** Forty posts in the channel 'long thread', numbered, newest last: enough to scroll on a phone (mw-f758y.35). */
 export function longThreadRecords(governorKey: PrivateKey, now: number, firstSeq: number): FixtureRecord[] {
   const governorPub = governorKey.toPublicKey().toString();

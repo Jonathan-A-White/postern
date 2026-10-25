@@ -64,6 +64,8 @@ const POLL_MS = 20_000;
 const MAX_BACKOFF_MS = 30_000;
 /** The stream pings every 25 s (docs/api.md); this long with no word is a socket the OS suspended, or a link that died without an error. */
 const STREAM_STALE_MS = 60_000;
+/** A stream that stayed open this long was a working one: only then does the next reconnect start the back-off over (mw-k3slte). One that closes sooner, again and again, is backed off like a failure. */
+const STREAM_HEALTHY_MS = 30_000;
 /** How often an open stream is checked for having gone quiet. */
 const STALE_CHECK_MS = 5_000;
 /** Two returns to the foreground closer than this are one. */
@@ -447,9 +449,10 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
     const wake = AbortSignal.any([signal, interrupt.signal]);
     if (!known && !(await learnMe())) return;
     if (me.features.includes('events')) {
+      const opened = Date.now();
       try {
         await listen(key, wake);
-        backoff = 1000;
+        if (Date.now() - opened >= STREAM_HEALTHY_MS) backoff = 1000; // a stream that closes at once, over and over, keeps its back-off
         recoverySyncFailed = false;
       } catch (err) {
         if (signal.aborted) return;

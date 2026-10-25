@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.55",
+    "date": "2026-10-25",
+    "story": "mw-0bc564",
+    "kind": "fixed",
+    "text": "on a narrow phone the speaker button on a Needs you card was cut off at the right edge; it now wraps below."
+  },
+  {
     "version": "0.8.54",
     "date": "2026-10-25",
     "story": "mw-6j8xmr",

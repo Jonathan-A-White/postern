@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.55
+_2026-10-25_
+- Fixed: on a narrow phone the speaker button on a Needs you card was cut off at the right edge; it now wraps below.
+
 ## 0.8.54
 _2026-10-25_
 - New: In the Mayor talk screen you can now attach several pictures and several files of any kind to one message.

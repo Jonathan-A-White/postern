@@ -4,6 +4,7 @@
 // the time it is asked at, and touches nothing.
 import type { MessageRow } from '../data/db';
 import { decodeTurn } from '../services/talk';
+import { attachmentsOf } from '../services/threads';
 import { clockHHMM } from './call';
 import { NO_ANSWER_IN_TIME, TALK_AWAY_TIMEOUT_MS, TALK_STALE_MS, type TalkLineState, type TalkTurn } from './talkLine';
 import type { TalkLogEntry } from './talkScreen';
@@ -45,8 +46,9 @@ function entryOf(talk: Accumulated, number: number): TalkLogEntry | undefined {
   const his = talk.his.get(number);
   if (!his) return undefined;
   const { turn, ts, parts } = his;
+  const files = attachmentsOf(turn);
   const said = parts ? [...parts.keys()].sort((a, b) => a - b).map((part) => parts.get(part)).join('') : turn.text;
-  const entry: TalkLogEntry = { turn: number, said,  cut: turn.cut === true, asked: turn.model, releasedAt: ts * 1000, ...(turn.attachment ? { attachment: turn.attachment } : {}) };
+  const entry: TalkLogEntry = { turn: number, said,  cut: turn.cut === true, asked: turn.model, releasedAt: ts * 1000, ...(files.length ? { attachments: files } : {}) };
   const answer = talk.answers.get(number);
   if (!answer) return entry;
   entry.answer = answer.turn.text;
@@ -121,7 +123,7 @@ export function openTalk(rows: TalkRow[], nowMs: number): OpenTalk | undefined {
   const talk = talksFromRows(rows).at(-1);
   if (!talk || talk.ended || talk.log.length === 0 || nowMs - talk.lastAt > TALK_STALE_MS) return undefined;
   const last = talk.log[talk.log.length - 1];
-  const base: TalkLineState = { phase: 'idle', talk: { id: talk.id, turn: last.turn }, cutPending: false, model: last.asked, answeredBy: last.answeredBy };
+  const base: TalkLineState = { phase: 'idle', talk: { id: talk.id, turn: last.turn }, cutPending: false, pictures: [], model: last.asked, answeredBy: last.answeredBy };
   if (last.answered) {
     if (last.heard !== false) return { ...talk, line: base };
     const speaking = { text: last.answer ?? '', holding: false, ...(last.links ? { links: last.links } : {}) };

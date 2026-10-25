@@ -1627,7 +1627,7 @@ What `ct` seals to the recipient:
   example `"sonnet"`), or the model that answered. Absent means unchanged.
 - `cut` — optional: `true` on a turn whose previous answer the Governor cut off with a
   tap before it finished speaking. Absent means `false`.
-- `attachment` — optional, on the Governor's `turn`: one picture, §8's shape (see *Picture on a turn*).
+- `attachment` / `attachments` — optional, on the Governor's `turn`: his pictures and files, §8's shape (see *Pictures and files on a turn*). One file is `attachment`; two or more are `attachments`.
 - `links` — optional, on an `answer` or `holding` turn: an array of bead ids (for example
   `["mw-j0f2d.36"]`), written by `mw talk say --link`. The Talk screen shows each id as a
   tappable chip under the answer; a tap opens that bead's page. The ids are never spoken
@@ -1649,37 +1649,41 @@ bytes), and nothing told the Mayor words were missing. A turn whose text passes 
 - The records are sent in order, part 1 first, each with at most 7,000 bytes of text (as JSON writes it).
   The text is cut on whole characters, after a space where one is near the end; **the parts' texts joined, in
   order and with nothing added, are exactly what he said.** No part ends in `...`.
-- Part 1 alone carries `model`, `cut`, `about` and `attachment`; later parts carry only `talk`, `text`, `role`,
-  `part` and `parts`. With a picture on part 1, its text is 600 bytes shorter (see *Picture on a turn*).
+- Part 1 alone carries `model`, `cut`, `about` and `attachment` / `attachments`; later parts carry only `talk`, `text`, `role`,
+  `part` and `parts`. With files on part 1, its text is 600 bytes shorter for each (see *Pictures and files on a turn*).
 - A turn with one record is unchanged on the wire: no `part`, no `parts`.
 - A reader joins the records of one `talk.turn` by `part` and treats the turn as arrived once it has all
   `parts`; if one is missing it uses what came and says which part is missing (`mw talk wait`: `missing part
   k of n`, after waiting up to 60 s from the first part).
 
-### Picture on a turn
+### Pictures and files on a turn
 
 The Governor, 2026-10-15 (`mw-q6n8m0.14`): talking to the Mayor, he can attach a screenshot
-or take a photo, and the picture goes with the turn. A turn of his carries an optional
-`attachment`, **one at most**, written exactly as §8 writes a message's:
+or take a photo, and the picture goes with the turn. The Governor, 2026-10-25 (`mw-6j8xmr`): "more than one
+picture here just like I can in other places, and more than one file": a turn carries every picture and file he
+chose for it, written exactly as §8 writes a message's: **one file as `attachment`, two or more as `attachments`**
+(an array, in the order he chose them), never both:
 
 ```json
 "attachment": { "hash": "<sha256 of the ciphertext>", "size": 48213, "mime": "image/jpeg", "name": "screen.jpg" }
+"attachments": [ { "hash": "…", "size": 48213, "mime": "image/jpeg", "name": "one.jpg" }, { "hash": "…", "size": 9120, "mime": "application/pdf", "name": "notes.pdf" } ]
 ```
 
-- `hash`, `size`, `mime` and `name` (optional) are §8's, and so are the upload and the cap: the
-  phone encrypts the picture to the Mayor's key, uploads it to `POST /api/blobs` **first**, and delivers the
-  turn only once the upload has answered with the hash. A turn never names a picture that is not up.
-- The picture is the one a channel message sends: cut to at most 2400 px on its long edge and
-  re-encoded as a JPEG at quality 0.85 (a picture that is already smaller stays as it is).
-- **One per turn.** A second picture chosen before the turn goes replaces the first; a turn with
-  `attachment` is never an array and never has `attachments`. Absent means no picture, and a turn
-  with none has no `attachment` key at all. An `attachment` missing a key is read as none.
-- With a picture chosen and nothing said, the turn is sent with `"text": ""` and `"role": "turn"`.
-- The `attachment` object takes about 170 bytes of the record's 10,240, so the phone makes part 1 of a turn that carries a
-  picture 600 bytes shorter than the 7,000 above.
-- **Direct only, phone to Mayor only**, like every blob (§8): the Mayor's `answer` turns carry no picture.
-- The Mayor's side (`mw talk wait` printing the picture as a file path) is not part of this
-  protocol note; a Mayor that does not know the field reads the turn as before.
+- `hash`, `size`, `mime` and `name` (optional) are §8's, and so are the upload and the cap (8 MB a file): the
+  phone encrypts each file to the Mayor's key, uploads it to `POST /api/blobs` **first**, and delivers the
+  turn only once every upload has answered with its hash. A turn never names a file that is not up.
+- A picture is the one a channel message sends: cut to at most 2400 px on its long edge and
+  re-encoded as a JPEG at quality 0.85 (a picture that is already smaller stays as it is). Any other file goes
+  as it is, under its own name and type.
+- **At most 10 files a turn.** Each file he chooses joins the ones already chosen; he can remove one before
+  sending. An `attachments` array holding a malformed entry is read as no files; one with a single entry is
+  read as that `attachment`. A turn with none has neither key.
+- With files chosen and nothing said, the turn is sent with `"text": ""` and `"role": "turn"`.
+- Each `attachment` object takes about 170 bytes of the record's 10,240, so the phone makes part 1 of a turn that
+  carries files 600 bytes shorter than the 7,000 above **for each file**.
+- **Direct only, phone to Mayor only**, like every blob (§8): the Mayor's `answer` turns carry no files.
+- The Mayor's side (`mw talk wait` printing each file as a path) is not part of this
+  protocol note; a Mayor that does not know the `attachments` field reads the turn as one without files.
 
 ### What a talk is about
 

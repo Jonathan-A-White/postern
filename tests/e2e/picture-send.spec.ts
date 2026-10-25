@@ -6,6 +6,7 @@ import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
+import { LONG_LINK_ROOT_TXID } from '../support/cockpit-fixture';
 
 // the width the shots run is at (390 unless `npm run shots` is on another size): nothing may be wider than it
 const PHONE_WIDTH = sized({ width: 390, height: 844 }).width;
@@ -79,3 +80,45 @@ test('a picture with nothing typed sends with one tap on the arrow beside Hold t
   await expect(page.getByRole('button', { name: 'View photo.png' })).toBeHidden();
   await expect(arrow).toBeHidden();
 });
+
+// mw-6j8xmr: every compose bar of the app takes several pictures and files and sends them as one message
+// (the Talk line's own screen is in talk-line.spec.ts).
+const ATTACH_POINTS = [
+  { name: 'a channel', url: '/?v=talk&t=general' },
+  { name: 'a thread reply', url: `/?v=talk&t=general&r=${encodeURIComponent(LONG_LINK_ROOT_TXID)}` },
+  { name: "a bead page's channel", url: '/?v=bead&id=mw-f758y.30.2' },
+];
+
+for (const point of ATTACH_POINTS) {
+  test(`${point.name} takes 3 pictures and 2 files and sends them as one message (mw-6j8xmr)`, async ({ page }) => {
+    const mnemonic = createMnemonic();
+    const governorKeyBytes = await deriveMasterKey(mnemonic);
+    const governor = PrivateKey.fromHex(Buffer.from(governorKeyBytes).toString('hex'));
+    const { posted } = await stubBackend(page, governor, undefined, { longLink: true });
+    let uploads = 0;
+    await page.route('**/api/blobs', (route) => {
+      uploads += 1;
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ hash: String(uploads).padStart(2, 'a').repeat(32), size: 120 }) });
+    });
+    await seedVault(page, mnemonic);
+    await page.goto('/');
+    await page.getByLabel('Recovery phrase').fill(mnemonic);
+    await page.getByRole('button', { name: 'Unlock' }).click();
+    await expect(page.getByTestId('need-card').first()).toBeVisible();
+
+    await page.goto(point.url);
+    const picture = (name: string) => ({ name, mimeType: 'image/png', buffer: PNG });
+    const file = (name: string, mimeType: string) => ({ name, mimeType, buffer: Buffer.from('some words') });
+    await page.locator('input[type="file"][multiple]').first().setInputFiles([picture('one.png'), picture('two.png'), picture('three.png'), file('notes.pdf', 'application/pdf'), file('log.txt', 'text/plain')]);
+    for (const name of ['one.png', 'two.png', 'three.png']) await expect(page.getByRole('button', { name: `View ${name}` })).toBeVisible();
+    await expect(page.getByText('notes.pdf')).toBeVisible();
+    await expect(page.getByText('log.txt')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(PHONE_WIDTH);
+
+    const before = posted.length;
+    await page.getByRole('textbox', { name: /Message|Reply|Say something/ }).first().fill('five files');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => posted.length).toBe(before + 1);
+    expect(uploads).toBe(5);
+  });
+}

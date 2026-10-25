@@ -27,7 +27,8 @@ import { formatSeconds, showsCutTag, tookLong } from '../model/talkScreen';
 import { isUnsent, pendingTurn } from '../model/outbox';
 import type { OutboxRow } from '../data/db';
 import { OutboxMark } from './OutboxMark';
-import { AttachmentView } from './Conversation';
+import { AttachmentList } from './Conversation';
+import type { Attachment } from '../services/threads';
 import { ShareButton } from './ShareButton';
 import { shareTitle } from '../model/shareText';
 import { NOT_KEPT, type TalkPhase } from '../model/talkLine';
@@ -341,6 +342,38 @@ function TalkDivider({ at }: { at: number }) {
   );
 }
 
+/** The pictures and files he sent with a turn, as this phone still holds them: a picture as itself, any other file by its name. */
+function SentFiles({ files, id }: { files: { name: string; preview?: string }[]; id: (name: string) => string }) {
+  const pictures = files.filter((file) => file.preview);
+  const others = files.filter((file) => !file.preview);
+  return (
+    <div data-testid={id('picture')} className="flex max-w-full flex-col items-end gap-1">
+      {pictures.length > 0 && (
+        <div className={cx('grid max-w-full gap-1', pictures.length > 1 && 'grid-cols-2')}>
+          {pictures.map((file, index) => (
+            <img key={`${index}:${file.name}`} src={file.preview} alt="Attached picture" className="max-h-60 min-h-12 min-w-12 w-auto max-w-full rounded-2xl object-contain" />
+          ))}
+        </div>
+      )}
+      {others.map((file, index) => (
+        <span key={`${index}:${file.name}`} data-testid={id('file')} className="inline-flex max-w-full items-center gap-2 rounded-xl border border-line bg-sunken px-3 py-2 text-sm">
+          <Icon name="file" size={18} />
+          <span className="min-w-0 truncate">{file.name}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** The files a stored turn names, loaded the way a message's are. */
+function StoredFiles({ files, id }: { files: Attachment[]; id: (name: string) => string }) {
+  return (
+    <div data-testid={id('picture')} className="max-w-full">
+      <AttachmentList attachments={files} direction="sent" />
+    </div>
+  );
+}
+
 /** The channel name the share sheet's title carries for a turn of the Talk line. */
 const TALK_SHARE_CHANNEL = 'Talk';
 
@@ -356,15 +389,7 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: {
   return (
     <li className="flex flex-col gap-2" data-testid={id('turn')}>
       <div className="ml-auto flex max-w-[88%] flex-col items-end gap-1">
-        {entry.picture ? (
-          <img src={entry.picture} alt="Attached picture" data-testid={id('picture')} className="max-h-60 min-h-12 min-w-12 w-auto max-w-full rounded-2xl object-contain" />
-        ) : (
-          entry.attachment && (
-            <div data-testid={id('picture')} className="max-w-full">
-              <AttachmentView attachment={entry.attachment} direction="sent" />
-            </div>
-          )
-        )}
+        {entry.sentFiles ? <SentFiles files={entry.sentFiles} id={id} /> : entry.attachments && <StoredFiles files={entry.attachments} id={id} />}
         {entry.said !== '' && (
           <p data-testid={id('said')} className="rounded-2xl bg-accent/15 px-3.5 py-2 text-[15px] wrap-anywhere">
             {entry.said}
@@ -441,43 +466,50 @@ function TalkTurnItem({ entry, talkId, marks, earlier, reader, answerSpeech }: {
 }
 
 /**
- * The picture for his next turn (mw-q6n8m0.14): Attach and Take a photo beside the hold button, the chosen picture as a thumbnail
- * with Remove, and Send when there is a picture and nothing said. One picture at a time; a second choice replaces the first.
+ * The pictures and files for his next turn (mw-q6n8m0.14, mw-6j8xmr): Attach (any number of files, of any kind) and Take a photo
+ * (each photo joins the ones chosen) beside the hold button, every chosen file a chip with its own Remove, and Send when something is
+ * chosen and nothing said. One send carries all of them.
  */
 function PictureRow({ talk }: { talk: ReturnType<typeof useTalkLine> }) {
   const { line } = talk;
   const picker = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
-  const picture = line.picture;
+  const chosen = line.pictures;
   const busy = line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting';
   const onChosen = (event: React.ChangeEvent<HTMLInputElement>) => {
-    void talk.attach(event.target.files?.[0]);
+    void talk.attach([...(event.target.files ?? [])]);
     event.target.value = '';
   };
   return (
-    <div data-testid="talk-picture-row" className="flex w-full max-w-xl items-center gap-1">
-      <IconButton icon="attach" label="Attach" onClick={() => picker.current?.click()} />
-      <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} />
-      {picture && (
-        <span data-testid="talk-attached" className="ml-1 flex min-w-0 items-center gap-1.5 rounded-xl border border-line bg-surface py-1 pr-1 pl-1">
-          {picture.preview && <img src={picture.preview} alt="Attached picture" className="h-10 w-10 shrink-0 rounded-lg object-cover" />}
-          <span className="min-w-0 truncate text-[12.5px] text-muted">{picture.name}</span>
-          <IconButton icon="x" label="Remove" size="sm" onClick={talk.removePicture} />
-        </span>
+    <div data-testid="talk-picture-row" className="flex w-full max-w-xl flex-col gap-1">
+      {chosen.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5" aria-label="Chosen for your next turn">
+          {chosen.map((file, index) => (
+            <li key={`${index}:${file.name}`} data-testid="talk-attached" className="flex max-w-full min-w-0 items-center gap-1.5 rounded-xl border border-line bg-surface py-1 pr-1 pl-1">
+              {file.preview ? <img src={file.preview} alt="Attached picture" className="h-10 w-10 shrink-0 rounded-lg object-cover" /> : <Icon name="file" size={18} className="ml-1 shrink-0 text-muted" />}
+              <span className="min-w-0 truncate text-[12.5px] text-muted">{file.name}</span>
+              <IconButton icon="x" label={`Remove ${file.name}`} size="sm" onClick={() => talk.removePicture(index)} />
+            </li>
+          ))}
+        </ul>
       )}
-      {picture && (
-        <Button
-          variant="primary"
-          className="ml-auto shrink-0"
-          disabled={busy}
-          title={busy ? 'The picture goes with your next turn' : 'Send the picture as a turn'}
-          onClick={talk.sendPicture}
-        >
-          Send
-        </Button>
-      )}
-      <input ref={picker} type="file" hidden accept="image/*" onChange={onChosen} />
-      <input ref={camera} type="file" hidden accept="image/*" capture="environment" onChange={onChosen} />
+      <div className="flex items-center gap-1">
+        <IconButton icon="attach" label="Attach" onClick={() => picker.current?.click()} />
+        <IconButton icon="camera" label="Take a photo" onClick={() => camera.current?.click()} />
+        {chosen.length > 0 && (
+          <Button
+            variant="primary"
+            className="ml-auto shrink-0"
+            disabled={busy}
+            title={busy ? 'What you chose goes with your next turn' : chosen.length === 1 ? 'Send it as a turn' : `Send all ${chosen.length} as a turn`}
+            onClick={talk.sendPicture}
+          >
+            Send
+          </Button>
+        )}
+      </div>
+      <input ref={picker} type="file" hidden multiple onChange={onChosen} />
+      <input ref={camera} type="file" hidden multiple accept="image/*" capture="environment" onChange={onChosen} />
     </div>
   );
 }

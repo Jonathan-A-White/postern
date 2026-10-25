@@ -24,7 +24,7 @@ describe('a turn over the cap goes as parts', () => {
     const text = 'a'.repeat(20_000);
     const line = said(text);
     expect(line.phase).toBe('sending');
-    const records = turnRecords(line.outgoing!, false);
+    const records = turnRecords(line.outgoing!, 0);
     expect(records).toHaveLength(3);
     expect(records.map((r) => [r.part, r.parts])).toEqual([[1, 3], [2, 3], [3, 3]]);
     for (const r of records) {
@@ -38,7 +38,7 @@ describe('a turn over the cap goes as parts', () => {
 
   it('joins exactly for words, whatever the spaces and the characters', () => {
     for (const text of [words(4000), 'é'.repeat(9000), '😀'.repeat(5000), '"'.repeat(9000), 'x\n'.repeat(8000)]) {
-      const records = turnRecords(said(text).outgoing!, false);
+      const records = turnRecords(said(text).outgoing!, 0);
       expect(records.length).toBeGreaterThan(1);
       for (const r of records) expect(bytes(r.text)).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
       expect(records.map((r) => r.text).join('')).toBe(text.trim());
@@ -49,7 +49,7 @@ describe('a turn over the cap goes as parts', () => {
 
   it('puts the picture on part 1 only, which then holds the words 600 bytes sooner', () => {
     const text = 'a'.repeat(TURN_TEXT_MAX_BYTES + 100);
-    const records = turnRecords(said(text, talkLine(initialTalkLine, { type: 'attach', picture })).outgoing!, true);
+    const records = turnRecords(said(text, talkLine(initialTalkLine, { type: 'attach', picture })).outgoing!, 1);
     expect(records).toHaveLength(2);
     expect(bytes(records[0].text)).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES);
     expect(records.map((r) => r.text).join('')).toBe(text);
@@ -59,7 +59,7 @@ describe('a turn over the cap goes as parts', () => {
     const about = { kind: 'prompt' as const, id: 'top5', title: '/top5' };
     const line = talkLine(talkLine(said('first', initialTalkLine), { type: 'sent', at: 1 }), { type: 'cut' });
     const start = talkLine(talkLine(initialTalkLine, { type: 'setAbout', about }), { type: 'setModel', model: 'opus' });
-    const records = turnRecords(said('a'.repeat(15_000), start).outgoing!, false);
+    const records = turnRecords(said('a'.repeat(15_000), start).outgoing!, 0);
     expect(records[0]).toMatchObject({ model: 'opus', about });
     expect(records[1].about).toBeUndefined();
     expect(line.phase).toBe('idle');
@@ -69,7 +69,7 @@ describe('a turn over the cap goes as parts', () => {
     const text = words(900);
     expect(bytes(text)).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);
     const line = said(text);
-    const records = turnRecords(line.outgoing!, false);
+    const records = turnRecords(line.outgoing!, 0);
     expect(records).toEqual([line.outgoing]);
     const wire = JSON.parse(encodeTurn(records[0]));
     expect(wire).not.toHaveProperty('part');

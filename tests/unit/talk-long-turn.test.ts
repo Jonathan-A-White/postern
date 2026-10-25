@@ -39,7 +39,7 @@ describe('a long turn is delivered, never refused', () => {
 
   it('a 2,000-word turn goes as parts that each go out and read back, joined to what he said', async () => {
     const text = words(2000);
-    const records = turnRecords(turnWith(text), false);
+    const records = turnRecords(turnWith(text), 0);
     expect(records.length).toBeGreaterThan(1);
     const back: TalkTurn[] = [];
     for (const record of records) back.push(decodeTurn(decryptMessage(await post(record), MAYOR.toHex()))!);
@@ -49,7 +49,7 @@ describe('a long turn is delivered, never refused', () => {
 
   it('the biggest parts the line can make still go, even when every character is escaped', async () => {
     for (const text of ['"'.repeat(TURN_TEXT_MAX_BYTES * 2), '\n'.repeat(TURN_TEXT_MAX_BYTES * 2), '😀'.repeat(TURN_TEXT_MAX_BYTES)]) {
-      for (const record of turnRecords(turnWith(text), false)) await post(record);
+      for (const record of turnRecords(turnWith(text), 0)) await post(record);
     }
   });
 });

@@ -53,10 +53,11 @@ export async function sendAction(action: GovernorAction): Promise<Queued> {
 }
 
 /** Queues one turn of the Talk line (docs/protocol.md §20): class `talk`, straight to the backend once it answers.
- * A picture goes with it (one at most): kept whole in the outbox and uploaded first when the turn's turn comes. */
-export async function sendTurn(turn: TalkTurn, picture?: OutgoingFile): Promise<Queued> {
-  const file = picture && { name: picture.name, type: picture.type, data: packBytes(picture.bytes) };
-  return { id: await enqueue({ kind: 'turn', payload: { turn, ...(file ? { file } : {}) }, label: turn.text || (picture ? 'Picture' : '') }) };
+ * Pictures and files go with it, in the order given: kept whole in the outbox and uploaded first when the turn's turn comes. */
+export async function sendTurn(turn: TalkTurn, files: OutgoingFile[] = []): Promise<Queued> {
+  const queued = files.map(({ name, type, bytes }) => ({ name, type, data: packBytes(bytes) }));
+  const label = turn.text || (files.length > 1 ? `${files.length} files` : files.length === 1 ? (files[0].type.startsWith('image/') ? 'Picture' : files[0].name) : '');
+  return { id: await enqueue({ kind: 'turn', payload: { turn, ...(queued.length ? { files: queued } : {}) }, label }) };
 }
 
 /** Queues a Call me request (docs/protocol.md §21): class `call`. `at` is Unix seconds. */

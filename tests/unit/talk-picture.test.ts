@@ -1,4 +1,4 @@
-// mw-q6n8m0.14: a Talk turn may carry one picture, in §8's shape; the line holds one chosen picture at a time.
+// mw-q6n8m0.14: a Talk turn may carry a picture, in §8's shape; mw-6j8xmr: the line holds every file chosen for the next turn (tests/unit/talk-files.test.ts).
 import { describe, expect, it } from 'vitest';
 import { ATTACHMENT_ROOM_BYTES, TURN_TEXT_MAX_BYTES, initialTalkLine, talkLine, turnRecords, type TalkLineState, type TalkPicture } from '../../src/model/talkLine';
 import { decodeTurn, encodeTurn } from '../../src/services/talk';
@@ -36,25 +36,20 @@ describe('a Talk turn with a picture', () => {
   });
 });
 
-describe('the line and its one picture', () => {
+describe('the line and a chosen picture', () => {
   const listening = (state: TalkLineState = initialTalkLine) => talkLine(state, { type: 'hold', talkId: 't1' });
 
-  it('keeps one picture: a second choice replaces the first', () => {
-    const state = talkLine(talkLine(initialTalkLine, { type: 'attach', picture: picture('a.jpg') }), { type: 'attach', picture: picture('b.jpg') });
-    expect(state.picture?.name).toBe('b.jpg');
-  });
-
   it('Remove drops the picture', () => {
-    const state = talkLine(talkLine(initialTalkLine, { type: 'attach', picture: picture('a.jpg') }), { type: 'detach' });
-    expect(state.picture).toBeUndefined();
+    const state = talkLine(talkLine(initialTalkLine, { type: 'attach', picture: picture('a.jpg') }), { type: 'detach', index: 0 });
+    expect(state.pictures).toEqual([]);
   });
 
   it('a release with words sends the turn with the picture and clears it', () => {
     const state = talkLine(listening(talkLine(initialTalkLine, { type: 'attach', picture: picture('a.jpg') })), { type: 'release', text: 'hello' });
     expect(state.phase).toBe('sending');
     expect(state.outgoing).toMatchObject({ text: 'hello', role: 'turn' });
-    expect(state.outgoingPicture?.name).toBe('a.jpg');
-    expect(state.picture).toBeUndefined();
+    expect(state.outgoingPictures?.map((p) => p.name)).toEqual(['a.jpg']);
+    expect(state.pictures).toEqual([]);
   });
 
   it('a release with no words and no picture sends nothing', () => {
@@ -65,7 +60,7 @@ describe('the line and its one picture', () => {
     const state = talkLine(talkLine(initialTalkLine, { type: 'attach', picture: picture('a.jpg') }), { type: 'sendPicture', talkId: 't1' });
     expect(state.phase).toBe('sending');
     expect(state.outgoing).toMatchObject({ text: '', role: 'turn', talk: { id: 't1', turn: 1 } });
-    expect(state.outgoingPicture?.name).toBe('a.jpg');
+    expect(state.outgoingPictures?.map((p) => p.name)).toEqual(['a.jpg']);
   });
 
   it('Send with no picture does nothing, and neither does it while the line waits', () => {
@@ -78,24 +73,24 @@ describe('the line and its one picture', () => {
   it('a turn that failed to send keeps its picture for Try again', () => {
     const sending = talkLine(talkLine(initialTalkLine, { type: 'attach', picture: picture('a.jpg') }), { type: 'sendPicture', talkId: 't1' });
     const failed = talkLine(sending, { type: 'sendFailed' });
-    expect(failed.unsentPicture?.name).toBe('a.jpg');
+    expect(failed.unsentPictures?.map((p) => p.name)).toEqual(['a.jpg']);
     const retrying = talkLine(failed, { type: 'retry' });
-    expect(retrying.outgoingPicture?.name).toBe('a.jpg');
+    expect(retrying.outgoingPictures?.map((p) => p.name)).toEqual(['a.jpg']);
   });
 
   it('a picture chosen while waiting stays for the next turn', () => {
     const sent = talkLine(talkLine(listening(), { type: 'release', text: 'first' }), { type: 'sent', at: 1 });
     const chosen = talkLine(sent, { type: 'attach', picture: picture('a.jpg') });
-    expect(chosen.picture?.name).toBe('a.jpg');
+    expect(chosen.pictures.map((p) => p.name)).toEqual(['a.jpg']);
   });
 
   it('sends his words in parts sooner when a picture goes with them, so the sealed record stays under its limit', () => {
     const long = 'a'.repeat(TURN_TEXT_MAX_BYTES - 100);
     const withPicture = talkLine(listening(talkLine(initialTalkLine, { type: 'attach', picture: picture('a.jpg') })), { type: 'release', text: long });
     const without = talkLine(listening(), { type: 'release', text: long });
-    expect(turnRecords(withPicture.outgoing!, true).map((r) => r.text).join('')).toBe(long);
-    expect(turnRecords(withPicture.outgoing!, true).length).toBe(2);
-    expect(turnRecords(without.outgoing!, false)).toHaveLength(1);
-    expect(new TextEncoder().encode(turnRecords(withPicture.outgoing!, true)[0].text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES);
+    expect(turnRecords(withPicture.outgoing!, 1).map((r) => r.text).join('')).toBe(long);
+    expect(turnRecords(withPicture.outgoing!, 1).length).toBe(2);
+    expect(turnRecords(without.outgoing!, 0)).toHaveLength(1);
+    expect(new TextEncoder().encode(turnRecords(withPicture.outgoing!, 1)[0].text).length).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES);
   });
 });

@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.54
+_2026-10-25_
+- New: In the Mayor talk screen you can now attach several pictures and several files of any kind to one message.
+
 ## 0.8.48
 _2026-10-24_
 - Fixed: the bottom menu (Needs you, To do, Map, Channels, Search, Me) is no longer hidden behind the phone's Back, Home and Recents buttons.

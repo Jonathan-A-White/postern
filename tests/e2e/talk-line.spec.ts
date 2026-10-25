@@ -610,7 +610,7 @@ test('talk line: a screenshot attached on the Talk screen goes with the turn and
   await page.locator('input[type="file"]:not([capture])').setInputFiles({ name: 'screen.png', mimeType: 'image/png', buffer: RED_PNG });
   const thumb = page.getByTestId('talk-attached').getByRole('img', { name: 'Attached picture' });
   await expect(thumb).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Remove' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove screen.png' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
   const hold = (await page.getByRole('button', { name: 'Hold to talk' }).boundingBox())!;
   const row = (await page.getByTestId('talk-picture-row').boundingBox())!;
@@ -648,4 +648,66 @@ test('talk line: a screenshot attached on the Talk screen goes with the turn and
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   await shot(page, 'talk-line-picture-sent');
+});
+
+test('talk line: 3 pictures and 2 files chosen at once go in one message and show as chips, then as the bubble (mw-6j8xmr)', async ({ page }) => {
+  await page.setViewportSize(sized({ width: 390, height: 844 }));
+  const width = page.viewportSize()?.width ?? PHONE_WIDTH;
+  const { posted } = await unlocked(page);
+  let uploads = 0;
+  await page.route('**/api/blobs', (route) => {
+    uploads += 1;
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ hash: String(uploads).padStart(2, 'a').repeat(32), size: 120 }) });
+  });
+
+  await page.goto('/?v=line');
+  const picture = (name: string) => ({ name, mimeType: 'image/png', buffer: RED_PNG });
+  const file = (name: string, mimeType: string) => ({ name, mimeType, buffer: Buffer.from('some words') });
+  await page.locator('input[type="file"]:not([capture])').setInputFiles([picture('one.png'), picture('two.png'), picture('three.png'), file('notes.pdf', 'application/pdf'), file('log.txt', 'text/plain')]);
+
+  // every file is a chip with its own Remove, all inside the window; one Send is offered
+  const chips = page.getByTestId('talk-attached');
+  await expect(chips).toHaveCount(5);
+  await expect(chips.getByRole('img', { name: 'Attached picture' })).toHaveCount(3);
+  for (const name of ['one.png', 'two.png', 'three.png', 'notes.pdf', 'log.txt']) {
+    const remove = page.getByRole('button', { name: `Remove ${name}` });
+    await expect(remove).toBeVisible();
+    const box = (await remove.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+  }
+  const hold = (await page.getByRole('button', { name: 'Hold to talk' }).boundingBox())!;
+  const row = (await page.getByTestId('talk-picture-row').boundingBox())!;
+  expect(row.y + row.height).toBeLessThanOrEqual(hold.y);
+  expect(row.x).toBeGreaterThanOrEqual(0);
+  expect(row.x + row.width).toBeLessThanOrEqual(width);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  await shot(page, 'talk-line-files-attached');
+
+  // one Remove takes one away and keeps the rest
+  await page.getByRole('button', { name: 'Remove two.png' }).click();
+  await expect(chips).toHaveCount(4);
+  await page.locator('input[type="file"]:not([capture])').setInputFiles([picture('two.png')]);
+  await expect(chips).toHaveCount(5);
+
+  // hold, say one line, release: one message carries all five, uploaded first
+  const button = page.getByRole('button', { name: 'Hold to talk' });
+  const box = (await button.boundingBox())!;
+  const before = posted.length;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(page.getByRole('button', { name: 'Release to send' })).toBeVisible();
+  await page.evaluate(() => window.__hear('Look at all of these'));
+  await page.mouse.up();
+  const turn = page.getByTestId('talk-turn').first();
+  await expect(turn.getByTestId('talk-said')).toHaveText('Look at all of these');
+  await expect(turn.getByRole('img', { name: 'Attached picture' })).toHaveCount(3);
+  await expect(turn.getByTestId('talk-file')).toHaveCount(2);
+  await expect(turn.getByText('notes.pdf')).toBeVisible();
+  await expect(turn.getByText('log.txt')).toBeVisible();
+  await expect.poll(() => posted.length).toBe(before + 1);
+  expect(uploads).toBe(5);
+  await expect(chips).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  await shot(page, 'talk-line-files-sent');
 });

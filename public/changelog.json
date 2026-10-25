@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.54",
+    "date": "2026-10-25",
+    "story": "mw-6j8xmr",
+    "kind": "new",
+    "text": "In the Mayor talk screen you can now attach several pictures and several files of any kind to one message."
+  },
+  {
     "version": "0.8.48",
     "date": "2026-10-24",
     "story": "mw-6yhrp1",

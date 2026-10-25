@@ -356,7 +356,7 @@ export function NeedCard({ need, epicTitle, compact, index, status }: NeedCardPr
         </div>
       )}
 
-      <div className="-mb-1 flex items-center gap-1 border-t border-line pt-2">
+      <div className="-mb-1 flex flex-wrap items-center gap-1 border-t border-line pt-2">
         {!replying && (
           <Button variant="ghost" size="sm" icon="talk" disabled={answered} onClick={() => setReplying(true)}>
             {need.kind === 'question' ? 'Answer in words' : 'Reply'}

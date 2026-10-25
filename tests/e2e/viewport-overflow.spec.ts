@@ -111,16 +111,15 @@ async function insideWindow(page: Page, what: string, locator: ReturnType<Page['
 async function check(page: Page, screen: Screen, size: string): Promise<void> {
   const where = `${screen.name} at ${size}`;
   if (screen.ready) await expect(screen.ready(page).first(), `${where}: the screen has loaded`).toBeVisible();
-  const wide = await page.evaluate(() => window.matchMedia('(min-width: 1024px)').matches);
   if (screen.name === 'a thread') await expect(page.getByText(/^Details: /).first(), `${where}: the thread is open`).toBeVisible();
   // Polled: a resize is laid out over a frame or two, and what stays wider than the window is what he sees.
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), {
       message: `${where}: the page's scrollWidth against its clientWidth`,
-      timeout: 10_000,
     })
     .toBeLessThanOrEqual(0);
-  await expect.poll(() => pastTheEdge(page), { message: `${where}: drawn past the window's edge`, timeout: 10_000 }).toEqual([]);
+  await expect.poll(() => pastTheEdge(page), { message: `${where}: drawn past the window's edge` }).toEqual([]);
+  const wide = await page.evaluate(() => window.matchMedia('(min-width: 1024px)').matches);
   const places = page.getByRole('navigation', { name: 'Places' });
   await expect(places, `${where}: the Places ${wide ? 'sidebar' : 'tabs'}`).toBeVisible();
   await insideWindow(page, `${where}: the Places links`, places.getByRole('link'));

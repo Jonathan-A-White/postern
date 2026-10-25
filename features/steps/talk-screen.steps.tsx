@@ -32,6 +32,7 @@ import { TURN_TEXT_MAX_BYTES, type TalkTurn } from '../../src/model/talkLine';
 import { forgetOutboxState, settledOutbox } from '../../src/services/outbox';
 import { settlePhone } from '../../tests/support/empty-phone';
 import { imageSeam } from '../../src/images/shrink';
+import { currentToasts, dismissAllToasts } from '../../src/ui/toastStore';
 
 const clock = vi.hoisted(() => ({ at: 1_000_000 }));
 vi.mock('../../src/services/clock', () => ({ now: () => clock.at }));
@@ -347,6 +348,7 @@ async function fresh(): Promise<void> {
   lock();
   dismissAnswerWaiting();
   vi.unstubAllGlobals();
+  dismissAllToasts();
   sequence = 0;
   clock.at = 1_000_000;
   outbox.events = [];
@@ -2774,8 +2776,15 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   const attachInput = () => document.querySelector('input[type="file"]:not([capture])') as HTMLInputElement;
   const attaches = async (_c: unknown, name: string) => {
     await act(async () => fireEvent.change(attachInput(), { target: { files: [new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' })] } }));
-    await screen.findByRole('button', { name: 'Remove' });
+    await screen.findAllByRole('button', { name: /^Remove / });
   };
+  const choose = async (input: HTMLInputElement, files: File[], chips: number) => {
+    await act(async () => fireEvent.change(input, { target: { files } }));
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Remove / })).toHaveLength(chips));
+  };
+  const anyFile = (name: string, type: string, bytes = 4) => new File([new Uint8Array(bytes)], name, { type });
+  const cameraInput = () => document.querySelector('input[type="file"][capture]') as HTMLInputElement;
+  const nothingChosen = () => expect(screen.queryAllByRole('button', { name: /^Remove / })).toHaveLength(0);
   const thumbnails = () => screen.queryAllByRole('img', { name: 'Attached picture' });
   const delivered = () => outbox.delivered.map((plaintext) => JSON.parse(plaintext) as TalkTurn & { attachment?: Record<string, unknown> });
   const readsPicturesAs = (_c: unknown, width: number, height: number) => {
@@ -2822,8 +2831,11 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the Talk screen has the buttons {string} and {string}', (_c, attach: string, camera: string) => {
       expect(screen.getByRole('button', { name: attach })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: camera })).toBeInTheDocument();
-      expect(document.querySelector('input[type="file"][accept="image/*"]:not([capture])')).not.toBeNull();
-      expect(document.querySelector('input[type="file"][accept="image/*"][capture="environment"]')).not.toBeNull();
+      // the paperclip takes any number of files of any kind; the camera adds the photo it takes
+      expect(attachInput().multiple).toBe(true);
+      expect(attachInput().hasAttribute('accept')).toBe(false);
+      expect(cameraInput().getAttribute('accept')).toBe('image/*');
+      expect(cameraInput().getAttribute('capture')).toBe('environment');
     });
     And('no picture is attached and there is no Send button', () => {
       expect(thumbnails()).toHaveLength(0);
@@ -2863,7 +2875,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(within(screen.getByTestId('talk-turn')).getByRole('img', { name: 'Attached picture' })).toBeInTheDocument();
     });
     And('no picture is attached any more', async () => {
-      await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull());
+      await waitFor(nothingChosen);
       expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
     });
   });
@@ -2880,7 +2892,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(delivered()[0]).toMatchObject({ text: words, role, attachment: { mime: 'image/jpeg', name } });
     });
     And('no picture is attached any more', async () => {
-      await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull());
+      await waitFor(nothingChosen);
       expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
     });
   });
@@ -2912,22 +2924,104 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('mw-q6n8m0.14 AC2: choosing a second picture replaces the first, never two on a turn', ({ Given, And, When, Then }) => {
+  const thumbnailsAre = (_c: unknown, count: number) => {
+    expect(thumbnails()).toHaveLength(count);
+  };
+  const messageIs = (_c: unknown, words: string) => {
+    expect(currentToasts().map((t) => t.text)).toContain(words);
+  };
+
+  Scenario('mw-6j8xmr AC1: choosing a second picture adds it beside the first, each with its own Remove', ({ Given, And, When, Then }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     And('turns reach the Mayor through the real outbox', throughTheRealOutbox);
     And('the phone reads pictures as {int} by {int} pixels', readsPicturesAs);
     When('he attaches the screenshot {string}', attaches);
     And('he then attaches the screenshot {string}', attaches);
-    Then('exactly one thumbnail is shown', () => {
-      expect(thumbnails()).toHaveLength(1);
+    Then('{int} thumbnails are shown', thumbnailsAre);
+    And('the chips have the buttons {string} and {string}', (_c, first: string, second: string) => {
+      expect(screen.getByRole('button', { name: first })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: second })).toBeInTheDocument();
     });
+    When('he removes {string}', async (_c, name: string) => tapButton(_c, `Remove ${name}`));
+    Then('{int} thumbnails remain', thumbnailsAre);
     When('he taps {string}', tapButton);
     And('the outbox has done its work', outboxDone);
     Then('one turn was delivered saying {string} with role {string} and a JPEG picture named {string}', async (_c, words: string, role: string, name: string) => {
       await waitFor(() => expect(outbox.delivered).toHaveLength(1));
       expect(delivered()[0]).toMatchObject({ text: words, role, attachment: { mime: 'image/jpeg', name } });
+      expect(Object.keys(delivered()[0])).not.toContain('attachments');
     });
   });
+
+  Scenario('mw-6j8xmr AC1: the paperclip picks 3 pictures and 2 files at once, one Send carries all five in order', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('turns reach the Mayor through the real outbox', throughTheRealOutbox);
+    And('the phone reads pictures as {int} by {int} pixels', readsPicturesAs);
+    When('he picks 3 pictures and 2 files at once with Attach', async () => {
+      await choose(attachInput(), [anyFile('one.png', 'image/png'), anyFile('two.png', 'image/png'), anyFile('three.png', 'image/png'), anyFile('notes.pdf', 'application/pdf'), anyFile('log.txt', 'text/plain')], 5);
+    });
+    Then('{int} thumbnails are shown', thumbnailsAre);
+    And('the chips name {string} and {string}', (_c, first: string, second: string) => {
+      expect(screen.getByRole('button', { name: `Remove ${first}` })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: `Remove ${second}` })).toBeInTheDocument();
+    });
+    When('he holds the talk button and says {string} and lets go', holdsAndSays);
+    And('the outbox has done its work', outboxDone);
+    Then('the 5 files were uploaded before the turn was delivered', async () => {
+      await waitFor(() => expect(outbox.events).toEqual(['upload', 'upload', 'upload', 'upload', 'upload', 'deliver']));
+    });
+    And('one turn was delivered saying {string} with 5 files named {string}', async (_c, words: string, names: string) => {
+      await waitFor(() => expect(outbox.delivered).toHaveLength(1));
+      const turn = delivered()[0] as TalkTurn & { attachments?: { name: string; mime: string }[] };
+      expect(turn).toMatchObject({ text: words, role: 'turn' });
+      expect(turn.attachments?.map((file) => file.name)).toEqual(names.split(', '));
+      expect(turn.attachments?.map((file) => file.mime)).toEqual(['image/jpeg', 'image/jpeg', 'image/jpeg', 'application/pdf', 'text/plain']);
+      expect(Object.keys(turn)).not.toContain('attachment');
+    });
+    And("the sent turn's bubble shows {int} thumbnails and the files {string} and {string}", (_c, count: number, first: string, second: string) => {
+      const bubble = within(screen.getByTestId('talk-turn'));
+      expect(bubble.getAllByRole('img', { name: 'Attached picture' })).toHaveLength(count);
+      expect(bubble.getByText(first)).toBeInTheDocument();
+      expect(bubble.getByText(second)).toBeInTheDocument();
+    });
+    And('no picture is attached any more', async () => {
+      await waitFor(nothingChosen);
+      expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+    });
+  });
+
+  Scenario('mw-6j8xmr AC1: the camera adds each photo it takes to the ones already chosen', ({ Given, And, When, Then }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    And('the phone reads pictures as {int} by {int} pixels', readsPicturesAs);
+    When('he attaches the screenshot {string}', attaches);
+    And('he takes the photo {string} with Take a photo', async (_c, name: string) => {
+      await choose(cameraInput(), [anyFile(name, 'image/jpeg')], 2);
+    });
+    Then('{int} thumbnails are shown', thumbnailsAre);
+  });
+
+  Scenario('mw-6j8xmr AC1: one file over 8 MB is refused and the others stay', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he picks {string} and the 9 MiB file {string} at once with Attach', async (_c, small: string, huge: string) => {
+      await choose(attachInput(), [anyFile(small, 'application/pdf'), anyFile(huge, 'application/pdf', 9 * 1024 * 1024)], 1);
+    });
+    Then('the chips name {string} and no other', (_c, name: string) => {
+      expect(screen.getAllByRole('button', { name: /^Remove / }).map((b) => b.getAttribute('aria-label'))).toEqual([`Remove ${name}`]);
+    });
+    And('a message says {string}', messageIs);
+  });
+
+  Scenario('mw-6j8xmr AC1: a turn takes at most 10 files', ({ Given, When, Then, And }) => {
+    Given('the Talk line is open with a believable speech recogniser', lineOpen);
+    When('he picks 12 files at once with Attach', async () => {
+      await choose(attachInput(), Array.from({ length: 12 }, (_, i) => anyFile(`f${i}.pdf`, 'application/pdf')), 10);
+    });
+    Then('10 chips are shown', () => {
+      expect(screen.getAllByRole('button', { name: /^Remove / })).toHaveLength(10);
+    });
+    And('a message says {string}', messageIs);
+  });
+
   Scenario("mw-q6n8m0.17 AC1: Share under his turn and under the Mayor's answer opens the phone's share sheet with that turn's words and the talk's title", ({ Given, And, When, Then }) => {
     Given('the Talk line is open with a believable speech recogniser', lineOpen);
     And('the phone has a share sheet', phoneShares);

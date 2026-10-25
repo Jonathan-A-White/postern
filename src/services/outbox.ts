@@ -116,17 +116,22 @@ async function deliverRow(row: OutboxRow, options: DeliverOptions): Promise<Deli
   }
 }
 
-/** A turn with a picture waiting: the picture is uploaded first (docs/protocol.md §8, once: a retry reuses the upload), then the turn goes with its reference. */
+/**
+ * A turn with files waiting: each is uploaded first (docs/protocol.md §8, once: a retry reuses the uploads already made, in order),
+ * then the turn goes with all their references. A row an older build wrote holds one `file` and its `uploaded` reference.
+ */
 async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
   const turn = row.payload.turn as TalkTurn;
-  const file = row.payload.file as QueuedFile | undefined;
-  if (!file) return deliverTurn(turn, options);
-  let attachment = row.payload.uploaded as Attachment | undefined;
-  if (!attachment) {
-    attachment = await uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey });
-    await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded: attachment } });
+  const old = row.payload.file as QueuedFile | undefined;
+  const files = (row.payload.files as QueuedFile[] | undefined) ?? (old ? [old] : []);
+  if (files.length === 0) return deliverTurn(turn, options);
+  const kept = row.payload.uploaded as Attachment[] | Attachment | undefined;
+  const uploaded = Array.isArray(kept) ? [...kept] : kept ? [kept] : [];
+  for (const file of files.slice(uploaded.length)) {
+    uploaded.push(await uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }));
+    await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
   }
-  return deliverTurn({ ...turn, attachment }, options);
+  return deliverTurn({ ...turn, ...(uploaded.length === 1 ? { attachment: uploaded[0] } : { attachments: uploaded }) }, options);
 }
 
 /** Uploads the message's files that are not up yet (docs/protocol.md §8), then delivers it as ONE message. */

@@ -177,7 +177,7 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
 }
 
 /** Every file of one message: a lone file as it always was; several, images two to a row. */
-function AttachmentList({ attachments, direction }: { attachments: Attachment[]; direction: 'sent' | 'received' }) {
+export function AttachmentList({ attachments, direction }: { attachments: Attachment[]; direction: 'sent' | 'received' }) {
   if (attachments.length === 1) {
     return (
       <div className="mb-1.5">

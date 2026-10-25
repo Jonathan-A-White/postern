@@ -501,7 +501,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('the line is sending', () => expect(line.phase).toBe('sending'));
     And('the turn goes as several records numbered part 1 to n of n, each within the cap, joining to every word', () => {
       const said = Array.from({ length: 40000 }, (_, i) => `word${i % 97}`).join(' ');
-      const records = turnRecords(line.outgoing!, false);
+      const records = turnRecords(line.outgoing!, 0);
       expect(records.length).toBeGreaterThan(1);
       expect(records.map((r) => [r.part, r.parts])).toEqual(records.map((_, i) => [i + 1, records.length]));
       for (const r of records) expect(new TextEncoder().encode(JSON.stringify(r.text)).length - 2).toBeLessThanOrEqual(TURN_TEXT_MAX_BYTES);

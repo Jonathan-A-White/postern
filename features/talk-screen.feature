@@ -943,7 +943,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Given the Talk line is open with a believable speech recogniser
     And the phone reads pictures as 3000 by 2000 pixels
     When he attaches the screenshot "screen.png"
-    Then a thumbnail of the picture is shown with a "Remove" button
+    Then a thumbnail of the picture is shown with a "Remove screen.jpg" button
     And the picture was drawn at 2400 by 1600 pixels
 
   Scenario: mw-q6n8m0.14 AC1: releasing hold-to-talk with words sends one turn with the picture, uploaded first
@@ -972,7 +972,7 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     Given the Talk line is open with a believable speech recogniser
     And turns reach the Mayor through the real outbox
     When he attaches the screenshot "screen.png"
-    And he taps "Remove"
+    And he taps "Remove screen.png"
     And he holds the talk button and says "Never mind the picture" and lets go
     And the outbox has done its work
     Then one turn was delivered saying "Never mind the picture" with no attachment key at all
@@ -985,16 +985,52 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     And the outbox has done its work
     Then one turn was delivered saying "Just words" with no attachment key at all
 
-  Scenario: mw-q6n8m0.14 AC2: choosing a second picture replaces the first, never two on a turn
+  Scenario: mw-6j8xmr AC1: choosing a second picture adds it beside the first, each with its own Remove
     Given the Talk line is open with a believable speech recogniser
     And turns reach the Mayor through the real outbox
     And the phone reads pictures as 3000 by 2000 pixels
     When he attaches the screenshot "first.png"
     And he then attaches the screenshot "second.png"
-    Then exactly one thumbnail is shown
+    Then 2 thumbnails are shown
+    And the chips have the buttons "Remove first.jpg" and "Remove second.jpg"
+    When he removes "first.jpg"
+    Then 1 thumbnails remain
     When he taps "Send"
     And the outbox has done its work
     Then one turn was delivered saying "" with role "turn" and a JPEG picture named "second.jpg"
+
+  Scenario: mw-6j8xmr AC1: the paperclip picks 3 pictures and 2 files at once, one Send carries all five in order
+    Given the Talk line is open with a believable speech recogniser
+    And turns reach the Mayor through the real outbox
+    And the phone reads pictures as 3000 by 2000 pixels
+    When he picks 3 pictures and 2 files at once with Attach
+    Then 3 thumbnails are shown
+    And the chips name "notes.pdf" and "log.txt"
+    When he holds the talk button and says "All of these please" and lets go
+    And the outbox has done its work
+    Then the 5 files were uploaded before the turn was delivered
+    And one turn was delivered saying "All of these please" with 5 files named "one.jpg, two.jpg, three.jpg, notes.pdf, log.txt"
+    And the sent turn's bubble shows 3 thumbnails and the files "notes.pdf" and "log.txt"
+    And no picture is attached any more
+
+  Scenario: mw-6j8xmr AC1: the camera adds each photo it takes to the ones already chosen
+    Given the Talk line is open with a believable speech recogniser
+    And the phone reads pictures as 3000 by 2000 pixels
+    When he attaches the screenshot "first.png"
+    And he takes the photo "snap.jpg" with Take a photo
+    Then 2 thumbnails are shown
+
+  Scenario: mw-6j8xmr AC1: one file over 8 MB is refused and the others stay
+    Given the Talk line is open with a believable speech recogniser
+    When he picks "small.pdf" and the 9 MiB file "huge.pdf" at once with Attach
+    Then the chips name "small.pdf" and no other
+    And a message says "huge.pdf is over 8 MB."
+
+  Scenario: mw-6j8xmr AC1: a turn takes at most 10 files
+    Given the Talk line is open with a believable speech recogniser
+    When he picks 12 files at once with Attach
+    Then 10 chips are shown
+    And a message says "A turn takes up to 10 files."
 
   Scenario: mw-q6n8m0.17 AC1: Share under his turn and under the Mayor's answer opens the phone's share sheet with that turn's words and the talk's title
     Given the Talk line is open with a believable speech recogniser

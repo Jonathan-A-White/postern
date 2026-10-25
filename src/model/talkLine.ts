@@ -22,14 +22,15 @@ export interface TalkTurn {
   links?: string[];
   /** What the talk is about: carried on the first turn only. */
   about?: TalkAbout;
-  /** The one picture that goes with a turn of his, in §8's shape (never more than one): uploaded before the turn is delivered. */
+  /** The files that go with a turn of his, in §8's shape and the order he chose them: one is `attachment`, two or more `attachments`, never both. Uploaded before the turn is delivered. */
   attachment?: Attachment;
+  attachments?: Attachment[];
   /** On a turn of his too long for one record: this record is part `part` of `parts` (1-based), the words in order; absent on a turn sent whole. */
   part?: number;
   parts?: number;
 }
 
-/** A picture chosen for the next turn, on the phone: the JPEG bytes to upload, and a local preview to show in the thumbnail and the bubble. */
+/** A picture or file chosen for the next turn, on the phone: the bytes to upload (a picture as JPEG), and a local preview of a picture to show in the thumbnail and the bubble. */
 export interface TalkPicture {
   name: string;
   type: string;
@@ -69,11 +70,11 @@ export interface TalkLineState {
   answeredBy?: string;
   /** His last answer was cut off: the next turn says so. */
   cutPending: boolean;
-  /** The picture chosen for his next turn, until it goes with a turn or he removes it (one at a time: a second choice replaces it). */
-  picture?: TalkPicture;
-  /** The turn waiting to be sent, while `sending`, and the picture that goes with it. */
+  /** The pictures and files chosen for his next turn, in the order chosen, until they go with a turn or he removes them (at most MAX_TALK_FILES). */
+  pictures: TalkPicture[];
+  /** The turn waiting to be sent, while `sending`, and the files that go with it. */
   outgoing?: TalkTurn;
-  outgoingPicture?: TalkPicture;
+  outgoingPictures?: TalkPicture[];
   /** When his turn went out (ms), while `waiting`; a holding answer does not reset it. */
   sentAt?: number;
   /** The wait has gone on past TALK_THINKING_MS with the Mayor here, so the screen says he is thinking. */
@@ -91,16 +92,16 @@ export interface TalkLineState {
   error?: string;
   /** The turn that failed to send, kept with his words so `retry` can send it again. */
   unsent?: TalkTurn;
-  unsentPicture?: TalkPicture;
+  unsentPictures?: TalkPicture[];
 }
 
 export type TalkLineEvent =
   | { type: 'hold'; talkId: string }
   | { type: 'release'; text: string }
-  /** He chose a picture (it replaces one already chosen) or took it away. */
+  /** He chose a picture or file (it joins the ones already chosen) or took the `index`th one away. */
   | { type: 'attach'; picture: TalkPicture }
-  | { type: 'detach' }
-  /** Send with a picture chosen and nothing said: a turn with empty text and the picture. */
+  | { type: 'detach'; index: number }
+  /** Send with files chosen and nothing said: a turn with empty text and the files. */
   | { type: 'sendPicture'; talkId: string }
   | { type: 'cancel' }
   /** `recorded`: Ideas only is on, so the turn is kept for later and the line does not wait for an answer (words as shown under the turn). */
@@ -140,8 +141,11 @@ export const NOT_KEPT = 'Could not keep that on this phone. Try again.';
  */
 export const TURN_TEXT_MAX_BYTES = 7_000;
 
-/** What a turn's picture takes inside the turn's JSON (the `attachment` object: a 64-character hash, a size, a type and a name), with room for a long name: his words are cut this much sooner when a picture goes with them. */
+/** What one file takes inside the turn's JSON (the `attachment` object: a 64-character hash, a size, a type and a name), with room for a long name: part 1 of his words is cut this much sooner for each file that goes with them. */
 export const ATTACHMENT_ROOM_BYTES = 600;
+
+/** The most files one turn carries: past this many the sealed record would have no room left for his words. */
+export const MAX_TALK_FILES = 10;
 
 const CUT_MARK = '...';
 
@@ -206,21 +210,21 @@ export function splitText(text: string, firstMax: number, max: number): string[]
 
 /**
  * The records a turn of his goes as (docs/protocol.md §20): one when its words fit the cap, otherwise several of the same
- * talk and turn, `part` k of `parts` n, in order, each within the cap and none cut. The picture, model, cut mark and about
- * go on part 1 only, so part 1's words are ATTACHMENT_ROOM_BYTES shorter when a picture goes with the turn.
+ * talk and turn, `part` k of `parts` n, in order, each within the cap and none cut. The files, model, cut mark and about
+ * go on part 1 only, so part 1's words are ATTACHMENT_ROOM_BYTES shorter for each of the `files` that go with the turn.
  */
-export function turnRecords(turn: TalkTurn, hasPicture: boolean): TalkTurn[] {
-  const firstMax = hasPicture ? TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES : TURN_TEXT_MAX_BYTES;
+export function turnRecords(turn: TalkTurn, files: number): TalkTurn[] {
+  const firstMax = TURN_TEXT_MAX_BYTES - ATTACHMENT_ROOM_BYTES * files;
   const pieces = splitText(turn.text, firstMax, TURN_TEXT_MAX_BYTES);
   if (pieces.length === 1) return [turn];
   return pieces.map((text, index) => {
-    const { model, cut, about, links, attachment, ...rest } = turn;
-    const first = index === 0 ? { ...(model ? { model } : {}), ...(cut ? { cut } : {}), ...(about ? { about } : {}), ...(links ? { links } : {}), ...(attachment ? { attachment } : {}) } : {};
+    const { model, cut, about, links, attachment, attachments, ...rest } = turn;
+    const first = index === 0 ? { ...(model ? { model } : {}), ...(cut ? { cut } : {}), ...(about ? { about } : {}), ...(links ? { links } : {}), ...(attachment ? { attachment } : {}), ...(attachments ? { attachments } : {}) } : {};
     return { ...rest, ...first, text, part: index + 1, parts: pieces.length };
   });
 }
 
-export const initialTalkLine: TalkLineState = { phase: 'idle', cutPending: false };
+export const initialTalkLine: TalkLineState = { phase: 'idle', cutPending: false, pictures: [] };
 
 function idle(state: TalkLineState, patch: Partial<TalkLineState> = {}): TalkLineState {
   return {
@@ -231,7 +235,7 @@ function idle(state: TalkLineState, patch: Partial<TalkLineState> = {}): TalkLin
     answeredBy: state.answeredBy,
     cutPending: state.cutPending,
     paused: state.paused,
-    picture: state.picture,
+    pictures: state.pictures,
     ...patch,
   };
 }
@@ -288,24 +292,24 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       const pausing = state.phase === 'speaking' && state.speaking !== undefined && !state.speaking.holding && !state.speaking.unspoken;
       const cutPending = state.cutPending || (state.phase === 'speaking' && !pausing);
       // Speaking again gives up the turn that failed: its number goes back to him.
-      const base = state.unsent ? { ...state, talk: state.unsent.talk.turn > 1 ? { id: state.unsent.talk.id, turn: state.unsent.talk.turn - 1 } : undefined, unsent: undefined, unsentPicture: undefined, picture: state.picture ?? state.unsentPicture } : state;
+      const base = state.unsent ? { ...state, talk: state.unsent.talk.turn > 1 ? { id: state.unsent.talk.id, turn: state.unsent.talk.turn - 1 } : undefined, unsent: undefined, unsentPictures: undefined, pictures: [...(state.unsentPictures ?? []), ...state.pictures].slice(0, MAX_TALK_FILES) } : state;
       return { ...base, phase: 'listening', talk: base.talk ?? { id: event.talkId, turn: 0 }, cutPending, speaking: undefined, paused: pausing ? state.speaking : state.paused, error: undefined };
     }
     case 'release': {
       if (state.phase !== 'listening' || !state.talk) return state;
       const text = event.text.trim();
-      if (!text && !state.picture) return idle(state, { talk: state.talk.turn > 0 ? state.talk : undefined });
+      if (!text && state.pictures.length === 0) return idle(state, { talk: state.talk.turn > 0 ? state.talk : undefined });
       const talk = { id: state.talk.id, turn: state.talk.turn + 1 };
       const about = talk.turn === 1 ? state.about : undefined;
       const outgoing: TalkTurn = { talk, text, role: 'turn', ...(state.model ? { model: state.model } : {}), ...(state.cutPending || state.paused ? { cut: true } : {}), ...(about ? { about } : {}) };
-      return { ...state, phase: 'sending', talk, outgoing, outgoingPicture: state.picture, picture: undefined, paused: undefined };
+      return { ...state, phase: 'sending', talk, outgoing, outgoingPictures: state.pictures, pictures: [], paused: undefined };
     }
     case 'attach':
-      return { ...state, picture: event.picture };
+      return state.pictures.length >= MAX_TALK_FILES ? state : { ...state, pictures: [...state.pictures, event.picture] };
     case 'detach':
-      return state.picture ? { ...state, picture: undefined } : state;
+      return event.index >= 0 && event.index < state.pictures.length ? { ...state, pictures: state.pictures.filter((_, at) => at !== event.index) } : state;
     case 'sendPicture': {
-      if (!state.picture || state.phase === 'listening') return state;
+      if (state.pictures.length === 0 || state.phase === 'listening') return state;
       const held = talkLine(state, { type: 'hold', talkId: event.talkId });
       return held.phase === 'listening' ? talkLine(held, { type: 'release', text: '' }) : state;
     }
@@ -316,15 +320,15 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
       if (state.phase !== 'sending') return state;
       // Ideas only: the turn is recorded for after the mode ends, so there is no answer to wait for; the line is free for the next one.
       if (event.recorded !== undefined) return idle(state, { cutPending: false });
-      return { ...state, phase: 'waiting', outgoing: undefined, outgoingPicture: undefined, unsent: undefined, unsentPicture: undefined, sentAt: event.at, thinking: false, mayorHere: event.here === true, cutPending: false };
+      return { ...state, phase: 'waiting', outgoing: undefined, outgoingPictures: undefined, unsent: undefined, unsentPictures: undefined, sentAt: event.at, thinking: false, mayorHere: event.here === true, cutPending: false };
     case 'sendFailed': {
       // His words stay: `retry` sends this very turn again, under the same number.
       if (state.phase !== 'sending' || !state.talk || !state.outgoing) return state;
-      return idle(state, { unsent: state.outgoing, unsentPicture: state.outgoingPicture, error: event.message ?? NOT_KEPT });
+      return idle(state, { unsent: state.outgoing, unsentPictures: state.outgoingPictures, error: event.message ?? NOT_KEPT });
     }
     case 'retry':
       if (state.phase !== 'idle' || !state.unsent) return state;
-      return { ...state, phase: 'sending', outgoing: { ...state.unsent }, outgoingPicture: state.unsentPicture, unsent: undefined, unsentPicture: undefined, error: undefined };
+      return { ...state, phase: 'sending', outgoing: { ...state.unsent }, outgoingPictures: state.unsentPictures, unsent: undefined, unsentPictures: undefined, error: undefined };
     case 'incoming':
       return incoming(state, event.turn, event.hidden === true);
     case 'visible':
@@ -357,7 +361,7 @@ export function talkLine(state: TalkLineState, event: TalkLineEvent): TalkLineSt
     case 'setAbout':
       return { ...state, about: event.about };
     case 'end':
-      return { phase: 'idle', cutPending: false };
+      return { phase: 'idle', cutPending: false, pictures: [] };
   }
 }
 

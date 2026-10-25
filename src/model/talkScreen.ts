@@ -15,10 +15,10 @@ export interface TalkLogEntry {
   asked?: string;
   /** Ideas only was on when the turn went out: 'Recorded for after 21:00', shown under it (not a received turn). */
   recorded?: string;
-  /** The picture that went with the turn: a local preview while this phone holds it. */
-  picture?: string;
-  /** The picture a stored turn names (§8's shape), for the bubble to load when there is no local preview. */
-  attachment?: Attachment;
+  /** The pictures and files that went with the turn, in order: a local preview of each picture while this phone holds it. */
+  sentFiles?: { name: string; preview?: string }[];
+  /** The files a stored turn names (§8's shape), for the bubble to load when there is no local copy. */
+  attachments?: Attachment[];
   /** When he let go of the button (ms). */
   releasedAt: number;
   /** The Mayor's latest words for this turn: a holding answer until the real one comes. */
@@ -126,8 +126,8 @@ export function talkScreen(state: TalkScreenState, { event, at }: TalkScreenActi
     case 'release':
       if (line.outgoing) {
         const { talk, text, cut, model } = line.outgoing;
-        const preview = line.outgoingPicture?.preview;
-        log = [...log, { turn: talk.turn, said: text, cut: cut === true, asked: model, releasedAt: at, ...(preview ? { picture: preview } : {}) }];
+        const files = line.outgoingPictures ?? [];
+        log = [...log, { turn: talk.turn, said: text, cut: cut === true, asked: model, releasedAt: at, ...(files.length ? { sentFiles: files.map(({ name, preview }) => ({ name, ...(preview ? { preview } : {}) })) } : {}) }];
       }
       break;
     case 'sent':

@@ -4,7 +4,7 @@
 // answers from the stored `talk` records, speak them, count the wait, and keep the
 // screen awake while a talk is open.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { initialTalkLine, endTurn, isLateAnswer, talkLine, turnRecords, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
+import { initialTalkLine, endTurn, MAX_TALK_FILES, isLateAnswer, talkLine, turnRecords, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
 import { initialTalkScreen, talkScreenReducer } from '../model/talkScreen';
 import { earlierTalks, openTalk } from '../model/talkLog';
 import { messagesRepo } from '../data/repositories';
@@ -108,14 +108,15 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
 
   // His turn goes out once, whenever the line asks for it.
   const outgoing = line.outgoing;
-  const outgoingPicture = line.outgoingPicture;
+  const outgoingPictures = line.outgoingPictures;
   useEffect(() => {
     if (!outgoing || sending.current === outgoing) return;
     sending.current = outgoing;
-    // A turn too long for one record goes as its parts, queued in order; the picture goes with part 1 (docs/protocol.md §20).
+    // A turn too long for one record goes as its parts, queued in order; the files go with part 1 (docs/protocol.md §20).
     const queue = async () => {
-      const records = turnRecords(outgoing, outgoingPicture !== undefined);
-      for (const [index, record] of records.entries()) await sendTurn(record, index === 0 ? outgoingPicture : undefined);
+      const files = outgoingPictures ?? [];
+      const records = turnRecords(outgoing, files.length);
+      for (const [index, record] of records.entries()) await sendTurn(record, index === 0 ? files : undefined);
     };
     queue().then(
       () => {
@@ -125,7 +126,7 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
       },
       () => feed({ type: 'sendFailed' }),
     );
-  }, [outgoing, outgoingPicture, feed]);
+  }, [outgoing, outgoingPictures, feed]);
 
   // The Mayor's answers arrive as stored records. An answer that comes before the
   // line knows his turn went out waits until it does.
@@ -289,28 +290,37 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     feed({ type: 'hold', talkId: line.talk?.id ?? newTalkId() });
   }
 
-  // The one picture for his next turn (mw-q6n8m0.14): the same cut to 2400 px and JPEG as a message's. A second choice replaces the first.
-  async function attach(file: File | undefined): Promise<void> {
-    if (!file) return;
-    const refusal = file.type.startsWith('image/') ? refuseFile(file) : `${file.name} is not a picture: only a picture can go with a Talk turn.`;
-    if (refusal) {
-      toast(refusal, 'error');
-      return;
-    }
-    try {
-      feed({ type: 'attach', picture: await toPicked(file, file.name) });
-    } catch {
-      toast(`Could not read ${file.name}.`, 'error');
+  // The pictures and files for his next turn (mw-q6n8m0.14, mw-6j8xmr): a picture is cut to 2400 px and JPEG as a message's is, any other
+  // file goes as it is. Each choice joins the ones already chosen, up to MAX_TALK_FILES; one over 8 MB is refused and the others stay.
+  async function attach(files: File[]): Promise<void> {
+    let room = MAX_TALK_FILES - line.pictures.length;
+    for (const file of files) {
+      const refusal = refuseFile(file);
+      if (refusal) {
+        toast(refusal, 'error');
+        continue;
+      }
+      if (room <= 0) {
+        toast(`A turn takes up to ${MAX_TALK_FILES} files.`, 'error');
+        break;
+      }
+      try {
+        const picked = await toPicked(file, file.name);
+        room -= 1;
+        feed({ type: 'attach', picture: picked });
+      } catch {
+        toast(`Could not read ${file.name}.`, 'error');
+      }
     }
   }
 
-  function removePicture(): void {
-    feed({ type: 'detach' });
+  function removePicture(index: number): void {
+    feed({ type: 'detach', index });
   }
 
-  /** A picture is chosen and he says nothing: it goes as a turn of its own. */
+  /** Files are chosen and he says nothing: they go as a turn of their own. */
   function sendPicture(): void {
-    if (!line.picture || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
+    if (line.pictures.length === 0 || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
     pauseAnswer();
     hold.setNotice(undefined);
     feed({ type: 'sendPicture', talkId: line.talk?.id ?? newTalkId() });

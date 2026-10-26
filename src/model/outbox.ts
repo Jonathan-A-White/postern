@@ -70,6 +70,31 @@ export function anyPending(rows: OutboxRow[]): boolean {
   return rows.some((row) => isPending(row) && row.attempts > 0);
 }
 
+/** Lines the status line shows while the phone reaches the backend (mw-gb92lmo): what truly holds the row. */
+export const SENDING_NOW = 'Sending…';
+export const REFUSED_LINE = 'Not sent: the backend refused it. Tap Retry or Discard.';
+export const HELD_BY_REFUSED_LINE = 'Waiting on an earlier turn that was refused: tap Retry or Discard on it';
+export const HELD_BY_CHAIN_LINE = 'Waiting on an earlier turn to be seen';
+export const WAITING_FOR_KEY_LINE = "Waiting for the Mayor's key before sending";
+
+/** The one line the status line shows, or undefined for none. `reachable` is whether the phone reaches the backend (the live
+ * status is live or polling): then a row is never said to wait for the phone to be back online, and the line names what holds
+ * it, from the row's own state: a refused row (Retry or Discard), a turn waiting on an earlier one, the wait before the next
+ * try, a try under way, the key still unknown. Out of reach, a row whose first try has failed says it will go when back online. */
+export function outboxLine(rows: OutboxRow[], now: number, reachable: boolean): string | undefined {
+  if (!reachable) return anyPending(rows) ? SENDING_WHEN_BACK : undefined;
+  const turns = rows.filter((row) => row.kind === 'turn' && row.state !== 'acked');
+  for (const row of turns.filter(isPending)) {
+    const held = turnHeldBy(turns.filter((earlier) => (earlier.id ?? 0) < (row.id ?? 0)), now);
+    if (held) return held.reason === 'refused' ? HELD_BY_REFUSED_LINE : HELD_BY_CHAIN_LINE;
+  }
+  if (rows.some((row) => row.state === 'failed')) return REFUSED_LINE;
+  const tried = rows.find((row) => isPending(row) && row.attempts > 0);
+  if (!tried) return undefined;
+  if (tried.nextAt === undefined) return WAITING_FOR_KEY_LINE;
+  return tried.nextAt > now ? `Retrying in ${Math.ceil((tried.nextAt - now) / 1000)} s` : SENDING_NOW;
+}
+
 /** The words a message waiting to go shows: its text, and the names of the files that go with it. */
 function messageWords(row: OutboxRow): string {
   const text = typeof row.payload.text === 'string' ? row.payload.text : '';

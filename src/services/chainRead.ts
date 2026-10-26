@@ -9,6 +9,7 @@ import { chainConfig, decodeRecordScript } from 'spell-forge-bsv';
 import type { MessageRow } from '../data/db';
 import type { EventBatch } from '../model/events';
 import { eventBatchOf, isMessagePayload, storeRecord } from './inbox';
+import { fetchWithin } from './timedFetch';
 import { ANCHOR_ADDRESS, type MessagePayload } from './messages';
 import { messagesRepo } from '../data/repositories';
 
@@ -38,7 +39,7 @@ interface HistoryEntry {
 }
 
 async function historyPage(url: string, fetchImpl: typeof fetch, missingIsEmpty: boolean): Promise<HistoryEntry[]> {
-  const response = await fetchImpl(url);
+  const response = await fetchWithin(fetchImpl, url, undefined, false);
   if (response.status === 404 && missingIsEmpty) return [];
   if (!response.ok) throw new Error(`WhatsOnChain could not list the anchor address's history (it answered ${response.status}).`);
   const body = (await response.json().catch(() => undefined)) as { result?: unknown } | unknown[] | undefined;
@@ -73,7 +74,7 @@ export class ChainBusyError extends Error {
 
 /** One transaction's raw hex from WhatsOnChain. */
 export async function fetchRawTransaction(txid: string, fetchImpl: typeof fetch = fetch): Promise<string> {
-  const response = await fetchImpl(`${chainConfig.providerBaseUrl}/tx/${txid}/hex`);
+  const response = await fetchWithin(fetchImpl, `${chainConfig.providerBaseUrl}/tx/${txid}/hex`, undefined, false);
   if (!response.ok) throw new ChainBusyError(`WhatsOnChain could not give transaction ${txid.slice(0, 8)}… (it answered ${response.status}).`, response.status);
   return (await response.text()).trim();
 }

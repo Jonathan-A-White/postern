@@ -5,6 +5,7 @@
 // every other WhatsOnChain read (chainPacer.ts). Failures are plain Errors: issue.ts turns them
 // into its network error.
 import { chainConfig, type AddressHistoryEntry } from 'spell-forge-bsv';
+import { fetchWithin } from './timedFetch';
 import { paced } from './chainPacer';
 
 /** WhatsOnChain serves 100 transactions a page; past this many pages a history is not read (as the backend's reader). */
@@ -25,7 +26,7 @@ async function fetchHistoryPage(url: string): Promise<HistoryPage> {
   for (let attempt = 1; ; attempt++) {
     let response: Response | undefined;
     try {
-      response = await paced(() => globalThis.fetch(url));
+      response = await paced(() => fetchWithin(globalThis.fetch, url, undefined, false));
     } catch {
       // A rate-limited reply has no CORS header, so a browser sees it as a failed fetch.
       if (attempt === HISTORY_ATTEMPTS) {

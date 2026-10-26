@@ -15,6 +15,7 @@ import type { GovernorAction } from '../model/conversation';
 import { retryDelay, turnHeldBy } from '../model/outbox';
 import { decodeView } from '../model/view';
 import { isPermanentRefusal, RefusedError } from './apiAuth';
+import { API_TIMEOUT_MS, withTimeout } from './timedFetch';
 import { busyOf, plainMessage, waitingLine } from './chainBusy';
 import type { TalkTurn } from '../model/talkLine';
 import { attachmentMime, uploadAttachment } from './attachments';
@@ -58,6 +59,17 @@ export interface QueuedMessage {
   settles?: string;
   /** Files already uploaded by an earlier try, in order, so a retry does not upload them again. */
   uploaded?: Attachment[];
+}
+
+/** The longest one stage of a try (one file's upload, or the message's delivery) may run before the sender gives up on it
+ * and counts it a passing trouble: the row keeps its place and goes again after its retry wait (mw-gb92lmo). Every fetch has
+ * its own API_TIMEOUT_MS; a delivery may take two of them in a row (the direct post, then the road over the chain), so this
+ * is a backstop for whatever else could hang, and the lane never waits on one call for ever. */
+export const DELIVER_STAGE_MS = 3 * API_TIMEOUT_MS;
+
+/** `work` as a stage of a try: an ApiTimeoutError if it takes longer than DELIVER_STAGE_MS. `sent` says whether it could have been acted on (a POST). */
+function stage<T>(work: Promise<T>, sent: boolean): Promise<T> {
+  return withTimeout(work, sent, DELIVER_STAGE_MS);
 }
 
 /** How long acked rows are kept before they are forgotten. */
@@ -104,13 +116,13 @@ export async function enqueue(row: { kind: OutboxKind; bead?: string; payload: R
 async function deliverRow(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
   switch (row.kind) {
     case 'answer':
-      return deliverAnswer(row.bead, String(row.payload.answer ?? ''), options, typeof row.payload.re === 'string' ? row.payload.re : undefined);
+      return stage(deliverAnswer(row.bead, String(row.payload.answer ?? ''), options, typeof row.payload.re === 'string' ? row.payload.re : undefined), true);
     case 'action':
-      return deliverAction(row.payload.action as GovernorAction, options);
+      return stage(deliverAction(row.payload.action as GovernorAction, options), true);
     case 'turn':
       return deliverQueuedTurn(row, options);
     case 'call':
-      return deliverCallRequest(String(row.payload.text ?? ''), Number(row.payload.at ?? 0), options);
+      return stage(deliverCallRequest(String(row.payload.text ?? ''), Number(row.payload.at ?? 0), options), true);
     case 'message':
       return deliverMessage(row, options);
   }
@@ -124,14 +136,14 @@ async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions): Promi
   const turn = row.payload.turn as TalkTurn;
   const old = row.payload.file as QueuedFile | undefined;
   const files = (row.payload.files as QueuedFile[] | undefined) ?? (old ? [old] : []);
-  if (files.length === 0) return deliverTurn(turn, options);
+  if (files.length === 0) return stage(deliverTurn(turn, options), true);
   const kept = row.payload.uploaded as Attachment[] | Attachment | undefined;
   const uploaded = Array.isArray(kept) ? [...kept] : kept ? [kept] : [];
   for (const file of files.slice(uploaded.length)) {
-    uploaded.push(await uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }));
+    uploaded.push(await stage(uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }), false));
     await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
   }
-  return deliverTurn({ ...turn, ...(uploaded.length === 1 ? { attachment: uploaded[0] } : { attachments: uploaded }) }, options);
+  return stage(deliverTurn({ ...turn, ...(uploaded.length === 1 ? { attachment: uploaded[0] } : { attachments: uploaded }) }, options), true);
 }
 
 /** Uploads the message's files that are not up yet (docs/protocol.md §8), then delivers it as ONE message. */
@@ -139,10 +151,10 @@ async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<
   const message = row.payload as unknown as QueuedMessage;
   const uploaded = [...(message.uploaded ?? [])];
   for (const file of message.files.slice(uploaded.length)) {
-    uploaded.push(await uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }));
+    uploaded.push(await stage(uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }), false));
     await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
   }
-  return deliverThreaded({ thread: message.thread, text: message.text, attachments: uploaded, re: message.re }, options);
+  return stage(deliverThreaded({ thread: message.thread, text: message.text, attachments: uploaded, re: message.re }, options), true);
 }
 
 /** What the phone remembers of a delivered answer, action or message that settles one: the card it settles leaves the queue at once. */

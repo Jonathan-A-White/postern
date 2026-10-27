@@ -3,6 +3,7 @@
 import { PrivateKey } from '@bsv/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiTimeoutError, API_TIMEOUT_MS, apiFetch } from '../../src/services/apiAuth';
+import { requestTimeoutMs, SMALL_BODY_BYTES } from '../../src/services/timedFetch';
 import { uploadAttachment } from '../../src/services/attachments';
 import { describeSendError, MAY_HAVE_GONE, NOT_SENT } from '../../src/cockpit/send';
 import { challengeResponse, isChallengeRequest } from '../support/challenge-fetch';
@@ -66,6 +67,26 @@ describe('apiFetch timeouts', () => {
     caller.abort();
     expect(seen?.aborted).toBe(true);
     await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS);
+  });
+
+  it('a big body is given its crossing on the slowest uplink on top of the 30 s, so a picture is not cut off at 30 s (mw-o14xubc)', async () => {
+    // setImmediate stays real: the challenge's signing hashes the body off the clock, and the POST's timer exists only after it.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const body = new Uint8Array(400_000);
+    const fetchImpl = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => (isChallengeRequest(String(url)) ? challengeResponse() : hangsUntilAborted(url, init)));
+    let settled: unknown = 'still waiting';
+    apiFetch('/blobs', { method: 'POST', body: body.buffer as ArrayBuffer }, { unlockedKey: KEY, fetchImpl: fetchImpl as unknown as typeof fetch }).then(
+      () => (settled = 'answered'),
+      (err: unknown) => (settled = err),
+    );
+    expect(requestTimeoutMs(body.length)).toBe(API_TIMEOUT_MS + 40_000);
+    expect(requestTimeoutMs(SMALL_BODY_BYTES)).toBe(API_TIMEOUT_MS);
+    while (fetchImpl.mock.calls.length < 2) await new Promise((resolve) => setImmediate(resolve));
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS + 39_000);
+    expect(settled).toBe('still waiting');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(settled).toBeInstanceOf(ApiTimeoutError);
+    expect((settled as ApiTimeoutError).sent).toBe(true);
   });
 
   it('a blob upload that times out is reported as not sent, though it is a POST', async () => {

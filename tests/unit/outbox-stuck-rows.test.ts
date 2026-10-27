@@ -8,8 +8,9 @@ import { PrivateKey } from '@bsv/sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chain, setChain, type Chain } from '../../src/chain';
 import { db } from '../../src/data/db';
-import { enqueue, failureSlug, failureWhy, failureWords, forgetOutboxState, kickOutbox, settledOutbox } from '../../src/services/outbox';
+import { enqueue, failureSlug, failureWhy, failureWords, forgetOutboxState, kickOutbox, packBytes, settledOutbox } from '../../src/services/outbox';
 import { ApiTimeoutError, BackendUnreachableError, RefusedError } from '../../src/services/apiAuth';
+import { API_TIMEOUT_MS, requestTimeoutMs, UPLOAD_BYTES_PER_SECOND } from '../../src/services/timedFetch';
 import { REPORT_AFTER_ATTEMPTS, REPORT_EVERY_MS, retryDelay } from '../../src/model/outbox';
 import { settlePhone } from '../support/empty-phone';
 import { challengeResponse, isChallengeRequest } from '../support/challenge-fetch';
@@ -34,7 +35,30 @@ const chainSends = vi.fn(async () => 'cd'.repeat(32));
 const accepted = () => new Response(JSON.stringify({ txid: 'direct:' + 'ab'.repeat(32) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
 /** What the backend saw: every POST that reached it, and every GET /api/view?why= it journaled. */
-let backend: { blobs: 'cut' | 'ok'; messages: 'ok' | 'cut'; posted: string[]; whys: string[] };
+let backend: { blobs: 'cut' | 'ok'; messages: 'ok' | 'cut'; posted: string[]; whys: string[]; uplink: number };
+
+/** His uplink that evening: the slowest the app waits for (UPLOAD_BYTES_PER_SECOND); what one picture's upload takes is its size over this. */
+const SLOW_UPLINK_BYTES_PER_S = UPLOAD_BYTES_PER_SECOND;
+
+/** A fetch's body as the bytes the uplink carries. */
+function bodyLength(body: BodyInit | null | undefined): number {
+  if (!body) return 0;
+  if (typeof body === 'string') return body.length;
+  if (ArrayBuffer.isView(body)) return body.byteLength;
+  if (body instanceof ArrayBuffer) return body.byteLength;
+  return 0;
+}
+
+/** The time the uplink takes to carry `bytes`, or the browser's AbortError the moment the caller gives up (the body never reaches the backend). */
+function carried(bytes: number, signal: AbortSignal | null | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, Math.ceil((bytes / backend.uplink) * 1000));
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new DOMException('The user aborted a request.', 'AbortError'));
+    });
+  });
+}
 
 async function letStorageRun(): Promise<void> {
   for (let i = 0; i < 40; i++) await new Promise((resolve) => setImmediate(resolve));
@@ -47,15 +71,29 @@ async function pass(ms: number): Promise<void> {
   }
 }
 
+/** Passes time, a second at a time, until the sender is quiet (a try in flight ends at its own pace) or `maxMs` have gone by. */
+async function quiet(maxMs: number): Promise<void> {
+  let done = false;
+  void settledOutbox().then(() => {
+    done = true;
+  });
+  await letStorageRun();
+  for (let spent = 0; !done && spent < maxMs; spent += 1000) await pass(1000);
+  expect(done).toBe(true);
+}
+
 /** A photo as the composer queues it (src/cockpit/send.ts): kept whole, base64, uploaded when its turn comes. */
 const photo = { name: 'IMG_4471.jpg', type: 'image/jpeg', data: btoa('not really a jpeg, but bytes') };
+/** A camera picture: 400 KB, 40 s over his uplink, past the 30 s the old builds allowed any one request. */
+const PICTURE_BYTES = 400_000;
+const picture = { name: 'IMG_4472.jpg', type: 'image/jpeg', data: packBytes(new Uint8Array(PICTURE_BYTES).map((_, i) => i % 251)) };
 
 beforeEach(async () => {
   await settlePhone();
   forgetOutboxState();
   await db.outbox.clear();
   held.reachable = true;
-  backend = { blobs: 'cut', messages: 'ok', posted: [], whys: [] };
+  backend = { blobs: 'cut', messages: 'ok', posted: [], whys: [], uplink: Infinity };
   chainSends.mockClear();
   setChain({ ...realChain, sendText: chainSends } as Chain);
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
@@ -71,6 +109,8 @@ beforeEach(async () => {
       if (url.endsWith('/blobs')) {
         // The proxy in front of the backend drops the body: the browser reports no status, only a TypeError.
         if (backend.blobs === 'cut') throw new TypeError('Failed to fetch');
+        // The body crosses his uplink first; nginx hands the backend the request only once the whole body is in.
+        await carried(bodyLength(init?.body), init?.signal);
         backend.posted.push('blob');
         return new Response(JSON.stringify({ hash: 'ef'.repeat(32), size: 28 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -101,6 +141,52 @@ async function hisQueue(): Promise<{ photo: number; typed: number[] }> {
   ];
   return { photo: photoId, typed };
 }
+
+describe('his report (mw-o14xubc): Unlocked, Live, the count runs from a minute and starts again, and his messages stay pending', () => {
+  /** His queue: a camera picture queued under 0.8.55 that his uplink carries in 40 s, and typed messages queued behind it under 0.8.56 and 0.8.57. */
+  async function hisSlowQueue(): Promise<number[]> {
+    backend.blobs = 'ok';
+    backend.uplink = SLOW_UPLINK_BYTES_PER_S;
+    const now = Date.now();
+    return [
+      (await db.outbox.add({ kind: 'message', bead: '', payload: { text: 'look at this', files: [picture] }, created: now - 3 * 3600_000, attempts: 6, nextAt: now + retryDelay(6), state: 'pending' })) as number,
+      (await db.outbox.add({ kind: 'message', bead: '', payload: { text: 'did the deploy go?', files: [] }, created: now - 2 * 3600_000, attempts: 0, state: 'pending' })) as number,
+      (await db.outbox.add({ kind: 'message', bead: '', payload: { text: 'hello?', files: [] }, created: now - 3600_000, attempts: 0, state: 'pending' })) as number,
+    ];
+  }
+
+  it('AC-1/AC-6: the picture whose upload outran the 30 s every request was given is given the time its size needs, so it and the typed messages behind it reach the backend within one retry', async () => {
+    const rows = await hisSlowQueue();
+    const from = Date.now();
+    kickOutbox(true);
+    // One retry's wait at its seventh try, within which the picture crosses the uplink; then until the lane is quiet.
+    await pass(retryDelay(7));
+    await quiet(2 * retryDelay(7));
+    expect([...backend.posted].sort()).toEqual(['blob', 'message', 'message', 'message']);
+    expect(chainSends).not.toHaveBeenCalled();
+    for (const id of rows) {
+      const row = await db.outbox.get(id);
+      expect(row).toMatchObject({ state: 'sent' });
+      expect((row?.sentAt as number) - from).toBeLessThanOrEqual(retryDelay(7));
+    }
+    expect(await db.outbox.get(rows[0])).toMatchObject({ attempts: 7 });
+  });
+
+  it('AC-1/AC-3: an upload that cannot finish even in the time its size is given leaves a reason that names the file, not a bare count', async () => {
+    backend.blobs = 'ok';
+    backend.uplink = SLOW_UPLINK_BYTES_PER_S / 10;
+    const id = (await db.outbox.add({ kind: 'message', bead: '', payload: { text: 'look at this', files: [picture] }, created: Date.now(), attempts: 0, state: 'pending' })) as number;
+    kickOutbox(true);
+    // The time its size is given, and a second: the one try fails, and the lane is quiet until its retry.
+    await pass(requestTimeoutMs(PICTURE_BYTES) + 1_000);
+    await quiet(API_TIMEOUT_MS);
+    expect(backend.posted).toEqual([]);
+    const row = await db.outbox.get(id);
+    expect(row).toMatchObject({ state: 'pending', attempts: 1 });
+    expect(row?.note).toBe('The upload of IMG_4472.jpg did not finish in time.');
+    expect(row?.error).toMatchObject({ attempt: 1, message: 'The upload of IMG_4472.jpg did not finish in time.' });
+  });
+});
 
 describe('a row whose every try fails while the phone reaches the backend (mw-o14xubc)', () => {
   it('AC-1/AC-3: the try that fails before any POST keeps its error on the row: the words, the time and the attempt, and a line to show', async () => {

@@ -10,7 +10,9 @@
 // backend's words (a provider's page made plain) and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
 // Any other failure is kept on the row (its words, when, which attempt) and shown as the reason for the wait; after three
 // such tries the backend's journal is told by the one GET that still goes (mw-o14xubc). While the backend answers, a row
-// that fails is its own trouble and the rows behind it go on; out of reach, it holds them, in his order.
+// that fails is its own trouble and the rows behind it go on; out of reach, it holds them, in his order. A file's upload is
+// given the time its size needs on a weak signal (timedFetch's requestTimeoutMs), not the 30 s of a small call: a camera
+// picture cut off at 30 s sent nothing and was tried again every minute for ever, the typed messages held behind it (mw-o14xubc).
 // Talk turns are a lane of their own, so no upload or failing message holds one back; within the lane a turn never
 // goes ahead of an earlier one that was refused or went on the chain and has not been seen (mw-q6n8m0.12).
 import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
@@ -19,7 +21,7 @@ import type { GovernorAction } from '../model/conversation';
 import { retryDelay, shouldReportFailure, turnHeldBy } from '../model/outbox';
 import { decodeView } from '../model/view';
 import { apiFetch, ApiTimeoutError, BackendUnreachableError, isPermanentRefusal, RefusedError } from './apiAuth';
-import { API_TIMEOUT_MS, withTimeout } from './timedFetch';
+import { API_TIMEOUT_MS, requestTimeoutMs, withTimeout } from './timedFetch';
 import { busyOf, plainMessage, waitingLine } from './chainBusy';
 import type { TalkTurn } from '../model/talkLine';
 import { attachmentMime, uploadAttachment } from './attachments';
@@ -71,9 +73,26 @@ export interface QueuedMessage {
  * is a backstop for whatever else could hang, and the lane never waits on one call for ever. */
 export const DELIVER_STAGE_MS = 3 * API_TIMEOUT_MS;
 
-/** `work` as a stage of a try: an ApiTimeoutError if it takes longer than DELIVER_STAGE_MS. `sent` says whether it could have been acted on (a POST). */
-function stage<T>(work: Promise<T>, sent: boolean): Promise<T> {
-  return withTimeout(work, sent, DELIVER_STAGE_MS);
+/** `work` as a stage of a try: an ApiTimeoutError if it takes longer than `ms` (DELIVER_STAGE_MS). `sent` says whether it could have been acted on (a POST). */
+function stage<T>(work: Promise<T>, sent: boolean, ms = DELIVER_STAGE_MS): Promise<T> {
+  return withTimeout(work, sent, ms);
+}
+
+/** One file's upload as a stage of a try (mw-o14xubc): the time its size is given on the slowest uplink (requestTimeoutMs), and the
+ * challenge and the answer's read on top; one that still runs out is thrown as an ApiTimeoutError naming the file, so the row says
+ * what did not finish. */
+async function uploadStage(file: QueuedFile, options: DeliverOptions): Promise<Attachment> {
+  const bytes = unpackBytes(file.data);
+  try {
+    return await stage(uploadAttachment({ bytes, mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }), false, requestTimeoutMs(bytes.length) + 2 * API_TIMEOUT_MS);
+  } catch (err) {
+    if (err instanceof ApiTimeoutError) {
+      const timedOut = new ApiTimeoutError(false);
+      timedOut.message = `The upload of ${file.name} did not finish in time.`;
+      throw timedOut;
+    }
+    throw err;
+  }
 }
 
 /** How long acked rows are kept before they are forgotten. */
@@ -144,7 +163,7 @@ async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions): Promi
   const kept = row.payload.uploaded as Attachment[] | Attachment | undefined;
   const uploaded = Array.isArray(kept) ? [...kept] : kept ? [kept] : [];
   for (const file of files.slice(uploaded.length)) {
-    uploaded.push(await stage(uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }), false));
+    uploaded.push(await uploadStage(file, options));
     await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
   }
   return stage(deliverTurn({ ...turn, ...(uploaded.length === 1 ? { attachment: uploaded[0] } : { attachments: uploaded }) }, options), true);
@@ -155,7 +174,7 @@ async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<
   const message = row.payload as unknown as QueuedMessage;
   const uploaded = [...(message.uploaded ?? [])];
   for (const file of message.files.slice(uploaded.length)) {
-    uploaded.push(await stage(uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }), false));
+    uploaded.push(await uploadStage(file, options));
     await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
   }
   return stage(deliverThreaded({ thread: message.thread, text: message.text, attachments: uploaded, re: message.re }, options), true);

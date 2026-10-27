@@ -493,6 +493,35 @@ and `re`:
 - A list preview reads one file as its own label, two or more images as
   `2 images`, any other mix as `3 files`, then ` · caption`.
 
+### A message in parts
+
+`mw-fjpe9tx`: a record's payload may not pass 10,240 bytes (spell-forge-bsv's
+`encodeRecordScript` throws past it, on the sender, before any request). A
+message whose plaintext is over 7,200 bytes (about 10,010 bytes of payload once
+sealed, base64'd and enveloped) goes as several records, as a long Talk turn does
+(§20), none cut:
+
+```json
+{ "thread": { "topic": "week" }, "text": "<the first 7,000 bytes or so>", "re": "<txid>", "split": "<id>", "part": 1, "parts": 3 }
+{ "thread": { "topic": "week" }, "text": "<the next>", "split": "<id>", "part": 2, "parts": 3 }
+```
+
+- `split` is the same on every part of one message (the phone writes its outbox
+  row's client id); `part` is 1-based, `parts` the count (at least 2), and
+  `1 <= part <= parts`. A message of one record has none of the three, and is
+  unchanged on the wire (bare text when it was).
+- Every part carries the message's `thread`, so each lands in it. Part 1 alone
+  carries `attachment` / `attachments`, `re` and `role`.
+- The records are sent in order, part 1 first, each its own direct post under its
+  own client id (the row's, then `-` and the part's number). **The parts' texts
+  joined, in order and with nothing added, are exactly what he wrote.**
+- A reader joins the records of one `split` from one sender by `part` into one
+  message where part 1 stands (its txid is the message's), and names any part not
+  yet here at the end of the text: `Missing part 2 of 3.`
+- A plaintext that is not a message (an answer, an action) and is over the cap
+  is not sent at all: the phone refuses it in plain words (`Too long to send`)
+  and does not try it again.
+
 ## 9. Direct delivery (the live channel)
 
 The Governor's 2026-09-28 overhaul (vault `plans/0021-cockpit-plan.md`, decision 5):

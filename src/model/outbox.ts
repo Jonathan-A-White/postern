@@ -77,9 +77,10 @@ export const HELD_BY_REFUSED_LINE = 'Waiting on an earlier turn that was refused
 export const HELD_BY_CHAIN_LINE = 'Waiting on an earlier turn to be seen';
 export const WAITING_FOR_KEY_LINE = "Waiting for the Mayor's key before sending";
 
-/** The one line the status line shows, or undefined for none. `reachable` is whether the phone reaches the backend (the live
- * status is live or polling): then a row is never said to wait for the phone to be back online, and the line names what holds
- * it, from the row's own state: a refused row (Retry or Discard), a turn waiting on an earlier one, the wait before the next
+/** The one line the status line shows, or undefined for none. `reachable` is whether the phone reaches the backend (live.ts's
+ * backendReachable: the stream is open, it is polled, or the backend answers its syncs and probes though the stream is down,
+ * mw-j4usch0): then a row is never said to wait for the phone to be back online, and the line names what holds it, from the
+ * row's own state: a refused row (Retry or Discard), a turn waiting on an earlier one, the wait before the next
  * try, a try under way, the key still unknown. Out of reach, a row whose first try has failed says it will go when back online. */
 export function outboxLine(rows: OutboxRow[], now: number, reachable: boolean): string | undefined {
   if (!reachable) return anyPending(rows) ? SENDING_WHEN_BACK : undefined;

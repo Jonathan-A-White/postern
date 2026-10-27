@@ -58,6 +58,11 @@ export interface LiveState {
   /** How many message syncs have finished, whether they worked or not; a screen
    * waiting for a message to arrive counts these rather than a clock. */
   syncs: number;
+  /** Whether the backend answered the last call made to it (a sync, a probe, the stream's opening), whatever the
+   * stream is doing now: false once a call to it has failed (mw-j4usch0). */
+  reached?: boolean;
+  /** How many calls to the backend (a sync, a probe) have been answered this session: the outbox tries its rows on each. */
+  answered?: number;
 }
 
 const POLL_MS = 20_000;
@@ -175,6 +180,20 @@ export function useLive(): LiveState {
   return useSyncExternalStore(subscribeLive, getLiveState, getLiveState);
 }
 
+/** Whether the phone reaches the backend now: the stream is open, or it is polled, or the stream is down but the
+ * last call made to the backend (a sync, a probe) was answered (mw-j4usch0). Then nothing waits to be back online. */
+export function backendReachable(live: LiveState): boolean {
+  if (live.status === 'live' || live.status === 'polling') return true;
+  return (live.status === 'reconnecting' || live.status === 'connecting') && live.reached === true;
+}
+
+/** The backend answered a call (a sync, a probe): the phone reaches it, whatever the stream is doing. A status of
+ * offline is wrong from here on, so it reads reconnecting until the stream opens or a call fails again (mw-j4usch0). */
+function noteAnswered(patch: Partial<LiveState> = {}): void {
+  const lifted = current !== null && state.status === 'offline' && hasFeature('events') ? { status: 'reconnecting' as const } : {};
+  setState({ ...patch, ...lifted, lastHeard: Date.now(), reached: true, answered: (state.answered ?? 0) + 1 });
+}
+
 export function hasFeature(feature: Me['features'][number]): boolean {
   return state.me?.features.includes(feature) ?? false;
 }
@@ -186,10 +205,14 @@ export function deliverOptions(key: Uint8Array | null): DeliverOptions | null {
 }
 
 /** A call to the backend got no answer (it timed out, or the connection failed): whatever the stream last said, the
- * line is not live. It reads reconnecting at once and a new stream is tried. */
+ * line is not live, and the backend is no longer taken as reached. A live line reads reconnecting at once and a new stream is tried. */
 export function noteBackendUnreachable(): void {
-  if (!current || state.status !== 'live') return;
-  setState({ status: 'reconnecting', error: 'The backend did not answer.' });
+  if (!current) return;
+  if (state.status !== 'live') {
+    if (state.reached) setState({ reached: false });
+    return;
+  }
+  setState({ status: 'reconnecting', reached: false, error: 'The backend did not answer.' });
   current.interrupt?.abort();
 }
 
@@ -273,10 +296,10 @@ async function syncAll(key: Uint8Array, what: { messages?: boolean; view?: ViewW
     if (signal.aborted) return; // cut off: the queue has gone on, and said so
     ok = errors.length === 0;
     const syncs = what.messages ? state.syncs + 1 : state.syncs;
-    if (ok) setState({ lastHeard: Date.now(), error: undefined, syncs });
-    else setState({ error: errors.join('; '), syncs });
+    if (ok) noteAnswered({ error: undefined, syncs });
+    else setState({ error: errors.join('; '), syncs, reached: false });
   });
-  if (!finished && current === session) setState({ error: SYNC_CUT_OFF, syncs: what.messages ? state.syncs + 1 : state.syncs });
+  if (!finished && current === session) setState({ error: SYNC_CUT_OFF, syncs: what.messages ? state.syncs + 1 : state.syncs, reached: false });
   return ok;
 }
 
@@ -334,7 +357,7 @@ async function listen(key: Uint8Array, signal: AbortSignal): Promise<void> {
   const response = await apiFetch('/events', { headers: { Accept: 'text/event-stream' }, signal }, { unlockedKey: key });
   if (!response.ok || !response.body) throw new Error(`The event stream answered ${response.status}.`);
   const recovered = state.status === 'reconnecting' || state.status === 'offline';
-  setState({ status: 'live', lastHeard: Date.now(), error: undefined });
+  setState({ status: 'live', lastHeard: Date.now(), error: undefined, reached: true });
   if (recovered) noteReconnect();
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   // A link that dies without a word never ends the stream: when it has pinged nothing for STREAM_STALE_MS
@@ -417,7 +440,7 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
         setState({ status: 'unlicensed', me: null, error: err.message });
         return false;
       }
-      setState({ status: 'offline', error: err instanceof Error ? err.message : String(err) });
+      setState({ status: 'offline', reached: false, error: err instanceof Error ? err.message : String(err) });
     }
     if (signal.aborted) return false;
     let keys: Awaited<ReturnType<typeof reconcileMayorKey>>;
@@ -464,8 +487,9 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
         }
         // A dropped stream is usually a blip (a suspended phone, a network
         // change): say 'reconnecting', and 'offline' only once a reconnect and
-        // the sync after the drop have both failed.
-        setState({ status: recoverySyncFailed ? 'offline' : 'reconnecting', error: err instanceof Error ? err.message : String(err) });
+        // the sync after the drop have both failed, and nothing the backend was
+        // asked since (a return's sync, a probe) has been answered (mw-j4usch0).
+        setState({ status: recoverySyncFailed && !state.reached ? 'offline' : 'reconnecting', error: err instanceof Error ? err.message : String(err) });
       }
       await sleep(backoff, wake);
       backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
@@ -507,7 +531,7 @@ export function stopLive(): void {
   resetViewThrottle(); // a fetch waiting for the window would use a session that has ended
   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibilityChange);
   if (typeof window !== 'undefined') window.removeEventListener('pageshow', onForeground);
-  setState({ status: 'idle' });
+  setState({ status: 'idle', reached: false });
 }
 
 function onVisibilityChange(): void {
@@ -545,6 +569,8 @@ async function probeHome(key: Uint8Array): Promise<void> {
   try {
     const response = await apiFetch('/view?why=probe', { headers: { 'If-None-Match': '*' } }, { unlockedKey: key });
     void response.body?.cancel().catch(() => undefined);
+    // An answered probe is the backend reached, though the stream may be down: what he sent goes now (mw-j4usch0).
+    if ((response.ok || response.status === 304) && current?.key === key) noteAnswered();
   } catch {
     // the sync reports an unreachable backend
   }

@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { OutboxRow } from '../../src/data/db';
 import { CHAIN_HOLD_MS, SENDING_WHEN_BACK, outboxLine } from '../../src/model/outbox';
+import { backendReachable, type LiveState } from '../../src/services/live';
 
 const NOW = 1_000_000;
 
@@ -63,5 +64,29 @@ describe('the status line while the backend is out of reach', () => {
   it('says nothing for a row not yet tried, or a refused one', () => {
     expect(outboxLine([row({})], NOW, false)).toBeUndefined();
     expect(outboxLine([row({ state: 'failed', attempts: 1 })], NOW, false)).toBeUndefined();
+  });
+});
+
+describe('what the status line takes for reached (mw-j4usch0 AC-4)', () => {
+  const live = (over: Partial<LiveState>): LiveState => ({ status: 'live', me: null, reconnects: 0, syncs: 0, ...over });
+
+  it('is the stream open, or polling', () => {
+    expect(backendReachable(live({ status: 'live' }))).toBe(true);
+    expect(backendReachable(live({ status: 'polling' }))).toBe(true);
+  });
+
+  it('is a stream that is down while the backend answers its syncs and probes', () => {
+    expect(backendReachable(live({ status: 'reconnecting', reached: true }))).toBe(true);
+    expect(backendReachable(live({ status: 'connecting', reached: true }))).toBe(true);
+    // The line then counts down to the next try, not 'Sending when back online'.
+    expect(outboxLine([row({ attempts: 6, nextAt: NOW + 60_000 })], NOW, backendReachable(live({ status: 'reconnecting', reached: true })))).toBe('Retrying in 60 s');
+  });
+
+  it('is not a stream that is down while nothing the backend was asked has been answered', () => {
+    expect(backendReachable(live({ status: 'reconnecting' }))).toBe(false);
+    expect(backendReachable(live({ status: 'reconnecting', reached: false }))).toBe(false);
+    expect(backendReachable(live({ status: 'offline' }))).toBe(false);
+    expect(backendReachable(live({ status: 'idle', reached: true }))).toBe(false);
+    expect(backendReachable(live({ status: 'unlicensed', reached: true }))).toBe(false);
   });
 });

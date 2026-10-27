@@ -30,7 +30,7 @@ import { deliverCallRequest } from './call';
 import { backendReachable, getLiveState, deliverOptions, subscribeLive } from './live';
 import { getKey, onKeyChange } from './keySession';
 import { deliverTurn } from './talk';
-import type { Attachment, ThreadRef } from './threads';
+import { messageRecords, type Attachment, type ThreadedBody, type ThreadRef } from './threads';
 
 /** A file waiting to go with a message: stored whole, as base64 text (so no browser or test realm can lose its bytes), uploaded when its turn comes. */
 export interface QueuedFile {
@@ -65,6 +65,8 @@ export interface QueuedMessage {
   settles?: string;
   /** Files already uploaded by an earlier try, in order, so a retry does not upload them again. */
   uploaded?: Attachment[];
+  /** The parts of a message too long for one record that have gone, in order, so a retry goes on from the next (mw-fjpe9tx). */
+  sentParts?: Delivered[];
 }
 
 /** The longest one stage of a try (one file's upload, or the message's delivery) may run before the sender gives up on it
@@ -169,15 +171,37 @@ async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions): Promi
   return stage(deliverTurn({ ...turn, ...(uploaded.length === 1 ? { attachment: uploaded[0] } : { attachments: uploaded }) }, options), true);
 }
 
-/** Uploads the message's files that are not up yet (docs/protocol.md §8), then delivers it as ONE message. */
+/**
+ * Uploads the message's files that are not up yet (docs/protocol.md §8), then delivers it as ONE message: one record, or when
+ * its words are too long for one, its parts in order (*A message in parts*, mw-fjpe9tx), whatever build queued the row. Each
+ * part goes under its own client id (the row's, then '-' and its number) and is kept on the row once it has gone, so a retry
+ * sends only the parts still to go. The message is part 1: its txid is the row's.
+ */
 async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
   const message = row.payload as unknown as QueuedMessage;
+  let payload = row.payload;
   const uploaded = [...(message.uploaded ?? [])];
   for (const file of message.files.slice(uploaded.length)) {
     uploaded.push(await uploadStage(file, options));
-    await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
+    payload = { ...payload, uploaded };
+    await outboxRepo.update(row.id as number, { payload });
   }
-  return stage(deliverThreaded({ thread: message.thread, text: message.text, attachments: uploaded, re: message.re }, options), true);
+  const clientId = options.clientId ?? newClientId();
+  let records: ThreadedBody[];
+  try {
+    records = messageRecords({ thread: message.thread, text: message.text, attachments: uploaded, re: message.re }, clientId);
+  } catch (err) {
+    // No way to send it can ever work: refused for good, so it waits for Discard and is not tried every minute.
+    throw new RefusedError(thrownWords(err), 413);
+  }
+  if (records.length === 1) return stage(deliverThreaded(records[0], options), true);
+  const sent = [...(message.sentParts ?? [])];
+  for (const record of records.slice(sent.length)) {
+    sent.push(await stage(deliverThreaded(record, { ...options, clientId: `${clientId}-${record.part}` }), true));
+    payload = { ...payload, sentParts: sent };
+    await outboxRepo.update(row.id as number, { payload });
+  }
+  return sent[0];
 }
 
 /** What the phone remembers of a delivered answer, action or message that settles one: the card it settles leaves the queue at once. */

@@ -6,6 +6,8 @@
 // a `thread` field, or the plaintext isn't this shape at all, it's the general
 // thread.
 import { decodeQuestion, decodeReply } from './questions';
+import { RECORD_PLAINTEXT_MAX_BYTES } from './recordCap';
+import { splitText } from '../model/talkLine';
 import type { MessageClass } from '../data/db';
 
 export type ThreadRef = { bead: string } | { topic: string };
@@ -32,6 +34,11 @@ export interface ThreadedBody {
   /** docs/protocol.md §14: "transcript" marks the text as what the Mayor's host
    * heard in the voice note `re` names. */
   role?: string;
+  /** docs/protocol.md §8, *A message in parts*: one message too long for one record goes as several, each naming the
+   * same `split` (the outbox row's client id), its `part` (1-based) and the count, `parts`. Absent on a message of one record. */
+  split?: string;
+  part?: number;
+  parts?: number;
 }
 
 function isThreadRef(value: unknown): value is ThreadRef {
@@ -72,7 +79,7 @@ export function attachmentsOf(body: Pick<ThreadedBody, 'attachment' | 'attachmen
 export function encodeThreadedMessage(body: ThreadedBody): string {
   const files = attachmentsOf(body);
   // A `re` is only ever read from the JSON shape, so a message that carries one is never bare text.
-  if (body.thread === undefined && files.length === 0 && body.re === undefined) return body.text;
+  if (body.thread === undefined && files.length === 0 && body.re === undefined && body.split === undefined) return body.text;
   return JSON.stringify({
     ...(body.thread !== undefined ? { thread: body.thread } : {}),
     text: body.text,
@@ -80,7 +87,40 @@ export function encodeThreadedMessage(body: ThreadedBody): string {
     ...(files.length > 1 ? { attachments: files } : {}),
     ...(body.re !== undefined ? { re: body.re } : {}),
     ...(body.role !== undefined ? { role: body.role } : {}),
+    ...(body.split !== undefined ? { split: body.split, part: body.part, parts: body.parts } : {}),
   });
+}
+
+/** The bytes `text` takes as UTF-8. */
+function utf8Bytes(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/** Room kept in a part's own fields for its `part` and `parts` (written with a placeholder of three digits each). */
+const PART_PLACEHOLDER = 999;
+
+/**
+ * The records a message goes as (docs/protocol.md §8, *A message in parts*): itself when its plaintext fits one record
+ * (RECORD_PLAINTEXT_MAX_BYTES), otherwise several naming `split`, in order, none cut: the texts joined are its text.
+ * Part 1 carries its files, `re` and `role`; every part carries its thread, so each lands in the same thread. A message
+ * whose part 1 has no room for any words (its own fields fill the record) cannot be sent, and throws.
+ */
+export function messageRecords(body: ThreadedBody, split: string): ThreadedBody[] {
+  if (utf8Bytes(encodeThreadedMessage(body)) <= RECORD_PLAINTEXT_MAX_BYTES) return [body];
+  const thread = body.thread !== undefined ? { thread: body.thread } : {};
+  const room = (fields: ThreadedBody) => RECORD_PLAINTEXT_MAX_BYTES - utf8Bytes(encodeThreadedMessage({ ...fields, text: '', split, part: PART_PLACEHOLDER, parts: PART_PLACEHOLDER }));
+  const firstMax = room(body);
+  if (firstMax < 1) throw new Error(`This message's files and fields alone are over the ${RECORD_PLAINTEXT_MAX_BYTES}-byte record: send fewer files at once.`);
+  const pieces = splitText(body.text, firstMax, room({ ...thread, text: '' }));
+  return pieces.map((text, index) => ({ ...(index === 0 ? body : thread), text, split, part: index + 1, parts: pieces.length }));
+}
+
+/** The `split`, `part` and `parts` of a plaintext's fields, when all three are well formed (1 <= part <= parts, parts >= 2). */
+function readSplit(candidate: Record<string, unknown>): Pick<ThreadedBody, 'split' | 'part' | 'parts'> | undefined {
+  const { split, part, parts } = candidate;
+  if (typeof split !== 'string' || split === '' || !Number.isInteger(part) || !Number.isInteger(parts)) return undefined;
+  if ((parts as number) < 2 || (part as number) < 1 || (part as number) > (parts as number)) return undefined;
+  return { split, part: part as number, parts: parts as number };
 }
 
 /** Decodes a decrypted plaintext into its thread (if any), attachment or
@@ -104,7 +144,8 @@ export function decodeThreadedMessage(text: string): ThreadedBody {
   // docs/protocol.md §14: a transcript on the general thread carries only text,
   // `re` and `role` — still this shape, never plain text.
   const annotates = typeof candidate.re === 'string' || typeof candidate.role === 'string';
-  if (!hasThread && !hasAttachment && !hasAttachments && !annotates) return { text };
+  const split = readSplit(candidate);
+  if (!hasThread && !hasAttachment && !hasAttachments && !annotates && !split) return { text };
   if (hasThread && !isThreadRef(candidate.thread)) return { text };
   if (hasAttachment && !isAttachment(candidate.attachment)) return { text };
   if (hasAttachments && !isAttachmentList(candidate.attachments)) return { text };
@@ -114,6 +155,7 @@ export function decodeThreadedMessage(text: string): ThreadedBody {
     ...(hasAttachments ? { attachments: candidate.attachments as Attachment[] } : hasAttachment ? { attachment: candidate.attachment as Attachment } : {}),
     ...(typeof candidate.re === 'string' ? { re: candidate.re } : {}),
     ...(typeof candidate.role === 'string' ? { role: candidate.role } : {}),
+    ...split,
   };
 }
 

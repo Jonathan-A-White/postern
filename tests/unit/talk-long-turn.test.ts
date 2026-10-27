@@ -33,8 +33,8 @@ describe('a long turn is delivered, never refused', () => {
 
   const turnWith = (text: string): TalkTurn => ({ talk: { id: crypto.randomUUID(), turn: 12 }, text, role: 'turn', model: 'fable', cut: true });
 
-  it('a turn spoken over the old limit is refused by the record encoder', async () => {
-    await expect(post(turnWith(words(2000)))).rejects.toThrow(/over the 10240-byte cap/);
+  it('a turn spoken over the old limit, sent as one record, is refused on the phone before the record encoder (mw-fjpe9tx)', async () => {
+    await expect(post(turnWith(words(2000)))).rejects.toThrow(/^Too long to send: \d+ bytes, and one record takes 10240\.$/);
   });
 
   it('a 2,000-word turn goes as parts that each go out and read back, joined to what he said', async () => {

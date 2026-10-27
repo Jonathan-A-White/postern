@@ -15,7 +15,8 @@ import { encryptMessage, type MessageClass } from './messages';
 import { chain, type ChainVia } from '../chain';
 import { readErrorMessage } from './errorMessage';
 import { encodeReply } from './questions';
-import { encodeThreadedMessage, threadKey, threadOf, type Attachment, type ThreadRef } from './threads';
+import { encodeThreadedMessage, threadKey, threadOf, type ThreadedBody } from './threads';
+import { RECORD_PAYLOAD_MAX_BYTES } from './recordCap';
 import { messagesRepo } from '../data/repositories';
 import type { GovernorAction } from '../model/conversation';
 import type { HomeHost } from './standby';
@@ -109,6 +110,13 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
   if (!options.mayorKey) throw new Error("The Mayor's key is not known yet — connect to the backend once first.");
   const senderPrivateKeyHex = Utils.toHex(Array.from(options.key));
   const payload = encryptMessage({ text: plaintext, class: messageClass, senderPrivateKeyHex, recipientPublicKeyHex: options.mayorKey });
+  // A record over the cap is never tried (mw-fjpe9tx): encodeRecordScript would throw on every road, every try, for ever. It is
+  // refused for good, in plain words, so its row waits for Discard and the rows behind it go on. A message never gets here
+  // too long: it goes as several records (threads.ts messageRecords).
+  const payloadBytes = Utils.toArray(JSON.stringify(payload), 'utf8').length;
+  if (payloadBytes > RECORD_PAYLOAD_MAX_BYTES) {
+    throw new RefusedError(`Too long to send: ${payloadBytes} bytes, and one record takes ${RECORD_PAYLOAD_MAX_BYTES}.`, 413);
+  }
 
   // A text post of any class (docs/protocol.md §21) goes on chain when the phone knows the backend
   // cannot be reached; one with a file waits for the backend as before. A direct post that fails is
@@ -147,13 +155,8 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
   return delivered;
 }
 
-export interface ThreadedMessage {
-  thread?: ThreadRef;
-  text: string;
-  attachment?: Attachment;
-  attachments?: Attachment[];
-  re?: string;
-}
+/** A message as it goes: one record of it, a part when it goes in parts (docs/protocol.md §8). */
+export type ThreadedMessage = ThreadedBody;
 
 export function deliverThreaded(message: ThreadedMessage, options: DeliverOptions): Promise<Delivered> {
   const carriesFiles = message.attachment !== undefined || (message.attachments?.length ?? 0) > 0;

@@ -4,6 +4,7 @@ What changed in each version of Postern, newest first. The app shows the same li
 
 ## 0.8.58
 _2026-10-27_
+- Fixed: a picture that takes longer than 30 seconds to upload on a weak signal is now given the time it needs instead of being cut off and tried again for ever, and a message that keeps failing says why and no longer holds the messages after it.
 - Fixed: a picture that takes longer than 30 seconds to upload on a weak signal is now given the time it needs instead of being cut off and tried again for ever; a message that keeps failing to send no longer holds the messages after it, and never hides why: the line under the top bar says the reason after the countdown, and a tap on a message's pending mark shows it with Retry now and Discard.
 
 ## 0.8.57

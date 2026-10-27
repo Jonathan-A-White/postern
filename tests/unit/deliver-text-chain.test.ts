@@ -1,4 +1,5 @@
-// A typed post goes on chain when the backend is down; a picture waits (docs/protocol.md §21).
+// A typed post goes on chain when the phone knows the backend is down (the live status is offline); a picture waits
+// (docs/protocol.md §21). A direct post that fails is thrown with its reason, never put on chain in the same try (mw-o14xubc).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { deliver, deliverThreaded, settledWrites } from '../../src/services/deliver';
@@ -32,14 +33,16 @@ describe('a typed post while the backend is down', () => {
     expect(itemFromMessage(row).onChain).toBe(true);
   });
 
-  it('goes on chain when its direct post fails on a network error', async () => {
+  it('is not put on chain in the same try when its direct post fails on a network error: the failure is thrown, and the live status told (mw-o14xubc)', async () => {
     const down = backendDownWoc();
-    const delivered = await deliver('hello', 'message', { ...base, fetchImpl: down.fetchImpl });
-    expect(delivered.channel).toBe('chain');
-    expect(down.broadcasts).toHaveLength(1);
+    const onUnreachable = vi.fn();
+    await expect(deliver('hello', 'message', { ...base, fetchImpl: down.fetchImpl, onUnreachable })).rejects.toThrow(TypeError);
+    expect(onUnreachable).toHaveBeenCalledTimes(1);
+    expect(down.broadcasts).toHaveLength(0);
+    expect(down.wocCalls).toEqual([]);
   });
 
-  it('goes on chain after a gateway error, but a refusal in the backend\'s own words still fails', async () => {
+  it('throws a gateway error as it came, and a refusal in the backend\'s own words still fails', async () => {
     const down = backendDownWoc();
     let status = 502;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -48,10 +51,10 @@ describe('a typed post while the backend is down', () => {
       if (url.endsWith('/messages')) return new Response(JSON.stringify({ error: 'bad gateway' }), { status });
       return down.fetchImpl(input, init);
     }) as unknown as typeof fetch;
-    expect((await deliver('hello', 'message', { ...base, fetchImpl })).channel).toBe('chain');
+    await expect(deliver('hello', 'message', { ...base, fetchImpl })).rejects.toThrow('bad gateway');
     status = 400;
     await expect(deliver('hello again', 'message', { ...base, fetchImpl })).rejects.toThrow('bad gateway');
-    expect(down.broadcasts).toHaveLength(1);
+    expect(down.broadcasts).toHaveLength(0);
   });
 
   it('is not sent on chain when it carries a picture, offline or not', async () => {

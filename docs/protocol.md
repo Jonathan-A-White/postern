@@ -1831,13 +1831,17 @@ chain**: the file goes up through the backend (§8), so the post waits in the ph
 and goes the usual way once the backend answers:
 
 - **When.** The live status is `offline` (the phone already knows; it then skips the direct
-  post), or the `POST /api/messages` of §9 fails as a network failure: no connection, no
-  answer within the API timeout, no sign-in code from `GET /api/challenge`, or a 502, 503
-  or 504 from the gateway in front of the backend. A 404 or 405 (a backend without direct
-  delivery) keeps today's rule for every class: the funded transaction goes through the
-  backend's own `/api/utxos` and `/api/broadcast`. A refusal in the backend's own words (any
-  other 4xx) is final for every class and is not retried on chain. A post with a file waits
-  in the outbox on a network failure and is tried again.
+  post): nothing the backend was asked has been answered since the stream dropped and its
+  reconnect and sync failed (§10, mw-j4usch0). A `POST /api/messages` of §9 that fails as a
+  network failure (no connection, no answer within the API timeout, no sign-in code from
+  `GET /api/challenge`, or a 502, 503 or 504 from the gateway in front of the backend) is
+  **not** put on chain in the same try (mw-o14xubc): the row keeps the failure's words and
+  waits its retry; the live status, told the backend was not reached, decides the next
+  try's road. So while the backend answers, a typed post goes to it or says why not. A 404
+  or 405 (a backend without direct delivery) keeps today's rule for every class: the funded
+  transaction goes through the backend's own `/api/utxos` and `/api/broadcast`. A refusal in
+  the backend's own words (any other 4xx) is final for every class and is not retried on
+  chain. A post with a file waits in the outbox on a network failure and is tried again.
 - **How.** The same §4 transaction to the same §3 anchor address: output 0 the record,
   output 1 the 1-sat anchor payment, output 2 change. Its coins come from WhatsOnChain's
   `GET <provider>/address/<address>/unspent` (a bare list of `tx_hash`, `tx_pos`, `value`,
@@ -2033,7 +2037,12 @@ accepted, still ask for it. Every ask says why, `GET /api/view?why=<reason>`: `s
 session's first, or its retry), `hello` (the first stream naming another view), `reconnect` (a
 later one), `gap`, `unapplied`, `behind`, `card`, `view-event`, `poll` (a backend without events),
 `refresh` (a tap), `focus` (the Map), `mayor-key` or `probe` (the bodiless return-to-the-app ask
-above); the backend writes it on the request's log line (docs/api.md).
+above); the backend writes it on the request's log line (docs/api.md). The outbox borrows the
+bodiless ask to report a row that keeps failing on the phone (mw-o14xubc): after its third failed
+try, and then at most once an hour, `why=outbox-<kind>-<reason>` (`outbox-message-lost`: the
+kind is the row's, the reason `lost` for a cut connection, `timeout`, `gateway`, `http<status>`,
+`woc` for a busy provider, `nocoins`, or `thrown` for anything else), so the Mayor can read from
+the journal that the phone holds a row it cannot send, and why.
 
 `mw-ev7oyy.37`. A new bead's event (`bead_changed` from `""`, or a reopen of a bead the copy does
 not hold) carries no title, labels or parent, so the phone fetches that one bead's detail (§12,

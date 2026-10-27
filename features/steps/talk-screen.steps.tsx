@@ -1855,20 +1855,22 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   });
 
   // mw-a0ih0.4: Call me with the backend out of reach goes on chain.
-  Scenario('AC-3: Call me while the backend is unreachable goes on chain and the screen says Sent on chain (mw-a0ih0.4)', ({ Given, When, Then, And }) => {
+  Scenario('AC-3: Call me while the phone knows the backend is unreachable goes on chain and the screen says Sent on chain (mw-a0ih0.4, the phone must know it since mw-o14xubc)', ({ Given, When, Then, And }) => {
     let down: BackendDownWoc;
     Given('the time is 14:05 and the Talk line is open with a believable speech recogniser', async () => {
       clock.at = at1405 * 1000;
       await lineOpen();
       setKey(new Uint8Array(32));
     });
-    And('the backend cannot be reached and WhatsOnChain lists one coin', () => {
+    And('the phone knows the backend cannot be reached and WhatsOnChain lists one coin', () => {
       down = backendDownWoc();
       sendCallRequest.mockImplementation((text: string, at: number) =>
         deliverCallRequest(text, at, {
           key: new Uint8Array(Utils.toArray('45'.repeat(32), 'hex')),
           mayorKey: PrivateKey.fromHex('77'.repeat(32)).toPublicKey().toString(),
           direct: true,
+          // The live status reads offline: since mw-o14xubc the chain road is taken only then, never on a failed post.
+          offline: true,
           fetchImpl: down.fetchImpl,
         }),
       );

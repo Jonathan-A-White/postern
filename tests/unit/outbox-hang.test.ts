@@ -83,7 +83,7 @@ describe('a deliver that never settles', () => {
     backend.chain = chain;
     const id = await enqueue({ kind: 'message', payload: { text: 'Is the deploy done?', files: [] } });
     await letStorageRun();
-    // The POST goes unanswered (30 s), then the typed post tries the chain, which goes unanswered too.
+    // The POST goes unanswered (30 s) and the try ends there: since mw-o14xubc a failed direct post is not put on the chain in the same try.
     await pass(API_TIMEOUT_MS * 6);
     const tried = await db.outbox.get(id);
     expect(tried).toMatchObject({ state: 'pending' });

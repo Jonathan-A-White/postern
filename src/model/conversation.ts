@@ -10,6 +10,7 @@ import { decodeQuestion, decodeReply, type QuestionBody } from '../services/ques
 import { attachmentsOf, decodeThreadedMessage, type Attachment } from '../services/threads';
 import type { BeadComment } from './view';
 import { twinsToDrop } from './twins';
+import { joinMessageParts } from './messageParts';
 
 /** 'factory' is mw itself on a host (a comment by mw@<host>: a hands step's RAN line, a claim), never a Builder. */
 export type Speaker = 'you' | 'mayor' | 'builder' | 'factory' | 'other';
@@ -269,7 +270,8 @@ export function speakerOfComment(author: string): { speaker: Speaker; label: str
 export function mergeConversation(allRows: MessageRow[], comments: BeadComment[] = []): ConversationItem[] {
   // A reply that arrived both direct and on chain is one message: the direct copy is kept (mw-f758y.40).
   const twins = new Set(twinsToDrop(allRows));
-  const rows = twins.size > 0 ? allRows.filter((row) => !twins.has(row)) : allRows;
+  // A message that went in parts is one message, its text whole (mw-fjpe9tx).
+  const rows = joinMessageParts(twins.size > 0 ? allRows.filter((row) => !twins.has(row)) : allRows);
   const decoded = rows.map(itemFromMessage);
   const transcripts = new Map<string, string>();
   const items: ConversationItem[] = [];
@@ -286,7 +288,8 @@ export function mergeConversation(allRows: MessageRow[], comments: BeadComment[]
   }
 
   const known = new Set(allRows.map((row) => row.txid.toLowerCase()));
-  const sentAt = new Set(rows.map((row) => row.ts));
+  // Every part of a message in parts has its own ts: the hook's comment may name any of them.
+  const sentAt = new Set(allRows.map((row) => row.ts));
   const answered = new Set(items.flatMap((item) => (item.re ? [item.re.toLowerCase()] : [])));
   comments.forEach((comment, index) => {
     const named = txidsIn(comment.text);

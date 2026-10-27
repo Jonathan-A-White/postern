@@ -3,7 +3,7 @@
 // the row's own state. Offline it still says so.
 import { describe, expect, it } from 'vitest';
 import type { OutboxRow } from '../../src/data/db';
-import { CHAIN_HOLD_MS, SENDING_WHEN_BACK, outboxLine } from '../../src/model/outbox';
+import { CHAIN_HOLD_MS, SENDING_WHEN_BACK, outboxLine, shortReason, shouldReportFailure, REPORT_AFTER_ATTEMPTS, REPORT_EVERY_MS } from '../../src/model/outbox';
 import { backendReachable, type LiveState } from '../../src/services/live';
 
 const NOW = 1_000_000;
@@ -24,6 +24,12 @@ describe('the status line while the backend is reached', () => {
   it('counts down to the next try of a row that failed', () => {
     expect(outboxLine([row({ attempts: 1, nextAt: NOW + 4_200 })], NOW, true)).toBe('Retrying in 5 s');
     expect(outboxLine([row({ attempts: 2, nextAt: NOW + 1_000 })], NOW, true)).toBe('Retrying in 1 s');
+  });
+
+  it('names what the last try failed on after the countdown, shortened to one line (mw-o14xubc)', () => {
+    expect(outboxLine([row({ attempts: 7, nextAt: NOW + 59_100, note: 'The connection was cut before the backend answered.' })], NOW, true)).toBe('Retrying in 60 s: The connection was cut before the backend answered');
+    const long = 'No spendable coins available — fund this wallet before sending a message.';
+    expect(outboxLine([row({ attempts: 2, nextAt: NOW + 3_000, note: long })], NOW, true)).toBe(`Retrying in 3 s: ${shortReason(long)}`);
   });
 
   it('says it is sending once the next try is due', () => {
@@ -88,5 +94,36 @@ describe('what the status line takes for reached (mw-j4usch0 AC-4)', () => {
     expect(backendReachable(live({ status: 'offline' }))).toBe(false);
     expect(backendReachable(live({ status: 'idle', reached: true }))).toBe(false);
     expect(backendReachable(live({ status: 'unlicensed', reached: true }))).toBe(false);
+  });
+});
+
+describe('shortReason (mw-o14xubc)', () => {
+  it('keeps a short sentence whole, without its full stop', () => {
+    expect(shortReason('The backend did not answer in time.')).toBe('The backend did not answer in time');
+    expect(shortReason('WhatsOnChain is busy, trying again…')).toBe('WhatsOnChain is busy, trying again…');
+  });
+
+  it('takes the first sentence of several', () => {
+    expect(shortReason('The upload failed. Try again in a minute.')).toBe('The upload failed');
+  });
+
+  it('cuts a long line at a word, with an ellipsis', () => {
+    const cut = shortReason('No spendable coins available — fund this wallet before sending a message.');
+    expect(cut.length).toBeLessThanOrEqual(61);
+    expect(cut.endsWith('…')).toBe(true);
+    expect(cut).toBe('No spendable coins available — fund this wallet before…');
+  });
+});
+
+describe('shouldReportFailure (mw-o14xubc)', () => {
+  it('reports after the third failed try, not before', () => {
+    expect(shouldReportFailure({ attempts: REPORT_AFTER_ATTEMPTS - 1 }, NOW)).toBe(false);
+    expect(shouldReportFailure({ attempts: REPORT_AFTER_ATTEMPTS }, NOW)).toBe(true);
+    expect(shouldReportFailure({ attempts: 40 }, NOW)).toBe(true);
+  });
+
+  it('reports a row at most once an hour', () => {
+    expect(shouldReportFailure({ attempts: 5, reportedAt: NOW - REPORT_EVERY_MS + 1 }, NOW)).toBe(false);
+    expect(shouldReportFailure({ attempts: 5, reportedAt: NOW - REPORT_EVERY_MS }, NOW)).toBe(true);
   });
 });

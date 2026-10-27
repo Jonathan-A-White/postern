@@ -2,9 +2,10 @@
 // tap, answer, message and talk turn is written to the Dexie outbox first and the caller goes
 // on at once; this sender takes the rows in order, one at a time, through services/deliver.ts
 // (direct, else on chain), and tries a failed one again after a growing wait. It resumes when
-// the app opens (a reload loses nothing), when the browser says it is online, and when the live
-// connection comes back. A sent row waits until its own record or event is seen coming back
-// (since-paging, or the `card_answered` event naming its txid) and is then acked.
+// the app opens (a reload loses nothing), and tries at once whenever the backend answers: the
+// stream opens, or a sync or probe is answered though the stream is down (mw-j4usch0). A sent
+// row waits until its own record or event is seen coming back (since-paging, or the
+// `card_answered` event naming its txid) and is then acked.
 // A 4xx the backend gives (other than 408 and 429) is final: the row is marked failed with the
 // backend's words (a provider's page made plain) and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
 // Talk turns are a lane of their own, so no upload or failing message holds one back; within the lane a turn never
@@ -21,7 +22,7 @@ import type { TalkTurn } from '../model/talkLine';
 import { attachmentMime, uploadAttachment } from './attachments';
 import { deliverAction, deliverAnswer, deliverThreaded, writeBehind, type Delivered, type DeliverOptions } from './deliver';
 import { deliverCallRequest } from './call';
-import { getLiveState, deliverOptions, subscribeLive } from './live';
+import { backendReachable, getLiveState, deliverOptions, subscribeLive } from './live';
 import { getKey, onKeyChange } from './keySession';
 import { deliverTurn } from './talk';
 import type { Attachment, ThreadRef } from './threads';
@@ -195,6 +196,8 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
     if (!row || mine !== generation) return;
     if (!force && row.nextAt !== undefined && row.nextAt > Date.now()) return wakeAt(lane, row.nextAt);
     force = false;
+    // A try ahead of its wait (he came back to the app, the backend answered) that fails leaves the wait as it was (mw-j4usch0).
+    const waitingUntil = row.nextAt !== undefined && row.nextAt > Date.now() ? row.nextAt : undefined;
     if (row.kind === 'turn') {
       // Turns reach the Mayor in the order he spoke them (mw-q6n8m0.12): one refused for good, or one that went on the chain and has not been seen yet, holds the turns after it.
       const held = turnHeldBy(await outboxRepo.turnsBefore(row.id as number), Date.now());
@@ -224,7 +227,7 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
       }
       // Out of reach or a passing trouble: the row keeps its place, and nothing behind it in its lane goes ahead of it.
       const attempts = row.attempts + 1;
-      const nextAt = Date.now() + retryDelay(attempts);
+      const nextAt = Math.min(Date.now() + retryDelay(attempts), waitingUntil ?? Infinity);
       // When the backend answered with trouble (a busy WhatsOnChain, a provider refusal) the row says so in one plain line; a lost connection says nothing more than pending.
       const note = err instanceof RefusedError || busyOf(err) ? waitingLine(err) : undefined;
       await outboxRepo.update(row.id as number, { attempts, nextAt, note });
@@ -284,15 +287,22 @@ export function startOutbox(): () => void {
   let live = getLiveState();
   const stopLive = subscribeLive(() => {
     const next = getLiveState();
-    const back = (next.status === 'live' || next.status === 'polling') && (live.status !== next.status || live.reconnects !== next.reconnects || live.syncs !== next.syncs);
+    // Whenever the backend answers (the stream opens, a sync or a probe is answered, though the stream be down) the
+    // rows are tried at once, not at the end of their wait (mw-j4usch0).
+    const back =
+      backendReachable(next) &&
+      (!backendReachable(live) || live.status !== next.status || live.reconnects !== next.reconnects || live.syncs !== next.syncs || live.answered !== next.answered);
     live = next;
     // Every sync also looks for the records that ack what was sent.
     kickOutbox(back);
   });
   const stopKey = onKeyChange(() => kickOutbox(true));
-  const online = () => kickOutbox(true);
+  // Back in the app, or the browser says it is online: tried at once when the backend is reached. Otherwise the status
+  // is what it was while the phone was away (offline would send a typed post to WhatsOnChain, not the backend): the
+  // probe or sync that follows tries them the moment it is answered, and until then each row keeps its wait (mw-j4usch0).
+  const online = () => kickOutbox(backendReachable(getLiveState()));
   const visible = () => {
-    if (typeof document === 'undefined' || !document.hidden) kickOutbox(true);
+    if (typeof document === 'undefined' || !document.hidden) kickOutbox(backendReachable(getLiveState()));
   };
   if (typeof window !== 'undefined') window.addEventListener('online', online);
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visible);

@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.57
+_2026-10-27_
+- Fixed: a message no longer sits at 'Sending when back online' after you come back to the app while Postern can reach home; it goes at once, and switching apps no longer restarts the countdown.
+
 ## 0.8.56
 _2026-10-27_
 - Fixed: a message that got stuck while the phone was online now gives up on a stalled try and sends again by itself, and the line under the top bar says what is really holding it.

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.59",
+    "date": "2026-10-27",
+    "story": "mw-fjpe9tx",
+    "kind": "fixed",
+    "text": "a very long message no longer gets stuck retrying every minute; it goes in several pieces and shows as one message."
+  },
+  {
     "version": "0.8.58",
     "date": "2026-10-27",
     "story": "mw-o14xubc",

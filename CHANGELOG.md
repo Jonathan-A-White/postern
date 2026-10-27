@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.56
+_2026-10-27_
+- Fixed: a message that got stuck while the phone was online now gives up on a stalled try and sends again by itself, and the line under the top bar says what is really holding it.
+
 ## 0.8.55
 _2026-10-25_
 - Fixed: on a narrow phone the speaker button on a Needs you card was cut off at the right edge; it now wraps below.

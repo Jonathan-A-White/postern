@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.56",
+    "date": "2026-10-27",
+    "story": "mw-gb92lmo",
+    "kind": "fixed",
+    "text": "a message that got stuck while the phone was online now gives up on a stalled try and sends again by itself, and the line under the top bar says what is really holding it."
+  },
+  {
     "version": "0.8.55",
     "date": "2026-10-25",
     "story": "mw-0bc564",

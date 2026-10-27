@@ -70,6 +70,27 @@ export function anyPending(rows: OutboxRow[]): boolean {
   return rows.some((row) => isPending(row) && row.attempts > 0);
 }
 
+/** How many failed tries a row has before the phone tells the backend's journal about it, and how often it says so again (mw-o14xubc). */
+export const REPORT_AFTER_ATTEMPTS = 3;
+export const REPORT_EVERY_MS = 60 * 60 * 1000;
+
+/** Whether a row that has just failed its `attempts`th try is reported to the backend now (mw-o14xubc): after REPORT_AFTER_ATTEMPTS tries, at most once a row every REPORT_EVERY_MS. */
+export function shouldReportFailure(row: Pick<OutboxRow, 'attempts' | 'reportedAt'>, now: number): boolean {
+  if (row.attempts < REPORT_AFTER_ATTEMPTS) return false;
+  return row.reportedAt === undefined || now - row.reportedAt >= REPORT_EVERY_MS;
+}
+
+/** How long the reason after 'Retrying in N s:' may run. */
+const SHORT_REASON_CHARS = 60;
+
+/** `words` as the status line has room for: the first sentence, cut at a word to SHORT_REASON_CHARS with an ellipsis. */
+export function shortReason(words: string): string {
+  const sentence = (/^(.*?[.!?])(?:\s|$)/.exec(words.trim())?.[1] ?? words.trim()).replace(/[.!?]$/, '');
+  if (sentence.length <= SHORT_REASON_CHARS) return sentence;
+  const cut = sentence.slice(0, SHORT_REASON_CHARS);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 20)).trimEnd()}…`;
+}
+
 /** Lines the status line shows while the phone reaches the backend (mw-gb92lmo): what truly holds the row. */
 export const SENDING_NOW = 'Sending…';
 export const REFUSED_LINE = 'Not sent: the backend refused it. Tap Retry or Discard.';
@@ -93,7 +114,10 @@ export function outboxLine(rows: OutboxRow[], now: number, reachable: boolean): 
   const tried = rows.find((row) => isPending(row) && row.attempts > 0);
   if (!tried) return undefined;
   if (tried.nextAt === undefined) return WAITING_FOR_KEY_LINE;
-  return tried.nextAt > now ? `Retrying in ${Math.ceil((tried.nextAt - now) / 1000)} s` : SENDING_NOW;
+  if (tried.nextAt <= now) return SENDING_NOW;
+  // The wait names what the last try failed on (mw-o14xubc), so a row that fails every try is never a bare countdown.
+  const reason = tried.note ? `: ${shortReason(tried.note)}` : '';
+  return `Retrying in ${Math.ceil((tried.nextAt - now) / 1000)} s${reason}`;
 }
 
 /** The words a message waiting to go shows: its text, and the names of the files that go with it. */

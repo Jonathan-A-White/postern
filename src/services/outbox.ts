@@ -8,15 +8,20 @@
 // `card_answered` event naming its txid) and is then acked.
 // A 4xx the backend gives (other than 408 and 429) is final: the row is marked failed with the
 // backend's words (a provider's page made plain) and the rows behind it go on, until he taps Retry or Discard (mw-jrx0s.21).
+// Any other failure is kept on the row (its words, when, which attempt) and shown as the reason for the wait; after three
+// such tries the backend's journal is told by the one GET that still goes (mw-o14xubc). While the backend answers, a row
+// that fails is its own trouble and the rows behind it go on; out of reach, it holds them, in his order. A file's upload is
+// given the time its size needs on a weak signal (timedFetch's requestTimeoutMs), not the 30 s of a small call: a camera
+// picture cut off at 30 s sent nothing and was tried again every minute for ever, the typed messages held behind it (mw-o14xubc).
 // Talk turns are a lane of their own, so no upload or failing message holds one back; within the lane a turn never
 // goes ahead of an earlier one that was refused or went on the chain and has not been seen (mw-q6n8m0.12).
 import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
 import type { OutboxKind, OutboxRow } from '../data/db';
 import type { GovernorAction } from '../model/conversation';
-import { retryDelay, turnHeldBy } from '../model/outbox';
+import { retryDelay, shouldReportFailure, turnHeldBy } from '../model/outbox';
 import { decodeView } from '../model/view';
-import { isPermanentRefusal, RefusedError } from './apiAuth';
-import { API_TIMEOUT_MS, withTimeout } from './timedFetch';
+import { apiFetch, ApiTimeoutError, BackendUnreachableError, isPermanentRefusal, RefusedError } from './apiAuth';
+import { API_TIMEOUT_MS, requestTimeoutMs, withTimeout } from './timedFetch';
 import { busyOf, plainMessage, waitingLine } from './chainBusy';
 import type { TalkTurn } from '../model/talkLine';
 import { attachmentMime, uploadAttachment } from './attachments';
@@ -68,9 +73,26 @@ export interface QueuedMessage {
  * is a backstop for whatever else could hang, and the lane never waits on one call for ever. */
 export const DELIVER_STAGE_MS = 3 * API_TIMEOUT_MS;
 
-/** `work` as a stage of a try: an ApiTimeoutError if it takes longer than DELIVER_STAGE_MS. `sent` says whether it could have been acted on (a POST). */
-function stage<T>(work: Promise<T>, sent: boolean): Promise<T> {
-  return withTimeout(work, sent, DELIVER_STAGE_MS);
+/** `work` as a stage of a try: an ApiTimeoutError if it takes longer than `ms` (DELIVER_STAGE_MS). `sent` says whether it could have been acted on (a POST). */
+function stage<T>(work: Promise<T>, sent: boolean, ms = DELIVER_STAGE_MS): Promise<T> {
+  return withTimeout(work, sent, ms);
+}
+
+/** One file's upload as a stage of a try (mw-o14xubc): the time its size is given on the slowest uplink (requestTimeoutMs), and the
+ * challenge and the answer's read on top; one that still runs out is thrown as an ApiTimeoutError naming the file, so the row says
+ * what did not finish. */
+async function uploadStage(file: QueuedFile, options: DeliverOptions): Promise<Attachment> {
+  const bytes = unpackBytes(file.data);
+  try {
+    return await stage(uploadAttachment({ bytes, mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }), false, requestTimeoutMs(bytes.length) + 2 * API_TIMEOUT_MS);
+  } catch (err) {
+    if (err instanceof ApiTimeoutError) {
+      const timedOut = new ApiTimeoutError(false);
+      timedOut.message = `The upload of ${file.name} did not finish in time.`;
+      throw timedOut;
+    }
+    throw err;
+  }
 }
 
 /** How long acked rows are kept before they are forgotten. */
@@ -141,7 +163,7 @@ async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions): Promi
   const kept = row.payload.uploaded as Attachment[] | Attachment | undefined;
   const uploaded = Array.isArray(kept) ? [...kept] : kept ? [kept] : [];
   for (const file of files.slice(uploaded.length)) {
-    uploaded.push(await stage(uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }), false));
+    uploaded.push(await uploadStage(file, options));
     await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
   }
   return stage(deliverTurn({ ...turn, ...(uploaded.length === 1 ? { attachment: uploaded[0] } : { attachments: uploaded }) }, options), true);
@@ -152,7 +174,7 @@ async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<
   const message = row.payload as unknown as QueuedMessage;
   const uploaded = [...(message.uploaded ?? [])];
   for (const file of message.files.slice(uploaded.length)) {
-    uploaded.push(await stage(uploadAttachment({ bytes: unpackBytes(file.data), mime: attachmentMime(file.type), name: file.name, senderKey: options.key, recipientPublicKeyHex: options.mayorKey }), false));
+    uploaded.push(await uploadStage(file, options));
     await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
   }
   return stage(deliverThreaded({ thread: message.thread, text: message.text, attachments: uploaded, re: message.re }, options), true);
@@ -188,28 +210,92 @@ function wakeAt(lane: Lane, at: number): void {
   lane.timer = setTimeout(() => kickLane(lane, false), Math.max(0, at - Date.now()));
 }
 
+/** The browser's own words for a fetch that got no response at all (Chrome, Safari, Firefox): a cut connection, a proxy that
+ * dropped the request, a blocked CORS answer. Any other TypeError is the code's own and keeps its words. */
+const FETCH_FAILED = /^(Failed to fetch|Load failed|NetworkError when attempting to fetch resource\.?|network error)$/i;
+
+function isFetchFailure(err: unknown): boolean {
+  return err instanceof TypeError && FETCH_FAILED.test(err.message.trim());
+}
+
+/** The plain words a failed try leaves on its row, for the screen (mw-o14xubc): a cut connection, a timeout, a busy
+ * WhatsOnChain or a provider refusal in one line, anything else in its own words. */
+export function failureWords(err: unknown): string {
+  if (isFetchFailure(err)) return 'The connection was cut before the backend answered.';
+  if (err instanceof RefusedError || busyOf(err)) return waitingLine(err);
+  return plainMessage(err);
+}
+
+/** The error's words as thrown, for the row's record. */
+function thrownWords(err: unknown): string {
+  if (err instanceof Error) return err.message || err.name;
+  return String(err);
+}
+
+/** A short lower-case word for the backend's journal line: what kind of failure this was (mw-o14xubc). */
+export function failureSlug(err: unknown): string {
+  if (isFetchFailure(err)) return 'lost';
+  if (err instanceof ApiTimeoutError) return 'timeout';
+  if (err instanceof BackendUnreachableError) return 'gateway';
+  if (busyOf(err)) return 'woc';
+  if (err instanceof RefusedError) return `http${err.status}`;
+  if (/spendable coins/.test(thrownWords(err))) return 'nocoins';
+  return 'thrown';
+}
+
+/** The `why` the report gives: `outbox-<kind>-<slug>`, within the 24 lower-case characters the backend journals as given (docs/api.md). */
+export function failureWhy(kind: OutboxKind, err: unknown): string {
+  return `outbox-${kind}-${failureSlug(err)}`.slice(0, 24);
+}
+
+/** Tells the backend's journal that a row keeps failing on the phone (mw-o14xubc), by the one request that still goes while POSTs do not: the
+ * bodiless view probe, saying why. The backend writes the key, the kind and the reason on its accepted line; the answer is not read. */
+async function reportFailure(kind: OutboxKind, err: unknown, key: Uint8Array): Promise<void> {
+  try {
+    const response = await apiFetch(`/view?why=${failureWhy(kind, err)}`, { headers: { 'If-None-Match': '*' } }, { unlockedKey: key });
+    void response.body?.cancel().catch(() => undefined);
+  } catch (reportErr) {
+    console.warn('Could not report a failing outbox row:', reportErr);
+  }
+}
+
 async function drain(lane: Lane, force: boolean): Promise<void> {
   const mine = generation;
   await ackSent();
-  for (;;) {
-    const row = await outboxRepo.head(lane.name);
-    if (!row || mine !== generation) return;
-    if (!force && row.nextAt !== undefined && row.nextAt > Date.now()) return wakeAt(lane, row.nextAt);
-    force = false;
+  // Every pending row of the lane, oldest first: a row that fails on the phone's side no longer holds the rows behind it (mw-o14xubc).
+  const rows = await outboxRepo.pending(lane.name);
+  let lookAt: number | undefined;
+  const look = (at: number) => {
+    lookAt = lookAt === undefined ? at : Math.min(lookAt, at);
+  };
+  for (const row of rows) {
+    if (mine !== generation) return;
+    const now = Date.now();
+    if (!force && row.nextAt !== undefined && row.nextAt > now) {
+      look(row.nextAt);
+      // A Talk turn in its wait holds the turns after it (they go in the order he spoke them), and so does any row while the
+      // backend is out of reach (nothing behind it would go either, and his order is kept); while the backend answers, a row
+      // waiting after its own failure lets the rows behind it go on.
+      if (lane.name === 'turn' || !backendReachable(getLiveState())) break;
+      continue;
+    }
     // A try ahead of its wait (he came back to the app, the backend answered) that fails leaves the wait as it was (mw-j4usch0).
-    const waitingUntil = row.nextAt !== undefined && row.nextAt > Date.now() ? row.nextAt : undefined;
+    const waitingUntil = row.nextAt !== undefined && row.nextAt > now ? row.nextAt : undefined;
     if (row.kind === 'turn') {
       // Turns reach the Mayor in the order he spoke them (mw-q6n8m0.12): one refused for good, or one that went on the chain and has not been seen yet, holds the turns after it.
-      const held = turnHeldBy(await outboxRepo.turnsBefore(row.id as number), Date.now());
-      if (held) return held.lookAt !== undefined ? wakeAt(lane, held.lookAt) : undefined;
+      const held = turnHeldBy(await outboxRepo.turnsBefore(row.id as number), now);
+      if (held) {
+        if (held.lookAt !== undefined) look(held.lookAt);
+        break;
+      }
     }
     const base = deliverOptions(getKey());
     if (!base) {
       // Locked, or the Mayor not yet known: the next live state or key change wakes the sender; this is the fallback.
       // The row has now waited, so the status line says so.
       if (row.attempts === 0) await outboxRepo.update(row.id as number, { attempts: 1 });
-      wakeAt(lane, Date.now() + retryDelay(row.attempts + 1));
-      return;
+      look(now + retryDelay(row.attempts + 1));
+      break;
     }
     // The row's id goes with every try; a row an older build wrote is given one now.
     const clientId = row.clientId ?? newClientId();
@@ -220,25 +306,33 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
       delivered = await deliverRow(row, options);
     } catch (err) {
       if (mine !== generation) return;
+      const attempts = row.attempts + 1;
+      const failedAt = Date.now();
+      const error = { message: thrownWords(err), at: failedAt, attempt: attempts };
       if (isPermanentRefusal(err)) {
         // Refused for good (a 4xx): it is marked failed with the backend's words, waits for Retry or Discard, and the rows behind it go on.
-        await outboxRepo.update(row.id as number, { state: 'failed', failure: plainMessage(err), attempts: row.attempts + 1, nextAt: undefined });
+        await outboxRepo.update(row.id as number, { state: 'failed', failure: plainMessage(err), attempts, nextAt: undefined, error });
         continue;
       }
-      // Out of reach or a passing trouble: the row keeps its place, and nothing behind it in its lane goes ahead of it.
-      const attempts = row.attempts + 1;
-      const nextAt = Math.min(Date.now() + retryDelay(attempts), waitingUntil ?? Infinity);
-      // When the backend answered with trouble (a busy WhatsOnChain, a provider refusal) the row says so in one plain line; a lost connection says nothing more than pending.
-      const note = err instanceof RefusedError || busyOf(err) ? waitingLine(err) : undefined;
-      await outboxRepo.update(row.id as number, { attempts, nextAt, note });
-      return wakeAt(lane, nextAt);
+      // A passing trouble, or one that is not: the row keeps its place and every try's failure is kept on it and shown, in one plain
+      // line (mw-o14xubc), so a row that fails the same way every time is never a bare countdown.
+      const nextAt = Math.min(failedAt + retryDelay(attempts), waitingUntil ?? Infinity);
+      const report = shouldReportFailure({ attempts, reportedAt: row.reportedAt }, failedAt);
+      await outboxRepo.update(row.id as number, { attempts, nextAt, note: failureWords(err), error, ...(report ? { reportedAt: failedAt } : {}) });
+      if (report) void reportFailure(row.kind, err, options.key);
+      look(nextAt);
+      // Out of reach, nothing behind it would go either and his order is kept. While the backend answers, the failure is this row's
+      // own and the rows behind it go on; a Talk turn still waits on its earlier turn.
+      if (lane.name === 'turn' || !backendReachable(getLiveState())) break;
+      continue;
     }
     if (mine !== generation) return;
-    await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, sentAt: Date.now(), attempts: row.attempts + 1, nextAt: undefined, note: undefined });
+    await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, sentAt: Date.now(), attempts: row.attempts + 1, nextAt: undefined, note: undefined, error: undefined });
     rememberDelivered(row, delivered);
     // The note outlives the outbox row: the record that comes back is found by its txid.
     if (row.recorded) writeBehind(settingsRepo.addRecordedNote(delivered.txid, row.recorded), 'that it was recorded for later');
   }
+  if (lookAt !== undefined && mine === generation) wakeAt(lane, lookAt);
 }
 
 /** Wakes one lane: one pass at a time. */

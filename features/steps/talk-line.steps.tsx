@@ -523,10 +523,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   });
   const broadcastTx = () => Transaction.fromHex(down.broadcasts[0]);
 
-  Scenario('AC-3: Call me while the backend is unreachable goes on chain (mw-a0ih0.4)', ({ Given, When, Then, And }) => {
+  Scenario('AC-3: Call me while the phone knows the backend is unreachable goes on chain (mw-a0ih0.4, the phone must know it since mw-o14xubc)', ({ Given, When, Then, And }) => {
     Given("the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin", mayorKnownBackendDown);
-    When('he delivers a call request saying {string} at {number}', async (_c, text: string, at: number) => {
-      delivered = await deliverCallRequest(text, Number(at), chainOptions());
+    When('he delivers a call request saying {string} at {number} while the phone is offline', async (_c, text: string, at: number) => {
+      delivered = await deliverCallRequest(text, Number(at), chainOptions({ offline: true }));
       await settledWrites();
     });
     Then('the request went on chain', () => {
@@ -557,10 +557,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('AC-3: a typed post goes on chain when the backend cannot be reached (mw-a0ih0.12)', ({ Given, When, Then, And }) => {
+  Scenario('AC-3: a typed post goes on chain when the phone knows the backend cannot be reached (mw-a0ih0.12, the phone must know it since mw-o14xubc)', ({ Given, When, Then, And }) => {
     Given("the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin", mayorKnownBackendDown);
-    When('he delivers a message saying {string}', async (_c, text: string) => {
-      delivered = await deliver(text, 'message', chainOptions());
+    When('he delivers a message saying {string} while the phone is offline', async (_c, text: string) => {
+      delivered = await deliver(text, 'message', chainOptions({ offline: true }));
       await settledWrites();
     });
     Then('the message went on chain and its sent row reads {string}', async (_c, words: string) => {

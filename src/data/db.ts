@@ -246,8 +246,21 @@ export interface OutboxRow {
   failure?: string;
   /** 'Recorded for after 21:00': what a message he sent while Ideas only was on shows under it (kept on the row, so a reload keeps it). */
   recorded?: string;
-  /** One plain line for a row still waiting after a try the backend answered with trouble (WhatsOnChain busy, a provider refusal); gone once the row has gone. */
+  /** One plain line for a row still waiting after a failed try: what held it, in his words (mw-o14xubc: every failure, not only one the backend answered with trouble); gone once the row has gone. */
   note?: string;
+  /** The last try's failure, kept until the row goes or he taps Retry (mw-o14xubc): its words as thrown, when it was, and which attempt it was. */
+  error?: OutboxError;
+  /** Ms since the epoch: when the row's repeated failure was last reported to the backend's journal (mw-o14xubc). */
+  reportedAt?: number;
+}
+
+/** What a failed try leaves on its row (mw-o14xubc). */
+export interface OutboxError {
+  message: string;
+  /** Ms since the epoch. */
+  at: number;
+  /** The attempt that failed this way, counted from 1. */
+  attempt: number;
 }
 
 export interface VaultRow {

@@ -15,7 +15,7 @@ import { isSupported as canSpeak, speak, stop as stopSpeaking, useSpeechFailure 
 import { useSpeaking } from './useSpeaking';
 import { useAnswers, useBeadTitles, useOutbox, useRecordedNotes, useStoredComments, useThreadMessages, useUnlockedKey, useViewIndex } from './hooks';
 import { pendingAnswer } from '../model/outbox';
-import { FailedNote, OutboxMark, WaitLine } from './OutboxMark';
+import { FailedNote, OutboxMark, TappablePendingMark, WaitLine } from './OutboxMark';
 import { PendingMark } from './PendingMark';
 import { ShareButton } from './ShareButton';
 import { VoicePlayer } from './VoicePlayer';
@@ -393,7 +393,8 @@ const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, on
       </div>
       <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-faint">
         <span>{item.onChain ? `Sent on chain ${clockTime(new Date(item.at))}` : clockTime(new Date(item.at))}</span>
-        {item.pending && (item.failure !== undefined && item.outboxId !== undefined ? <FailedNote id={item.outboxId} failure={item.failure} /> : <PendingMark />)}
+        {item.pending && item.outboxId !== undefined && (item.failure !== undefined ? <FailedNote id={item.outboxId} failure={item.failure} /> : <TappablePendingMark id={item.outboxId} note={item.note} />)}
+        {item.pending && item.outboxId === undefined && <PendingMark />}
         {item.unread && <span className="font-semibold text-accent">· new</span>}
         {item.speaker !== 'you' && item.text && canSpeak() && (
           <button

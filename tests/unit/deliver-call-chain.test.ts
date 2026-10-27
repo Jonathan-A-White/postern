@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe('a gateway error from the backend', () => {
-  it('sends a Call me on chain, and still fails a refusal with the backend\'s own words', async () => {
+  it('is thrown as it came for a Call me (the chain road waits for the live status to read offline, mw-o14xubc), and a refusal with the backend\'s own words fails too', async () => {
     const down = backendDownWoc();
     let refuse = false;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -27,7 +27,11 @@ describe('a gateway error from the backend', () => {
       return down.fetchImpl(input, init);
     }) as unknown as typeof fetch;
 
-    const call = await deliver('{"role":"request","text":"Call me","at":1}', 'call', { ...base, fetchImpl });
+    await expect(deliver('{"role":"request","text":"Call me","at":1}', 'call', { ...base, fetchImpl })).rejects.toThrow('bad gateway');
+    expect(down.broadcasts).toHaveLength(0);
+
+    // Once the phone knows the backend is out of reach, the Call me goes on chain at once.
+    const call = await deliver('{"role":"request","text":"Call me","at":1}', 'call', { ...base, offline: true, fetchImpl });
     expect(call.channel).toBe('chain');
     expect(down.broadcasts).toHaveLength(1);
 

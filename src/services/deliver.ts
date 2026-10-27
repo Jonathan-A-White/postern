@@ -2,9 +2,12 @@
 // decisions 5, 7 and 10): the §1 envelope, encrypted to the pinned Mayor, posted
 // straight to the backend (docs/protocol.md §9) — one round trip, no coins. An
 // old backend that has no direct delivery gets today's funded transaction
-// instead; a typed post (any class, a picture excepted) whose backend cannot be
-// reached gets that transaction too, sent through WhatsOnChain (§21). Either way the sent message is stored at
-// once, so it shows in its thread before the event stream echoes it back.
+// instead; a typed post (any class, a picture excepted) while the phone knows the backend
+// is out of reach (the live status is offline) gets that transaction too, sent through
+// WhatsOnChain (§21). A direct post that fails while the phone does not know that is thrown
+// with its reason, never put on chain in the same try (mw-o14xubc): the live status, which
+// the failure marks as not reached, decides the road of the next try. Either way the sent
+// message is stored at once, so it shows in its thread before the event stream echoes it back.
 import { PrivateKey, Utils } from '@bsv/sdk';
 import { encodeRecordScript } from 'spell-forge-bsv';
 import { apiFetch, ApiTimeoutError, BackendUnreachableError, RefusedError, withTimeout } from './apiAuth';
@@ -107,8 +110,10 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
   const senderPrivateKeyHex = Utils.toHex(Array.from(options.key));
   const payload = encryptMessage({ text: plaintext, class: messageClass, senderPrivateKeyHex, recipientPublicKeyHex: options.mayorKey });
 
-  // A text post of any class (docs/protocol.md §21) goes on chain when the backend cannot be
-  // reached; one with a file waits for the backend as before.
+  // A text post of any class (docs/protocol.md §21) goes on chain when the phone knows the backend
+  // cannot be reached; one with a file waits for the backend as before. A direct post that fails is
+  // thrown as it failed (the live status is told it was not reached): never the chain road in the
+  // same try, so while the backend answers a typed post goes to it or says why not (mw-o14xubc).
   const onChainWhenDown = !carriesFiles;
   let via: ChainVia = 'backend';
   let delivered: Delivered | undefined;
@@ -118,8 +123,7 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
       delivered = { txid: await postDirect(script.toHex(), options), channel: 'direct' };
     } catch (err) {
       if (isNetworkFailure(err)) options.onUnreachable?.();
-      if (onChainWhenDown && isNetworkFailure(err)) via = 'whatsonchain';
-      else if (!(err instanceof DirectUnsupported)) throw err;
+      if (!(err instanceof DirectUnsupported)) throw err;
     }
   } else if (onChainWhenDown && options.offline) {
     via = 'whatsonchain';

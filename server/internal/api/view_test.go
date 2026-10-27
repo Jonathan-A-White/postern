@@ -126,6 +126,8 @@ func TestViewRequestLogsTheReasonItGives(t *testing.T) {
 	for _, tc := range []struct{ target, want, wantNot string }{
 		{"/api/view?why=gap", "accepted GET /api/view why=gap (scheme=v2 key ", ""},
 		{"/api/view?why=probe", "accepted GET /api/view why=probe (scheme=v2 key ", ""},
+		// The phone reporting an outbox row that keeps failing (mw-o14xubc): the row's kind and the reason, as given.
+		{"/api/view?why=outbox-message-timeout", "accepted GET /api/view why=outbox-message-timeout (scheme=v2 key ", ""},
 		{"/api/view", "accepted GET /api/view (scheme=v2 key ", "why="},
 		{"/api/view?why=a%0Aaccepted%20GET%20/api/fake", "accepted GET /api/view why=? (scheme=v2 key ", "fake"},
 		{"/api/view?why=" + strings.Repeat("x", 40), "accepted GET /api/view why=? (scheme=v2 key ", ""},

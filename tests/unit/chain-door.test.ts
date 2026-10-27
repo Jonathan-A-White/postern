@@ -31,7 +31,7 @@ afterEach(async () => {
 });
 
 describe('a second chain plugged in with setChain', () => {
-  it('returns the chain that was in use, and carries a post made while the backend is unreachable', async () => {
+  it('returns the chain that was in use, and carries a post made while the phone knows the backend is unreachable (the live status offline, mw-o14xubc)', async () => {
     const sent: string[] = [];
     const fake = fakeChain(sent);
     const previous = setChain(fake);
@@ -44,7 +44,7 @@ describe('a second chain plugged in with setChain', () => {
     }) as unknown as typeof fetch;
     vi.stubGlobal('fetch', fetchImpl);
 
-    const delivered = await deliver('hello', 'message', { key: KEY, mayorKey: MAYOR, direct: true, fetchImpl });
+    const delivered = await deliver('hello', 'message', { key: KEY, mayorKey: MAYOR, direct: true, offline: true, fetchImpl });
 
     expect(delivered).toEqual({ txid: 'f'.repeat(64), channel: 'chain' });
     expect(sent).toEqual(['hello']);

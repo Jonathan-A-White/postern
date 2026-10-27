@@ -203,17 +203,17 @@ Feature: Talk line turns are records of their own, and the line is a small state
     Then the line is sending
     And the turn goes as several records numbered part 1 to n of n, each within the cap, joining to every word
 
-  Scenario: AC-3: Call me while the backend is unreachable goes on chain (mw-a0ih0.4)
+  Scenario: AC-3: Call me while the phone knows the backend is unreachable goes on chain (mw-a0ih0.4, the phone must know it since mw-o14xubc)
     Given the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin
-    When he delivers a call request saying "Call me" at 1790000000
+    When he delivers a call request saying "Call me" at 1790000000 while the phone is offline
     Then the request went on chain
     And WhatsOnChain was sent one section 4 transaction with the record, the anchor payment and change
     And the Mayor reads that record as a request saying "Call me" at 1790000000
     And this phone keeps its sent copy under the chain id
 
-  Scenario: AC-3: a typed post goes on chain when the backend cannot be reached (mw-a0ih0.12)
+  Scenario: AC-3: a typed post goes on chain when the phone knows the backend cannot be reached (mw-a0ih0.12, the phone must know it since mw-o14xubc)
     Given the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin
-    When he delivers a message saying "Hello"
+    When he delivers a message saying "Hello" while the phone is offline
     Then the message went on chain and its sent row reads "Sent on chain"
     And WhatsOnChain was sent one section 4 transaction with the record, the anchor payment and change
 

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.58",
+    "date": "2026-10-27",
+    "story": "mw-o14xubc",
+    "kind": "fixed",
+    "text": "a message that keeps failing to send no longer holds the messages after it, and never hides why: the line under the top bar says the reason after the countdown, and a tap on a message's pending mark shows it with Retry now and Discard."
+  },
+  {
     "version": "0.8.57",
     "date": "2026-10-27",
     "story": "mw-j4usch0",

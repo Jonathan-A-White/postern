@@ -414,6 +414,11 @@ The ciphertext is the body of `POST /api/blobs` (`docs/api.md`, the same
 
 - A body over 8 MiB plus 256 bytes of BRC-78 envelope overhead is refused
   `413`.
+- The phone gives the upload the time its size needs (mw-o14xubc): the 30 s every
+  `/api` call may go unanswered, plus the body's crossing at 10 KB/s (the slowest uplink
+  waited for) when it is over 64 KB, so a camera picture on a weak signal is not cut off at
+  30 s and sent nothing, try after try. One that still runs out is kept on its outbox row as
+  `The upload of <name> did not finish in time.` and tried again after the row's wait.
 - `201 application/json` — a body not already stored:
 
   ```json

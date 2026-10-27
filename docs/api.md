@@ -607,8 +607,9 @@ stand on disk.
 (above), so the Governor's fetches can be counted and told apart from the log alone:
 `start`, `hello`, `reconnect`, `gap`, `unapplied`, `behind`, `card`, `view-event`, `poll`,
 `refresh`, `focus`, `mayor-key` or `probe` (`docs/protocol.md` §22), or
-`outbox-<kind>-<reason>` (`outbox-message-lost`: the phone reporting an outbox row that
-keeps failing, after its third try and at most once an hour, mw-o14xubc). It changes nothing
+`outbox-<kind>-<reason>` (`outbox-message-timeout`, `outbox-message-lost`: the phone reporting
+an outbox row that keeps failing, after its third try and at most once an hour, mw-o14xubc;
+`docs/protocol.md` §22 lists the reasons). It changes nothing
 in the answer.
 
 - `200 text/plain; charset=utf-8` — the file's bytes (the base64 BRC-78

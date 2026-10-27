@@ -12,6 +12,7 @@ import { formatRoute } from '../../src/nav/route';
 import { fixtureView } from '../support/cockpit-fixture';
 import { deliverAction } from '../../src/services/deliver';
 import { forgetOutboxState } from '../../src/services/outbox';
+import { forgetTaps } from '../../src/cockpit/oneTap';
 
 vi.mock('../../src/services/deliver', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/deliver')>()),
@@ -25,6 +26,22 @@ vi.mock('../../src/services/live', async (importOriginal) => ({
 const DEFERRED = 'mw-f758y.31.2';
 const OPEN = 'mw-f758y.30.5';
 
+// A tap hands the action to the outbox, which delivers it and, a moment after the button has gone dead,
+// writes the remembered answer (ts = that moment, in whole seconds). A test that ends before that write
+// leaves it to land in the next test's database, where on a loaded host it replaces the older answer that
+// test stored and hides its Release for good (mw-esujxh6). So a test that taps waits for the write.
+// `slowWrites` holds each such write back, as a loaded host does, so the wait is proved on a quiet one.
+const slowWrites = 300;
+const saveAnswer = answersRepo.save.bind(answersRepo);
+vi.spyOn(answersRepo, 'save').mockImplementation(async (row) => {
+  if (row.txid.startsWith('direct:1')) await new Promise((resolve) => setTimeout(resolve, slowWrites));
+  return saveAnswer(row);
+});
+
+async function rememberedAfterTap(bead: string): Promise<void> {
+  await waitFor(async () => expect((await answersRepo.get(bead))?.answer).toBeDefined());
+}
+
 async function storeView(writtenAt: number): Promise<void> {
   const view = fixtureView(writtenAt);
   view.written_at = new Date(writtenAt).toISOString();
@@ -35,6 +52,7 @@ describe('BeadScreen offers Release and Hold only while they still apply', () =>
   beforeEach(async () => {
     vi.mocked(deliverAction).mockClear();
     forgetOutboxState();
+    forgetTaps();
     await Promise.all([db.view.clear(), db.answers.clear(), db.beadDetails.clear(), db.messages.clear(), db.outbox.clear()]);
   });
   afterEach(() => cleanup());
@@ -46,6 +64,7 @@ describe('BeadScreen offers Release and Hold only while they still apply', () =>
     await userEvent.click(await screen.findByRole('button', { name: 'Release' }));
     await waitFor(() => expect(deliverAction).toHaveBeenCalledWith({ action: 'release', bead: DEFERRED }, expect.anything()));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Release' })).toBeNull());
+    await rememberedAfterTap(DEFERRED);
   });
 
   it('shows Release when the remembered release is older than the view that still says deferred', async () => {
@@ -71,6 +90,7 @@ describe('BeadScreen offers Release and Hold only while they still apply', () =>
     render(<BeadScreen id={OPEN} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Hold' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Hold' })).toBeNull());
+    await rememberedAfterTap(OPEN);
   });
 });
 

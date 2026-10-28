@@ -151,6 +151,21 @@ export function switchAccount(id: string): Promise<void> {
   return run;
 }
 
+/** Whether `id` names an account other than the one on screen: what a message from a push registration's worker (src/sw.ts) says it is about. */
+export function isOtherAccount(id: string | undefined): id is string {
+  return id !== undefined && id !== '' && id !== accountsRepo.activeNow().id;
+}
+
+/** A tap on a notification of another account lands in that account: the app switches to it first. An account that is gone leaves the app where it is. */
+export async function landOnAccount(id: string | undefined): Promise<void> {
+  if (!isOtherAccount(id)) return;
+  try {
+    await switchAccount(id);
+  } catch {
+    // the account was removed since the notification was shown
+  }
+}
+
 /** Forgets what is held in memory (a relaunch; tests). `keepStore` leaves the stored accounts as they were. */
 export async function resetAccounts(options: { keepStore?: boolean } = {}): Promise<void> {
   launched = undefined;

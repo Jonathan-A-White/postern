@@ -441,3 +441,25 @@ export function archivedCardRecords(governorKey: PrivateKey, now: number, firstS
   };
   return [card];
 }
+
+/** A second backend's own channels (mw-9rp4hu.5): two channels and a post each, none of the fixture's, so a switch of account is seen in the Channels list. */
+export function otherBackendRecords(governorKey: PrivateKey, now: number): FixtureRecord[] {
+  const governorPub = governorKey.toPublicKey().toString();
+  return ['luke garden', 'luke kitchen'].map((topic, n) => {
+    const seq = n + 1;
+    return {
+      seq,
+      txid: `direct:${hex64(100 + seq)}`,
+      vout: 0,
+      payload: {
+        ...encryptMessage({
+          text: encodeThreadedMessage({ thread: { topic }, text: `A word in ${topic}.` }),
+          class: 'message',
+          senderPrivateKeyHex: MAYOR.toHex(),
+          recipientPublicKeyHex: governorPub,
+        }),
+        ts: Math.floor((now - (n + 1) * 120_000) / 1000),
+      },
+    };
+  });
+}

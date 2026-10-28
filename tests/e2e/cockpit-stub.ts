@@ -8,7 +8,7 @@ import { deriveMasterKey, deriveAesKeyFromPhrase, wrapKey, publicKeyHexFromMaste
 import { sealDocument } from '../../src/services/documents';
 import { encryptAttachment } from '../../src/services/messages';
 import type { Need, View, ViewBead } from '../../src/model/view';
-import { MAYOR, archivedCardRecords, fixtureDetail, fixtureRecords, fixtureView, liveCardRecords, longOptionRecords, longLinkRecords, longThreadRecords, longTokenComments, longTokenRecords, manyChannelRecords } from '../support/cockpit-fixture';
+import { MAYOR, otherBackendRecords, archivedCardRecords, fixtureDetail, fixtureRecords, fixtureView, liveCardRecords, longOptionRecords, longLinkRecords, longThreadRecords, longTokenComments, longTokenRecords, manyChannelRecords } from '../support/cockpit-fixture';
 
 export async function seedVault(page: Page, mnemonic: string): Promise<string> {
   const key = await deriveMasterKey(mnemonic);
@@ -92,6 +92,10 @@ export interface StubExtras {
   liveCard?: boolean;
   /** Adds a live card sent three days ago, untouched since: archived (mw-v1uyku.1). */
   archivedCard?: boolean;
+  /** The path this stand-in backend answers on, '/api' unless named: a second account's backend (mw-9rp4hu.5). */
+  base?: string;
+  /** Serves a second backend's own two channels in place of the fixture's messages (mw-9rp4hu.5). */
+  otherChannels?: boolean;
   /** A whole view served in place of the fixture's (mw-ev7oyy.43: tests/support/live-shape-view.ts); `needs` and `beads` are added to it. */
   view?: View;
 }
@@ -111,7 +115,8 @@ export async function stubBackend(
     voiceCiphertext = encryptAttachment({ bytes: voice.bytes, senderPrivateKeyHex: governor.toHex(), recipientPublicKeyHex: MAYOR.toPublicKey().toString() });
     voiceAttachment = { hash: createHash('sha256').update(voiceCiphertext).digest('hex'), size: voice.bytes.length, mime: voice.mime };
   }
-  const records = fixtureRecords(governor, now, voiceAttachment);
+  const records = extras.otherChannels ? otherBackendRecords(governor, now) : fixtureRecords(governor, now, voiceAttachment);
+  const base = extras.base ?? '/api';
   if (extras.longOptions) records.push(...longOptionRecords(governor, now, records.length));
   if (extras.longTokens) records.push(...longTokenRecords(governor, now, records.length));
   if (extras.longLink) records.push(...longLinkRecords(governor, now, records.length));
@@ -122,8 +127,8 @@ export async function stubBackend(
   const posted: string[] = [];
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-  await page.route('**/api/challenge', (route) => json(route, { nonce: 'a'.repeat(64) }));
-  await page.route('**/api/me', (route) =>
+  await page.route(`**${base}/challenge`, (route) => json(route, { nonce: 'a'.repeat(64) }));
+  await page.route(`**${base}/me`, (route) =>
     json(route, {
       pubkey: governorPub,
       mayor: MAYOR.toPublicKey().toString(),
@@ -132,21 +137,21 @@ export async function stubBackend(
       ...(extras.collections ? { collections: extras.collections } : {}),
     }),
   );
-  await page.route('**/api/utxos/**', (route) =>
+  await page.route(`**${base}/utxos/**`, (route) =>
     json(route, { utxos: extras.utxoSatoshis ? [{ txid: 'a'.repeat(64), vout: 0, satoshis: extras.utxoSatoshis, height: 100 }] : [] }),
   );
-  await page.route(/\/api\/view(\?|$)/, (route) => route.fulfill({ status: 200, contentType: 'text/plain', headers: { ETag: '"fixture"' }, body: view }));
-  await page.route('**/api/events', (route) =>
+  await page.route(new RegExp(`${base}/view(\\?|$)`), (route) => route.fulfill({ status: 200, contentType: 'text/plain', headers: { ETag: '"fixture"' }, body: view }));
+  await page.route(`**${base}/events`, (route) =>
     route.fulfill({ status: 200, contentType: 'text/event-stream', body: `event: hello\ndata: {"head": ${records.length}, "view": "\\"fixture\\""}\n\n` }),
   );
-  await page.route('**/api/messages**', async (route) => {
+  await page.route(`**${base}/messages**`, async (route) => {
     if (route.request().method() === 'POST') {
       posted.push(route.request().postData() ?? '');
       return json(route, { txid: `direct:${'e'.repeat(64)}`, seq: records.length + posted.length }, 201);
     }
     return json(route, { records, next: records.length });
   });
-  await page.route('**/api/beads/**', async (route) => {
+  await page.route(`**${base}/beads/**`, async (route) => {
     const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() ?? '');
     const added = extras.beads?.find((bead) => bead.id === id);
     const detail = fixtureDetail(id, now) ?? (added ? { v: 2 as const, ...added, blocks: [], children: [], description: extras.descriptions?.[id] ?? '', acceptance: '', comments: [] } : undefined);
@@ -154,8 +159,8 @@ export async function stubBackend(
     if (extras.longTokens) detail.comments.push(...longTokenComments(id, now));
     return route.fulfill({ status: 200, contentType: 'text/plain', body: await sealDocument(JSON.stringify(detail), MAYOR.toHex(), governorPub) });
   });
-  await page.route('**/api/blobs/**', (route) =>
-    voiceCiphertext && route.request().url().endsWith(`/api/blobs/${voiceAttachment?.hash}`) ? route.fulfill({ status: 200, contentType: 'application/octet-stream', body: Buffer.from(voiceCiphertext) }) : json(route, { error: 'expired' }, 404),
+  await page.route(`**${base}/blobs/**`, (route) =>
+    voiceCiphertext && route.request().url().endsWith(`${base}/blobs/${voiceAttachment?.hash}`) ? route.fulfill({ status: 200, contentType: 'application/octet-stream', body: Buffer.from(voiceCiphertext) }) : json(route, { error: 'expired' }, 404),
   );
   await page.route('**/snapshot', (route) => route.fulfill({ status: 404, body: 'not found' }));
   return { posted };

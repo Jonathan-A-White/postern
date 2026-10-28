@@ -7,6 +7,7 @@ import { Banner, Button, Card, Chip, Dot, Icon, SectionTitle, TimeAgo, useAlive 
 import { Screen } from './Shell';
 import { Row } from './MeRow';
 import { IdeasOnlySection } from './IdeasOnlySection';
+import { AccountsSection } from './AccountsSection';
 import { liveLabel } from './liveLabel';
 import { useUnlockedKey, useViewIndex } from './hooks';
 import { recallRead, rememberRead } from './lastKnown';
@@ -257,6 +258,8 @@ export function MeScreen() {
             </div>
           </Card>
         </section>
+
+        <AccountsSection />
 
         <section className="flex flex-col gap-2" aria-label="The Mayor">
           <SectionTitle>The Mayor</SectionTitle>

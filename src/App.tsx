@@ -2,16 +2,17 @@
 // one up; locked, unlock once for the day; then every place is a route
 // (src/nav/route.ts) inside the one shell, and the live connection
 // (src/services/live.ts) runs for as long as the key is unlocked.
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Fragment, useEffect, useState, useSyncExternalStore } from 'react';
 import { KeyVault } from './key';
 import { navigate, useRoute, useScreenSearch } from './router';
 import { vaultRepo } from './data/repositories';
 import type { VaultRow } from './data/db';
 import { resumeSession } from './services/keySession';
-import { accountsLaunched } from './services/accounts';
+import { accountsLaunched, accountsVersion, onAccountChange } from './services/accounts';
 import { startLive, stopLive } from './services/live';
 import { startOutbox } from './services/outbox';
 import { useUnlockedKey } from './cockpit/hooks';
+import { useActiveAccountId } from './cockpit/useAccounts';
 import { Shell, Screen } from './cockpit/Shell';
 import { LaunchFailed, Loading, Unlock, Welcome } from './cockpit/Gate';
 import { UpdateBanner } from './cockpit/UpdateBanner';
@@ -99,11 +100,18 @@ export function App() {
   const route = useRoute();
   const search = useScreenSearch();
   const key = useUnlockedKey();
-  const [vault, setVault] = useState<VaultRow | null | undefined>(undefined);
-  const [resumed, setResumed] = useState(false);
+  // Everything below is the active account's (mw-9rp4hu.5): its vault, its unlock, its live connection, every screen it shows.
+  const accountId = useActiveAccountId();
+  const accountsChanged = useSyncExternalStore(onAccountChange, accountsVersion, accountsVersion);
+  // What was read, and for which account: another account's reads are not this one's, so they read as not read yet.
+  const [vaultRead, setVaultRead] = useState<{ account: string; row: VaultRow | null } | undefined>(undefined);
+  const [resumedFor, setResumedFor] = useState<string>();
   // What the launch could not read (mw-4gkijo.1): said on the door, never a padlock for ever.
   const [vaultError, setVaultError] = useState<string | null>(null);
-  const [resumeError, setResumeError] = useState<string | null>(null);
+  const [resumeFailure, setResumeFailure] = useState<{ account: string; message: string }>();
+  const vault = vaultRead?.account === accountId ? vaultRead.row : undefined;
+  const resumed = resumedFor === accountId;
+  const resumeError = resumeFailure?.account === accountId ? resumeFailure.message : null;
   const dbTrouble = useSyncExternalStore(onDbTrouble, getDbTrouble, getDbTrouble);
 
   // Where he is, kept on every move, is where a bare open puts him back (src/nav/lastRoute.ts).
@@ -115,15 +123,15 @@ export function App() {
     accountsLaunched()
       .then(() => resumeSession())
       .catch((err: unknown) => {
-        if (!cancelled) setResumeError(whyItFailed(err));
+        if (!cancelled) setResumeFailure({ account: accountId, message: whyItFailed(err) });
       })
       .finally(() => {
-        if (!cancelled) setResumed(true);
+        if (!cancelled) setResumedFor(accountId);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [accountId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,7 +140,7 @@ export function App() {
         clearDbTrouble();
         if (cancelled) return;
         setVaultError(null);
-        setVault(row ?? null);
+        setVaultRead({ account: accountId, row: row ?? null });
       },
       (err: unknown) => {
         if (!cancelled) setVaultError(whyItFailed(err));
@@ -141,16 +149,17 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [key, route.view]);
+  }, [key, route.view, accountId]);
 
-  // The history-wide clean-ups wait until the door or the app is on screen (src/data/tidy.ts).
+  // The history-wide clean-ups wait until the door or the app is on screen (src/data/tidy.ts); each account's store has its own.
   const shown = vault !== undefined;
-  useEffect(() => (shown ? tidyWhenIdle() : undefined), [shown]);
+  useEffect(() => (shown ? tidyWhenIdle() : undefined), [shown, accountId]);
 
+  // The live connection is the active account's: a switch stopped it (accounts.ts onAccountLeaving), and it starts here for the new one.
   useEffect(() => {
     if (key) startLive(key);
     else stopLive();
-  }, [key]);
+  }, [key, accountId, accountsChanged]);
 
   // What he did and has not yet gone (mw-jrx0s.10) is sent on open, and again when the phone is back in reach.
   useEffect(() => startOutbox(), []);
@@ -230,7 +239,8 @@ export function App() {
   return (
     <>
       {door && <UpdateBanner />}
-      {content}
+      {/* Every screen starts again under another account, so none keeps a read or a draft of the one left. */}
+      <Fragment key={accountId}>{content}</Fragment>
       {!door && <WhatsNewOnUpdate />}
       <ToastHost />
     </>

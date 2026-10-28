@@ -20,6 +20,7 @@ import { SpeakingBar } from './SpeakingBar';
 import { TALK_ANSWER_KEY } from '../services/speech';
 import { OutboxNote } from './OutboxNote';
 import { UpdateBanner } from './UpdateBanner';
+import { AccountChip } from './AccountChip';
 import { liveLabel } from './liveLabel';
 import { useAnswers, useMessages, useViewIndex, useWide } from './hooks';
 import { needsByWaiter, splitFolded, unsettledNeeds } from '../model/needs';
@@ -252,6 +253,7 @@ export function Screen({ title, subtitle, back, actions, children, footer, bare,
           </div>
           <div className="flex items-center gap-1">
             {actions}
+            <AccountChip />
             {!wide && !back && <LiveBadge compact />}
           </div>
         </div>

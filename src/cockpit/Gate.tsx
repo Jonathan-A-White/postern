@@ -8,6 +8,7 @@ import { unlockWithPasskey, unlockWithPhrase } from '../services/unlock';
 import { formatRoute } from '../nav/route';
 import { APP_VERSION_STRING } from '../version';
 import { reloadPage } from '../nav/reload';
+import { DoorAccounts } from './AccountChip';
 
 /** How long Loading waits before it says what it waits on, and before it offers Try again (mw-4gkijo.1). */
 export const SAYS_AFTER_MS = 3000;
@@ -25,6 +26,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           <p className="text-[14.5px] text-muted">The Governor's cockpit for the factory.</p>
         </div>
         {children}
+        <DoorAccounts />
         <p className="text-[11.5px] text-faint">v{APP_VERSION_STRING}</p>
       </div>
     </main>

@@ -1,4 +1,4 @@
-import { db, type ArchiveChoices, type PromptsCache } from '../db';
+import { accountDb, db, type ArchiveChoices, type PromptsCache } from '../db';
 import { accountsRepo } from './accounts-repo';
 import { DEFAULT_NOTIFICATION_SETTINGS } from '../../push/classOptions';
 import type { NotificationSettingsMap } from '../../push/classOptions';
@@ -73,12 +73,14 @@ export const settingsRepo = {
     await db.settings.put({ key: ANSWERED_RING_KEY, value: txid });
   },
 
-  /** A Later tap with no open window to send it: kept for the next open (src/sw.ts), once per ring. */
-  async addPendingLater(ringTxid: string): Promise<void> {
-    await db.transaction('rw', db.settings, async () => {
-      const row = await db.settings.get(PENDING_LATERS_KEY);
+  /** A Later tap with no open window to send it: kept for the next open (src/sw.ts), once per ring. It is kept in the
+   * account's own store when one is named (a tap for an account that is not the one on screen), else in the active one's. */
+  async addPendingLater(ringTxid: string, accountId?: string): Promise<void> {
+    const store = accountId === undefined ? db : accountDb(accountId);
+    await store.transaction('rw', store.settings, async () => {
+      const row = await store.settings.get(PENDING_LATERS_KEY);
       const waiting = (row?.value as string[] | undefined) ?? [];
-      if (!waiting.includes(ringTxid)) await db.settings.put({ key: PENDING_LATERS_KEY, value: [...waiting, ringTxid] });
+      if (!waiting.includes(ringTxid)) await store.settings.put({ key: PENDING_LATERS_KEY, value: [...waiting, ringTxid] });
     });
   },
 

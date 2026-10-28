@@ -8,7 +8,7 @@ import { navigate, useRoute, useScreenSearch } from './router';
 import { vaultRepo } from './data/repositories';
 import type { VaultRow } from './data/db';
 import { resumeSession } from './services/keySession';
-import { accountsLaunched, accountsVersion, onAccountChange } from './services/accounts';
+import { accountsLaunched, accountsVersion, isOtherAccount, landOnAccount, onAccountChange } from './services/accounts';
 import { startLive, stopLive } from './services/live';
 import { startOutbox } from './services/outbox';
 import { useUnlockedKey } from './cockpit/hooks';
@@ -168,8 +168,12 @@ export function App() {
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; url?: string; txid?: string } | undefined;
-      if (data?.type === 'open' && data.url) navigate(data.url.replace(/^\//, '') || '?v=needs');
+      const data = event.data as { type?: string; url?: string; txid?: string; account?: string } | undefined;
+      if (data?.type === 'open' && data.url) {
+        const url = data.url.replace(/^\//, '') || '?v=needs';
+        // A tap on another account's notification lands in that account (the worker names it), not in the one on screen.
+        void landOnAccount(data.account).then(() => navigate(url));
+      }
       // The worker asks whether a pushed message is already on screen, to show no notification for it (mw-gq6.166).
       if (data?.type === 'seen?' && data.txid) {
         const txid = data.txid;
@@ -200,8 +204,11 @@ export function App() {
       for (const ringTxid of await settingsRepo.takePendingLaters()) await putOff(ringTxid);
     };
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; ring_txid?: string } | undefined;
-      if (data?.type === 'later' && data.ring_txid) void putOff(data.ring_txid);
+      const data = event.data as { type?: string; ring_txid?: string; account?: string } | undefined;
+      if (data?.type !== 'later' || !data.ring_txid) return;
+      // A ring of another account than the one on screen waits in that account's own store for its next open.
+      if (isOtherAccount(data.account)) void settingsRepo.addPendingLater(data.ring_txid, data.account);
+      else void putOff(data.ring_txid);
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     void drain().catch(() => undefined);

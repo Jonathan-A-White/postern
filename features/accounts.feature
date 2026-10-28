@@ -1,8 +1,8 @@
 Feature: The app keeps more than one account, and uses the active one (mw-9rp4hu.4)
 
   An account is a backend, the key that signs for it, its licence and its Ideas only setting. The phone
-  that had one backend and one key yesterday has them as account 1, in place. There is no screen to add
-  or switch yet; the app's client, key, licence and cache already follow the active account.
+  that had one backend and one key yesterday has them as account 1, in place. The app's client, key,
+  licence and cache follow the active account (accounts-screen.feature adds, switches, renames and removes them).
 
   Scenario: mw-9rp4hu.4 AC-1: yesterday's single account becomes account 1, active, with the same key and licence
     Given a phone that kept one key, one licence and some messages before accounts existed

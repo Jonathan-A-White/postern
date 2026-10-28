@@ -1,7 +1,7 @@
 {
-  "version": "0.8.60",
-  "commit": "71b0c45d",
-  "published_at": "2026-10-28T17:19:19.329Z",
+  "version": "0.8.61",
+  "commit": "2ee716b8",
+  "published_at": "2026-10-28T19:49:35.477Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -23,6 +23,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/about.png"
+    },
+    {
+      "name": "390x844/accounts-section.png",
+      "screen": "accounts-section",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/accounts-section.png"
+    },
+    {
+      "name": "360x640/accounts-section.png",
+      "screen": "accounts-section",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/accounts-section.png"
+    },
+    {
+      "name": "1280x800/accounts-section.png",
+      "screen": "accounts-section",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/accounts-section.png"
     },
     {
       "name": "390x844/answered-card.png",

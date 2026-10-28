@@ -40,7 +40,7 @@ describe('an emergency push', () => {
     const app = fakeWindowClient();
     worker.openWindows.push(app);
     await worker.click(worker.open[worker.open.length - 1]);
-    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=emergency' });
+    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=emergency', account: '1' });
     expect(app.focus).toHaveBeenCalled();
   });
 });

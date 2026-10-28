@@ -48,7 +48,7 @@ describe('a talk answer push', () => {
     app.visibilityState = 'hidden';
     worker.openWindows.push(app);
     await worker.click(worker.open[worker.open.length - 1]);
-    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=line' });
+    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=line', account: '1' });
     expect(app.focus).toHaveBeenCalled();
   });
 

@@ -139,6 +139,6 @@ describe('a reminder push in the real service worker', () => {
     const app = fakeWindowClient();
     worker.openWindows.push(app);
     await worker.click(worker.open[worker.open.length - 1]);
-    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=todo' });
+    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=todo', account: '1' });
   });
 });

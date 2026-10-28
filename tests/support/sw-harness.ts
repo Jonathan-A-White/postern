@@ -48,20 +48,34 @@ export function fakeWindowClient(url = 'https://postern.allmymind.org/?v=needs')
   return { url, focused: true, visibilityState: 'visible', focus: vi.fn(async () => undefined), postMessage: vi.fn() };
 }
 
-let loaded: WorkerHarness | undefined;
+let loaded: { account: string; harness: WorkerHarness } | undefined;
+const realAddEventListener = window.addEventListener.bind(window);
 
-export async function loadWorker(): Promise<WorkerHarness> {
-  if (loaded) {
-    loaded.openWindows.length = 0;
-    loaded.shown.length = 0;
-    loaded.open.length = 0;
-    loaded.openWindow.mockClear();
-    loaded.skipWaiting.mockClear();
-    loaded.claim.mockClear();
-    return loaded;
+/** The scope an account's push-only registration has (src/push/accountScope.ts), as a browser reports it. */
+export function accountScopeUrl(accountId: string): string {
+  return `https://postern.allmymind.org/push-account/${accountId}/`;
+}
+
+export interface LoadWorkerOptions {
+  /** The account whose push registration this worker runs in; none is the app's own registration (account 1, as before). Asking for another account than the last load's makes a fresh worker, and the earlier one stops being the one `self` is. */
+  account?: string;
+}
+
+export async function loadWorker(options: LoadWorkerOptions = {}): Promise<WorkerHarness> {
+  const account = options.account ?? '1';
+  if (loaded && loaded.account === account) {
+    const reused = loaded.harness;
+    reused.openWindows.length = 0;
+    reused.shown.length = 0;
+    reused.open.length = 0;
+    reused.openWindow.mockClear();
+    reused.skipWaiting.mockClear();
+    reused.claim.mockClear();
+    return reused;
   }
+  if (loaded) vi.resetModules();
   const handlers = new Map<string, Array<(event: unknown) => void>>();
-  const realAdd = window.addEventListener.bind(window);
+  const realAdd = realAddEventListener;
   vi.spyOn(window, 'addEventListener').mockImplementation(((type: string, listener: (event: unknown) => void, ...rest: unknown[]) => {
     if (type === 'push' || type === 'notificationclick' || type === 'fetch' || type === 'message' || type === 'activate') handlers.set(type, [...(handlers.get(type) ?? []), listener]);
     else (realAdd as (...args: unknown[]) => void)(type, listener, ...rest);
@@ -109,6 +123,7 @@ export async function loadWorker(): Promise<WorkerHarness> {
     skipWaiting: harness.skipWaiting,
     clients: { matchAll: vi.fn(async () => harness.openWindows), openWindow: harness.openWindow, claim: harness.claim },
     registration: {
+      scope: options.account ? accountScopeUrl(options.account) : 'https://postern.allmymind.org/',
       showNotification: vi.fn(async (title: string, options: Record<string, unknown>) => {
         harness.shown.push({ title, options });
         const notification: FakeNotification = {
@@ -122,6 +137,6 @@ export async function loadWorker(): Promise<WorkerHarness> {
     },
   });
   await import('../../src/sw');
-  loaded = harness;
+  loaded = { account, harness };
   return harness;
 }

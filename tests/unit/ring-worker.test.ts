@@ -52,7 +52,7 @@ describe('a tap on a ring', () => {
     const app = fakeWindowClient();
     worker.openWindows.push(app);
     await worker.click(await ring(), '');
-    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: `/?v=line&call=${encodeURIComponent(RING)}` });
+    expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: `/?v=line&call=${encodeURIComponent(RING)}`, account: '1' });
     expect(app.focus).toHaveBeenCalled();
     expect(worker.openWindow).not.toHaveBeenCalled();
   });
@@ -61,7 +61,7 @@ describe('a tap on a ring', () => {
     const app = fakeWindowClient();
     worker.openWindows.push(app);
     await worker.click(await ring(), 'later');
-    expect(app.postMessage).toHaveBeenCalledWith({ type: 'later', ring_txid: RING });
+    expect(app.postMessage).toHaveBeenCalledWith({ type: 'later', ring_txid: RING, account: '1' });
     expect(app.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'open' }));
     expect(app.focus).not.toHaveBeenCalled();
     expect(await settingsRepo.takePendingLaters()).toEqual([]);

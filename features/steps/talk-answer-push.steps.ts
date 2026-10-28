@@ -57,7 +57,7 @@ describeFeature(feature, ({ BeforeEachScenario, Scenario }) => {
     And('the push for a talk answer arrives', arrive);
     When('he taps the notification', () => worker.click(worker.open[worker.open.length - 1]));
     Then('the app is sent to the Talk line', () => {
-      expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=line' });
+      expect(app.postMessage).toHaveBeenCalledWith({ type: 'open', url: '/?v=line', account: '1' });
     });
   });
   const landing = () => worker.push({ class: 'landing', ts: 1_790_000_000 });

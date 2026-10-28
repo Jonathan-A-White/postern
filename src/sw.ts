@@ -19,6 +19,8 @@
 //  - a message's notification shows without sound or buzz while the Talk line is on his screen (mw-q6n8m0.2);
 //  - an emergency events record (class events, docs/protocol.md §22) is pushed too, at once and until
 //    dealt with (src/push/classOptions.ts); the app's banner shows what it was;
+//  - each account has its own registration (src/push/accountScope.ts: the app's own is account 1's, every other is
+//    push-only), so a push is shown from the database of the account its registration belongs to (mw-9rp4hu.23);
 //  - files shared from another app (the manifest's share_target) are parked in
 //    IndexedDB and the app opens on the Share screen to place them.
 import { precacheAndRoute } from 'workbox-precaching';
@@ -27,10 +29,17 @@ import { notificationSpecForClass, notificationSpecForEmergency, notificationSpe
 import { notificationSpecForReminder } from './push/reminder';
 import { resolveTapUrl, type TapData } from './push/tapTarget';
 import { parseRoute } from './nav/route';
+import { activateAccountDb, FIRST_ACCOUNT_ID } from './data/db';
+import { accountForScope } from './push/accountScope';
 import { settingsRepo } from './data/repositories/settings-repo';
 import { sharesRepo } from './data/repositories/view-repo';
 
 declare const self: ServiceWorkerGlobalScope;
+
+// The account this registration belongs to: every read and write below goes to its database. The worker never runs
+// loadAccounts, so without this every push would be account 1's.
+const ACCOUNT_ID = accountForScope(self.registration?.scope);
+activateAccountDb(ACCOUNT_ID);
 
 // A script or stylesheet whose precached copy is not what its extension says (nginx once answered a
 // missing one with the app page, mw-j0f2d.41) is never served from the precache. This listener comes
@@ -49,7 +58,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(Promise.all([healPrecache(self.caches), self.clients.claim()]));
 });
 
-precacheAndRoute(self.__WB_MANIFEST);
+// A push-only registration has no page of its own to serve, so it keeps no second copy of the app.
+if (ACCOUNT_ID === FIRST_ACCOUNT_ID) precacheAndRoute(self.__WB_MANIFEST);
 
 interface PushPayload {
   class: PushClass | 'call' | 'events' | 'talk' | 'reminder';
@@ -178,23 +188,23 @@ self.addEventListener('message', (event) => {
   if (data.seen !== false) event.waitUntil(closeNotificationsFor(data.txid));
 });
 
-/** Focuses an open window and sends it to `url`, or opens one there. */
+/** Focuses an open window and sends it to `url` (and the account it is about, for the window to switch to), or opens one there. */
 async function openAt(url: string): Promise<WindowClient | null | undefined> {
   const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   for (const client of clientList) {
     if ('focus' in client) {
       client.postMessage({ type: 'sync-inbox' });
-      client.postMessage({ type: 'open', url });
+      client.postMessage({ type: 'open', url, account: ACCOUNT_ID });
       return client.focus();
     }
   }
   return self.clients.openWindow(url);
 }
 
-/** His Later tap on a ring: an open window sends the record (the key is in the app); with none, the tap waits in IndexedDB for the next open. */
+/** His Later tap on a ring: an open window sends the record (the key is in the app; it is told the account, and keeps the tap for that account's next open if another is on screen); with none, the tap waits in this account's IndexedDB for the next open. */
 async function putRingOff(ringTxid: string): Promise<void> {
   const [open] = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  if (open) open.postMessage({ type: 'later', ring_txid: ringTxid });
+  if (open) open.postMessage({ type: 'later', ring_txid: ringTxid, account: ACCOUNT_ID });
   else await settingsRepo.addPendingLater(ringTxid);
 }
 

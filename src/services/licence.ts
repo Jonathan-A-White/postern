@@ -6,7 +6,7 @@
 // holder's own key — always appears in the holder's own address history; no separate
 // anchor scan is needed the way a third-party buyer's purchase would need one.
 //
-// The result is cached in a Dexie settings row, with the time it was checked, so the
+// The result is cached on the active account (src/data/repositories/accounts-repo.ts), with the time it was checked, so the
 // gate can open on the last known answer while offline.
 import { PublicKey, Utils } from '@bsv/sdk';
 import {
@@ -15,29 +15,19 @@ import {
   type ChainProvider,
   type TypedRecordInTransaction,
 } from 'spell-forge-bsv';
-import { settingsRepo } from '../data/repositories';
+import { accountsRepo, settingsRepo, type LicenceOutpoint, type LicenceStatus } from '../data/repositories';
 import { sharedChainReads } from './sharedChainReads';
 import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from './collections';
 
 const COUNTED_COLLECTIONS = new Set([COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION]);
-const LICENCE_STATUS_SETTING_KEY = 'licence-status';
 const LICENCE_MINT_PENDING_SETTING_KEY = 'licence-mint-pending';
 
-export interface LicenceOutpoint {
-  txid: string;
-  vout: number;
-}
+export type { LicenceOutpoint, LicenceStatus };
 
 /** A found licence: where its mint is, and the collection that mint names. */
 export interface FoundLicence extends LicenceOutpoint {
   collection: string;
 }
-
-/** `collection` is absent on a row cached before it was recorded (mw-kiubh7.1): read such a
- * row as unknown and check afresh. */
-export type LicenceStatus =
-  | { held: true; outpoint: LicenceOutpoint; collection?: string; checkedAt: string }
-  | { held: false; checkedAt: string };
 
 interface MintPayload {
   kind: 'mint';
@@ -124,8 +114,9 @@ export async function findLicence(publicKeyHex: string, handedProvider?: ChainPr
   return latestIn(COCKPIT_COLLECTION) ?? latestIn(LEGACY_LICENCE_COLLECTION) ?? null;
 }
 
+/** The licence check's last answer for the active account (kept on the account, accounts-repo.ts). */
 export async function getCachedLicenceStatus(): Promise<LicenceStatus | undefined> {
-  return (await settingsRepo.get(LICENCE_STATUS_SETTING_KEY)) as LicenceStatus | undefined;
+  return (await accountsRepo.active()).licence;
 }
 
 export interface MintPending {
@@ -152,12 +143,13 @@ async function clearMintPending(): Promise<void> {
  * mint-pending marker once the licence is found held in the cockpit's collection, so a later
  * failed check has nothing stale to fall back to (mw-1589l.24, mw-7ijx65). */
 export async function checkLicence(publicKeyHex: string, provider?: ChainProvider): Promise<LicenceStatus> {
+  const accountId = accountsRepo.activeNow().id; // the answer is this account's, whichever is active when the chain replies
   const found = await findLicence(publicKeyHex, provider);
   const checkedAt = new Date().toISOString();
   const status: LicenceStatus = found
     ? { held: true, outpoint: { txid: found.txid, vout: found.vout }, collection: found.collection, checkedAt }
     : { held: false, checkedAt };
-  await settingsRepo.set(LICENCE_STATUS_SETTING_KEY, status);
+  await accountsRepo.update(accountId, { licence: status });
   // Only a licence in this collection ends the wait: a held licence in the old one is not the mint just sent.
   if (status.held && status.collection === COCKPIT_COLLECTION) await clearMintPending();
   return status;

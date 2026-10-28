@@ -8,6 +8,7 @@ import { navigate, useRoute, useScreenSearch } from './router';
 import { vaultRepo } from './data/repositories';
 import type { VaultRow } from './data/db';
 import { resumeSession } from './services/keySession';
+import { accountsLaunched } from './services/accounts';
 import { startLive, stopLive } from './services/live';
 import { startOutbox } from './services/outbox';
 import { useUnlockedKey } from './cockpit/hooks';
@@ -111,7 +112,8 @@ export function App() {
   // A read that answers after the app has closed, or after a newer read, sets nothing (mw-ev7oyy.21).
   useEffect(() => {
     let cancelled = false;
-    resumeSession()
+    accountsLaunched()
+      .then(() => resumeSession())
       .catch((err: unknown) => {
         if (!cancelled) setResumeError(whyItFailed(err));
       })
@@ -125,7 +127,7 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
-    void vaultRepo.get().then(
+    void accountsLaunched().then(() => vaultRepo.get()).then(
       (row) => {
         clearDbTrouble();
         if (cancelled) return;

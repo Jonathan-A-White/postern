@@ -1,4 +1,5 @@
 import { db, type ArchiveChoices, type PromptsCache } from '../db';
+import { accountsRepo } from './accounts-repo';
 import { DEFAULT_NOTIFICATION_SETTINGS } from '../../push/classOptions';
 import type { NotificationSettingsMap } from '../../push/classOptions';
 import { DEFAULT_REMINDER_SETTINGS, type ReminderSettings } from '../../push/reminder';
@@ -10,7 +11,6 @@ const THREAD_ARCHIVE_KEY = 'threadArchive';
 const PENDING_LATERS_KEY = 'pendingLaters';
 const ANSWERED_RING_KEY = 'answeredRing';
 const PROMPTS_KEY = 'prompts';
-const IDEAS_ONLY_KEY = 'ideasOnly';
 const RECORDED_NOTES_KEY = 'recordedNotes';
 /** How many notes are kept: the newest ones; they are history, not a record. */
 const RECORDED_NOTES_KEPT = 500;
@@ -101,14 +101,13 @@ export const settingsRepo = {
     await db.settings.put({ key: PROMPTS_KEY, value: cache });
   },
 
-  /** Ideas only as the backend last answered for this phone's key, with the time (src/services/ideasOnly.ts). */
+  /** Ideas only as the backend last answered for the active account's key, with the time (src/services/ideasOnly.ts); kept on the account (accounts-repo.ts). */
   async getIdeasOnly(): Promise<IdeasOnlyKept | undefined> {
-    const row = await db.settings.get(IDEAS_ONLY_KEY);
-    return row?.value as IdeasOnlyKept | undefined;
+    return (await accountsRepo.active()).ideasOnly;
   },
 
   async setIdeasOnly(kept: IdeasOnlyKept): Promise<void> {
-    await db.settings.put({ key: IDEAS_ONLY_KEY, value: kept });
+    await accountsRepo.updateActive({ ideasOnly: kept });
   },
 
   /** The 'Recorded for after 21:00' notes of his sent messages, by their txid (a record is never changed to carry one). */

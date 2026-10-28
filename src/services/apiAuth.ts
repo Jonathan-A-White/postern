@@ -12,7 +12,7 @@
 // (an older backend). A nonce refusal is retried once with a fresh challenge; a
 // failed challenge says the backend could not be reached (mw-t64a3.25).
 import { Hash, PrivateKey, Utils } from '@bsv/sdk';
-import { API_BASE } from './messages';
+import { activeBackendUrl } from './accounts';
 import { noteApiResponse } from './standby';
 import { ApiTimeoutError, API_TIMEOUT_MS, fetchWithin, withTimeout } from './timedFetch';
 
@@ -48,6 +48,7 @@ export function isPermanentRefusal(err: unknown): err is RefusedError {
 export interface ApiFetchOptions {
   /** This phone's unlocked raw master key. Omitted for an unauthenticated call. */
   unlockedKey?: Uint8Array;
+  /** The backend to call; the active account's when omitted (src/services/accounts.ts). */
   apiBase?: string;
   fetchImpl?: typeof fetch;
 }
@@ -135,7 +136,7 @@ export async function apiFetch(
   init: RequestInit | undefined,
   options: ApiFetchOptions,
 ): Promise<Response> {
-  const apiBase = options.apiBase ?? API_BASE;
+  const apiBase = options.apiBase ?? activeBackendUrl();
   const fetchImpl = options.fetchImpl ?? fetch;
   const method = (init?.method ?? 'GET').toUpperCase();
   const sent = method !== 'GET' && method !== 'HEAD';

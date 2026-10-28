@@ -9,3 +9,4 @@ export { bannerMsLeft, eventsRepo, INFORMATION_EMERGENCY_MS, isInformation } fro
 export { outboxRepo, newClientId } from './outbox-repo';
 export { cardsRepo } from './cards-repo';
 export { draftsRepo } from './drafts-repo';
+export { accountsRepo, DEFAULT_BACKEND_URL, DEFAULT_KEY_REF, type Account, type LicenceOutpoint, type LicenceStatus } from './accounts-repo';

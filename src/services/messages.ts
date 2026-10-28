@@ -5,7 +5,7 @@
 // class tag — stays plaintext JSON, readable by anyone who can see the chain.
 import { PrivateKey, PublicKey, SymmetricKey, Utils } from '@bsv/sdk';
 import { EncryptedMessage } from 'spell-forge-bsv';
-import { settingsRepo } from '../data/repositories';
+import { settingsRepo, DEFAULT_BACKEND_URL } from '../data/repositories';
 import type { MessageClass } from '../data/db';
 
 export type { MessageClass };
@@ -14,9 +14,9 @@ export type { MessageClass };
  * spell-forge-bsv's chainConfig.anchorAddress, which is the leaderboard's. */
 export const ANCHOR_ADDRESS = 'mt6vaAWeFxu2qC6pPs7bsqTNvv87dCwMW5';
 
-/** The API base every fetch in this app makes: a relative path on the app's own
- * origin, resolved at runtime — no build-time host configuration needed. */
-export const API_BASE = '/api';
+/** The API base the first account has: a relative path on the app's own origin, resolved at runtime — no
+ * build-time host configuration needed. A call goes to the active account's backend (src/services/accounts.ts). */
+export const API_BASE = DEFAULT_BACKEND_URL;
 
 export interface MessagePayload {
   v: 1;

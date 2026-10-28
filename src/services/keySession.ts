@@ -6,6 +6,10 @@
 // again, src/services/session.ts keeps it wrapped with a non-extractable AES
 // key this device generated — usable by this origin, never readable out of
 // IndexedDB — until the day is up or he locks.
+//
+// Each account (src/services/accounts.ts) unlocks its own key: the session is the active account's, so
+// switching accounts hands back the key that account unlocked, or none, and tells the screens (mw-9rp4hu.4).
+import { onAccountChange, getActiveAccount } from './accounts';
 import { clearSession, persistSession, restoreSession } from './session';
 
 export const SESSION_HOURS = 24;
@@ -18,12 +22,17 @@ interface Session {
   expiresAt: number;
 }
 
-let session: Session | null = null;
+/** Each account's unlocked key, by account id; `getKey` and the rest read the active account's. */
+const sessions = new Map<string, Session>();
 const listeners = new Set<() => void>();
 
 function emit(): void {
   for (const listener of listeners) listener();
 }
+
+const activeId = (): string => getActiveAccount().id;
+// A switch of account changes the key the screens see.
+onAccountChange(emit);
 
 /** Called whenever the key is set or dropped, for the app to re-render. */
 export function onKeyChange(listener: () => void): () => void {
@@ -33,16 +42,17 @@ export function onKeyChange(listener: () => void): () => void {
 
 /** Holds `key` for the rest of the day and keeps it across relaunches. */
 export function setKey(key: Uint8Array, expiresAt: number = Date.now() + SESSION_MS): void {
-  session = { key, expiresAt };
+  sessions.set(activeId(), { key, expiresAt });
   void persistSession(key, expiresAt);
   emit();
 }
 
 /** The unlocked key, or null when there is none or the day is up. */
 export function getKey(): Uint8Array | null {
+  const session = sessions.get(activeId());
   if (!session) return null;
   if (Date.now() >= session.expiresAt) {
-    session = null;
+    sessions.delete(activeId());
     void clearSession();
     emit();
     return null;
@@ -51,13 +61,12 @@ export function getKey(): Uint8Array | null {
 }
 
 export function sessionExpiresAt(): number | null {
-  return getKey() ? (session?.expiresAt ?? null) : null;
+  return getKey() ? (sessions.get(activeId())?.expiresAt ?? null) : null;
 }
 
 /** Ends the session here and on disk: the next use asks for the fingerprint. */
 export function lock(): void {
-  const had = session !== null;
-  session = null;
+  const had = sessions.delete(activeId());
   void clearSession();
   if (had) emit();
 }
@@ -67,7 +76,7 @@ export async function resumeSession(): Promise<boolean> {
   if (getKey()) return true;
   const restored = await restoreSession();
   if (!restored) return false;
-  session = { key: restored.key, expiresAt: restored.expiresAt };
+  sessions.set(activeId(), { key: restored.key, expiresAt: restored.expiresAt });
   emit();
   return true;
 }

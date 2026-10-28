@@ -278,7 +278,16 @@ export interface VaultRow {
   publicKeyHex: string;
 }
 
-class PosternDB extends Dexie {
+/** mw-9rp4hu.4: the first account's id. Its store is the database this app has always had ('PosternDB'), so a phone
+ * that upgrades keeps its cache in place; every other account has a database of its own. */
+export const FIRST_ACCOUNT_ID = '1';
+const FIRST_DB_NAME = 'PosternDB';
+
+export function dbNameFor(accountId: string): string {
+  return accountId === FIRST_ACCOUNT_ID ? FIRST_DB_NAME : `${FIRST_DB_NAME}-${accountId}`;
+}
+
+export class PosternDB extends Dexie {
   settings!: Table<SettingRow, string>;
   vault!: Table<VaultRow, string>;
   messages!: Table<MessageRow, string>;
@@ -293,8 +302,8 @@ class PosternDB extends Dexie {
   outbox!: Table<OutboxRow, number>;
   cards!: Table<CardRow, string>;
 
-  constructor() {
-    super('PosternDB');
+  constructor(name: string = FIRST_DB_NAME) {
+    super(name);
 
     this.version(1).stores({
       settings: 'key',
@@ -447,4 +456,45 @@ class PosternDB extends Dexie {
   }
 }
 
-export const db = new PosternDB();
+/** The first account's store, which also holds the accounts themselves (src/data/repositories/accounts-repo.ts). */
+export const defaultDb = new PosternDB();
+
+const opened = new Map<string, PosternDB>([[FIRST_ACCOUNT_ID, defaultDb]]);
+let activeId = FIRST_ACCOUNT_ID;
+
+function dbFor(accountId: string): PosternDB {
+  let found = opened.get(accountId);
+  if (!found) {
+    found = new PosternDB(dbNameFor(accountId));
+    opened.set(accountId, found);
+  }
+  return found;
+}
+
+/** Points `db` at this account's store. */
+export function activateAccountDb(accountId: string): void {
+  activeId = accountId;
+}
+
+export function activeAccountDbId(): string {
+  return activeId;
+}
+
+/** Lets go of every store but the first account's (tests, and a relaunch's fresh start). */
+export function closeOtherAccountDbs(): void {
+  for (const [id, other] of opened) {
+    if (id === FIRST_ACCOUNT_ID) continue;
+    other.close();
+    opened.delete(id);
+  }
+}
+
+/** The active account's store. Every repository reads and writes through this, so switching the account switches
+ * what the cockpit shows without a line of the screens knowing; the target is looked up at each use. */
+export const db: PosternDB = new Proxy(defaultDb, {
+  get(_target, property) {
+    const active = dbFor(activeId);
+    const value: unknown = Reflect.get(active, property, active);
+    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(active) : value;
+  },
+});

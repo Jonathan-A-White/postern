@@ -2,7 +2,7 @@
 // `blocked`: another window of Postern holds an older copy open and the upgrade waits on it.
 // `changed`: another window upgraded the database under this one, which has let go of it; the page reloads once.
 // Not imported by the service worker (which shares db.ts but has no page to reload), so it is not in db.ts itself.
-import { db } from './db';
+import { onEveryAccountDb } from './db';
 import { reloadPage } from '../nav/reload';
 
 export type DbTrouble = 'blocked' | 'changed';
@@ -69,10 +69,13 @@ export function resetDbTrouble(): void {
   }
 }
 
-db.on('blocked', () => noteDbBlocked());
-// A copy another window has upgraded is let go (closed for good, so nothing reopens it at the old version; returning false stops Dexie's own handler) and the page reloads once.
-db.on('versionchange', () => {
-  db.close();
-  noteDbChanged();
-  return false;
+// On every account's store, those open and those opened later (mw-9rp4hu.5): any of them may be the one another window holds or upgrades.
+onEveryAccountDb((store) => {
+  store.on('blocked', () => noteDbBlocked());
+  // A copy another window has upgraded is let go (closed for good, so nothing reopens it at the old version; returning false stops Dexie's own handler) and the page reloads once.
+  store.on('versionchange', () => {
+    store.close();
+    noteDbChanged();
+    return false;
+  });
 });

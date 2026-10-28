@@ -460,15 +460,25 @@ export class PosternDB extends Dexie {
 export const defaultDb = new PosternDB();
 
 const opened = new Map<string, PosternDB>([[FIRST_ACCOUNT_ID, defaultDb]]);
+const watchers: ((store: PosternDB) => void)[] = [];
 let activeId = FIRST_ACCOUNT_ID;
 
-function dbFor(accountId: string): PosternDB {
+/** An account's store by its id, whichever account is active: for work that must land on the account it began for (mw-9rp4hu.5). */
+export function accountDb(accountId: string): PosternDB {
   let found = opened.get(accountId);
   if (!found) {
     found = new PosternDB(dbNameFor(accountId));
     opened.set(accountId, found);
+    for (const watch of watchers) watch(found);
   }
   return found;
+}
+const dbFor = accountDb;
+
+/** Calls `watch` with every account's store, those already made and each one made later (src/data/dbTrouble.ts hangs its handlers on all of them). */
+export function onEveryAccountDb(watch: (store: PosternDB) => void): void {
+  watchers.push(watch);
+  for (const store of opened.values()) watch(store);
 }
 
 /** Points `db` at this account's store. */

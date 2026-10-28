@@ -1,4 +1,7 @@
-import { db, type ViewRow, type BeadDetailRow, type SessionRow, type ShareRow } from '../db';
+import { accountDb, db, type PosternDB, type ViewRow, type BeadDetailRow, type SessionRow, type ShareRow } from '../db';
+
+/** The active account's store, or the named account's. */
+const storeOf = (accountId?: string): PosternDB => (accountId === undefined ? db : accountDb(accountId));
 
 const CURRENT = 'current';
 
@@ -63,17 +66,18 @@ export const sharesRepo = {
 
 const SESSION_ROW = 'daily';
 
-/** plans/0021 decision 14: the one wrapped daily session. */
+/** plans/0021 decision 14: the one wrapped daily session of an account: the active one's, or the one named by `accountId`
+ * (a write that began for an account is made to that account's store, whichever is active when it finishes, mw-9rp4hu.5). */
 export const sessionRepo = {
-  async get(): Promise<SessionRow | undefined> {
-    return db.session.get(SESSION_ROW);
+  async get(accountId?: string): Promise<SessionRow | undefined> {
+    return storeOf(accountId).session.get(SESSION_ROW);
   },
 
-  async save(row: Omit<SessionRow, 'id'>): Promise<void> {
-    await db.session.put({ id: SESSION_ROW, ...row });
+  async save(row: Omit<SessionRow, 'id'>, accountId?: string): Promise<void> {
+    await storeOf(accountId).session.put({ id: SESSION_ROW, ...row });
   },
 
-  async clear(): Promise<void> {
-    await db.session.delete(SESSION_ROW);
+  async clear(accountId?: string): Promise<void> {
+    await storeOf(accountId).session.delete(SESSION_ROW);
   },
 };

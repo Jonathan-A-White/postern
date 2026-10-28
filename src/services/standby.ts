@@ -4,6 +4,7 @@
 // so every screen can say 'Home is down' and offer the move (mw-43v9x.9). The
 // hosts a home can be: the desktop and the laptop, never the VPS.
 import { useSyncExternalStore } from 'react';
+import { onAccountChange } from './accounts';
 
 export const HOMES = ['desktop', 'laptop'] as const;
 export type HomeHost = (typeof HOMES)[number];
@@ -35,6 +36,9 @@ export function getStandby(): StandbyState | null {
 export function clearStandby(): void {
   if (standby) set(null);
 }
+
+// Whether the home is down is about one backend: another account's backend has its own answer (mw-9rp4hu.5).
+onAccountChange(clearStandby);
 
 export function useStandby(): StandbyState | null {
   return useSyncExternalStore(

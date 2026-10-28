@@ -151,6 +151,15 @@ export const accountsRepo = {
     return account;
   },
 
+  /** Forgets one account: its record only. Its store (and so its key) stays on the phone. The active account, and the last one, are not forgotten. */
+  async remove(id: string): Promise<void> {
+    await settle((accounts) => {
+      if (id === current.id) throw new Error('Switch to another account before removing this one.');
+      if (accounts.length <= 1) throw new Error('The last account cannot be removed.');
+      return accounts.filter((account) => account.id !== id);
+    });
+  },
+
   /** Changes fields of one account, whole in one transaction (a licence check and an Ideas only answer may land together). */
   async update(id: string, patch: Partial<Omit<Account, 'id'>>): Promise<void> {
     const next = await settle((accounts) => accounts.map((account) => (account.id === id ? { ...account, ...patch } : account)));

@@ -26,6 +26,7 @@
 // off and the next goes on (mw-q6n8m0.15).
 import { useSyncExternalStore } from 'react';
 import { apiFetch } from './apiAuth';
+import { getActiveAccount, onAccountLeaving } from './accounts';
 import { chain } from '../chain';
 import { onIdeasOnlyEvent } from './ideasOnly';
 import { projectBatches, syncMessagesAndEvents } from './events';
@@ -79,12 +80,14 @@ const FOREGROUND_DEBOUNCE_MS = 3_000;
  * but a storage read, a decrypt or an unzip is not, and Android can stall one for good when it freezes the page: past
  * this the sync is cut off. */
 export const SYNC_LIMIT_MS = 60_000;
+/** How long a switch of account waits for the old account's sync to finish its writes before it goes on without it (mw-9rp4hu.5). */
+export const QUIET_LIMIT_MS = 5_000;
 /** What the line says when a sync was cut off. */
 const SYNC_CUT_OFF = 'A sync did not finish in time.';
 
 let state: LiveState = { status: 'idle', me: null, reconnects: 0, syncs: 0 };
 const listeners = new Set<() => void>();
-let current: { key: Uint8Array; abort: AbortController; interrupt?: AbortController } | null = null;
+let current: { key: Uint8Array; accountId: string; abort: AbortController; interrupt?: AbortController } | null = null;
 let lastForeground = 0;
 /** When this session last applied an events batch (ms), 0 before the first. */
 let lastProjected = 0;
@@ -228,6 +231,20 @@ function withinSyncLimit<T>(work: Promise<T>): Promise<T> {
 
 /** The sync holding the queue: when it began, and how to cut it off. */
 let running: { began: number; cut: AbortController } | null = null;
+/** Every task that has begun and not yet settled, cut off or not: a cut-off one still finishes the write it is in. */
+const inFlight = new Set<Promise<unknown>>();
+
+/** Resolves once every task begun has settled (its writes are done), or after `ms`, whichever is first. */
+function whenQuiet(ms: number): Promise<void> {
+  if (inFlight.size === 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    void Promise.allSettled([...inFlight]).then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
 
 /** Runs `task` once every task queued before it has finished or been cut off. A task is cut off after SYNC_LIMIT_MS,
  * or sooner by cutStaleSync or stopLive: its signal aborts and the queue goes on without waiting for it, so one that
@@ -239,8 +256,11 @@ function queue(task: (signal: AbortSignal) => Promise<void>): Promise<boolean> {
     running = entry;
     const timer = setTimeout(() => cut.abort(), SYNC_LIMIT_MS);
     const cutOff = new Promise<boolean>((resolve) => cut.signal.addEventListener('abort', () => resolve(false), { once: true }));
+    const work = task(cut.signal).then(() => true, () => true);
+    inFlight.add(work);
+    void work.then(() => inFlight.delete(work));
     try {
-      return await Promise.race([task(cut.signal).then(() => true, () => true), cutOff]);
+      return await Promise.race([work, cutOff]);
     } finally {
       clearTimeout(timer);
       if (running === entry) running = null;
@@ -509,10 +529,11 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
 
 /** Connects with `key`; a second call with the same key is a no-op. */
 export function startLive(key: Uint8Array): void {
-  if (current && current.key === key && !current.abort.signal.aborted) return;
+  const accountId = getActiveAccount().id;
+  if (current && current.key === key && current.accountId === accountId && !current.abort.signal.aborted) return;
   stopLive();
   const abort = new AbortController();
-  current = { key, abort };
+  current = { key, accountId, abort };
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibilityChange);
   if (typeof window !== 'undefined') window.addEventListener('pageshow', onForeground);
   void run(key, abort.signal);
@@ -533,6 +554,15 @@ export function stopLive(): void {
   if (typeof window !== 'undefined') window.removeEventListener('pageshow', onForeground);
   setState({ status: 'idle', reached: false });
 }
+
+// A switch of account ends this account's connection and everything it learned (who is who, the Mayor, the counts), lets the sync
+// under way finish into its own account's store, and leaves the line idle until the app starts it for the new account (App.tsx).
+onAccountLeaving(async () => {
+  stopLive();
+  state = { status: 'idle', me: null, reconnects: 0, syncs: 0 };
+  for (const listener of listeners) listener();
+  await whenQuiet(QUIET_LIMIT_MS);
+});
 
 function onVisibilityChange(): void {
   if (document.visibilityState === 'visible') onForeground();

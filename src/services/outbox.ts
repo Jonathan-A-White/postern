@@ -29,6 +29,7 @@ import { deliverAction, deliverAnswer, deliverThreaded, writeBehind, type Delive
 import { deliverCallRequest } from './call';
 import { backendReachable, getLiveState, deliverOptions, subscribeLive } from './live';
 import { getKey, onKeyChange } from './keySession';
+import { getActiveAccount, onAccountChange, onAccountLeaving } from './accounts';
 import { deliverTurn } from './talk';
 import { messageRecords, type Attachment, type ThreadedBody, type ThreadRef } from './threads';
 
@@ -113,6 +114,10 @@ interface Lane {
 }
 const lanes: Lane[] = (['turn', 'main'] as const).map((name) => ({ name, draining: undefined, again: undefined, timer: undefined }));
 let generation = 0;
+/** Set while the app leaves an account: no row is started, the one being sent is let finish into its own account's outbox. */
+let paused = false;
+/** How long leaving an account waits for the row being sent before it goes on without it. */
+const LEAVE_WAIT_MS = 5_000;
 
 /** The seq of the view the phone holds now (the one on screen), when it has one. */
 async function shownViewSeq(): Promise<number | undefined> {
@@ -138,18 +143,33 @@ export async function enqueue(row: { kind: OutboxKind; bead?: string; payload: R
   return id;
 }
 
-async function deliverRow(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
+/** `stillHere` says whether the app is still on the account the row was written in. */
+async function deliverRow(row: OutboxRow, options: DeliverOptions, stillHere: () => boolean): Promise<Delivered> {
   switch (row.kind) {
     case 'answer':
       return stage(deliverAnswer(row.bead, String(row.payload.answer ?? ''), options, typeof row.payload.re === 'string' ? row.payload.re : undefined), true);
     case 'action':
       return stage(deliverAction(row.payload.action as GovernorAction, options), true);
     case 'turn':
-      return deliverQueuedTurn(row, options);
+      return deliverQueuedTurn(row, options, stillHere);
     case 'call':
       return stage(deliverCallRequest(String(row.payload.text ?? ''), Number(row.payload.at ?? 0), options), true);
     case 'message':
-      return deliverMessage(row, options);
+      return deliverMessage(row, options, stillHere);
+  }
+}
+
+/** Keeps what a row has done so far on the row, unless the app has left the account the row is in (the row is then tried again, by its client id, when the account is back). */
+async function keepProgress(stillHere: () => boolean, id: number, payload: Record<string, unknown>): Promise<void> {
+  if (!stillHere()) throw new AccountLeft();
+  await outboxRepo.update(id, { payload });
+}
+
+/** Thrown in a row's try when the app has gone to another account: nothing more of it is written. */
+class AccountLeft extends Error {
+  constructor() {
+    super('The account was switched while this was being sent.');
+    this.name = 'AccountLeft';
   }
 }
 
@@ -157,7 +177,7 @@ async function deliverRow(row: OutboxRow, options: DeliverOptions): Promise<Deli
  * A turn with files waiting: each is uploaded first (docs/protocol.md §8, once: a retry reuses the uploads already made, in order),
  * then the turn goes with all their references. A row an older build wrote holds one `file` and its `uploaded` reference.
  */
-async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
+async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions, stillHere: () => boolean): Promise<Delivered> {
   const turn = row.payload.turn as TalkTurn;
   const old = row.payload.file as QueuedFile | undefined;
   const files = (row.payload.files as QueuedFile[] | undefined) ?? (old ? [old] : []);
@@ -166,7 +186,7 @@ async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions): Promi
   const uploaded = Array.isArray(kept) ? [...kept] : kept ? [kept] : [];
   for (const file of files.slice(uploaded.length)) {
     uploaded.push(await uploadStage(file, options));
-    await outboxRepo.update(row.id as number, { payload: { ...row.payload, uploaded } });
+    await keepProgress(stillHere, row.id as number, { ...row.payload, uploaded });
   }
   return stage(deliverTurn({ ...turn, ...(uploaded.length === 1 ? { attachment: uploaded[0] } : { attachments: uploaded }) }, options), true);
 }
@@ -177,14 +197,14 @@ async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions): Promi
  * part goes under its own client id (the row's, then '-' and its number) and is kept on the row once it has gone, so a retry
  * sends only the parts still to go. The message is part 1: its txid is the row's.
  */
-async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<Delivered> {
+async function deliverMessage(row: OutboxRow, options: DeliverOptions, stillHere: () => boolean): Promise<Delivered> {
   const message = row.payload as unknown as QueuedMessage;
   let payload = row.payload;
   const uploaded = [...(message.uploaded ?? [])];
   for (const file of message.files.slice(uploaded.length)) {
     uploaded.push(await uploadStage(file, options));
     payload = { ...payload, uploaded };
-    await outboxRepo.update(row.id as number, { payload });
+    await keepProgress(stillHere, row.id as number, payload);
   }
   const clientId = options.clientId ?? newClientId();
   let records: ThreadedBody[];
@@ -199,7 +219,7 @@ async function deliverMessage(row: OutboxRow, options: DeliverOptions): Promise<
   for (const record of records.slice(sent.length)) {
     sent.push(await stage(deliverThreaded(record, { ...options, clientId: `${clientId}-${record.part}` }), true));
     payload = { ...payload, sentParts: sent };
-    await outboxRepo.update(row.id as number, { payload });
+    await keepProgress(stillHere, row.id as number, payload);
   }
   return sent[0];
 }
@@ -293,7 +313,7 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
     lookAt = lookAt === undefined ? at : Math.min(lookAt, at);
   };
   for (const row of rows) {
-    if (mine !== generation) return;
+    if (mine !== generation || paused) return;
     const now = Date.now();
     if (!force && row.nextAt !== undefined && row.nextAt > now) {
       look(row.nextAt);
@@ -313,7 +333,10 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
         break;
       }
     }
-    const base = deliverOptions(getKey());
+    const home = getActiveAccount();
+    const live = deliverOptions(getKey());
+    // The row goes to the backend of the account it was written in, whatever account is active by the time a later step of it runs.
+    const base = live ? { ...live, apiBase: home.backendUrl } : null;
     if (!base) {
       // Locked, or the Mayor not yet known: the next live state or key change wakes the sender; this is the fallback.
       // The row has now waited, so the status line says so.
@@ -327,9 +350,9 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
     const options = { ...base, clientId };
     let delivered: Delivered;
     try {
-      delivered = await deliverRow(row, options);
+      delivered = await deliverRow(row, options, () => mine === generation && getActiveAccount().id === home.id);
     } catch (err) {
-      if (mine !== generation) return;
+      if (mine !== generation || err instanceof AccountLeft) return;
       const attempts = row.attempts + 1;
       const failedAt = Date.now();
       const error = { message: thrownWords(err), at: failedAt, attempt: attempts };
@@ -361,6 +384,7 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
 
 /** Wakes one lane: one pass at a time. */
 function kickLane(lane: Lane, force: boolean): void {
+  if (paused) return; // leaving an account: kicked again when the next one is active
   if (lane.draining) {
     lane.again = { force: force || (lane.again?.force ?? false) };
     return;
@@ -394,6 +418,30 @@ export async function discardRow(id: number): Promise<void> {
   // A refused Talk turn held back the turns after it: they go on now.
   if (kind === 'turn') kickOutbox(true);
 }
+
+// Leaving an account: no row is started, the one being sent finishes into its own account's outbox (within LEAVE_WAIT_MS; a row still
+// being sent after that has its late writes dropped and is tried again, by its client id, when its account is next active). The
+// next account's rows are tried at once when it is active.
+onAccountLeaving(async () => {
+  paused = true;
+  const sending = lanes.flatMap((lane) => (lane.draining ? [lane.draining] : []));
+  if (sending.length > 0) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([Promise.allSettled(sending), new Promise((resolve) => (timer = setTimeout(resolve, LEAVE_WAIT_MS)))]);
+    clearTimeout(timer);
+  }
+  if (lanes.some((lane) => lane.draining)) generation++;
+  for (const lane of lanes) {
+    clearTimeout(lane.timer);
+    lane.timer = undefined;
+    lane.again = undefined;
+  }
+});
+onAccountChange(() => {
+  if (!paused) return;
+  paused = false;
+  kickOutbox(true);
+});
 
 /** Resolves once the sender has gone quiet (a test's seam; the app never waits on it). */
 export async function settledOutbox(): Promise<void> {

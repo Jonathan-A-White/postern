@@ -2,6 +2,8 @@
 // name (mw-v1uyku.2). A screen that mounts again while the phone is busy (the sync after a dropped
 // stream is writing, so its read waits its turn) starts from this instead of from empty: the channel
 // list, a channel's posts and Needs you never blank because the connection is down.
+import { onAccountChange } from '../services/accounts';
+
 const lastKnown = new Map<string, unknown>();
 
 export function rememberRead(name: string, value: unknown): void {
@@ -17,3 +19,6 @@ export function recallRead<T>(name: string): { known: boolean; value?: T } {
 export function forgetLastKnown(): void {
   lastKnown.clear();
 }
+
+// The reads are the active account's: another account's screens start from nothing, never from this one's last read (mw-9rp4hu.5).
+onAccountChange(forgetLastKnown);

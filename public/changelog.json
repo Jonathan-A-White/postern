@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.61",
+    "date": "2026-10-28",
+    "story": "mw-9rp4hu.5",
+    "kind": "new",
+    "text": "You can add a second account (a backend and a key) in Settings, switch between accounts from the top bar, and rename or remove them."
+  },
+  {
     "version": "0.8.59",
     "date": "2026-10-27",
     "story": "mw-fjpe9tx",

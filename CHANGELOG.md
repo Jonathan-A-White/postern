@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.61
+_2026-10-28_
+- New: You can add a second account (a backend and a key) in Settings, switch between accounts from the top bar, and rename or remove them.
+
 ## 0.8.59
 _2026-10-27_
 - Fixed: a very long message no longer gets stuck retrying every minute; it goes in several pieces and shows as one message.

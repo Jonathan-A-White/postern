@@ -6,6 +6,16 @@ This proves a question sent from the VPS reaches your phone under Needs you,
 that tapping an option (or typing a reply) sends it back over postern, and
 that his answer lands on the bead as his word — on testnet, end to end.
 
+<!-- toc -->
+
+- [Part 1 — the Mayor sends a question (on the VPS)](#part-1--the-mayor-sends-a-question-on-the-vps)
+- [Part 2 — he answers (on his phone)](#part-2--he-answers-on-his-phone)
+- [Part 3 — the reply becomes his word on the bead](#part-3--the-reply-becomes-his-word-on-the-bead)
+- [Part 4 — Markdown, diagrams and bead text (mw-hy6f4, on his phone)](#part-4--markdown-diagrams-and-bead-text-mw-hy6f4-on-his-phone)
+- [Resolution](#resolution)
+
+<!-- /toc -->
+
 ## Part 1 — the Mayor sends a question (on the VPS)
 
 1. Pick a bead to ask about and note its id, e.g. `mw-xyz12.3`.

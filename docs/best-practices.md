@@ -14,6 +14,55 @@ The BSV chain is an optional layer here. Parts 1 to 3 hold with or without it; p
 it adds, and part 5, [Running without the chain](#5-running-without-the-chain), says exactly
 what to drop or replace to run on the backend alone.
 
+<!-- toc -->
+
+- [1. The shape](#1-the-shape)
+  - [Put in the clear only what the backend must act on](#put-in-the-clear-only-what-the-backend-must-act-on)
+  - [The agent's state is a sealed document the backend only serves](#the-agents-state-is-a-sealed-document-the-backend-only-serves)
+- [2. The front end](#2-the-front-end)
+  - [Screens read the local store, never the network](#screens-read-the-local-store-never-the-network)
+  - [Write first, send later: the outbox](#write-first-send-later-the-outbox)
+  - [Client ids: a retry is never a second message](#client-ids-a-retry-is-never-a-second-message)
+  - [Tell a final refusal from a failure to reach](#tell-a-final-refusal-from-a-failure-to-reach)
+  - [A sent row is done when its echo comes back](#a-sent-row-is-done-when-its-echo-comes-back)
+  - [Sync is a cursor, a stream and a poll](#sync-is-a-cursor-a-stream-and-a-poll)
+  - [The connection label never says live over a dead link](#the-connection-label-never-says-live-over-a-dead-link)
+  - [Twins: one record that arrived by two roads is shown once](#twins-one-record-that-arrived-by-two-roads-is-shown-once)
+  - [Events are kept by their sequence number and projected onto the stored state](#events-are-kept-by-their-sequence-number-and-projected-onto-the-stored-state)
+  - [A push carries nothing secret](#a-push-carries-nothing-secret)
+  - [A tap lands on the thing](#a-tap-lands-on-the-thing)
+  - [Do not notify what is already on the screen](#do-not-notify-what-is-already-on-the-screen)
+  - [One queue of what waits on the human, and banners above every screen](#one-queue-of-what-waits-on-the-human-and-banners-above-every-screen)
+  - [Easy to use correctly, hard to use incorrectly](#easy-to-use-correctly-hard-to-use-incorrectly)
+  - [Screens a phone can use one-handed](#screens-a-phone-can-use-one-handed)
+  - [The key stays on the phone, unlocked once a day](#the-key-stays-on-the-phone-unlocked-once-a-day)
+  - [A new build waits for a tap, and the cache never keeps a wrong file](#a-new-build-waits-for-a-tap-and-the-cache-never-keeps-a-wrong-file)
+  - [Test first, every behaviour a scenario, every screen shot at phone width](#test-first-every-behaviour-a-scenario-every-screen-shot-at-phone-width)
+- [3. The back end](#3-the-back-end)
+  - [Small, standard library, one binary](#small-standard-library-one-binary)
+  - [Every call proves its key with a fresh signature](#every-call-proves-its-key-with-a-fresh-signature)
+  - [Direct delivery: check the envelope, prove the sender, name by content](#direct-delivery-check-the-envelope-prove-the-sender-name-by-content)
+  - [The index: append-only, numbered, served from memory](#the-index-append-only-numbered-served-from-memory)
+  - [One fan-out for every new record](#one-fan-out-for-every-new-record)
+  - [The stream never waits on a slow reader](#the-stream-never-waits-on-a-slow-reader)
+  - [Push sending: by class, briefly, and only what was public](#push-sending-by-class-briefly-and-only-what-was-public)
+  - [Event batches and lanes](#event-batches-and-lanes)
+  - [Hooks wake the agent, debounced](#hooks-wake-the-agent-debounced)
+  - [A standby relays to the home](#a-standby-relays-to-the-home)
+  - [Health checks, and a watchdog on a third host](#health-checks-and-a-watchdog-on-a-third-host)
+- [4. The chain, an optional layer](#4-the-chain-an-optional-layer)
+  - [What it adds](#what-it-adds)
+  - [Rules if you keep it](#rules-if-you-keep-it)
+  - [What it costs](#what-it-costs)
+- [5. Running without the chain](#5-running-without-the-chain)
+  - [What stays exactly as it is](#what-stays-exactly-as-it-is)
+  - [What to drop or replace](#what-to-drop-or-replace)
+  - [If you also drop `@bsv/sdk`](#if-you-also-drop-bsvsdk)
+  - [What you lose, plainly](#what-you-lose-plainly)
+- [6. What to copy first](#6-what-to-copy-first)
+
+<!-- /toc -->
+
 ## 1. The shape
 
 **The rule.** One installable web app (a PWA) on the human's phone, one small backend beside the

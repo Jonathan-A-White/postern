@@ -3,6 +3,18 @@
 Question: how far can a PWA's notifications be classified on Android so the Governor can treat
 classes differently (sound, buzz, watch-only), and what does the Go backend need to send them?
 
+<!-- toc -->
+
+- [Short answer](#short-answer)
+- [1. What a plain PWA can control (no native wrapper)](#1-what-a-plain-pwa-can-control-no-native-wrapper)
+- [2. Getting real Android channels: Trusted Web Activity (TWA)](#2-getting-real-android-channels-trusted-web-activity-twa)
+- [3. Watch mirroring (Wear OS)](#3-watch-mirroring-wear-os)
+- [4. Web Push (VAPID) from the Go backend](#4-web-push-vapid-from-the-go-backend)
+- [5. Proposed classes (for the Governor to decide)](#5-proposed-classes-for-the-governor-to-decide)
+- [Sources](#sources)
+
+<!-- /toc -->
+
 ## Short answer
 
 As a plain installed PWA (what Postern is today), Chrome on Android gives you **one Android

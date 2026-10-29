@@ -17,6 +17,43 @@ Every error response, from every endpoint below, is:
 { "error": "<message>" }
 ```
 
+<!-- toc -->
+
+- [Authentication](#authentication)
+  - [Who may do what (`docs/protocol.md` §19)](#who-may-do-what-docsprotocolmd-19)
+- [GET /healthz](#get-healthz)
+- [GET /api/challenge](#get-apichallenge)
+- [GET /api/messages?since=\<seq\>[&limit=\<n\>]](#get-apimessagessinceseqlimitn)
+- [POST /api/messages](#post-apimessages)
+- [POST /api/broadcast](#post-apibroadcast)
+- [GET /api/utxos/{address}](#get-apiutxosaddress)
+- [GET /api/balance/{address}](#get-apibalanceaddress)
+- [GET /api/push/vapid-public-key](#get-apipushvapid-public-key)
+- [POST /api/push/subscribe](#post-apipushsubscribe)
+- [POST /api/blobs](#post-apiblobs)
+- [GET /api/blobs/{hash}](#get-apiblobshash)
+- [DELETE /api/blobs/{hash}](#delete-apiblobshash)
+- [GET /api/events](#get-apievents)
+- [GET /api/presence](#get-apipresence)
+- [GET /api/view](#get-apiview)
+- [GET /api/beads/{id}](#get-apibeadsid)
+- [GET /api/me](#get-apime)
+- [Saved prompts (`/api/prompts`)](#saved-prompts-apiprompts)
+- [Ideas only (`/api/ideas-only/{pubkey}`)](#ideas-only-apiideas-onlypubkey)
+- [The record fan-out](#the-record-fan-out)
+- [The push notifier](#the-push-notifier)
+- [The on-message hook](#the-on-message-hook)
+- [The on-grist hook](#the-on-grist-hook)
+- [Standby](#standby)
+  - [Relay-only](#relay-only)
+- [Configuration (environment)](#configuration-environment)
+- [The licence map (`postern rights`)](#the-licence-map-postern-rights)
+- [The poller](#the-poller)
+- [The watchdog](#the-watchdog)
+- [Recommended desktop setup](#recommended-desktop-setup)
+
+<!-- /toc -->
+
 ## Authentication
 
 Every endpoint below except `GET /healthz`, `GET /api/challenge` and the `/api/register/*` routes (`server/README.md`, Self-registration: open, but for removing a device, which is signed and needs no licence) requires proof

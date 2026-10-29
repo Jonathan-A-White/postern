@@ -3,6 +3,19 @@
 What plans/0021 promised, checked by hand after the move (vault `hosts/desktop-move.md`)
 and a deploy of this branch. Each step says what you should see.
 
+<!-- toc -->
+
+- [Before you start](#before-you-start)
+- [1. The door (decision 14)](#1-the-door-decision-14)
+- [2. Needs you (decision 8)](#2-needs-you-decision-8)
+- [3. The map at every zoom (decision 9)](#3-the-map-at-every-zoom-decision-9)
+- [4. Talking at any level (decisions 10–12)](#4-talking-at-any-level-decisions-1012)
+- [5. Steps for your hands (decision 21, protocol §17)](#5-steps-for-your-hands-decision-21-protocol-17)
+- [6. Search (decision 13)](#6-search-decision-13)
+- [7. When the desktop is down (decision 2)](#7-when-the-desktop-is-down-decision-2)
+
+<!-- /toc -->
+
 ## Before you start
 
 - The backend runs on the desktop with the v2 environment (`mw postern serve`), nginx on

@@ -18,6 +18,21 @@ the factory on the desktop. BSV gives it identity and a licence gate; messages t
 end-to-end encrypted over a live connection (docs/protocol.md §9–§16). Plan:
 vault `plans/0021-cockpit-plan.md`; demo: `docs/demo-cockpit.md`. Map: mw-f758y.
 
+<!-- toc -->
+
+- [Saved prompts](#saved-prompts)
+- [Needs you: live cards](#needs-you-live-cards)
+- [Screenshots](#screenshots)
+- [Credits](#credits)
+  - [Ideas and the people who had them](#ideas-and-the-people-who-had-them)
+  - [Outside services and standards](#outside-services-and-standards)
+  - [Libraries that run in the app](#libraries-that-run-in-the-app)
+  - [The backend, written in Go](#the-backend-written-in-go)
+  - [Tools that build and test it](#tools-that-build-and-test-it)
+- [Licence](#licence)
+
+<!-- /toc -->
+
 ## Saved prompts
 
 The **Prompts** screen (on Me, and from the Talk line) lists the Mayor's saved prompts with

@@ -11,6 +11,31 @@ that's not actually from me ... that's not useful."** A text must leave from his
 Google Voice number (the app he texts from) or, at a stretch, the phone's carrier number. Anything
 from a rented number is out.
 
+<!-- toc -->
+
+- [Short answer](#short-answer)
+- [1. What Postern does today](#1-what-postern-does-today)
+- [2. Route by route](#2-route-by-route)
+  - [2.1 Open Google Voice with the draft (phone only, no account link)](#21-open-google-voice-with-the-draft-phone-only-no-account-link)
+  - [2.2 A Google Voice API (personal or Workspace): there is none](#22-a-google-voice-api-personal-or-workspace-there-is-none)
+  - [2.3 Send a text as him: a Gmail reply into a Google Voice conversation (the lead to test)](#23-send-a-text-as-him-a-gmail-reply-into-a-google-voice-conversation-the-lead-to-test)
+  - [2.4 Send an email as him: the Gmail API, the nac-service-media way](#24-send-an-email-as-him-the-gmail-api-the-nac-service-media-way)
+  - [2.5 His Google address book: the People API](#25-his-google-address-book-the-people-api)
+  - [2.6 Android native routes: a Trusted Web Activity or a companion app sending SMS](#26-android-native-routes-a-trusted-web-activity-or-a-companion-app-sending-sms)
+  - [2.7 Google's own: Messages for web, Assistant and Gemini](#27-googles-own-messages-for-web-assistant-and-gemini)
+  - [2.8 Paid SMS services (Twilio and the like)](#28-paid-sms-services-twilio-and-the-like)
+- [3. What only his phone can prove](#3-what-only-his-phone-can-prove)
+  - [3.1 Phone-side (route 2.1)](#31-phone-side-route-21)
+  - [3.2 The Gmail-reply route (route 2.3): a five-minute hand trial, before any story](#32-the-gmail-reply-route-route-23-a-five-minute-hand-trial-before-any-story)
+- [4. The account link, done safely (applies to 2.3, 2.4 and 2.5)](#4-the-account-link-done-safely-applies-to-23-24-and-25)
+- [5. Comparison](#5-comparison)
+- [6. Worth a shared library?](#6-worth-a-shared-library)
+- [7. Recommendation](#7-recommendation)
+- [8. Decision card (for the Mayor to send)](#8-decision-card-for-the-mayor-to-send)
+- [Sources](#sources)
+
+<!-- /toc -->
+
 ## Short answer
 
 1. **Google Voice has no API, for personal accounts or for Workspace, and its policy forbids

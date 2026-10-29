@@ -5,6 +5,17 @@ says where the two seams are, what each method must do, which files sit behind t
 steps. It describes the code as it is. For the reasoning, see
 [best-practices.md](best-practices.md) parts 4 and 5.
 
+<!-- toc -->
+
+- [1. What "the chain" is here](#1-what-the-chain-is-here)
+- [2. The backend seam](#2-the-backend-seam)
+- [3. The app seam](#3-the-app-seam)
+- [4. The chain files](#4-the-chain-files)
+- [5. Another chain](#5-another-chain)
+- [6. No chain](#6-no-chain)
+
+<!-- /toc -->
+
 ## 1. What "the chain" is here
 
 In Postern the chain is four things, all optional:

@@ -17,6 +17,28 @@ commit (a test, `tests/unit/module-map.test.ts`, fails when one stops existing).
 *proposes* appears only inside a fenced block, never in inline backticks. Counts come from
 `git log --since=30.days` and `wc -l`; they drift, so a Builder who edits this map re-runs them.
 
+<!-- toc -->
+
+- [1. Modules](#1-modules)
+- [2. Collisions](#2-collisions)
+- [3. Proposed refactors](#3-proposed-refactors)
+  - [1. Split `src/data/db.ts`: row types per domain, one file per schema step](#1-split-srcdatadbts-row-types-per-domain-one-file-per-schema-step)
+  - [2. Carve the Talk surface into its own folder, cockpit/talk](#2-carve-the-talk-surface-into-its-own-folder-cockpittalk)
+  - [3. Split `src/cockpit/BeadScreen.tsx` into sections behind a registry](#3-split-srccockpitbeadscreentsx-into-sections-behind-a-registry)
+  - [4. One question-options module for `src/cockpit/Conversation.tsx` and `src/cockpit/NeedCard.tsx`](#4-one-question-options-module-for-srccockpitconversationtsx-and-srccockpitneedcardtsx)
+  - [5. `src/App.tsx`: a route table and a service-worker bridge](#5-srcapptsx-a-route-table-and-a-service-worker-bridge)
+  - [6. `src/key/KeyVault.tsx`: lift the flow out of the component](#6-srckeykeyvaulttsx-lift-the-flow-out-of-the-component)
+  - [7. A notification class registry for `src/push/classOptions.ts`](#7-a-notification-class-registry-for-srcpushclassoptionsts)
+  - [8. Split `src/cockpit/hooks.ts` by domain](#8-split-srccockpithooksts-by-domain)
+- [4. Rule breaks](#4-rule-breaks)
+- [5. Library candidates](#5-library-candidates)
+  - [1. The door, the vault and the licence reader: finish the move onto bsv-kit's bsv package](#1-the-door-the-vault-and-the-licence-reader-finish-the-move-onto-bsv-kits-bsv-package)
+  - [2. Read aloud: a NEW public library, voice-kit](#2-read-aloud-a-new-public-library-voice-kit)
+  - [3. Small PWA parts: a NEW public library, pwa-kit](#3-small-pwa-parts-a-new-public-library-pwa-kit)
+- [6. Keeping this map true](#6-keeping-this-map-true)
+
+<!-- /toc -->
+
 ## 1. Modules
 
 Ten folders under `src/` (`cockpit`, `model`, `services`, `data`, `nav`, `ui`, `key`, `markdown`,

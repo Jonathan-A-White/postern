@@ -6,6 +6,19 @@ SpellForge's own testnet measurements in `src/bsv/contracts/SIZES.md`. Nothing i
 rig changed: postern has no `@bsv/sdk` dependency yet, and this doc recommends what to
 add when a prototype ticket picks this up.
 
+<!-- toc -->
+
+- [Recommendation, up front](#recommendation-up-front)
+- [1. The encrypted envelope](#1-the-encrypted-envelope)
+- [2. How text travels on-chain](#2-how-text-travels-on-chain)
+  - [Measured cost (a plain P2PKH-funded record tx, testnet, today's config)](#measured-cost-a-plain-p2pkh-funded-record-tx-testnet-todays-config)
+- [3. How a photo, screenshot, or voice note travels](#3-how-a-photo-screenshot-or-voice-note-travels)
+- [4. How each side discovers new messages](#4-how-each-side-discovers-new-messages)
+- [5. Sources](#5-sources)
+- [6. Open questions for a prototype ticket](#6-open-questions-for-a-prototype-ticket)
+
+<!-- /toc -->
+
 ## Recommendation, up front
 
 - **Envelope**: BRC-78 `EncryptedMessage` (`@bsv/sdk`'s `messages/EncryptedMessage`) —

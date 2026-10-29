@@ -7,6 +7,16 @@ so the browser reports it as a failed fetch: "Could not reach WhatsOnChain after
 Retry did not help. This page counts what one open of the Key screen asks, before and after the
 fix, and names the test that pins it.
 
+<!-- toc -->
+
+- [The reads](#the-reads)
+- [Before](#before)
+- [After](#after)
+- [Issuing a burst (mw-i7cwnn)](#issuing-a-burst-mw-i7cwnn)
+- [Pinned by](#pinned-by)
+
+<!-- /toc -->
+
 ## The reads
 
 One open of the Key screen (`src/key/KeyVault.tsx`, unlocked) starts three reads together:

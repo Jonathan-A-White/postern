@@ -4,6 +4,15 @@ This proves the key can live on your phone, unlocked by fingerprint, and be
 recovered from its 12-word phrase on a second phone. No sats are involved —
 this is a prototype of the key mechanism only.
 
+<!-- toc -->
+
+- [Part 1 — generate a key, unlocked by fingerprint](#part-1--generate-a-key-unlocked-by-fingerprint)
+- [Part 2 — restore the key on a second phone (or after clearing site data)](#part-2--restore-the-key-on-a-second-phone-or-after-clearing-site-data)
+- [Part 3 — mint your licence (testnet)](#part-3--mint-your-licence-testnet)
+- [Resolution](#resolution)
+
+<!-- /toc -->
+
 ## Part 1 — generate a key, unlocked by fingerprint
 
 1. On your Android phone, open https://postern.allmymind.org/?screen=key in Chrome.

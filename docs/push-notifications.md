@@ -4,6 +4,18 @@ A brief for anyone, or anyone's coding agent, adding push notifications to a dif
 needs no knowledge of Postern, no BSV, and no Go (Node works the same way). Postern is MIT
 licensed; every link below points at a fixed commit (`8d14942`), so the line numbers hold.
 
+<!-- toc -->
+
+- [In one paragraph](#in-one-paragraph)
+- [1. The textbook recipe](#1-the-textbook-recipe)
+- [2. What Postern adds, and why](#2-what-postern-adds-and-why)
+- [3. Quick start for your agent](#3-quick-start-for-your-agent)
+- [4. Android notes](#4-android-notes)
+- [5. Worth a shared library?](#5-worth-a-shared-library)
+- [Files to read first](#files-to-read-first)
+
+<!-- /toc -->
+
 ## In one paragraph
 
 Postern sends **standard Web Push**: no Firebase SDK, no Google account, no native app. The page

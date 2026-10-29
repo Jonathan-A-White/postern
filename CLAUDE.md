@@ -4,6 +4,18 @@ Development guide for AI assistants (Builders) working on Postern.
 
 VISION.md is the Governor's vision for this app: a change that would cross one of its lines stops and says so.
 
+<!-- toc -->
+
+- [Gate command](#gate-command)
+- [Quick reference](#quick-reference)
+- [Tests](#tests)
+- [Layout](#layout)
+- [Conventions](#conventions)
+- [Deploy](#deploy)
+- [Never](#never)
+
+<!-- /toc -->
+
 ## Gate command
 
 ```bash

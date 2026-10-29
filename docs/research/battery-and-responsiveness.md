@@ -13,6 +13,34 @@ The short answer is in [Ranked suspects](#ranked-suspects). Two things to know f
   (requests, timers, frames, wakeups). They cannot prove screen-on time or what Android does to a page with the screen
   off, so those suspects are marked as inferred.
 
+<!-- toc -->
+
+- [1. Inventory](#1-inventory)
+  - [1.1 Timers](#11-timers)
+  - [1.2 The event stream and every other long-lived connection](#12-the-event-stream-and-every-other-long-lived-connection)
+  - [1.3 Service worker (`src/sw.ts`)](#13-service-worker-srcswts)
+  - [1.4 Screen, audio, microphone](#14-screen-audio-microphone)
+  - [1.5 `visibilitychange` and `pageshow` listeners (all refresh on *return*; none stops work on *leaving*)](#15-visibilitychange-and-pageshow-listeners-all-refresh-on-return-none-stops-work-on-leaving)
+  - [1.6 Always-on animation](#16-always-on-animation)
+  - [1.7 React effects that re-run every render](#17-react-effects-that-re-run-every-render)
+- [2. Measurements](#2-measurements)
+  - [2.1 The three requested runs (60 s idle)](#21-the-three-requested-runs-60-s-idle)
+  - [2.2 The control runs that explain the numbers](#22-the-control-runs-that-explain-the-numbers)
+  - [2.3 What the measurements did not show](#23-what-the-measurements-did-not-show)
+  - [2.4 Re-running](#24-re-running)
+- [3. Ranked suspects](#3-ranked-suspects)
+  - [1. A talk never ends by itself, and an open talk holds the screen on forever (inferred cost, measured behaviour)](#1-a-talk-never-ends-by-itself-and-an-open-talk-holds-the-screen-on-forever-inferred-cost-measured-behaviour)
+  - [2. A 60 fps animation is on every screen, all the time (measured)](#2-a-60-fps-animation-is-on-every-screen-all-the-time-measured)
+  - [3. With the backend out of reach the phone reads the chain every 5 s, for as long as it stays out (measured)](#3-with-the-backend-out-of-reach-the-phone-reads-the-chain-every-5-s-for-as-long-as-it-stays-out-measured)
+  - [4. A presence poll every 5 s while the Talk screen is open, signed, with no hidden check (measured)](#4-a-presence-poll-every-5-s-while-the-talk-screen-is-open-signed-with-no-hidden-check-measured)
+  - [5. The silent audio loop is meant to defeat the browser's background handling, and nothing caps it (inferred)](#5-the-silent-audio-loop-is-meant-to-defeat-the-browsers-background-handling-and-nothing-caps-it-inferred)
+  - [6. The event stream stays open in the background, and every ping re-renders and wakes the outbox (inferred)](#6-the-event-stream-stays-open-in-the-background-and-every-ping-re-renders-and-wakes-the-outbox-inferred)
+  - [7. Housekeeping timers: small, but every one is a wakeup (measured and read)](#7-housekeeping-timers-small-but-every-one-is-a-wakeup-measured-and-read)
+  - [Not suspects](#not-suspects)
+- [4. Unresponsive](#4-unresponsive)
+
+<!-- /toc -->
+
 ## 1. Inventory
 
 Every place the app does something with no tap behind it. `file:line` is at 366c7ac. "Gate" says what stops it when the

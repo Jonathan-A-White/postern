@@ -6,6 +6,19 @@ handling — without forking it? This is not implementation; it is the groundwor
 `vision.md` calls Postern's mission ("Postern needs a licence token before it can gate
 anything") and the factory's own vision names as its first customer for this library.
 
+<!-- toc -->
+
+- [What's actually in `src/bsv`](#whats-actually-in-srcbsv)
+- [What actually couples it to SpellForge](#what-actually-couples-it-to-spellforge)
+- [Options weighed](#options-weighed)
+  - [A. Publish as an npm package](#a-publish-as-an-npm-package)
+  - [B. Git subtree](#b-git-subtree)
+  - [C. npm/pnpm workspace](#c-npmpnpm-workspace)
+- [Recommendation](#recommendation)
+- [Not done here](#not-done-here)
+
+<!-- /toc -->
+
 ## What's actually in `src/bsv`
 
 Read from `~/spell-forge` at version 0.1.161 (2026-09-24). `src/bsv/` is ~20

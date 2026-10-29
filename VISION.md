@@ -1,5 +1,15 @@
 # Postern vision (DRAFT: the Governor's to edit)
 
+<!-- toc -->
+
+- [In his words](#in-his-words)
+- [Vision (draft, from his words above)](#vision-draft-from-his-words-above)
+- [More than one person](#more-than-one-person)
+- [How feedback is weighed](#how-feedback-is-weighed)
+- [His To do board and reminders](#his-to-do-board-and-reminders)
+
+<!-- /toc -->
+
 ## In his words
 - Postern "is meant as the app replacement for working with an SSH session ... right now it is very, very clunky ... a top of the line cockpit for the governor" (plans/0021-cockpit-research.md:4-6, 2026-09-28)
 - "Yes to all recommendations" (plans/0021-cockpit-plan.md:11), which adopted: one "Needs you" queue; he acts without waiting for the Mayor; every conversation pinned to a place in the tree; "Postern is his alone, through a licence he issues"; end-to-end encryption "so the VPS never sees plaintext"

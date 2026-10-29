@@ -6,6 +6,15 @@ This proves the whole skeleton at once: your phone holds a licensed key, a
 message you send reaches the Mayor on the VPS, and a classified reply he
 sends back reaches your phone with a push.
 
+<!-- toc -->
+
+- [Part 1 — you send 'hello' to the Mayor (on your phone)](#part-1--you-send-hello-to-the-mayor-on-your-phone)
+- [Part 2 — the Mayor reads it and replies (on the VPS)](#part-2--the-mayor-reads-it-and-replies-on-the-vps)
+- [Part 3 — the reply reaches your phone (on your phone)](#part-3--the-reply-reaches-your-phone-on-your-phone)
+- [Resolution](#resolution)
+
+<!-- /toc -->
+
 ## Part 1 — you send 'hello' to the Mayor (on your phone)
 
 1. On your Android phone, open https://postern.allmymind.org (or the

@@ -7,6 +7,16 @@ each user's own systemd user unit, started from the user's own env file and
 data directory. Nothing is shared between the instances but the host, the
 `postern` binary's code, and the chain.
 
+<!-- toc -->
+
+- [What `postern setup` does](#what-postern-setup-does)
+- [`postern keygen`](#postern-keygen)
+- [The issuer key is shared](#the-issuer-key-is-shared)
+- [Two instances on one host: what is shared and what is not](#two-instances-on-one-host-what-is-shared-and-what-is-not)
+- [The way back](#the-way-back)
+
+<!-- /toc -->
+
 ## What `postern setup` does
 
 Run as the member's own user, with the `postern` binary somewhere that user can

@@ -88,6 +88,12 @@ below is testnet only, per `docs/research/messages.md`.
   - [The routes](#the-routes-1)
   - [The event](#the-event)
   - [The push](#the-push)
+- [26. Alerts](#26-alerts)
+  - [The family and its address](#the-family-and-its-address)
+  - [The alert](#the-alert)
+  - [The routes](#the-routes-2)
+  - [What is kept, and for how long](#what-is-kept-and-for-how-long)
+  - [The push](#the-push-1)
 
 <!-- /toc -->
 
@@ -2502,3 +2508,68 @@ exactly as §9 item 6 says. One log line per withheld push names the record's tx
 (`ring`, `emergency` or the record's class) and never its words. While the state is off every push
 is as it was. A push with no record behind it (the watchdog's alarms) is not a record and is
 untouched.
+
+## 26. Alerts
+
+A family's **alert address** and **feed**: the Governor, or a family on a Lampas licence (§16), forwards the mails
+a bank, a card or a shop sends to one address on the backend's alerts domain; a receiver (a separate service
+that runs the mail server) parses each mail and hands the backend only the facts; the backend keeps them for the
+family, lists them to its phones, forgets one when a phone claims it, and pushes every phone of the family when a
+new one comes. This section is the backend's half, the **writer**. The receiver is its first reader, and the
+phones are its second: they list and claim.
+
+### The family and its address
+
+A **family** is one licence; its keys are the devices (§16). Two keys that joined one person by
+self-registration are one family; a licensed key no one registered is a family of one. Every key of a family
+sees the same address and the same feed, and a claim by one is gone for all.
+
+A family's **address** is `<token>@<domain>`: `token` is 12 random characters of `a`–`z` and `2`–`7`, made the
+first time the family asks and the same for ever after; `domain` is `POSTERN_ALERTS_DOMAIN` (the alerts mail
+domain), never written in the repo. The receiver finds the family from the token alone.
+
+### The alert
+
+One alert is parsed facts, as JSON:
+
+| Field | Meaning |
+|---|---|
+| `id` | the backend's name for it: 16 hex characters, new for every alert |
+| `seq` | a whole number that only grows, for `since`; never reused, even after a claim |
+| `kind` | `charge`, `forward-confirm`, `amazon` or `unread` |
+| `amount` | a charge's amount, as the receiver parsed it (`"42.17"`); optional |
+| `merchant` | the merchant of a charge, or the shop of an `amazon` alert; optional |
+| `last4` | the last four digits of the card, at most 4 characters; optional |
+| `when` | when the mail says it happened, RFC 3339; optional |
+| `subject` | an `unread` alert's subject line; optional |
+| `code` | a `forward-confirm` alert's confirmation code, the one the mail provider sent when the family forwarded its first mail; optional |
+
+Every text field is at most 200 characters, and there is no field for a mail's body. **A mail body never reaches
+the backend**: the receiver reads the mail, keeps nothing of it, and posts the facts above. An alert with any
+field not in this table is refused, so a body cannot be posted by mistake.
+
+### The routes
+
+The first three are signed (§19) by a licensed key, a cockpit key or an app key; the mill's key is refused
+`403`. A key with no licence is `401`, `no_licence`. Without `POSTERN_ALERTS_DOMAIN` and the store they answer `501`.
+
+| Route | Does |
+|---|---|
+| `POST /api/alerts/address` | `200 {"address": "<token>@<domain>"}`: makes the family's address, or returns it |
+| `GET /api/alerts?since=<seq>` | `200 {"alerts": [...], "next": <seq>}`: the family's alerts with a `seq` above `since` (default 0), oldest first; `next` is the highest `seq` in the list, or `since` when it is empty, the value to ask from next time. `400` for a `since` that is no whole number |
+| `DELETE /api/alerts/{id}` | **claims** one: `204`, and it is gone for every phone of the family. `404` for an id the family does not have, another family's included |
+| `POST /api/alerts/inbound` | from the receiver, not a key: body `{"token": "<token>", ...the alert's fields without id and seq}`. Proved by the shared secret `POSTERN_ALERTS_SECRET`, sent as `Authorization: Bearer <secret>`. `201 {"id", "seq"}` once stored; `401` for a wrong or missing secret; `404` for a token no family has; `400` for an unknown field, a `kind` not in the table, a text field over 200 characters or a `when` that is no RFC 3339 time. With no secret configured the backend answers `501` and takes nothing |
+
+### What is kept, and for how long
+
+Only the facts in the table, in `alerts.json` under `POSTERN_DATA`, with the time the backend received each. A
+**claim deletes** the alert at once. A sweep, at start and every hour, drops every alert received more than
+**30 days** ago, claimed or not. A family keeps its address when its alerts are gone.
+
+### The push
+
+When an inbound alert is stored, the backend pushes every push subscription of every key of the family (`POST
+/api/push/subscribe`, §9 item 6), whether the subscribing key is a cockpit key or an app key. The push is
+`{"class": "alert", "title": "New alert", "ts": <Unix seconds>}` and nothing else: no amount, merchant, card or
+subject leaves the backend in a push; the app opens and reads its feed. A key in Ideas only (§25) is not pushed.
+A subscription its push service says is gone is dropped, as for any push.

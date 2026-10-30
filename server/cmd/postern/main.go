@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/alerts"
 	"github.com/Jonathan-A-White/postern/server/internal/api"
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/beads"
@@ -41,6 +42,8 @@ const (
 	nonceTTL          = 2 * time.Minute
 	licenceCacheTTL   = 5 * time.Minute
 	blobSweepInterval = time.Hour
+
+	alertSweepInterval = time.Hour
 
 	// licenceTxDir and licenceAnswersFile are what the licence walk keeps
 	// under POSTERN_DATA: every transaction it fetched, and each key's last
@@ -144,6 +147,12 @@ func newApp(cfg config.Config) (*app, error) {
 		return nil, fmt.Errorf("opening prompt store: %w", err)
 	}
 
+	alertStore, err := alerts.OpenStore(cfg.DataDir)
+	if err != nil {
+		store.Close()
+		return nil, fmt.Errorf("opening alerts store: %w", err)
+	}
+
 	var home *standby.Monitor
 	if cfg.HomeCmd != "" {
 		home = standby.New(cfg.HomeCmd)
@@ -202,6 +211,7 @@ func newApp(cfg config.Config) (*app, error) {
 		api.WithPrompts(promptStore),
 		api.WithIdeasOnly(ideasStore),
 		api.WithRegistration(registration, cfg.RegisterIPHeader),
+		api.WithAlerts(alertStore, api.RegisterFamilies(registration), alertPusher{sender}, cfg.AlertsDomain, string(cfg.AlertsSecret)),
 	)
 
 	start := func(stop <-chan struct{}) {
@@ -210,6 +220,7 @@ func newApp(cfg config.Config) (*app, error) {
 		}
 		go poller.New(client, store, cfg.Anchor, poller.WithNotifier(fanout)).Run(stop)
 		go runBlobSweep(blobStore, stop)
+		go runAlertSweep(alertStore, stop)
 		if cfg.MayorKey != "" {
 			go licenceChecker.CachedCollections(cfg.MayorKey) // warm the Mayor's licence answer
 		}
@@ -412,6 +423,36 @@ func noteMillLicence(checker auth.LicenceChecker, millKey string, apps map[strin
 	}
 	if cockpit {
 		log.Printf("warning: the mill key %s also holds a cockpit licence; it is a mill key only and gets no cockpit rights", millKey)
+	}
+}
+
+// alertPusher pushes a new alert in its own goroutine, so a slow push service
+// never holds up the receiver's POST; a failure is logged.
+type alertPusher struct{ sender *push.Sender }
+
+func (p alertPusher) NotifyKeys(keys []string, payload push.Payload) (int, error) {
+	go func() {
+		if _, err := p.sender.NotifyKeys(keys, payload); err != nil {
+			log.Printf("push of a new alert: %v", err)
+		}
+	}()
+	return 0, nil
+}
+
+// runAlertSweep drops alerts past their 30 days on alertSweepInterval, once at
+// start and then until stop is closed.
+func runAlertSweep(store *alerts.Store, stop <-chan struct{}) {
+	ticker := time.NewTicker(alertSweepInterval)
+	defer ticker.Stop()
+	for {
+		if _, err := store.Sweep(); err != nil {
+			log.Printf("sweeping alerts: %v", err)
+		}
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+		}
 	}
 }
 

@@ -673,6 +673,19 @@ func (s *Service) Person(key string) (PersonView, bool) {
 	return p.view(), true
 }
 
+// PersonKeys is every device key on the licence of the person personID, or
+// none for an id no one has. It is how a push finds all of a person's phones.
+func (s *Service) PersonKeys(personID string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.people.list {
+		if p.PersonID == personID {
+			return p.view().Keys
+		}
+	}
+	return nil
+}
+
 // PersonForDevice is Person asked by one of that person's own devices:
 // signerKey must be a device on the licence that holds key (key itself
 // included). Anything else, a stranger, another person's device or a key no

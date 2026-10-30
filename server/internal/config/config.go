@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -107,6 +108,14 @@ type Config struct {
 	// self-registration issues (cmd/postern parses it). Empty means
 	// registration is licensed by hand. A Secret: it never prints.
 	SiteIssuerKey Secret
+	// AlertsDomain is POSTERN_ALERTS_DOMAIN: the mail domain a family's alert
+	// address is on (token@domain), lower-cased. Empty means the alerts
+	// routes answer 501.
+	AlertsDomain string
+	// AlertsSecret is POSTERN_ALERTS_SECRET: what the alert receiver proves
+	// itself with on POST /api/alerts/inbound. Empty refuses every inbound.
+	// A Secret: it never prints.
+	AlertsSecret Secret
 }
 
 // Secret is a value that must never reach a log: printed with any verb it
@@ -155,6 +164,8 @@ func Load(getenv func(string) string) (Config, error) {
 		TwilioVerifySID:  strings.TrimSpace(getenv("POSTERN_TWILIO_VERIFY_SID")),
 		RegisterIPHeader: strings.TrimSpace(getenv("POSTERN_REGISTER_IP_HEADER")),
 		SiteIssuerKey:    Secret(strings.TrimSpace(getenv("POSTERN_SITE_ISSUER_KEY"))),
+		AlertsDomain:     strings.ToLower(strings.TrimSpace(getenv("POSTERN_ALERTS_DOMAIN"))),
+		AlertsSecret:     Secret(strings.TrimSpace(getenv("POSTERN_ALERTS_SECRET"))),
 	}
 
 	if cfg.Anchor == "" {
@@ -209,6 +220,10 @@ func Load(getenv func(string) string) (Config, error) {
 		cfg.CORSOrigins[i] = strings.ToLower(origin)
 	}
 
+	if cfg.AlertsDomain != "" && !hostNamePattern.MatchString(cfg.AlertsDomain) {
+		return Config{}, fmt.Errorf("POSTERN_ALERTS_DOMAIN must be a host name like alerts.example.org, not %q", cfg.AlertsDomain)
+	}
+
 	if cfg.RegisterStartsPerHour, err = perHour("POSTERN_REGISTER_STARTS_PER_HOUR", getenv("POSTERN_REGISTER_STARTS_PER_HOUR"), 10); err != nil {
 		return Config{}, err
 	}
@@ -221,6 +236,10 @@ func Load(getenv func(string) string) (Config, error) {
 
 	return cfg, nil
 }
+
+// hostNamePattern is a plain host name: dot-separated labels of letters,
+// digits and hyphens.
+var hostNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
 
 // perHour parses a per-hour limit: a whole number of 1 or more, fallback if
 // unset.

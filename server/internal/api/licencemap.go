@@ -31,6 +31,9 @@ var routeTable = []struct {
 	{"POST /api/blobs", cockpitKeys | appKeys},
 	{"GET /api/blobs/{hash}", cockpitKeys | millKey},
 	{"DELETE /api/blobs/{hash}", cockpitKeys | millKey},
+	{"POST /api/alerts/address", cockpitKeys | appKeys},
+	{"GET /api/alerts", cockpitKeys | appKeys},
+	{"DELETE /api/alerts/{id}", cockpitKeys | appKeys},
 }
 
 // Routes is every gated route, "METHOD /path" with {name} placeholders, in

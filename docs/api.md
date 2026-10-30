@@ -40,6 +40,7 @@ Every error response, from every endpoint below, is:
 - [GET /api/me](#get-apime)
 - [Saved prompts (`/api/prompts`)](#saved-prompts-apiprompts)
 - [Ideas only (`/api/ideas-only/{pubkey}`)](#ideas-only-apiideas-onlypubkey)
+- [Alerts (`/api/alerts`)](#alerts-apialerts)
 - [The record fan-out](#the-record-fan-out)
 - [The push notifier](#the-push-notifier)
 - [The on-message hook](#the-on-message-hook)
@@ -213,7 +214,8 @@ A proved key is one of three kinds, and each endpoint below admits only some:
 - an **app** key holds a licence only in an app's collection (`POSTERN_APPS`):
   `GET/POST /api/messages`, `GET /api/me`, `GET /api/events` (narrowed to its own
   records), `POST /api/blobs`, `GET /api/push/vapid-public-key`,
-  `POST /api/push/subscribe`.
+  `POST /api/push/subscribe`, and the alerts routes (`POST /api/alerts/address`,
+  `GET /api/alerts`, `DELETE /api/alerts/{id}`, below).
 
 A proved key of a kind an endpoint does not admit gets `403`. A key holding both a
 cockpit and an app licence is a cockpit key.
@@ -744,6 +746,23 @@ usual signed proof and a cockpit key, or the Mayor's key (licence or not) for `G
 
 Without the store these answer `501`.
 
+## Alerts (`/api/alerts`)
+
+`docs/protocol.md` §26. A family's alert address and the parsed facts of the mails it received; a family is one
+licence, so two keys on it see the same address and feed.
+
+- `POST /api/alerts/address` — `200 {"address": "<token>@<domain>"}`, the same every time for a family.
+- `GET /api/alerts?since=<seq>` — `200 {"alerts": [{"id", "seq", "kind", "amount", "merchant", "last4", "when",
+  "subject", "code"}], "next"}` (`kind` is `charge`, `forward-confirm`, `amazon` or `unread`; the other fields only
+  when the kind has them). Answered with `Cache-Control: no-store`.
+- `DELETE /api/alerts/{id}` — claims the alert: `204`, gone for every phone of the family; `404` otherwise.
+- `POST /api/alerts/inbound` — the receiver's, with `Authorization: Bearer <POSTERN_ALERTS_SECRET>` instead of a
+  signed proof; body `{"token", "kind", ...}` of parsed facts only (`201 {"id", "seq"}`, `401` a wrong secret,
+  `404` an unknown token, `400` an unknown field or a bad value). It pushes every phone of the family.
+
+The first three admit a cockpit key or an app key (`403` for the mill's). Alerts older than 30 days are dropped.
+Without `POSTERN_ALERTS_DOMAIN` they answer `501`; without `POSTERN_ALERTS_SECRET` so does inbound.
+
 ## The record fan-out
 
 Every record newly stored in the index — found on chain by the poller, or
@@ -933,6 +952,8 @@ carries `X-Postern-Relayed` is answered `503` and never relayed again.
 | `POSTERN_APPS` | Comma-separated `collection=app` pairs: each app's licence collection and the app it opens the grist door to; never one of `POSTERN_COLLECTIONS` | *(unset: no app keys)* |
 | `POSTERN_ON_GRIST` | Shell command (`sh -c`) run after a grist for the mill is indexed (e.g. `mw grist grind`) | *(unset: no hook)* |
 | `POSTERN_CORS_ORIGINS` | Comma-separated origins (`https://host[:port]`, lower-cased at load and matched case-insensitively) allowed to call the backend from a browser on another origin | *(unset: no CORS headers)* |
+| `POSTERN_ALERTS_DOMAIN` | The mail domain a family's alert address is on (`<token>@<domain>`, `docs/protocol.md` §26); a host name | *(unset: the alerts routes answer 501)* |
+| `POSTERN_ALERTS_SECRET` | What the alert receiver sends as `Authorization: Bearer <secret>` on `POST /api/alerts/inbound`; never logged | *(unset: every inbound is refused, 501)* |
 
 A malformed `POSTERN_MAYOR_KEY`, `POSTERN_ISSUER_KEY` or `POSTERN_MILL_KEY`, a
 `POSTERN_COLLECTIONS` naming no collection, a malformed `POSTERN_APPS` pair or one

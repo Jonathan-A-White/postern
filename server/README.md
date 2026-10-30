@@ -29,6 +29,8 @@ Environment:
 | `POSTERN_REGISTER_SENDS_PER_HOUR` | starts all callers together may make an hour (default 30). Each start has Twilio send one SMS and one email, so this caps what SMS can cost in an hour, whatever the IPs |
 | `POSTERN_REGISTER_IP_HEADER` | the header the proxy sets to the caller's address, for the limits (nginx: `proxy_set_header X-Real-IP $remote_addr;` and `X-Real-IP`); unset counts the connection's own address, which behind nginx is every caller at once, and with Twilio set the backend logs one `warning: POSTERN_REGISTER_IP_HEADER is not set` line at start |
 | `POSTERN_SITE_ISSUER_KEY` | the site issuer's private key, a testnet WIF: it signs the Lampas licence each confirmed device gets, and revokes it when the device is removed. A key of its own, never the Governor's issuer (`POSTERN_ISSUER_KEY`, which the backend refuses here) |
+| `POSTERN_ALERTS_DOMAIN` | the mail domain a family's alert address is on (`token@domain`, docs/protocol.md §26); unset, the `/api/alerts` routes answer 501 |
+| `POSTERN_ALERTS_SECRET` | what the alert receiver sends as `Authorization: Bearer <secret>` on `POST /api/alerts/inbound`; unset, every inbound is refused (501) |
 
 **Limits on what a start may cost.** Every start sends an SMS, and SMS costs
 money, so an IP's limit is not enough: callers on many IPs could have codes sent

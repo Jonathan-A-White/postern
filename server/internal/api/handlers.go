@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/alerts"
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/beads"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
@@ -66,6 +67,12 @@ type options struct {
 	cors     []string          // POSTERN_CORS_ORIGINS
 	prompts  *prompts.Store    // the saved prompts; nil answers 501
 	ideas    *ideasonly.Store  // each key's Ideas only setting (§25); nil answers 501
+
+	alerts        *alerts.Store // a family's alerts (§26); nil answers 501
+	alertFamilies Families      // which keys are one family; nil makes each key its own
+	alertPusher   AlertPusher   // pushes a new alert to the family's phones
+	alertDomain   string        // POSTERN_ALERTS_DOMAIN: the mail domain of a family's address
+	alertSecret   string        // POSTERN_ALERTS_SECRET: what the receiver proves itself with; "" refuses inbound
 
 	register         *register.Service // Lampas self-registration; nil answers 503
 	registerIPHeader string            // the header the proxy puts the caller's address in; "" uses the peer's
@@ -225,6 +232,9 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 		"POST /api/blobs":                handleBlobUpload(blobStore),
 		"GET /api/blobs/{hash}":          handleBlobDownload(blobStore),
 		"DELETE /api/blobs/{hash}":       handleBlobDelete(blobStore, store, o.millKey),
+		"POST /api/alerts/address":       handleAlertAddress(&o),
+		"GET /api/alerts":                handleAlertList(&o),
+		"DELETE /api/alerts/{id}":        handleAlertClaim(&o),
 	}
 
 	mux := http.NewServeMux()
@@ -243,6 +253,8 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	mux.HandleFunc("DELETE /api/register/device", handleRegisterDevice(o.register, nonces))
 	// Renaming one is the same: signed by a device of that person.
 	mux.HandleFunc("PATCH /api/register/device", handleRegisterRenameDevice(o.register, nonces))
+	// The receiver proves itself with a shared secret, not a key (§26).
+	mux.HandleFunc("POST /api/alerts/inbound", handleAlertInbound(&o))
 	// The routes and who each admits are routeTable's: nothing is registered
 	// here that the table does not name, and the table names nothing that is
 	// not registered, so LicenceMap (postern rights) reads the same gate.

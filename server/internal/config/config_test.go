@@ -443,3 +443,29 @@ func TestLoadReadsTheSiteIssuerKeyTrimmedAndNeverPrintsIt(t *testing.T) {
 		t.Fatalf("unset SiteIssuerKey = %q", string(cfg.SiteIssuerKey))
 	}
 }
+
+func TestLoadReadsTheAlertsDomainAndSecretAndNeverPrintsTheSecret(t *testing.T) {
+	cfg, err := Load(registerEnv(map[string]string{"POSTERN_ALERTS_DOMAIN": "  Alerts.Example.org\n", "POSTERN_ALERTS_SECRET": " s3cret \n"}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AlertsDomain != "alerts.example.org" || string(cfg.AlertsSecret) != "s3cret" {
+		t.Fatalf("AlertsDomain = %q, AlertsSecret = %q", cfg.AlertsDomain, string(cfg.AlertsSecret))
+	}
+	for _, printed := range []string{fmt.Sprint(cfg), fmt.Sprintf("%+v", cfg), fmt.Sprintf("%#v", cfg)} {
+		if strings.Contains(printed, "s3cret") {
+			t.Fatalf("printing the config shows the secret: %s", printed)
+		}
+	}
+	if cfg, _ := Load(registerEnv(nil)); cfg.AlertsDomain != "" || cfg.AlertsSecret != "" {
+		t.Fatalf("unset: %q %q", cfg.AlertsDomain, string(cfg.AlertsSecret))
+	}
+}
+
+func TestLoadRejectsAnAlertsDomainThatIsNotAHostName(t *testing.T) {
+	for _, bad := range []string{"a@b.org", "https://alerts.example.org", "alerts.example.org/x", "has space.org"} {
+		if _, err := Load(registerEnv(map[string]string{"POSTERN_ALERTS_DOMAIN": bad})); err == nil || !strings.Contains(err.Error(), "POSTERN_ALERTS_DOMAIN") {
+			t.Errorf("%q: err = %v, want one naming POSTERN_ALERTS_DOMAIN", bad, err)
+		}
+	}
+}

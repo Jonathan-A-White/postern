@@ -159,7 +159,12 @@ func handleAlertClaim(o *options) http.HandlerFunc {
 		if alertsOff(w, o) {
 			return
 		}
-		if !o.alerts.Claim(o.familyOf(AuthenticatedKey(r.Context())), r.PathValue("id")) {
+		found, err := o.alerts.Claim(o.familyOf(AuthenticatedKey(r.Context())), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
 			writeError(w, http.StatusNotFound, "no such alert")
 			return
 		}

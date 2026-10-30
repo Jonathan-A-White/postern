@@ -106,16 +106,16 @@ func TestClaimDeletesTheAlertForTheFamilyAndOnlyTheFamily(t *testing.T) {
 	s.Address("family-b")
 	added, _, _ := s.Add(token, Alert{Kind: KindAmazon, Merchant: "Amazon"})
 
-	if s.Claim("family-b", added.ID) {
+	if found, _ := s.Claim("family-b", added.ID); found {
 		t.Fatal("another family claimed the alert")
 	}
-	if !s.Claim("family-a", added.ID) {
-		t.Fatal("the family could not claim its alert")
+	if found, err := s.Claim("family-a", added.ID); !found || err != nil {
+		t.Fatalf("the family could not claim its alert: %v, %v", found, err)
 	}
 	if got := s.List("family-a", 0); len(got) != 0 {
 		t.Fatalf("a claimed alert is still listed: %+v", got)
 	}
-	if s.Claim("family-a", added.ID) {
+	if found, _ := s.Claim("family-a", added.ID); found {
 		t.Fatal("a claimed alert was claimed twice")
 	}
 }

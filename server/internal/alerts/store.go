@@ -232,7 +232,7 @@ func (s *Store) List(family string, since uint64) []Alert {
 
 // Claim deletes the family's alert id, for every phone of the family, and
 // reports whether there was one. Another family's alert is not found.
-func (s *Store) Claim(family, id string) bool {
+func (s *Store) Claim(family, id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, a := range s.data.Alerts {
@@ -242,12 +242,12 @@ func (s *Store) Claim(family, id string) bool {
 			s.data.Alerts = kept
 			if err := s.save(); err != nil {
 				s.data.Alerts = previous
-				return false
+				return false, err
 			}
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // Sweep drops every alert older than Keep and answers how many.

@@ -297,7 +297,7 @@ html {
   --bk-composer-on-strong: var(--pc-canvas);
   --bk-composer-radius: 1rem;
   --bk-composer-bar-radius: 1.5rem;
-  --bk-composer-bar-height: 6rem;
+  --bk-composer-bar-height: min(6rem, 16dvh);
   --bk-composer-max-width: 36rem;
   --bk-composer-small-font-size: 12.5px;
 }
@@ -305,6 +305,30 @@ html {
 @layer components {
   .bk-composer__bar {
     font-size: 16px;
+  }
+  /* While he holds, the live words are drawn over the screen above the status line, never in the flow under it (mw-j0f2d.44):
+     the bar below keeps the place his thumb found it however long the words grow, and the bottom bar is never pushed over it.
+     The words scroll in their own area; column-reverse keeps that area at its end, so the newest line stays in view. */
+  .bk-composer__status,
+  .pc-hold-status {
+    position: relative;
+  }
+  .bk-composer__live,
+  .pc-live-words {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 100%;
+    z-index: 5;
+    display: flex;
+    flex-direction: column-reverse;
+    max-height: min(40dvh, 16rem, var(--live-room, 40dvh));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-block: 0.25rem;
+    overflow-wrap: anywhere;
+  }
+  .bk-composer__live {
+    background: var(--bk-composer-surface);
   }
   .bk-composer__field:focus {
     border-color: var(--pc-line-strong);

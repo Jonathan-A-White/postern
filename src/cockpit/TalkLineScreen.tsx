@@ -13,6 +13,7 @@ import { useTalkLine } from './useTalkLine';
 import { HoldToTalkBar, micName } from 'voice-kit/composer';
 import { HOLD_BAR_CLASS } from './holdBar';
 import { useComposerSettings } from './talkSettings';
+import { useLiveRoom } from './useLiveRoom';
 import { useSpeech } from './useSpeaking';
 import { useAnsweredRing, useBeadTitles, useCallLine, useOutbox } from './hooks';
 import { useRecordedWords } from './useIdeasOnly';
@@ -531,6 +532,8 @@ export function TalkLineScreen() {
     onResume: talk.resume,
     onRestart: talk.restart,
   };
+  const controls = useRef<HTMLDivElement>(null);
+  useLiveRoom(controls);
   const { scroller, onScroll, onTouch, pill, showNew } = useFollowEnd(talk.log);
   const { shown, hidden, loadEarlier, onScrolled } = useEarlierTalks(talk.earlier, scroller);
   const listening = line.phase === 'listening';
@@ -635,10 +638,10 @@ export function TalkLineScreen() {
         )}
       </div>
 
-      <div data-testid="talk-controls" className="flex shrink-0 flex-col items-center gap-3 border-t border-line bg-canvas px-4 pt-3 pb-4">
-        <div role="status" aria-live="polite" className="min-h-[2.75rem] w-full max-w-xl text-center text-[14px]">
+      <div ref={controls} data-testid="talk-controls" className="flex shrink-0 flex-col items-center gap-3 border-t border-line bg-canvas px-4 pt-3 pb-4">
+        <div role="status" aria-live="polite" className="pc-hold-status min-h-[2.75rem] w-full max-w-xl text-center text-[14px]">
           {listening ? (
-            <p data-testid="live-transcript" className="text-fg">
+            <p data-testid="live-transcript" className="pc-live-words bg-canvas text-fg">
               {micOpen ? talk.transcript || 'Listening…' : 'Starting the mic…'}
             </p>
           ) : (

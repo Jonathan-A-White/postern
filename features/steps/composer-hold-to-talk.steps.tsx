@@ -702,4 +702,20 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       expect(screen.queryByText(new RegExp(words))).toBeNull();
     });
   });
+
+  Scenario('AC-20: the live words sit in their own area over the screen, so the bar does not move as they grow (mw-j0f2d.44; the pixels are read by tests/e2e/hold-bar-fixed.spec.ts)', ({ Given, When, And, Then }) => {
+    Given('the composer is open', open);
+    When('he taps the mic beside Send', tapMic);
+    And('he presses and holds the bar', press);
+    And('the recogniser hears {string}', async (_c, words: string) => {
+      await hear(words);
+    });
+    Then('the live transcript reads {string}', async (_c, words: string) => {
+      await waitFor(() => expect(screen.getByTestId('live-transcript')).toHaveTextContent(words));
+    });
+    And('the live transcript is in the area that scrolls above the bar', () => {
+      // the kit's own class, which index.css draws over the screen above the status line (jsdom reads the contract, the browser the pixels)
+      expect(screen.getByTestId('live-transcript')).toHaveClass('bk-composer__live');
+    });
+  });
 });

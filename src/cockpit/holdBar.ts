@@ -10,7 +10,7 @@ export const APP_NAME = 'Postern';
 
 /** The hold bar: accent at rest, 'needs' while held, danger while the finger is slid off it. */
 export const HOLD_BAR_CLASS = [
-  'flex h-24 min-h-12 w-full max-w-xl touch-none flex-col items-center justify-center gap-1 rounded-3xl text-[16px] font-semibold transition-colors select-none [-webkit-touch-callout:none]',
+  'flex h-[min(6rem,16dvh)] min-h-12 w-full max-w-xl touch-none flex-col items-center justify-center gap-1 rounded-3xl text-[16px] font-semibold transition-colors select-none [-webkit-touch-callout:none]',
   'bg-accent text-accent-fg',
   'data-[state=listening]:bg-needs data-[state=listening]:text-canvas',
   'data-[state=slid]:bg-danger data-[state=slid]:text-canvas',

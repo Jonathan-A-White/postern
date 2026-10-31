@@ -203,3 +203,10 @@ Feature: The composer's mic is the Talk line's hold-to-talk (mw-q6n8m0.3)
     Then one message is delivered with the words "the cloud heard me"
     And the screen does not say "language-not-supported"
 
+  Scenario: AC-20: the live words sit in their own area over the screen, so the bar does not move as they grow (mw-j0f2d.44; the pixels are read by tests/e2e/hold-bar-fixed.spec.ts)
+    Given the composer is open
+    When he taps the mic beside Send
+    And he presses and holds the bar
+    And the recogniser hears "a long thing that goes on and on"
+    Then the live transcript reads "a long thing that goes on and on"
+    And the live transcript is in the area that scrolls above the bar

@@ -21,6 +21,7 @@ import { usePromptCall } from './usePromptCall';
 import { APP_NAME } from './holdBar';
 import { useComposerSettings } from './talkSettings';
 import { useDraft } from './useDraft';
+import { useLiveRoom } from './useLiveRoom';
 import { usePictureViewer } from 'pwa-kit/picture-viewer';
 import { PosternPictureViewer } from './PosternPictureViewer';
 import { openFile } from './openFile';
@@ -64,6 +65,7 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
   const [open, setOpen] = useState<ComposerOpen>('box');
   // The kit goes back to `open` after a send: the bar stays out after a send from the bar, as it always has here, the box after one from the box.
   const root = useRef<HTMLDivElement>(null);
+  useLiveRoom(root);
   // The files waiting to go that are not pictures, by name: the kit hands a tap back with a URL only for a picture or a voice note.
   const others = useRef(new Map<string, Blob>());
 

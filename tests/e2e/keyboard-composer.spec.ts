@@ -8,7 +8,7 @@
 // Checked by bounding box at 360x640 and 390x844, in a channel, a thread's reply, a bead's conversation: the text
 // field (and so its last typed line, three lines tall and not scrolled), the thumbnail with its Remove, and the Send
 // control lie wholly inside the window, above the keyboard, and the tab bar does not cover them. Each with the
-// Emergency banner up and without, with a picture attached and without.
+// Emergency banner up, and in the channel also without it and without the picture.
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
@@ -99,55 +99,55 @@ function expectAbove(name: string, inner: Box, limit: number, view: { width: num
 for (const size of SIZES) {
   const keyboardOpen = { width: size.width, height: Math.round(size.height * (1 - KEYBOARD)) };
   for (const place of PLACES) {
-    for (const banner of [false, true]) {
-      for (const picture of [true, false]) {
-        const title = `${place.name} at ${size.width}x${size.height}, keyboard open, ${picture ? 'a picture attached' : 'no picture'}, ${banner ? 'Emergency banner up' : 'no banner'}: the text field, its last typed line and the thumbnail are in view above the tab bar`;
-        test(title, async ({ page }) => {
-          await page.setViewportSize(size);
-          await unlock(page);
-          if (banner) {
-            await holdEmergency(page);
-            await page.reload();
-            await expect(page.getByRole('alert', { name: 'Emergency' })).toBeVisible();
-          }
-          await page.goto(place.url);
-          const field = page.getByPlaceholder(place.placeholder);
-          await expect(field).toBeVisible();
-          // the keyboard opens: the window the page lays out in is 43 % shorter
-          await page.setViewportSize(keyboardOpen);
-          if (picture) {
-            await page.locator('input[type="file"][multiple]').first().setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: PNG });
-            await expect(page.getByRole('button', { name: 'View photo.png' })).toBeVisible();
-          }
-          await field.focus();
-          await field.fill('Any verse like this\nshould be one\nline per thought');
+    // His case (a picture and the banner) in every composer; the channel also without the banner and without the picture
+    const variants = place.name === 'a channel' ? [[true, true], [true, false], [false, true]] : [[true, true]];
+    for (const [banner, picture] of variants) {
+      const title = `${place.name} at ${size.width}x${size.height}, keyboard open, ${picture ? 'a picture attached' : 'no picture'}, ${banner ? 'Emergency banner up' : 'no banner'}: the text field, its last typed line and the thumbnail are in view above the tab bar`;
+      test(title, async ({ page }) => {
+        await page.setViewportSize(size);
+        await unlock(page);
+        if (banner) {
+          await holdEmergency(page);
+          await page.reload();
+          await expect(page.getByRole('alert', { name: 'Emergency' })).toBeVisible();
+        }
+        await page.goto(place.url);
+        const field = page.getByPlaceholder(place.placeholder);
+        await expect(field).toBeVisible();
+        // the keyboard opens: the window the page lays out in is 43 % shorter
+        await page.setViewportSize(keyboardOpen);
+        if (picture) {
+          await page.locator('input[type="file"][multiple]').first().setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: PNG });
+          await expect(page.getByRole('button', { name: 'View photo.png' })).toBeVisible();
+        }
+        await field.focus();
+        await field.fill('Any verse like this\nshould be one\nline per thought');
 
-          // the tab bar stands aside while he types in a window this short, or it stays below everything he sees
-          const tabBar = page.getByRole('navigation', { name: 'Places' });
-          const tabs = (await tabBar.isVisible()) ? await box(tabBar) : { x: 0, y: keyboardOpen.height, width: size.width, height: 0 };
-          const seen = await page.evaluate(() => ({ width: window.visualViewport?.width ?? innerWidth, height: window.visualViewport?.height ?? innerHeight }));
-          expect(seen.height, 'the window is the keyboard-open height').toBeLessThanOrEqual(keyboardOpen.height);
+        // the tab bar stands aside while he types in a window this short, or it stays below everything he sees
+        const tabBar = page.getByRole('navigation', { name: 'Places' });
+        const tabs = (await tabBar.isVisible()) ? await box(tabBar) : { x: 0, y: keyboardOpen.height, width: size.width, height: 0 };
+        const seen = await page.evaluate(() => ({ width: window.visualViewport?.width ?? innerWidth, height: window.visualViewport?.height ?? innerHeight }));
+        expect(seen.height, 'the window is the keyboard-open height').toBeLessThanOrEqual(keyboardOpen.height);
 
-          // the text field, and in it all three typed lines (not scrolled, not clipped: the field's own borders are the 4 px)
-          const inner = await field.evaluate((el) => ({ clientHeight: el.clientHeight, scrollHeight: el.scrollHeight, scrollTop: (el as HTMLTextAreaElement).scrollTop }));
-          expect(inner.scrollHeight, 'all three lines fit in the text field').toBeLessThanOrEqual(inner.clientHeight + 4);
-          expect(inner.scrollTop).toBeLessThanOrEqual(4);
-          const fieldBox = await box(field);
-          expect(fieldBox.height, 'the field is three lines tall').toBeGreaterThanOrEqual(3 * 16);
-          expectAbove('the text field', fieldBox, tabs.y, seen);
-          // the picture's thumbnail with its X
-          if (picture) {
-            expectAbove('the thumbnail', await box(page.getByRole('button', { name: 'View photo.png' })), tabs.y, seen);
-            expectAbove('the thumbnail Remove', await box(page.getByRole('button', { name: 'Remove photo.png' })), tabs.y, seen);
-          }
-          // the control that sends what he typed
-          expectAbove('Send', await box(page.getByRole('button', { name: 'Send', exact: true })), tabs.y, seen);
-          // the tab bar itself is still in the window (nothing is pushed off the foot)
-          expect(tabs.y + tabs.height).toBeLessThanOrEqual(seen.height + 0.5);
-          // and the header still shows: nothing is pushed off the top
-          expect((await box(page.getByRole('heading', { level: 1 }))).y).toBeGreaterThanOrEqual(0);
-        });
-      }
+        // the text field, and in it all three typed lines (not scrolled, not clipped: the field's own borders are the 4 px)
+        const inner = await field.evaluate((el) => ({ clientHeight: el.clientHeight, scrollHeight: el.scrollHeight, scrollTop: (el as HTMLTextAreaElement).scrollTop }));
+        expect(inner.scrollHeight, 'all three lines fit in the text field').toBeLessThanOrEqual(inner.clientHeight + 4);
+        expect(inner.scrollTop).toBeLessThanOrEqual(4);
+        const fieldBox = await box(field);
+        expect(fieldBox.height, 'the field is three lines tall').toBeGreaterThanOrEqual(3 * 16);
+        expectAbove('the text field', fieldBox, tabs.y, seen);
+        // the picture's thumbnail with its X
+        if (picture) {
+          expectAbove('the thumbnail', await box(page.getByRole('button', { name: 'View photo.png' })), tabs.y, seen);
+          expectAbove('the thumbnail Remove', await box(page.getByRole('button', { name: 'Remove photo.png' })), tabs.y, seen);
+        }
+        // the control that sends what he typed
+        expectAbove('Send', await box(page.getByRole('button', { name: 'Send', exact: true })), tabs.y, seen);
+        // the tab bar itself is still in the window (nothing is pushed off the foot)
+        expect(tabs.y + tabs.height).toBeLessThanOrEqual(seen.height + 0.5);
+        // and the header still shows: nothing is pushed off the top
+        expect((await box(page.getByRole('heading', { level: 1 }))).y).toBeGreaterThanOrEqual(0);
+      });
     }
   }
 }

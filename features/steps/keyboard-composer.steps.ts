@@ -21,8 +21,8 @@ describeFeature(feature, ({ Scenario }) => {
   Scenario('mw-ojmy9q3: the tab bar steps aside while a composer has focus in a short window, so it never covers the text field', ({ Given, Then, And }) => {
     Given("the app's stylesheet and shell as shipped", shipped);
     Then("the phone's tab bar is marked, and the wide layout's sidebar is not", () => {
-      expect(shell).toMatch(/<nav aria-label="Places" data-tabbar className="mb-safe/);
-      expect(shell).not.toMatch(/<nav aria-label="Places" data-tabbar className="flex w-60/);
+      expect(shell).toMatch(/<nav aria-label="Places" className="mb-safe[^"]*" data-tabbar>/);
+      expect(shell).not.toMatch(/<nav aria-label="Places" className="flex w-60[^"]*" data-tabbar/);
     });
     And('a window under 35rem tall with a composer holding focus hides the tab bar', () => {
       expect(css).toMatch(/@media \(max-height: 35rem\)\s*\{\s*\[data-shell\]:has\(\.bk-composer:focus-within\) \[data-tabbar\]\s*\{\s*display: none;/);

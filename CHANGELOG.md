@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.65
+_2026-10-31_
+- Fixed: the hold-to-talk bar stays put while you talk, however long the words get, and the bottom bar no longer covers it.
+
 ## 0.8.61
 _2026-10-28_
 - New: You can add a second account (a backend and a key) in Settings, switch between accounts from the top bar, and rename or remove them.

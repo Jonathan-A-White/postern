@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.65",
+    "date": "2026-10-31",
+    "story": "mw-j0f2d.44",
+    "kind": "fixed",
+    "text": "the hold-to-talk bar stays put while you talk, however long the words get, and the bottom bar no longer covers it."
+  },
+  {
     "version": "0.8.61",
     "date": "2026-10-28",
     "story": "mw-9rp4hu.5",

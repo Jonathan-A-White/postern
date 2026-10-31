@@ -1,7 +1,7 @@
 {
-  "version": "0.8.64",
-  "commit": "19b31ebe",
-  "published_at": "2026-10-30T21:49:22.284Z",
+  "version": "0.8.65",
+  "commit": "ae526b01",
+  "published_at": "2026-10-31T06:02:07.591Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -485,6 +485,48 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/gate.png"
+    },
+    {
+      "name": "390x844/hold-bar-fixed-channel.png",
+      "screen": "hold-bar-fixed-channel",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/hold-bar-fixed-channel.png"
+    },
+    {
+      "name": "360x640/hold-bar-fixed-channel.png",
+      "screen": "hold-bar-fixed-channel",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/hold-bar-fixed-channel.png"
+    },
+    {
+      "name": "1280x800/hold-bar-fixed-channel.png",
+      "screen": "hold-bar-fixed-channel",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/hold-bar-fixed-channel.png"
+    },
+    {
+      "name": "390x844/hold-bar-fixed-line.png",
+      "screen": "hold-bar-fixed-line",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/hold-bar-fixed-line.png"
+    },
+    {
+      "name": "360x640/hold-bar-fixed-line.png",
+      "screen": "hold-bar-fixed-line",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/hold-bar-fixed-line.png"
+    },
+    {
+      "name": "1280x800/hold-bar-fixed-line.png",
+      "screen": "hold-bar-fixed-line",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/hold-bar-fixed-line.png"
     },
     {
       "name": "390x844/ideas-only-banner.png",

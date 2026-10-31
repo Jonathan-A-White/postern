@@ -1,6 +1,6 @@
 // tests/e2e/hold-bar-fixed.spec.ts — mw-j0f2d.44: while he holds to talk the bar stays where his thumb is, however long the
 // live words grow. The words scroll in their own area above it (newest line in view) and the bottom bar never covers the
-// bar or its round control. Read in a real browser at 360x740 and at 200 % text (jsdom does no layout), in a channel's
+// bar or its round control. Read in a real browser at a phone's size and, at 360x740, at 200 % text (jsdom does no layout), in a channel's
 // composer and on the Talk line, with a 20-word and then a 300-word transcript.
 import { test, expect, type Page } from '@playwright/test';
 import { PrivateKey } from '@bsv/sdk';
@@ -75,7 +75,7 @@ const boxOf = async (page: Page, selector: string): Promise<Box> => {
 const meets = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
 /** Holds the bar called `rest`, feeds 20 then 300 words, and checks the bar did not move, the nav is clear of it, and the words show their newest end. */
-async function holdAndFeed(page: Page, rest: string, bar: (page: Page) => string, roundControl: string | undefined, sameAsAtRest: boolean, name: string) {
+async function holdAndFeed(page: Page, rest: string, bar: (page: Page) => string, roundControl: string | undefined, sameAsAtRest: boolean, name: string | undefined) {
   const button = page.getByRole('button', { name: rest });
   await expect(button).toBeEnabled();
   const start = (await button.boundingBox())!;
@@ -125,13 +125,14 @@ async function holdAndFeed(page: Page, rest: string, bar: (page: Page) => string
   })).toBe(true);
   expect(area.frameTop, 'the words start inside the window').toBeGreaterThanOrEqual(0);
 
-  await shot(page, name);
+  if (name) await shot(page, name);
   await page.mouse.up();
 }
 
 for (const zoom of [100, 200]) {
-  test.describe(`360x740 at ${zoom} % text`, () => {
-    test.use({ viewport: sized({ width: 360, height: 740 }) });
+  test.describe(`${zoom === 100 ? 'a phone' : '360x740'} at ${zoom} % text`, () => {
+    // 100 % text is read at every size the shots run at; 200 % at 360x740 only (a 640 px window at double text holds less than half a screen)
+    test.use({ viewport: zoom === 100 ? sized({ width: 360, height: 740 }) : { width: 360, height: 740 } });
 
     test.beforeEach(async ({ page }) => {
       await page.addInitScript((percent) => {
@@ -149,13 +150,13 @@ for (const zoom of [100, 200]) {
       // a picture waits to go, as in his screenshot: the round Send arrow stands beside the bar
       await page.locator('input[type="file"]:not([capture])').first().setInputFiles({ name: 'shot.png', mimeType: 'image/png', buffer: PNG });
       await expect(page.locator('.bk-composer__bar-send')).toBeVisible();
-      await holdAndFeed(page, 'Hold to talk', () => '.bk-composer__bar', '.bk-composer__bar-send', zoom === 100, `hold-bar-fixed-channel-${zoom}`);
+      await holdAndFeed(page, 'Hold to talk', () => '.bk-composer__bar', '.bk-composer__bar-send', zoom === 100, zoom === 100 ? 'hold-bar-fixed-channel' : undefined);
     });
 
     test(`the Talk line's hold bar stays put as the live words grow, and the bottom bar never covers it (mw-j0f2d.44)`, async ({ page }) => {
       await unlocked(page);
       await page.goto('/?v=line');
-      await holdAndFeed(page, 'Hold to talk', () => '.bk-composer__bar', undefined, zoom === 100, `hold-bar-fixed-line-${zoom}`);
+      await holdAndFeed(page, 'Hold to talk', () => '.bk-composer__bar', undefined, zoom === 100, zoom === 100 ? 'hold-bar-fixed-line' : undefined);
     });
   });
 }

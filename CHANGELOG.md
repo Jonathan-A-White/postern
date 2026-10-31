@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.66
+_2026-10-31_
+- Fixed: With the keyboard open and a picture attached, the message box stays in view above the keyboard instead of hiding behind the bottom bar.
+
 ## 0.8.65
 _2026-10-31_
 - Fixed: the hold-to-talk bar stays put while you talk, however long the words get, and the bottom bar no longer covers it.

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.66",
+    "date": "2026-10-31",
+    "story": "mw-ojmy9q3",
+    "kind": "fixed",
+    "text": "With the keyboard open and a picture attached, the message box stays in view above the keyboard instead of hiding behind the bottom bar."
+  },
+  {
     "version": "0.8.65",
     "date": "2026-10-31",
     "story": "mw-j0f2d.44",

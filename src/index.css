@@ -336,6 +336,21 @@ html {
   }
 }
 
+/* An open keyboard leaves a phone about 365 px (a 640 px one) to lay out in, and with a banner, the header, a picture's
+ * thumbnail and a three-line draft the stack asked for more than that: the composer overflowed its place and the tab bar,
+ * drawn after it, covered the text field, so he could not see what he typed (mw-ojmy9q3). So while a composer holds focus in a
+ * window this short the tab bar steps aside (focus-within, not focus: a tap on Send moves focus to that button, and the bar
+ * must not jump back under his thumb mid-tap; it returns by itself when the keyboard closes and the window is tall again),
+ * and the text field never takes more than a quarter of the window, scrolling its own words past that. */
+:root {
+  --bk-composer-field-max-height: min(200px, 28dvh);
+}
+@media (max-height: 35rem) {
+  [data-shell]:has(.bk-composer:focus-within) [data-tabbar] {
+    display: none;
+  }
+}
+
 /* voice-kit's speaking bar (Pause/Resume, Restart, Stop) wears Postern's tokens, as the buttons did before it moved to the package. */
 :root {
   --bk-speech-surface: var(--pc-surface);

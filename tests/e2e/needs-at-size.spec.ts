@@ -11,13 +11,14 @@ import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
 import { hostSlowdown } from './host-slowdown';
+import { needsBadgeShows, SLOWED_WAIT_MS } from './needs-badge';
 import { LIVE_SIZE, liveShapeView, type ViewSize } from '../support/live-shape-view';
 
 test.use({ serviceWorkers: 'block', viewport: sized({ width: 390, height: 844 }) });
 
 const OPENS_WITHIN_MS = 3000;
 
-async function unlockedOnMe(page: Page, size: ViewSize): Promise<void> {
+async function unlockedOnMe(page: Page, size: ViewSize, waitMs?: number): Promise<void> {
   const mnemonic = createMnemonic();
   const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
   await stubBackend(page, governor, undefined, { view: liveShapeView(Date.now(), size) });
@@ -25,9 +26,10 @@ async function unlockedOnMe(page: Page, size: ViewSize): Promise<void> {
   await page.goto('/?v=me');
   await page.getByLabel('Recovery phrase').fill(mnemonic);
   await page.getByRole('button', { name: 'Unlock' }).click();
-  await expect(page.getByRole('heading', { name: 'Me', exact: true })).toBeVisible();
-  // The view has arrived and is stored: the Needs you tab counts his cards.
-  await expect(page.getByRole('link', { name: /Needs you/ }).getByText(/^\d+\+?$/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Me', exact: true })).toBeVisible({ timeout: waitMs });
+  // The view has arrived and is stored: the Needs you tab counts his cards. On a slowed browser that takes longer than
+  // the default 20 s (mw-gq6.902); the wait still ends the moment the badge shows.
+  await needsBadgeShows(page, waitMs);
 }
 
 interface Timed {
@@ -72,7 +74,7 @@ async function bestOfTaps(tap: () => Promise<Timed>, reset: () => Promise<void>)
 /**
  * Taps the tab and waits for `opened`, then for the page to answer a timer; see bestOfTaps for the retries, which leave by Me.
  */
-async function tapAndTime(page: Page, tab: string, opened: () => Promise<void>): Promise<Timed> {
+async function tapAndTime(page: Page, tab: string, opened: () => Promise<void>, waitMs?: number): Promise<Timed> {
   const places = page.getByRole('navigation', { name: 'Places' });
   const tapOnce = async (): Promise<Timed> => {
     const slowBefore = await hostSlowdown(page);
@@ -89,7 +91,7 @@ async function tapAndTime(page: Page, tab: string, opened: () => Promise<void>):
   };
   const leave = async (): Promise<void> => {
     await places.getByRole('link', { name: 'Me' }).click();
-    await expect(page.getByRole('heading', { name: 'Me', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Me', exact: true })).toBeVisible({ timeout: waitMs });
   };
   const t = await bestOfTaps(tapOnce, leave);
   expect(t.gap, `${tab}: the page answers a timer at once once it is open`).toBeLessThan(TIMER_ANSWERS_WITHIN_MS * t.slowdown);
@@ -107,17 +109,23 @@ async function slowBrowser(page: Page, rate: number): Promise<void> {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate });
 }
 
-async function everyTabOpens(page: Page, name: string, size: ViewSize): Promise<void> {
-  await unlockedOnMe(page, size);
+/**
+ * `waitMs` is how long each wait for something to show may take (undefined: the preset's 20 s). It is not the promise: the
+ * promise is the 3 s x slowdown below, so a longer wait only lets a slow page be measured instead of timing out first
+ * (a browser slowed 20x at load 54 took 21 s to show the badge, mw-gq6.902).
+ */
+async function everyTabOpens(page: Page, name: string, size: ViewSize, waitMs?: number): Promise<void> {
+  await unlockedOnMe(page, size, waitMs);
+  const wait = { timeout: waitMs };
 
-  const needs = await tapAndTime(page, 'Needs you', () => expect(page.getByTestId('need-card').first()).toBeVisible());
+  const needs = await tapAndTime(page, 'Needs you', () => expect(page.getByTestId('need-card').first()).toBeVisible(wait), waitMs);
   console.log(`${name}: Needs you answered ${Math.round(needs.ms)} ms after the tap (host ${needs.slowdown.toFixed(1)}x)`);
   expect(needs.ms, 'Needs you opens and answers').toBeLessThan(within(needs.slowdown));
   // The rest of his cards follow while the page answers: none is left out. They arrive a batch at a time, so on a browser slowed
   // 20x the count is still climbing when the default 5 s ends (60 ... 116 of them, the landing gate on 2026-10-24); this wait is
   // for the last card, not a promise about speed (the times above are), so it waits as long as the count keeps moving up to 60 s.
   const his = Number((await page.getByRole('tab', { name: /^You · / }).textContent())?.replace(/\D+/g, ''));
-  await expect(page.getByTestId('need-card')).toHaveCount(his, { timeout: 60_000 });
+  await expect(page.getByTestId('need-card')).toHaveCount(his, { timeout: Math.max(60_000, waitMs ?? 0) });
   if (size === LIVE_SIZE) await shot(page, 'needs-at-size');
 
   // The folded verify cards (359 of them that day) open the same way: a tap on the foot line answers at once.
@@ -128,14 +136,14 @@ async function everyTabOpens(page: Page, name: string, size: ViewSize): Promise<
       const slowBefore = await hostSlowdown(page);
       const tappedAt = await page.evaluate(() => performance.now());
       await foot.click();
-      await expect(region.getByTestId('need-card').first()).toBeVisible();
+      await expect(region.getByTestId('need-card').first()).toBeVisible(wait);
       const ms = (await page.evaluate(() => performance.now())) - tappedAt;
       return { ms, gap: 0, slowdown: Math.max(slowBefore, await hostSlowdown(page)) };
     };
     // A retry folds the list again first.
     const fold = async (): Promise<void> => {
       await foot.click();
-      await expect(region.getByTestId('need-card')).toHaveCount(0);
+      await expect(region.getByTestId('need-card')).toHaveCount(0, wait);
     };
     const { ms, slowdown } = await bestOfTaps(tapFoot, fold);
     console.log(`${name}: Waiting on your use answered ${Math.round(ms)} ms after the tap (host ${slowdown.toFixed(1)}x)`);
@@ -143,14 +151,14 @@ async function everyTabOpens(page: Page, name: string, size: ViewSize): Promise<
   }
 
   const tabs: Array<{ tab: string; opened: () => Promise<void> }> = [
-    { tab: 'To do', opened: () => expect(page.getByRole('heading', { name: 'To do', exact: true })).toBeVisible() },
-    { tab: 'Map', opened: () => expect(page.getByRole('heading', { name: 'Map', exact: true })).toBeVisible() },
-    { tab: 'Channels', opened: () => expect(page.getByRole('heading', { name: 'Channels', exact: true })).toBeVisible() },
-    { tab: 'Search', opened: () => expect(page.getByRole('heading', { name: 'Search', exact: true })).toBeVisible() },
-    { tab: 'Needs you', opened: () => expect(page.getByTestId('need-card').first()).toBeVisible() },
+    { tab: 'To do', opened: () => expect(page.getByRole('heading', { name: 'To do', exact: true })).toBeVisible(wait) },
+    { tab: 'Map', opened: () => expect(page.getByRole('heading', { name: 'Map', exact: true })).toBeVisible(wait) },
+    { tab: 'Channels', opened: () => expect(page.getByRole('heading', { name: 'Channels', exact: true })).toBeVisible(wait) },
+    { tab: 'Search', opened: () => expect(page.getByRole('heading', { name: 'Search', exact: true })).toBeVisible(wait) },
+    { tab: 'Needs you', opened: () => expect(page.getByTestId('need-card').first()).toBeVisible(wait) },
   ];
   for (const { tab, opened } of tabs) {
-    const { ms, slowdown } = await tapAndTime(page, tab, opened);
+    const { ms, slowdown } = await tapAndTime(page, tab, opened, waitMs);
     console.log(`${name}: ${tab} answered ${Math.round(ms)} ms after the tap (host ${slowdown.toFixed(1)}x)`);
     expect(ms, `${tab} opens and answers`).toBeLessThan(within(slowdown));
   }
@@ -169,5 +177,22 @@ for (const { name, size } of SIZES) {
 test("150 needs on a browser slowed 20x: every tab opens within 3 s of the host's own time", async ({ page }) => {
   test.setTimeout(300_000);
   await slowBrowser(page, 20);
-  await everyTabOpens(page, 'slowed 20x', SIZES[1].size);
+  await everyTabOpens(page, 'slowed 20x', SIZES[1].size, SLOWED_WAIT_MS);
+});
+
+// mw-gq6.902: the Needs you badge is waited for as long as a slowed browser needs, but a badge that never shows
+// still fails, and the message carries the page, so the reader sees what the app showed instead.
+test('a Needs you badge that never shows fails the wait, with the page in the message', async ({ page }) => {
+  await page.setContent('<nav aria-label="Places"><a href="/x">Needs you</a></nav><main>Reading… not there yet</main>');
+  const err = await needsBadgeShows(page, 500).then(() => undefined, (e: Error) => e);
+  expect(err, 'the wait fails').toBeDefined();
+  expect(err?.message).toContain('Needs you badge was not shown within 500 ms');
+  expect(err?.message).toContain('Reading… not there yet');
+});
+
+test('a Needs you badge that shows ends the wait at once', async ({ page }) => {
+  await page.setContent('<nav aria-label="Places"><a href="/x">Needs you <span>12+</span></a></nav>');
+  const started = Date.now();
+  await needsBadgeShows(page, 60_000);
+  expect(Date.now() - started).toBeLessThan(5000);
 });

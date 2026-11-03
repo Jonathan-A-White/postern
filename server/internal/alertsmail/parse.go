@@ -99,7 +99,7 @@ var (
 )
 
 // parseChase reads a Chase transaction alert: "Account Prime Visa (...1234)",
-// "Date Nov 2, 2026 at 12:42 PM ET", "Merchant ...", "Amount $6.04".
+// "Date Nov 2, 2026 at 12:42 PM ET", "Merchant ...", "Amount $9.38".
 func parseChase(m mailView) (Facts, bool) {
 	if !m.fromDomain("chase.com") {
 		return Facts{}, false
@@ -133,7 +133,7 @@ var (
 	citiEnding = regexp.MustCompile(`(?i)ending in:?\s*(\d{4})\b`)
 )
 
-// parseCiti reads a Citi custom alert: "Amount: $292.46", "Card Ending In
+// parseCiti reads a Citi custom alert: "Amount: $187.53", "Card Ending In
 // 4321", "Merchant ...", "Date 10/31/2026", "Time 04:53 PM ET".
 func parseCiti(m mailView) (Facts, bool) {
 	if !m.fromDomain("citi.com") || !strings.Contains(strings.ToLower(m.subject), "transaction") {

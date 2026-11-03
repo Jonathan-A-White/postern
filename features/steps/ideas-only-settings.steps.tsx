@@ -213,6 +213,9 @@ describeFeature(feature, ({ Scenario }) => {
       expect((await putCount(1)).reaches).toEqual({ ring: false });
     });
     When('"Emergencies" is switched off', async () => {
+      // The switch is enabled again once the save ends, but the kept setting it builds on arrives from a live
+      // query a moment later on a loaded host: wait for the ring switch to show the first change as kept.
+      await waitFor(() => expect((section().getByLabelText("The Mayor's ring") as HTMLInputElement).checked).toBe(false));
       await waitFor(() => expect((section().getByLabelText('Emergencies') as HTMLInputElement).disabled).toBe(false));
       await userEvent.click(section().getByLabelText('Emergencies'));
     });

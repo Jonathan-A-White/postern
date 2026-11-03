@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.8.69",
+    "date": "2026-11-03",
+    "story": "mw-gq6.901",
+    "kind": "fixed",
+    "text": "a bead's page no longer says \"No conversation yet\" before the phone has finished reading it, and a failed read now says so and tries again."
+  },
+  {
+    "version": "0.8.68",
+    "date": "2026-11-03",
+    "story": "mw-gq6.898",
+    "kind": "fixed",
+    "text": "A channel you open before the phone has fetched it now says it is reading, or that it cannot reach the Mayor, instead of wrongly saying nothing has been said."
+  },
+  {
     "version": "0.8.67",
     "date": "2026-11-03",
     "story": "mw-mr4xgrw.10",

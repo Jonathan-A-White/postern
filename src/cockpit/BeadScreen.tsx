@@ -15,7 +15,7 @@ import { NeedCard } from './NeedCard';
 import { ThreadCards } from './LiveCard';
 import { shareTitle } from '../model/shareText';
 import { StepUnderComment } from './HandsSteps';
-import { useAnswers, useBeadDetail, useBeadTitles, useOutbox, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { useAnswers, useBeadDetail, useBeadTitles, useOutbox, useThreadMessages, useThreadRead, useViewIndex, type ThreadRead, useWide } from './hooks';
 import { pendingMessageItems } from '../model/outbox';
 import { useOneTap } from './oneTap';
 import { WaitingNote } from './WaitingNote';
@@ -306,6 +306,29 @@ function Details({ id, bead, detail, index, status }: { id: string; bead?: ViewB
   );
 }
 
+/** What a bead page with no conversation says: never "none" before the phone has read its thread and the backend has answered (mw-gq6.901). */
+function NoConversation({ id, read }: { id: string; read: ThreadRead }) {
+  if (read === 'reading') {
+    return (
+      <p role="status" className="flex items-center justify-center gap-2 py-6 text-sm text-muted">
+        <Spinner size={14} />
+        Reading this conversation…
+      </p>
+    );
+  }
+  if (read === 'failed') {
+    return <p className="py-6 text-center text-sm text-faint">Couldn't read this conversation on the phone. It is trying again, and the posts appear here when it does.</p>;
+  }
+  if (read === 'unreached') {
+    return <p className="py-6 text-center text-sm text-faint">Can't reach the Mayor yet, so there may be posts not shown. They appear here when the line is back.</p>;
+  }
+  return (
+    <p className="py-6 text-center text-sm text-faint">
+      No conversation yet. Anything you say here is written to {id} and reaches the Mayor at once.
+    </p>
+  );
+}
+
 export function BeadScreen({ id, msg }: { id: string; msg?: string }) {
   const view = useViewIndex();
   const wide = useWide();
@@ -320,7 +343,7 @@ export function BeadScreen({ id, msg }: { id: string; msg?: string }) {
   const detail = useMemo(() => detailAsOf(fetched, bead), [fetched, bead]);
   const threadId = id;
   const threadKey = `bead:${id}`;
-  const rows = useThreadMessages(threadKey);
+  const { rows, read } = useThreadRead(threadKey);
   const outbox = useOutbox();
   // His messages still on their way (mw-jrx0s.10) read as his own, marked pending.
   const items = useMemo(() => [...mergeConversation(rows, detail?.comments ?? []), ...pendingMessageItems(outbox, rows, (thread) => thread === threadKey)], [rows, detail, outbox, threadKey]);
@@ -422,11 +445,7 @@ export function BeadScreen({ id, msg }: { id: string; msg?: string }) {
         );
       }}
       scrollOnOpen={wide}
-      empty={
-        <p className="py-6 text-center text-sm text-faint">
-          No conversation yet. Anything you say here is written to {id} and reaches the Mayor at once.
-        </p>
-      }
+      empty={<NoConversation id={id} read={detail || status !== 'loading' ? read : 'reading'} />}
     />
   );
   const conversation = (

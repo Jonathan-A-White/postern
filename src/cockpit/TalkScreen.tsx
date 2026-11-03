@@ -8,7 +8,7 @@
 // shows one 'N replies' row; tapping it (or Reply on any post) opens that post's
 // own thread with a Reply… composer (mw-hkg17.2, mw-909ci.2).
 import { useEffect, useMemo, useState } from 'react';
-import { Button, EmptyState, Icon, IconButton, TimeAgo, cx } from '../ui';
+import { Button, EmptyState, Icon, IconButton, Spinner, TimeAgo, cx } from '../ui';
 import { Screen } from './Shell';
 import { Conversation, SpeakAll } from './Conversation';
 import { LiveCard, ThreadCards } from './LiveCard';
@@ -17,7 +17,7 @@ import { TopicForm } from './TopicForm';
 import { topicKey } from './topicKey';
 import type { MessageRow } from '../data/db';
 import type { LiveCard as LiveCardData } from '../model/cards';
-import { useBeadComments, useBeadDetail, useCardRoot, useMessages, useOutbox, useThreadArchive, useThreadMessages, useViewIndex, useWide } from './hooks';
+import { useBeadComments, useBeadDetail, useCardRoot, useMessages, useOutbox, useThreadArchive, useThreadMessages, useThreadRead, useViewIndex, type ThreadRead, useWide } from './hooks';
 import { pendingMessageItems } from '../model/outbox';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { groupPosts } from '../model/postThreads';
@@ -148,12 +148,39 @@ function openReplies(channel: string, rootTxid: string) {
   navigate({ view: 'talk', thread: channel, root: rootTxid });
 }
 
+/** What a channel with no posts says: never "nothing" before the phone has read it and the backend has answered (mw-gq6.898). */
+export function NoPosts({ read }: { read: ThreadRead }) {
+  if (read === 'reading') {
+    return (
+      <p role="status" className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
+        <Spinner size={14} />
+        Reading this channel…
+      </p>
+    );
+  }
+  if (read === 'failed') {
+    return (
+      <EmptyState icon="talk" title="Couldn't read this channel on the phone">
+        The phone's own copy would not open. It is trying again, and the posts appear here when it does.
+      </EmptyState>
+    );
+  }
+  if (read === 'unreached') {
+    return (
+      <EmptyState icon="talk" title="Can't reach the Mayor yet">
+        This channel may have posts the phone has not fetched. It keeps trying, and they appear here when the line is back.
+      </EmptyState>
+    );
+  }
+  return <EmptyState icon="talk" title="Nothing said here yet">Say anything; the Mayor answers in its thread.</EmptyState>;
+}
+
 /** One channel: each post once, with one row for its replies. A bead's channel
  * merges the bead's own comments, which are always posts. */
 function ChannelPane({ threadKey, prefill, held, msg }: { threadKey: string; prefill?: string; held: readonly MessageRow[]; msg?: string }) {
   const ref: ThreadRef | undefined = parseThreadKey(threadKey);
   const storeKey = threadKey === GENERAL ? undefined : threadKey;
-  const rows = useThreadMessages(storeKey, held);
+  const { rows, read } = useThreadRead(storeKey, held);
   const bead = ref && 'bead' in ref ? ref.bead : undefined;
   const { detail } = useBeadDetail(bead);
   const outbox = useOutbox();
@@ -191,7 +218,7 @@ function ChannelPane({ threadKey, prefill, held, msg }: { threadKey: string; pre
               const thread = byRoot.get(item.id);
               return thread && thread.replyCount > 0 ? <RepliesRow channel={threadKey} thread={thread} /> : null;
             }}
-            empty={promptName ? <PromptNote name={promptName} /> : <EmptyState icon="talk" title="Nothing said here yet">Say anything; the Mayor answers in its thread.</EmptyState>}
+            empty={promptName ? <PromptNote name={promptName} /> : <NoPosts read={read} />}
           />
         </div>
       </div>
@@ -214,7 +241,7 @@ function cardRoot(card: LiveCardData): ConversationItem {
 function RepliesPane({ threadKey, rootTxid, msg }: { threadKey: string; rootTxid: string; msg?: string }) {
   const ref: ThreadRef | undefined = parseThreadKey(threadKey);
   const storeKey = threadKey === GENERAL ? undefined : threadKey;
-  const rows = useThreadMessages(storeKey);
+  const { rows, read } = useThreadRead(storeKey);
   const all = useMessages();
   const outbox = useOutbox();
   const bead = ref && 'bead' in ref ? ref.bead : undefined;
@@ -263,7 +290,9 @@ function RepliesPane({ threadKey, rootTxid, msg }: { threadKey: string; rootTxid
               windowed={false}
               shareTitle={shareTitle(titleFor(threadKey, view?.index).title)}
               onQuote={(item: ConversationItem) => setQuote({ speaker: item.speakerLabel, text: item.text })}
-              empty={<EmptyState icon="talk" title="That post is not on this phone">It may still be arriving; Back returns to the channel.</EmptyState>}
+              empty={
+                read === 'empty' ? <EmptyState icon="talk" title="That post is not on this phone">It may still be arriving; Back returns to the channel.</EmptyState> : <NoPosts read={read} />
+              }
             />
           )}
         </div>

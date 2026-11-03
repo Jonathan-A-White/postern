@@ -14,7 +14,7 @@ import { indexView, type ViewIndex } from '../model/tree';
 import { getKey, onKeyChange } from '../services/keySession';
 import { fetchBeadDetail } from '../services/beads';
 import { threadKey } from '../services/threads';
-import { getLiveState } from '../services/live';
+import { getLiveState, useLive, type LiveState } from '../services/live';
 import { useEvents } from '../services/events';
 import { recallRead, rememberRead } from './lastKnown';
 
@@ -187,13 +187,56 @@ const NO_MESSAGES: MessageRow[] = [];
  * messages the screen already has in memory: until the first read of this thread arrives they are what shows,
  * so an opened channel is never painted empty while the phone holds its posts. */
 export function useThreadMessages(threadKey: string | undefined | null, held?: readonly MessageRow[]): MessageRow[] {
-  const read = useLiveQuery(
-    () => (threadKey === null ? Promise.resolve(NO_MESSAGES) : messagesRepo.inThread(threadKey)).then((rows) => ({ threadKey, rows })),
-    [threadKey],
-    undefined as { threadKey: string | undefined | null; rows: MessageRow[] } | undefined,
-  );
+  return useThreadRows(threadKey, held).rows;
+}
+
+/** How long a thread's failed local read waits before it is tried again (mw-gq6.901). */
+export const THREAD_READ_RETRY_MS = 2000;
+
+/** useThreadMessages with whether the phone's own read of the thread has answered: until it has, an empty list is not yet "nothing".
+ * A read that failed (a Dexie error ends a live query for good) is `failed` and is tried again after THREAD_READ_RETRY_MS. */
+function useThreadRows(threadKey: string | undefined | null, held?: readonly MessageRow[]): { rows: MessageRow[]; answered: boolean; failed: boolean } {
+  const [read, setRead] = useState<{ threadKey: string | undefined | null; rows: MessageRow[] } | undefined>(undefined);
+  const [failedKey, setFailedKey] = useState<{ threadKey: string | undefined | null } | undefined>(undefined);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const subscription = liveQuery(() => (threadKey === null ? Promise.resolve(NO_MESSAGES) : messagesRepo.inThread(threadKey)).then((rows) => ({ threadKey, rows }))).subscribe({
+      next: (next) => {
+        setFailedKey(undefined);
+        setRead(next);
+      },
+      error: () => {
+        setFailedKey({ threadKey });
+        retry = setTimeout(() => setAttempt((n) => n + 1), THREAD_READ_RETRY_MS);
+      },
+    });
+    return () => {
+      subscription.unsubscribe();
+      if (retry !== undefined) clearTimeout(retry);
+    };
+  }, [threadKey, attempt]);
   const seed = useMemo(() => (held && threadKey !== null ? messagesRepo.heldInThread(held, threadKey) : NO_MESSAGES), [held, threadKey]);
-  return read && read.threadKey === threadKey ? read.rows : seed;
+  const answered = read !== undefined && read.threadKey === threadKey;
+  const failed = !answered && failedKey !== undefined && failedKey.threadKey === threadKey;
+  return { rows: answered ? read.rows : seed, answered, failed };
+}
+
+/** What a thread with no posts may say (mw-gq6.898): 'reading' until the phone has read its own copy and the backend has
+ * answered a first sync this session, 'unreached' when that first sync failed and the backend has not answered since,
+ * 'failed' when the phone's own read failed (it is tried again every THREAD_READ_RETRY_MS), 'empty' once both are true. With no live line at all (idle, unlicensed) there is nothing to wait for. */
+export type ThreadRead = 'reading' | 'unreached' | 'empty' | 'failed';
+
+export function useThreadRead(threadKey: string | undefined | null, held?: readonly MessageRow[]): { rows: MessageRow[]; read: ThreadRead } {
+  const { rows, answered, failed } = useThreadRows(threadKey, held);
+  const live = useLive();
+  return { rows, read: failed ? 'failed' : threadReadOf(answered, live) };
+}
+
+export function threadReadOf(localAnswered: boolean, live: LiveState): ThreadRead {
+  if (!localAnswered) return 'reading';
+  if (live.status === 'idle' || live.status === 'unlicensed' || (live.answered ?? 0) > 0) return 'empty';
+  return live.error !== undefined || live.status === 'offline' ? 'unreached' : 'reading';
 }
 
 /** Every live card (§24) as it now reads, newest first. */

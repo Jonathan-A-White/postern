@@ -126,6 +126,8 @@ A source added or removed changes its credit in the same commit, and the test sa
 - [dcrd secp256k1](https://github.com/decred/dcrd/tree/master/dcrec/secp256k1): The Decred developers' secp256k1 code that btcec is built on. Licence: [ISC](https://spdx.org/licenses/ISC.html). Changes: None; used as published.
 - [golang-jwt](https://github.com/golang-jwt/jwt): Signed tokens, brought in by webpush-go for its VAPID headers. Licence: [MIT](https://github.com/golang-jwt/jwt/blob/main/LICENSE). Changes: None; used as published.
 - [Go x/crypto](https://pkg.go.dev/golang.org/x/crypto): The Go team's supplementary cryptography: encryption and key derivation. Licence: [BSD-3-Clause](https://go.googlesource.com/crypto/+/refs/heads/master/LICENSE). Changes: None; used as published.
+- [go-smtp](https://github.com/emersion/go-smtp): The mail server that receives the card and shop alerts a family forwards to its alert address. Licence: [MIT](https://spdx.org/licenses/MIT.html). Changes: None; used as published.
+- [go-sasl](https://github.com/emersion/go-sasl): Mail sign-in methods, brought in by go-smtp; the alerts mail server offers no sign-in. Licence: [MIT](https://spdx.org/licenses/MIT.html). Changes: None; used as published.
 - [nginx](https://nginx.org): Serves the app at postern.allmymind.org and passes the API through to the backend. Licence: [BSD-2-Clause](https://nginx.org/LICENSE). Changes: None; only configured.
 
 ### Tools that build and test it

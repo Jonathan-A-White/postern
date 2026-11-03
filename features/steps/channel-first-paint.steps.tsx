@@ -12,10 +12,13 @@ import { messagesRepo, viewRepo } from '../../src/data/repositories';
 import { fixtureView } from '../../tests/support/cockpit-fixture';
 
 const EMPTY = 'Nothing said here yet';
-const SLOW_MS = 400;
 let sequence = 0;
 let seeded: MessageRow[] = [];
 let sawEmpty = false;
+// The held read: slowRead() makes it, the scenario releases it (no timer decides when the phone has read).
+let releaseRead: (() => void) | undefined;
+let readStarted: Promise<void> = Promise.resolve();
+let readAnswered: Promise<void> = Promise.resolve();
 let watcher: MutationObserver | undefined;
 
 function post(text: string, thread: string | undefined | null): MessageRow {
@@ -42,6 +45,8 @@ async function fresh(): Promise<void> {
   cleanup();
   vi.restoreAllMocks();
   watcher?.disconnect();
+  releaseRead?.();
+  releaseRead = undefined;
   sequence = 0;
   seeded = [];
   sawEmpty = false;
@@ -70,9 +75,22 @@ async function listOpen(): Promise<void> {
 
 function slowRead(): void {
   const real = messagesRepo.inThread.bind(messagesRepo);
+  const held = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  let started!: () => void;
+  readStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let answered!: () => void;
+  readAnswered = new Promise<void>((resolve) => {
+    answered = resolve;
+  });
   vi.spyOn(messagesRepo, 'inThread').mockImplementation(async (key) => {
     const rows = await real(key);
-    await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
+    started();
+    await held;
+    queueMicrotask(answered);
     return rows;
   });
 }
@@ -87,6 +105,20 @@ function opened(key: string): void {
 
 const shownAtOnce = (_ctx: unknown, text: string) => {
   expect(screen.getByTestId('conversation')).toHaveTextContent(text);
+};
+
+// The read has been asked and is held: the screen has had every chance to say 'empty' and the read cannot have
+// answered. Then the read is let go and the screen is given its answer: the empty line must still never have been drawn.
+const neverEmpty = async () => {
+  await readStarted;
+  await act(async () => {});
+  expect(sawEmpty).toBe(false);
+  expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+  act(() => releaseRead?.());
+  await readAnswered;
+  await act(async () => {});
+  expect(sawEmpty).toBe(false);
+  expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
 };
 
 afterAll(() => {
@@ -108,11 +140,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And("the phone is slow to read one channel's posts", slowRead);
     When('Factory is opened from the list', () => opened('general'));
     Then('{string} is shown at once', shownAtOnce);
-    And('{string} is never shown', async () => {
-      await new Promise((resolve) => setTimeout(resolve, SLOW_MS + 200));
-      expect(sawEmpty).toBe(false);
-      expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
-    });
+    And('{string} is never shown', neverEmpty);
   });
 
   Scenario('mw-gq6.265 AC1: a bead channel opens with its posts on the first paint while the phone is still reading', ({ Given, And, When, Then }) => {
@@ -123,11 +151,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     And("the phone is slow to read one channel's posts", slowRead);
     When('the channel of bead {string} is opened from the list', (_ctx, bead: string) => opened(`bead:${bead}`));
     Then('{string} is shown at once', shownAtOnce);
-    And('{string} is never shown', async () => {
-      await new Promise((resolve) => setTimeout(resolve, SLOW_MS + 200));
-      expect(sawEmpty).toBe(false);
-      expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
-    });
+    And('{string} is never shown', neverEmpty);
   });
 
   Scenario("mw-gq6.265 AC2: a Factory post stored with a null thread is in the list's preview and in the Factory pane", ({ Given, And, When, Then }) => {

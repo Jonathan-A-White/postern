@@ -37,8 +37,10 @@ vi.mock('../../src/services/live', async (importOriginal) => {
 
 const EMPTY = 'Nothing said here yet';
 
-const SLOW_MS = 400;
 let sawEmpty = false;
+// The held read: slowRead() makes it, the scenario releases it (no timer decides when the phone has read).
+let releaseRead: (() => void) | undefined;
+let readStarted: Promise<void> = Promise.resolve();
 let watcher: MutationObserver | undefined;
 
 function setLive(state: Partial<LiveState>): void {
@@ -56,6 +58,8 @@ async function fresh(): Promise<void> {
   cleanup();
   vi.restoreAllMocks();
   watcher?.disconnect();
+  releaseRead?.();
+  releaseRead = undefined;
   sawEmpty = false;
   setLive(notAnswered);
   await Promise.all([db.settings.clear(), db.messages.clear(), db.view.clear(), db.beadDetails.clear()]);
@@ -79,9 +83,17 @@ function opened(name: string, root?: string): void {
 
 function slowRead(): void {
   const real = messagesRepo.inThread.bind(messagesRepo);
+  const held = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  let started!: () => void;
+  readStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
   vi.spyOn(messagesRepo, 'inThread').mockImplementation(async (key) => {
     const rows = await real(key);
-    await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
+    started();
+    await held;
     return rows;
   });
 }
@@ -113,11 +125,15 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     When('the channel {string} is opened', (_ctx, name: string) => opened(name));
     Then('{string} is shown and {string} is never shown until the phone has read it', async (_ctx, shown: string, not: string) => {
       expect(await screen.findByText(shown)).toBeInTheDocument();
-      await new Promise((resolve) => setTimeout(resolve, SLOW_MS - 150));
+      // The read has been asked and is held: the screen has had every chance to say 'empty' and the read cannot have answered.
+      await readStarted;
+      await act(async () => {});
+      expect(screen.getByText(shown)).toBeInTheDocument();
       expect(screen.queryByText(not)).not.toBeInTheDocument();
       expect(sawEmpty).toBe(false);
     });
     And('{string} is then shown', async (_ctx, text: string) => {
+      act(() => releaseRead?.());
       expect(await screen.findByText(text)).toBeInTheDocument();
     });
   });

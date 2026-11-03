@@ -2542,9 +2542,10 @@ One alert is parsed facts, as JSON:
 | `last4` | the last four digits of the card, at most 4 characters; optional |
 | `when` | when the mail says it happened, RFC 3339; optional |
 | `subject` | an `unread` alert's subject line; optional |
-| `code` | a `forward-confirm` alert's confirmation code, the one the mail provider sent when the family forwarded its first mail; optional |
+| `code` | a `forward-confirm` alert's confirmation code, the one the mail provider sent when the family forwarded its first mail (Gmail sends a link and no code, so it is usually absent); optional |
+| `link` | a `forward-confirm` alert's confirmation link, `https://mail.google.com/mail/vf-...` whole, at most 500 characters, the one link an alert carries; optional |
 
-Every text field is at most 200 characters, and there is no field for a mail's body. **A mail body never reaches
+Every text field but `link` is at most 200 characters, and there is no field for a mail's body. **A mail body never reaches
 the backend**: the receiver reads the mail, keeps nothing of it, and posts the facts above. An alert with any
 field not in this table is refused, so a body cannot be posted by mistake.
 

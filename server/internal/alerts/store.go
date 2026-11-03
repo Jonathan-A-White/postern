@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -35,6 +36,21 @@ const Keep = 30 * 24 * time.Hour
 // and a field this long is a mail body in the wrong place.
 const MaxFieldRunes = 200
 
+// MaxLinkRunes caps an alert's link: a real Gmail confirmation link is longer
+// than a text field, but still a link and never a mail body.
+const MaxLinkRunes = 500
+
+// confirmLink is the only link an alert carries: the one that confirms Gmail's
+// forwarding. The host and path are exact, and nothing after the token but
+// URL-safe characters (no query, no fragment, no userinfo, no further path).
+var confirmLink = regexp.MustCompile(`^https://mail\.google\.com/mail/vf-[A-Za-z0-9%._~+=-]+$`)
+
+// IsConfirmLink reports whether s is whole of the form
+// https://mail.google.com/mail/vf-..., within MaxLinkRunes.
+func IsConfirmLink(s string) bool {
+	return utf8.RuneCountInString(s) <= MaxLinkRunes && confirmLink.MatchString(s)
+}
+
 // TokenLength is the length of a family's address token.
 const TokenLength = 12
 
@@ -50,6 +66,7 @@ type Alert struct {
 	When     string `json:"when,omitempty"`
 	Subject  string `json:"subject,omitempty"`
 	Code     string `json:"code,omitempty"`
+	Link     string `json:"link,omitempty"`
 }
 
 var (
@@ -205,6 +222,9 @@ func check(a Alert) error {
 		if utf8.RuneCountInString(value) > MaxFieldRunes {
 			return &InvalidError{Msg: name + " is longer than " + fmt.Sprint(MaxFieldRunes) + " characters; an alert holds parsed facts, never a mail body"}
 		}
+	}
+	if a.Link != "" && !IsConfirmLink(a.Link) {
+		return &InvalidError{Msg: "link must be a Gmail forwarding confirmation link (https://mail.google.com/mail/vf-...) of at most " + fmt.Sprint(MaxLinkRunes) + " characters"}
 	}
 	if len(a.Last4) > 4 {
 		return &InvalidError{Msg: "last4 is at most 4 characters"}

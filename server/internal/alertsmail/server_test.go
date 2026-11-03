@@ -219,7 +219,7 @@ func TestAnAcceptedMailReachesTheInboundEndpointOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := backend.received()
-	want := map[string]string{"token": knownToken, "kind": "charge", "amount": "6.04", "merchant": "Example Market 0001", "last4": "1234", "when": "2026-11-02T12:42:00-05:00"}
+	want := map[string]string{"token": knownToken, "kind": "charge", "amount": "9.38", "merchant": "Example Market 0001", "last4": "1234", "when": "2026-11-02T12:42:00-05:00"}
 	if len(got) != 1 {
 		t.Fatalf("the inbound endpoint got %d posts, want 1: %+v", len(got), got)
 	}

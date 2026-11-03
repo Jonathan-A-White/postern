@@ -1,8 +1,11 @@
 package alertsmail
 
 import (
+	"bytes"
+	"net/mail"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -26,10 +29,10 @@ func TestCardAlertsYieldAmountMerchantLast4AndWhen(t *testing.T) {
 		file string
 		want Facts
 	}{
-		{"chase.eml", Facts{Kind: alerts.KindCharge, Amount: "6.04", Merchant: "Example Market 0001", Last4: "1234", When: "2026-11-02T12:42:00-05:00"}},
+		{"chase.eml", Facts{Kind: alerts.KindCharge, Amount: "9.38", Merchant: "Example Market 0001", Last4: "1234", When: "2026-11-02T12:42:00-05:00"}},
 		{"chase-amazon.eml", Facts{Kind: alerts.KindCharge, Amount: "42.17", Merchant: "AMAZON MKTPLACE PMTS", Last4: "1234", When: "2026-10-21T03:12:00-04:00"}},
-		{"citi.eml", Facts{Kind: alerts.KindCharge, Amount: "292.46", Merchant: "EXAMPLE OUTFITTERS NEW YORK USA", Last4: "4321", When: "2026-10-31T16:53:00-04:00"}},
-		{"citi-costco.eml", Facts{Kind: alerts.KindCharge, Amount: "130.00", Merchant: "EXAMPLE CLUB *ANNUAL RENEWAL 800-555-0100 US", Last4: "8765", When: "2026-11-01T08:18:00-05:00"}},
+		{"citi.eml", Facts{Kind: alerts.KindCharge, Amount: "187.53", Merchant: "EXAMPLE OUTFITTERS NEW YORK USA", Last4: "4321", When: "2026-10-31T16:53:00-04:00"}},
+		{"citi-costco.eml", Facts{Kind: alerts.KindCharge, Amount: "76.25", Merchant: "EXAMPLE CLUB *ANNUAL RENEWAL 800-555-0100 US", Last4: "8765", When: "2026-11-01T08:18:00-05:00"}},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			if got := Parse(fixture(t, tc.file)); got != tc.want {
@@ -106,5 +109,35 @@ func TestTheAlertPostedHoldsOnlyTheFieldsTheBackendKeeps(t *testing.T) {
 	unread := Parse(fixture(t, "unknown.eml")).Alert()
 	if unread != (alerts.Alert{Kind: alerts.KindUnread, Subject: "Your November statement is ready — view it online"}) {
 		t.Fatalf("unread alert = %+v", unread)
+	}
+}
+
+// Every dollar amount in a fixture must be one of these made-up ones: the
+// repo is public and a mail printed from a real inbox carries a real purchase.
+var madeUpAmounts = map[string]bool{"0.00": true, "9.38": true, "187.53": true, "76.25": true, "42.17": true, "10.00": true}
+
+func TestFixturesHoldOnlyMadeUpAmounts(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("testdata", "*.eml"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no fixtures found: %v", err)
+	}
+	amount := regexp.MustCompile(`\$[0-9][0-9,]*\.[0-9]{2}`)
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// the decoded subject and text too: a body can be base64
+		msg, err := mail.ReadMessage(bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(raw) + "\n" + decodeHeader(msg.Header.Get("Subject")) + "\n" +
+			strings.Join(textLines(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Body), "\n")
+		for _, m := range amount.FindAllString(text, -1) {
+			if !madeUpAmounts[strings.ReplaceAll(strings.TrimPrefix(m, "$"), ",", "")] {
+				t.Errorf("%s holds an amount that is not a made-up one", f)
+			}
+		}
 	}
 }

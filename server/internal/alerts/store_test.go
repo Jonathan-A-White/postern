@@ -1,7 +1,10 @@
 package alerts
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -89,6 +92,9 @@ func TestAddRefusesAnUnknownTokenAndAnAlertThatIsNotParsedFacts(t *testing.T) {
 		"a bad when":     {Kind: KindCharge, When: "yesterday"},
 		"a mail body":    {Kind: KindUnread, Subject: strings.Repeat("x", MaxFieldRunes+1)},
 		"a long last4":   {Kind: KindCharge, Last4: "12345"},
+		"a long link":    {Kind: KindForwardConfirm, Link: "https://mail.google.com/mail/vf-" + strings.Repeat("a", MaxLinkRunes)},
+		"another host":   {Kind: KindForwardConfirm, Link: "https://evil.example/mail/vf-%5BX%5D--y"},
+		"a cancel link":  {Kind: KindForwardConfirm, Link: "https://mail.google.com/mail/uf-%5BX%5D--y"},
 	} {
 		var invalid *InvalidError
 		if _, _, err := s.Add(token, a); !errors.As(err, &invalid) {
@@ -157,5 +163,35 @@ func TestSeqNeverGoesBackAfterAClaim(t *testing.T) {
 	b, _, _ := s.Add(token, Alert{Kind: KindUnread, Subject: "two"})
 	if b.Seq <= a.Seq {
 		t.Fatalf("seq %d after %d", b.Seq, a.Seq)
+	}
+}
+
+func TestAConfirmLinkIsKeptListedAndSurvivesARestart(t *testing.T) {
+	dir, c := t.TempDir(), newClock()
+	s := openStore(t, dir, c)
+	token, _ := s.Address("family-a")
+	link := "https://mail.google.com/mail/vf-%5BMADE-UP%5D--" + strings.Repeat("a", MaxFieldRunes)
+	added, _, err := s.Add(token, Alert{Kind: KindForwardConfirm, Link: link})
+	if err != nil {
+		t.Fatalf("Add: %v (a real link is longer than a text field)", err)
+	}
+	if got := openStore(t, dir, c).List("family-a", 0); len(got) != 1 || got[0] != added || got[0].Link != link {
+		t.Fatalf("after a restart: %+v", got)
+	}
+}
+
+func TestAnAlertsFileFromBeforeLinksStillLoads(t *testing.T) {
+	dir := t.TempDir()
+	old := `{"nextSeq":1,"addresses":{"family-a":"abcdefghijkl"},"alerts":[{"id":"0123456789abcdef","seq":1,"kind":"unread","subject":"(Gmail Forwarding Confirmation","family":"family-a","receivedAt":"2026-11-03T20:12:00Z"}]}`
+	if err := os.WriteFile(filepath.Join(dir, fileName), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := openStore(t, dir, newClock()).List("family-a", 0)
+	if len(got) != 1 || got[0].Kind != KindUnread || got[0].Link != "" {
+		t.Fatalf("old file: %+v", got)
+	}
+	raw, _ := json.Marshal(got[0])
+	if strings.Contains(string(raw), "link") {
+		t.Fatalf("an alert with no link answers one: %s", raw)
 	}
 }

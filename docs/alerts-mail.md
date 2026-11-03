@@ -17,8 +17,11 @@
   - Chase and Citi charge alerts: `charge` with `amount`, `merchant`, `last4` and `when` (the mail's ET time).
   - Amazon order and shipment mails: `amazon` with the total as `amount`, `merchant` "Amazon" and the mail's date.
     The order id and items are read too, but §26 has no field for them, so they are not posted.
-  - Gmail's forwarding confirmation (subject `(#<code>) Gmail Forwarding Confirmation - Receive Mail from ...`):
-    `forward-confirm` with its `code`, which the family's app shows so it can be typed into Gmail.
+  - Gmail's forwarding confirmation (subject `(Gmail Forwarding Confirmation - Receive Mail from ...`, from
+    google.com): `forward-confirm` with its `link`, the `https://mail.google.com/mail/vf-...` one, which the family's
+    app shows to tap and confirm. Gmail's real mail has a confirm link and a cancel link (`.../uf-...`) and no code;
+    a code (`(#123456789)` in the subject or `Confirmation code:` in the body) is read too, should one come. A mail
+    from any other domain, a link on any other host or path, and the cancel link are never kept: the mail is `unread`.
   - Anything else: `unread` with its subject only.
 - Nothing is written to disk: no queue, no spool, no mail in the log. The log says only that an alert of a kind was
   posted, or why one was not.

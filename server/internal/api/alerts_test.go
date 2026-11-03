@@ -405,10 +405,27 @@ func TestAnAppKeysSubscriptionIsPushedNotOnlyTheGovernors(t *testing.T) {
 	}
 }
 
+func TestAConfirmLinkIsPostedAndAnswered(t *testing.T) {
+	solo, soloPub := newKey(t)
+	s := newAlertsServer(t, []string{soloPub}, nil, alertsSecret)
+	address := s.address(t, solo)
+	link := "https://mail.google.com/mail/vf-%5BMADE-UP%5D--abc"
+	if status, body := s.inbound(t, alertsSecret, fmt.Sprintf(`{"token":%q,"kind":"forward-confirm","link":%q}`, tokenOf(address), link)); status != http.StatusCreated {
+		t.Fatalf("inbound = %d %s", status, body)
+	}
+	if list := s.list(t, solo, 0).Alerts; len(list) != 1 || list[0].Link != link {
+		t.Fatalf("feed = %+v", list)
+	}
+	bad := fmt.Sprintf(`{"token":%q,"kind":"forward-confirm","link":"https://evil.example/x"}`, tokenOf(address))
+	if status, _ := s.inbound(t, alertsSecret, bad); status != http.StatusBadRequest {
+		t.Fatalf("a link on another host = %d, want 400", status)
+	}
+}
+
 func TestThePushNamesNoMerchantAmountOrCard(t *testing.T) {
 	payload := alertPush(1790000000)
 	raw, _ := json.Marshal(payload)
-	for _, secret := range []string{"merchant", "amount", "last4", "subject", "code"} {
+	for _, secret := range []string{"merchant", "amount", "last4", "subject", "code", "link"} {
 		if strings.Contains(string(raw), secret) {
 			t.Fatalf("push payload %s names %s", raw, secret)
 		}

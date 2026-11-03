@@ -34,6 +34,7 @@ type Facts struct {
 	When     string
 	Subject  string
 	Code     string
+	Link     string
 	OrderID  string
 	Items    string
 }
@@ -49,6 +50,7 @@ func (f Facts) Alert() alerts.Alert {
 		When:     f.When,
 		Subject:  cut(f.Subject),
 		Code:     cut(f.Code),
+		Link:     f.Link,
 	}
 }
 
@@ -223,10 +225,17 @@ var (
 )
 
 // parseGmailConfirm reads the mail Gmail sends to a new forwarding address:
-// "(#123456789) Gmail Forwarding Confirmation - Receive Mail from ...", with
-// "Confirmation code: 123456789" in its body.
+// "(Gmail Forwarding Confirmation - Receive Mail from ...", with a link to
+// confirm (https://mail.google.com/mail/vf-...) and one to cancel (.../uf-...)
+// and no code. A "(#123456789) ..." subject or "Confirmation code: 123456789"
+// line is still read, should Gmail ever send one.
+//
+// A mail to a family's address can be forged, From included, so the family
+// sees nothing of this mail unless it is from google.com, and a link only when
+// its whole form is a confirm link: the cancel link and any link of a forger
+// are never kept. A mail that gives neither code nor link is unread.
 func parseGmailConfirm(m mailView) (Facts, bool) {
-	if !strings.Contains(m.subject, "Gmail Forwarding Confirmation") {
+	if m.from != "google.com" || !strings.Contains(m.subject, "Gmail Forwarding Confirmation") {
 		return Facts{}, false
 	}
 	f := Facts{Kind: alerts.KindForwardConfirm, When: m.date}
@@ -234,14 +243,21 @@ func parseGmailConfirm(m mailView) (Facts, bool) {
 		f.Code = s[1]
 	}
 	for _, line := range m.lines {
-		if f.Code != "" {
-			break
+		if f.Code == "" {
+			if b := gmailConfirmBody.FindStringSubmatch(line); b != nil {
+				f.Code = b[1]
+			}
 		}
-		if b := gmailConfirmBody.FindStringSubmatch(line); b != nil {
-			f.Code = b[1]
+		if f.Link == "" {
+			for _, word := range strings.Fields(line) {
+				if alerts.IsConfirmLink(word) {
+					f.Link = word
+					break
+				}
+			}
 		}
 	}
-	if f.Code == "" {
+	if f.Code == "" && f.Link == "" {
 		return Facts{}, false
 	}
 	return f, true

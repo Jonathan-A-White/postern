@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.67
+_2026-11-03_
+- New: the mail server that will receive your forwarded card and Amazon alerts is written and ready to install; About credits its mail library.
+
 ## 0.8.66
 _2026-10-31_
 - Fixed: With the keyboard open and a picture attached, the message box stays in view above the keyboard instead of hiding behind the bottom bar.

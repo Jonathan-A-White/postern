@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.72
+_2026-11-03_
+- Fixed: an answer he stopped is no longer played again after he reopens the app.
+
 ## 0.8.71
 _2026-11-03_
 - Fixed: opening a prompt's channel from the Prompts screen no longer flashes "Nothing said here yet" while the prompt is still loading; it says it is reading.

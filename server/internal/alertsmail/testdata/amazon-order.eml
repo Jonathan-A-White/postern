@@ -1,0 +1,46 @@
+Return-Path: <auto-confirm@amazon.com>
+Date: Tue, 20 Oct 2026 23:46:12 -0400
+From: "Amazon.com" <auto-confirm@amazon.com>
+To: pat@example.com
+Subject: Ordered 3 items: Widgets, Kitchen Gadgets
+Message-ID: <order-0001@amazon.example>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="----=_Part_amzn"
+
+------=_Part_amzn
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+Amazon.com
+Your Orders | Your Account
+
+Pat, thanks for your order!
+View or edit order: https://www.amazon.com/your-orders
+
+------=_Part_amzn
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+<html><head><style>.rio_total { font-weight: bold; }</style></head><body>
+<table><tr><td><a href=3D"https://www.amazon.com/your-orders">Your Orders</a>=
+ <a href=3D"https://www.amazon.com/your-account">Your Account</a></td></tr></=
+table>
+<table><tr><td><h1>Pat, thanks for your order!</h1></td></tr></table>
+<table><tr><td>Ordered</td><td>Shipped</td><td>Out for delivery</td><td>Deliv=
+ered</td></tr></table>
+<table>
+<tr><td><b>Arriving Thursday</b></td></tr>
+<tr><td>3 items: 2 Widgets, 1 Kitchen Gadgets</td></tr>
+<tr><td>Pat - SPRINGFIELD, ST</td></tr>
+<tr><td>Order # =E2=80=AB=E2=80=AB=E2=80=AC111-0000000-0000000</td></tr>
+<tr><td><a href=3D"https://www.amazon.com/your-orders">View or edit order</a>=
+</td></tr>
+</table>
+<table><tr><td>Grand Total:</td><td class=3D"rio_total">$42.17</td></tr></tab=
+le>
+<p>&copy;2026 Amazon.com, Inc. or its affiliates. Amazon and all related mark=
+s are trademarks of Amazon.com, Inc. or its affiliates.</p>
+<p>By placing your order, you agree to Amazon.com&rsquo;s Privacy Notice and =
+Conditions of Use.</p>
+</body></html>
+------=_Part_amzn--

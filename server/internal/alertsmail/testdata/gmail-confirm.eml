@@ -1,0 +1,32 @@
+Return-Path: <forwarding-noreply@google.com>
+Date: Mon, 2 Nov 2026 19:05:00 -0800
+From: Gmail Team <forwarding-noreply@google.com>
+To: abcdefghijkl@alerts.example.org
+Subject: (#123456789) Gmail Forwarding Confirmation - Receive Mail from pat@example.com
+Message-ID: <confirm-0001@google.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 7bit
+
+pat@example.com has requested to automatically forward mail to your email
+address abcdefghijkl@alerts.example.org.
+Confirmation code: 123456789
+
+To allow pat@example.com to automatically forward mail to your address,
+please click the link below to confirm the request:
+
+https://mail-settings.google.com/mail/vf-%5BEXAMPLE%5D-example
+
+If you click the link and it appears to be broken, please copy and paste it
+into a new browser window. If you aren't able to access the link, you can
+send the confirmation code 123456789 to pat@example.com.
+
+Thanks for using Gmail!
+
+Sincerely,
+
+The Gmail Team
+
+If you do not approve of this request, no further action is required.
+pat@example.com cannot automatically forward messages to your email address
+unless you confirm the request by clicking the link above.

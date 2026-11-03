@@ -1,0 +1,23 @@
+Return-Path: <no.reply.alerts@chase.com>
+Date: Wed, 21 Oct 2026 03:12:09 -0400
+From: Chase <no.reply.alerts@chase.com>
+To: pat@example.com
+Subject: You made a $42.17 transaction with AMAZON MKTPLACE PMTS
+Message-ID: <alert-0002@chase.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<html><body>
+<table><tr><td>Transaction alert</td></tr></table>
+<table><tr><td>You made a $42.17 transaction</td></tr></table>
+<table>
+<tr><td>Account</td><td>Prime Visa (...1234)</td></tr>
+<tr><td>Date</td><td>Oct 21, 2026 at 3:12 AM ET</td></tr>
+<tr><td>Merchant</td><td>AMAZON MKTPLACE PMTS</td></tr>
+<tr><td>Amount</td><td>$42.17</td></tr>
+</table>
+<p>You are receiving this alert because your transaction was more than the =
+$0.00 level you set.</p>
+<p>&copy; 2026 JPMorgan Chase &amp; Co.</p>
+</body></html>

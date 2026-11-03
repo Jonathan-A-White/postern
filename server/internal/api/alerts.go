@@ -179,6 +179,42 @@ type inboundAlert struct {
 	alerts.Alert
 }
 
+// receiverProved answers whether the request carries the receiver's shared
+// secret, and answers it itself when it does not: 501 with no secret
+// configured, 401 for a wrong or missing one.
+func receiverProved(w http.ResponseWriter, r *http.Request, o *options) bool {
+	if o.alertSecret == "" {
+		writeError(w, http.StatusNotImplemented, "this backend takes no inbound alerts")
+		return false
+	}
+	given, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(given), []byte(o.alertSecret)) != 1 {
+		log.Printf("refused 401 %s %s: wrong or missing secret", r.Method, r.URL.Path)
+		writeJSON(w, http.StatusUnauthorized, struct {
+			Error  string `json:"error"`
+			Reason string `json:"reason"`
+		}{Error: "wrong or missing secret", Reason: reasonSignature})
+		return false
+	}
+	return true
+}
+
+// handleAlertToken answers GET /api/alerts/inbound/{token}: whether a family
+// owns the token (204) or not (404), for the receiver, proved by the shared
+// secret, to take a mail or refuse it before its body is sent.
+func handleAlertToken(o *options) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if alertsOff(w, o) || !receiverProved(w, r, o) {
+			return
+		}
+		if _, ok := o.alerts.FamilyOf(r.PathValue("token")); !ok {
+			writeError(w, http.StatusNotFound, "no family has this address")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // handleAlertInbound answers POST /api/alerts/inbound: a parsed alert from the
 // receiver, proved by the shared secret (Authorization: Bearer <secret>), not
 // by a key. It is stored for the family that owns the token and pushed to every
@@ -188,17 +224,7 @@ func handleAlertInbound(o *options) http.HandlerFunc {
 		if alertsOff(w, o) {
 			return
 		}
-		if o.alertSecret == "" {
-			writeError(w, http.StatusNotImplemented, "this backend takes no inbound alerts")
-			return
-		}
-		given, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if subtle.ConstantTimeCompare([]byte(given), []byte(o.alertSecret)) != 1 {
-			log.Printf("refused 401 POST /api/alerts/inbound: wrong or missing secret")
-			writeJSON(w, http.StatusUnauthorized, struct {
-				Error  string `json:"error"`
-				Reason string `json:"reason"`
-			}{Error: "wrong or missing secret", Reason: reasonSignature})
+		if !receiverProved(w, r, o) {
 			return
 		}
 		decoder := json.NewDecoder(io.LimitReader(r.Body, maxAlertBodyBytes))

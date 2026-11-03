@@ -337,6 +337,40 @@ func TestInboundRefusesAnUnknownTokenAndAnythingButParsedFacts(t *testing.T) {
 	}
 }
 
+// tokenCheck asks, as the receiver does before it takes a mail, whether a
+// family owns the token.
+func (s alertsServer) tokenCheck(t *testing.T, secret, token string) (int, string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, s.URL+"/api/alerts/inbound/"+token, nil)
+	if secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
+	}
+	return doRaw(t, req)
+}
+
+func TestTheReceiverCanAskWhetherATokenIsKnownWithTheSecretOnly(t *testing.T) {
+	s, keys, _, _ := twoPhones(t)
+	token := tokenOf(s.address(t, keys[0]))
+	if status, out := s.tokenCheck(t, alertsSecret, token); status != http.StatusNoContent {
+		t.Fatalf("a known token = %d %s, want 204", status, out)
+	}
+	if status, out := s.tokenCheck(t, alertsSecret, "zzzzzzzzzzzz"); status != http.StatusNotFound {
+		t.Fatalf("an unknown token = %d %s, want 404", status, out)
+	}
+	for name, secret := range map[string]string{"wrong": "not-the-secret", "none": ""} {
+		if status, out := s.tokenCheck(t, secret, token); status != http.StatusUnauthorized {
+			t.Fatalf("%s secret = %d %s, want 401", name, status, out)
+		}
+	}
+	if got := s.list(t, keys[0], 0).Alerts; len(got) != 0 {
+		t.Fatalf("asking about a token stored an alert: %+v", got)
+	}
+	closed := newAlertsServer(t, nil, nil, "")
+	if status, _ := closed.tokenCheck(t, "anything", token); status != http.StatusNotImplemented {
+		t.Fatalf("with no secret configured = %d, want 501", status)
+	}
+}
+
 func TestAnInboundChargePushesEverySubscriptionOfTheFamily(t *testing.T) {
 	s, keys, pubs, other := twoPhones(t)
 	address := s.address(t, keys[0])

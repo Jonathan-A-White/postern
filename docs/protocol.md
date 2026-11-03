@@ -2559,6 +2559,7 @@ The first three are signed (§19) by a licensed key, a cockpit key or an app key
 | `GET /api/alerts?since=<seq>` | `200 {"alerts": [...], "next": <seq>}`: the family's alerts with a `seq` above `since` (default 0), oldest first; `next` is the highest `seq` in the list, or `since` when it is empty, the value to ask from next time. `400` for a `since` that is no whole number |
 | `DELETE /api/alerts/{id}` | **claims** one: `204`, and it is gone for every phone of the family. `404` for an id the family does not have, another family's included |
 | `POST /api/alerts/inbound` | from the receiver, not a key: body `{"token": "<token>", ...the alert's fields without id and seq}`. Proved by the shared secret `POSTERN_ALERTS_SECRET`, sent as `Authorization: Bearer <secret>`. `201 {"id", "seq"}` once stored; `401` for a wrong or missing secret; `404` for a token no family has; `400` for an unknown field, a `kind` not in the table, a text field over 200 characters or a `when` that is no RFC 3339 time. With no secret configured the backend answers `501` and takes nothing |
+| `GET /api/alerts/inbound/{token}` | from the receiver, proved by the same secret: `204` when a family owns the token, `404` when none does, `401` for a wrong or missing secret, `501` with no secret configured. It stores nothing; the receiver asks it before it takes a mail's body (`docs/alerts-mail.md`) |
 
 ### What is kept, and for how long
 

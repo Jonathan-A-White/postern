@@ -759,6 +759,9 @@ licence, so two keys on it see the same address and feed.
 - `POST /api/alerts/inbound` — the receiver's, with `Authorization: Bearer <POSTERN_ALERTS_SECRET>` instead of a
   signed proof; body `{"token", "kind", ...}` of parsed facts only (`201 {"id", "seq"}`, `401` a wrong secret,
   `404` an unknown token, `400` an unknown field or a bad value). It pushes every phone of the family.
+- `GET /api/alerts/inbound/{token}` — the receiver's, with the same secret: `204` when a family owns the token,
+  `404` when none does, `401` a wrong secret. The receiver (`docs/alerts-mail.md`) asks it at `RCPT TO`, so a mail
+  for no family is refused before its body is sent. It stores nothing.
 
 The first three admit a cockpit key or an app key (`403` for the mill's). Alerts older than 30 days are dropped.
 Without `POSTERN_ALERTS_DOMAIN` they answer `501`; without `POSTERN_ALERTS_SECRET` so does inbound.

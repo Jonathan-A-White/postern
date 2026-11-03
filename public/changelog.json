@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.68",
+    "date": "2026-11-03",
+    "story": "mw-gq6.898",
+    "kind": "fixed",
+    "text": "A channel you open before the phone has fetched it now says it is reading, or that it cannot reach the Mayor, instead of wrongly saying nothing has been said."
+  },
+  {
     "version": "0.8.67",
     "date": "2026-11-03",
     "story": "mw-mr4xgrw.10",

@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.68
+_2026-11-03_
+- Fixed: A channel you open before the phone has fetched it now says it is reading, or that it cannot reach the Mayor, instead of wrongly saying nothing has been said.
+
 ## 0.8.67
 _2026-11-03_
 - New: the mail server that will receive your forwarded card and Amazon alerts is written and ready to install; About credits its mail library.

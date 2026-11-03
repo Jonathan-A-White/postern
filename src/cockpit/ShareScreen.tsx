@@ -24,7 +24,7 @@ import { topicKey } from './topicKey';
 const NEWEST_POSTS = 5;
 
 /** A channel's newest posts that can be replied to (they have a txid), newest first, each with its reply count. */
-function ChannelPosts({ thread, onPick }: { thread: ThreadSummary; onPick: (root: string) => void }) {
+export function ChannelPosts({ thread, onPick }: { thread: ThreadSummary; onPick: (root: string) => void }) {
   const { rows, read } = useThreadRead(thread.key === GENERAL ? undefined : thread.key);
   const posts = useMemo(() => {
     const byId = new Map(rows.map((row) => [row.id, row]));
@@ -35,7 +35,7 @@ function ChannelPosts({ thread, onPick }: { thread: ThreadSummary; onPick: (root
       .map((post) => ({ post, preview: previewText(byId.get(post.root.id) ?? { plaintext: post.root.text, class: 'message' as const }) }));
   }, [rows]);
   if (posts.length === 0) {
-    const words = read === 'reading' ? 'Reading this channel…' : read === 'unreached' ? "Can't reach the Mayor yet, so there may be posts not shown." : 'Nothing said here yet.';
+    const words = read === 'reading' ? 'Reading this channel…' : read === 'failed' ? "Couldn't read this channel on the phone; trying again." : read === 'unreached' ? "Can't reach the Mayor yet, so there may be posts not shown." : 'Nothing said here yet.';
     return <p className="px-4 pb-3 text-[12.5px] text-faint">{words}</p>;
   }
   return (

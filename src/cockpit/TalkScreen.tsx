@@ -158,6 +158,13 @@ export function NoPosts({ read }: { read: ThreadRead }) {
       </p>
     );
   }
+  if (read === 'failed') {
+    return (
+      <EmptyState icon="talk" title="Couldn't read this channel on the phone">
+        The phone's own copy would not open. It is trying again, and the posts appear here when it does.
+      </EmptyState>
+    );
+  }
   if (read === 'unreached') {
     return (
       <EmptyState icon="talk" title="Can't reach the Mayor yet">

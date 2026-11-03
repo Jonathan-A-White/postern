@@ -190,27 +190,47 @@ export function useThreadMessages(threadKey: string | undefined | null, held?: r
   return useThreadRows(threadKey, held).rows;
 }
 
-/** useThreadMessages with whether the phone's own read of the thread has answered: until it has, an empty list is not yet "nothing". */
-function useThreadRows(threadKey: string | undefined | null, held?: readonly MessageRow[]): { rows: MessageRow[]; answered: boolean } {
-  const read = useLiveQuery(
-    () => (threadKey === null ? Promise.resolve(NO_MESSAGES) : messagesRepo.inThread(threadKey)).then((rows) => ({ threadKey, rows })),
-    [threadKey],
-    undefined as { threadKey: string | undefined | null; rows: MessageRow[] } | undefined,
-  );
+/** How long a thread's failed local read waits before it is tried again (mw-gq6.901). */
+export const THREAD_READ_RETRY_MS = 2000;
+
+/** useThreadMessages with whether the phone's own read of the thread has answered: until it has, an empty list is not yet "nothing".
+ * A read that failed (a Dexie error ends a live query for good) is `failed` and is tried again after THREAD_READ_RETRY_MS. */
+function useThreadRows(threadKey: string | undefined | null, held?: readonly MessageRow[]): { rows: MessageRow[]; answered: boolean; failed: boolean } {
+  const [read, setRead] = useState<{ threadKey: string | undefined | null; rows: MessageRow[] } | undefined>(undefined);
+  const [failedKey, setFailedKey] = useState<{ threadKey: string | undefined | null } | undefined>(undefined);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const subscription = liveQuery(() => (threadKey === null ? Promise.resolve(NO_MESSAGES) : messagesRepo.inThread(threadKey)).then((rows) => ({ threadKey, rows }))).subscribe({
+      next: (next) => {
+        setFailedKey(undefined);
+        setRead(next);
+      },
+      error: () => {
+        setFailedKey({ threadKey });
+        retry = setTimeout(() => setAttempt((n) => n + 1), THREAD_READ_RETRY_MS);
+      },
+    });
+    return () => {
+      subscription.unsubscribe();
+      if (retry !== undefined) clearTimeout(retry);
+    };
+  }, [threadKey, attempt]);
   const seed = useMemo(() => (held && threadKey !== null ? messagesRepo.heldInThread(held, threadKey) : NO_MESSAGES), [held, threadKey]);
   const answered = read !== undefined && read.threadKey === threadKey;
-  return { rows: answered ? read.rows : seed, answered };
+  const failed = !answered && failedKey !== undefined && failedKey.threadKey === threadKey;
+  return { rows: answered ? read.rows : seed, answered, failed };
 }
 
 /** What a thread with no posts may say (mw-gq6.898): 'reading' until the phone has read its own copy and the backend has
  * answered a first sync this session, 'unreached' when that first sync failed and the backend has not answered since,
- * 'empty' once both are true. With no live line at all (idle, unlicensed) there is nothing to wait for. */
-export type ThreadRead = 'reading' | 'unreached' | 'empty';
+ * 'failed' when the phone's own read failed (it is tried again every THREAD_READ_RETRY_MS), 'empty' once both are true. With no live line at all (idle, unlicensed) there is nothing to wait for. */
+export type ThreadRead = 'reading' | 'unreached' | 'empty' | 'failed';
 
 export function useThreadRead(threadKey: string | undefined | null, held?: readonly MessageRow[]): { rows: MessageRow[]; read: ThreadRead } {
-  const { rows, answered } = useThreadRows(threadKey, held);
+  const { rows, answered, failed } = useThreadRows(threadKey, held);
   const live = useLive();
-  return { rows, read: threadReadOf(answered, live) };
+  return { rows, read: failed ? 'failed' : threadReadOf(answered, live) };
 }
 
 export function threadReadOf(localAnswered: boolean, live: LiveState): ThreadRead {

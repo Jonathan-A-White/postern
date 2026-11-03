@@ -23,3 +23,29 @@ export async function hostSlowdown(page: Page): Promise<number> {
   const runs = [await spinOnce(page), await spinOnce(page), await spinOnce(page)].sort((a, b) => a - b);
   return Math.max(1, runs[1] / CALM_SPIN_MS);
 }
+
+/**
+ * mw-gq6.908: the reading around a timed tap, for a spec that taps many times. A reading is hostSlowdown's three spins,
+ * and on a browser slowed 20x at host 33x those cost 5-20 s on the wall (the in-page spin 1-2.5 s, plus the round trip of
+ * each evaluate), six of them around every tap: 20 s or more of every tap. The tap before ended on a reading, so
+ * the next tap starts from it (`before`) and reads only once, after itself (`after`). The first tap has none and reads.
+ */
+export class HostWatch {
+  private last: number | undefined;
+  private readonly page: Page;
+
+  constructor(page: Page) {
+    this.page = page;
+  }
+
+  /** The slowness the last reading found, read now only if there has been none. */
+  async before(): Promise<number> {
+    return this.last ?? this.after();
+  }
+
+  /** A reading now (three spins). */
+  async after(): Promise<number> {
+    this.last = await hostSlowdown(this.page);
+    return this.last;
+  }
+}

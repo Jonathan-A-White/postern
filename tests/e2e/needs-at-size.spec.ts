@@ -10,7 +10,7 @@ import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
-import { hostSlowdown } from './host-slowdown';
+import { CALM_SPIN_MS, HostWatch } from './host-slowdown';
 import { needsBadgeShows, SLOWED_WAIT_MS } from './needs-badge';
 import { LIVE_SIZE, liveShapeView, type ViewSize } from '../support/live-shape-view';
 
@@ -74,10 +74,10 @@ async function bestOfTaps(tap: () => Promise<Timed>, reset: () => Promise<void>)
 /**
  * Taps the tab and waits for `opened`, then for the page to answer a timer; see bestOfTaps for the retries, which leave by Me.
  */
-async function tapAndTime(page: Page, tab: string, opened: () => Promise<void>, waitMs?: number): Promise<Timed> {
+async function tapAndTime(page: Page, host: HostWatch, tab: string, opened: () => Promise<void>, waitMs?: number): Promise<Timed> {
   const places = page.getByRole('navigation', { name: 'Places' });
   const tapOnce = async (): Promise<Timed> => {
-    const slowBefore = await hostSlowdown(page);
+    const slowBefore = await host.before();
     const tappedAt = await page.evaluate(() => performance.now());
     await places.getByRole('link', { name: tab }).click();
     await opened();
@@ -87,7 +87,7 @@ async function tapAndTime(page: Page, tab: string, opened: () => Promise<void>, 
       const asked = performance.now();
       setTimeout(() => resolve(performance.now() - asked), 0);
     }));
-    return { ms: answeredAt - tappedAt, gap, slowdown: Math.max(slowBefore, await hostSlowdown(page)) };
+    return { ms: answeredAt - tappedAt, gap, slowdown: Math.max(slowBefore, await host.after()) };
   };
   const leave = async (): Promise<void> => {
     await places.getByRole('link', { name: 'Me' }).click();
@@ -116,9 +116,10 @@ async function slowBrowser(page: Page, rate: number): Promise<void> {
  */
 async function everyTabOpens(page: Page, name: string, size: ViewSize, waitMs?: number): Promise<void> {
   await unlockedOnMe(page, size, waitMs);
+  const host = new HostWatch(page);
   const wait = { timeout: waitMs };
 
-  const needs = await tapAndTime(page, 'Needs you', () => expect(page.getByTestId('need-card').first()).toBeVisible(wait), waitMs);
+  const needs = await tapAndTime(page, host, 'Needs you', () => expect(page.getByTestId('need-card').first()).toBeVisible(wait), waitMs);
   console.log(`${name}: Needs you answered ${Math.round(needs.ms)} ms after the tap (host ${needs.slowdown.toFixed(1)}x)`);
   expect(needs.ms, 'Needs you opens and answers').toBeLessThan(within(needs.slowdown));
   // The rest of his cards follow while the page answers: none is left out. They arrive a batch at a time, so on a browser slowed
@@ -133,12 +134,12 @@ async function everyTabOpens(page: Page, name: string, size: ViewSize, waitMs?: 
   if (size.folded > 0) {
     const region = page.getByRole('region', { name: 'Waiting on your use' });
     const tapFoot = async (): Promise<Timed> => {
-      const slowBefore = await hostSlowdown(page);
+      const slowBefore = await host.before();
       const tappedAt = await page.evaluate(() => performance.now());
       await foot.click();
       await expect(region.getByTestId('need-card').first()).toBeVisible(wait);
       const ms = (await page.evaluate(() => performance.now())) - tappedAt;
-      return { ms, gap: 0, slowdown: Math.max(slowBefore, await hostSlowdown(page)) };
+      return { ms, gap: 0, slowdown: Math.max(slowBefore, await host.after()) };
     };
     // A retry folds the list again first.
     const fold = async (): Promise<void> => {
@@ -158,7 +159,7 @@ async function everyTabOpens(page: Page, name: string, size: ViewSize, waitMs?: 
     { tab: 'Needs you', opened: () => expect(page.getByTestId('need-card').first()).toBeVisible(wait) },
   ];
   for (const { tab, opened } of tabs) {
-    const { ms, slowdown } = await tapAndTime(page, tab, opened, waitMs);
+    const { ms, slowdown } = await tapAndTime(page, host, tab, opened, waitMs);
     console.log(`${name}: ${tab} answered ${Math.round(ms)} ms after the tap (host ${slowdown.toFixed(1)}x)`);
     expect(ms, `${tab} opens and answers`).toBeLessThan(within(slowdown));
   }
@@ -174,8 +175,15 @@ for (const { name, size } of SIZES) {
 // mw-gq6.684: on a host under load the wall clock runs long for the page and not for the app. A browser slowed
 // 20x is such a host: every tab must still open and answer in 3 s of the host's own time (3 s x the slowdown
 // measured around the tap), so the load cannot fail it and an app that got slower still does.
+//
+// mw-gq6.908: the test's own budget is not the promise either. At host 30-40x (load 40-100 on 20 cores, 2026-11-03) it took
+// 60-90 s to unlock and show the badge, then 13-55 s a tab, six tabs; with six spins around every tap it ran past 300 s on
+// the fifth. A tap now reads the host with three spins (HostWatch) and the whole test took 277-290 s beside a second shots
+// run: the rest is the page being slow, which the 3 s x slowdown assertions measure and a longer budget lets finish. The
+// budget is twice that.
+const SLOWED_TEST_MS = 600_000;
 test("150 needs on a browser slowed 20x: every tab opens within 3 s of the host's own time", async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(SLOWED_TEST_MS);
   await slowBrowser(page, 20);
   await everyTabOpens(page, 'slowed 20x', SIZES[1].size, SLOWED_WAIT_MS);
 });
@@ -195,4 +203,24 @@ test('a Needs you badge that shows ends the wait at once', async ({ page }) => {
   const started = Date.now();
   await needsBadgeShows(page, 60_000);
   expect(Date.now() - started).toBeLessThan(5000);
+});
+
+// mw-gq6.908: a spin is the most a slowed browser pays for on every tap (2 s in the page, 1-10 s on the wall at host 33x
+// with the evaluate round trip), so a tap reads the host once, not before and after: the reading before a tap is the one
+// the tap before it ended on. The reading is still the median of three spins.
+test('a tap reads the host with three spins, not six', async () => {
+  let spins = 0;
+  const spinMs = [CALM_SPIN_MS * 2, CALM_SPIN_MS * 2, CALM_SPIN_MS * 2, CALM_SPIN_MS * 9, CALM_SPIN_MS * 9, CALM_SPIN_MS * 3, CALM_SPIN_MS * 3, CALM_SPIN_MS * 3, CALM_SPIN_MS * 3];
+  const page = { evaluate: async () => spinMs[spins++] } as unknown as Page;
+  const watch = new HostWatch(page);
+  const first = await watch.before();
+  expect(first, 'the first tap has no earlier reading: it reads').toBe(2);
+  const afterFirst = await watch.after();
+  expect(afterFirst, 'the median of 9, 9, 3 spins').toBe(9);
+  expect(spins, 'two readings, three spins each').toBe(6);
+  const second = await watch.before();
+  expect(second, 'the next tap starts from the reading the last one ended on').toBe(9);
+  expect(spins, 'and spins nothing for it').toBe(6);
+  expect(await watch.after()).toBe(3);
+  expect(spins).toBe(9);
 });

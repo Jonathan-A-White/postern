@@ -32,8 +32,11 @@ export async function hostSlowdown(page: Page): Promise<number> {
  */
 export class HostWatch {
   private last: number | undefined;
+  private readonly page: Page;
 
-  constructor(private readonly page: Page) {}
+  constructor(page: Page) {
+    this.page = page;
+  }
 
   /** The slowness the last reading found, read now only if there has been none. */
   async before(): Promise<number> {

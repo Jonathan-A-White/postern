@@ -15,6 +15,8 @@ export interface PromptsState {
   at: number | undefined;
   /** undefined while the first ask is out; then whether the backend answered. */
   fresh: boolean | undefined;
+  /** True once the phone has read its own copy (Dexie answered, with a list or with none). */
+  held: boolean;
   /** Asks the backend again (the screen's Try again). */
   retry: () => void;
 }
@@ -47,5 +49,5 @@ export function usePrompts(enabled = true): PromptsState {
     setFresh(undefined);
     setAttempt((n) => n + 1);
   };
-  return { prompts: cache?.prompts, at: cache?.at, fresh, retry };
+  return { prompts: cache?.prompts, at: cache?.at, fresh, held: cache !== undefined, retry };
 }

@@ -1,13 +1,22 @@
 // src/cockpit/PromptNote.tsx — what an empty prompt channel ('prompt:top5', opened by Edit
 // on the Prompts screen) shows in place of "nothing said": the prompt's current body as an
 // app-side quote, so he can say what to change. It is not a message and is never sent.
-import { EmptyState } from '../ui';
+import { EmptyState, Spinner } from '../ui';
 import { usePrompts } from './usePrompts';
 
 export function PromptNote({ name }: { name: string }) {
-  const { prompts } = usePrompts();
+  const { prompts, held, fresh } = usePrompts();
   const prompt = prompts?.find((candidate) => candidate.name === name);
   if (!prompt) {
+    // Never "nothing" before the list has answered: the phone has not read its copy, or holds none and the first ask is out (mw-gq6.904).
+    if (prompts === undefined && (!held || fresh === undefined)) {
+      return (
+        <p role="status" className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
+          <Spinner size={14} />
+          Reading the prompt…
+        </p>
+      );
+    }
     return (
       <EmptyState icon="talk" title="Nothing said here yet">
         Say what you want to change about /{name}; the Mayor answers in this channel.

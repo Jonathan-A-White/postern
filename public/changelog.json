@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.71",
+    "date": "2026-11-03",
+    "story": "mw-gq6.904",
+    "kind": "fixed",
+    "text": "opening a prompt's channel from the Prompts screen no longer flashes \"Nothing said here yet\" while the prompt is still loading; it says it is reading."
+  },
+  {
     "version": "0.8.69",
     "date": "2026-11-03",
     "story": "mw-gq6.901",

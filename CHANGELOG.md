@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.71
+_2026-11-03_
+- Fixed: opening a prompt's channel from the Prompts screen no longer flashes "Nothing said here yet" while the prompt is still loading; it says it is reading.
+
 ## 0.8.69
 _2026-11-03_
 - Fixed: a bead's page no longer says "No conversation yet" before the phone has finished reading it, and a failed read now says so and tries again.

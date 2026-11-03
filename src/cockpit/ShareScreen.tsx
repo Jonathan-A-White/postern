@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, EmptyState, Icon, Spinner, TimeAgo } from '../ui';
 import { Screen } from './Shell';
-import { useMessages, useThreadMessages, useViewIndex } from './hooks';
+import { useMessages, useThreadRead, useViewIndex } from './hooks';
 import { settingsRepo, sharesRepo } from '../data/repositories';
 import type { ShareRow } from '../data/db';
 import { GENERAL, summariseThreads, titleFor, type ThreadSummary } from '../model/threads';
@@ -25,7 +25,7 @@ const NEWEST_POSTS = 5;
 
 /** A channel's newest posts that can be replied to (they have a txid), newest first, each with its reply count. */
 function ChannelPosts({ thread, onPick }: { thread: ThreadSummary; onPick: (root: string) => void }) {
-  const rows = useThreadMessages(thread.key === GENERAL ? undefined : thread.key);
+  const { rows, read } = useThreadRead(thread.key === GENERAL ? undefined : thread.key);
   const posts = useMemo(() => {
     const byId = new Map(rows.map((row) => [row.id, row]));
     return groupPosts(mergeConversation(rows))
@@ -34,7 +34,10 @@ function ChannelPosts({ thread, onPick }: { thread: ThreadSummary; onPick: (root
       .reverse()
       .map((post) => ({ post, preview: previewText(byId.get(post.root.id) ?? { plaintext: post.root.text, class: 'message' as const }) }));
   }, [rows]);
-  if (posts.length === 0) return <p className="px-4 pb-3 text-[12.5px] text-faint">Nothing said here yet.</p>;
+  if (posts.length === 0) {
+    const words = read === 'reading' ? 'Reading this channel…' : read === 'unreached' ? "Can't reach the Mayor yet, so there may be posts not shown." : 'Nothing said here yet.';
+    return <p className="px-4 pb-3 text-[12.5px] text-faint">{words}</p>;
+  }
   return (
     <ul aria-label={`Posts in ${thread.title}`} className="mx-3 mb-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-sunken">
       {posts.map(({ post, preview }) => (

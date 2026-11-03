@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.79",
+    "date": "2026-11-03",
+    "story": "mw-gq6.910",
+    "kind": "fixed",
+    "text": "opening a prompt's channel no longer says nothing has been said while the phone is still reading it or cannot reach the Mayor."
+  },
+  {
     "version": "0.8.75",
     "date": "2026-11-03",
     "story": "mw-gq6.909",

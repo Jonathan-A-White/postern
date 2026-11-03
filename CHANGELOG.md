@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.79
+_2026-11-03_
+- Fixed: opening a prompt's channel no longer says nothing has been said while the phone is still reading it or cannot reach the Mayor.
+
 ## 0.8.75
 _2026-11-03_
 - Fixed: Archived cards and Needs you no longer flash "nothing here" for a moment before your cards have loaded.

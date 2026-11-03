@@ -33,6 +33,16 @@ Feature: The Prompts screen lists the saved prompts and opens a conversation to 
     Then the channel "prompt:top5" is open
     And no "Current /top5:" note is shown
 
+  Scenario: mw-gq6.904: an empty prompt channel says Reading while the prompt list has not answered, never Nothing said here yet
+    Given the backend has not yet answered for the prompts
+    When the channel "prompt:top5" is opened
+    Then the note says "Reading the prompt" and not "Nothing said here yet"
+
+  Scenario: mw-gq6.904: once the prompt list has answered with no such prompt the empty line shows
+    Given the backend has the prompts "sweep"
+    When the channel "prompt:top5" is opened
+    Then the note says "Nothing said here yet" once the list has answered
+
   Scenario: mw-nqur1n.4: offline the cached list shows with the time it was fetched
     Given the phone fetched the prompts "top5" and "sweep" at "09:15" and is now offline
     When the Prompts screen opens

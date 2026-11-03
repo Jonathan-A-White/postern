@@ -186,6 +186,31 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  const openChannel = async (_c: unknown, channel: string) => {
+    window.history.replaceState(null, '', `/?v=talk&t=${encodeURIComponent(`topic:${channel}`)}`);
+    render(<Harness />);
+  };
+
+  Scenario('mw-gq6.904: an empty prompt channel says Reading while the prompt list has not answered, never Nothing said here yet', ({ Given, When, Then }) => {
+    Given('the backend has not yet answered for the prompts', () => {
+      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
+    });
+    When('the channel {string} is opened', openChannel);
+    Then('the note says {string} and not {string}', async (_c, reading: string, empty: string) => {
+      await screen.findByText(new RegExp(reading));
+      expect(screen.queryByText(empty)).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-gq6.904: once the prompt list has answered with no such prompt the empty line shows', ({ Given, When, Then }) => {
+    Given('the backend has the prompts {string}', () => backendHas('sweep'));
+    When('the channel {string} is opened', openChannel);
+    Then('the note says {string} once the list has answered', async (_c, empty: string) => {
+      expect(await screen.findByText(empty)).toBeInTheDocument();
+      expect(screen.queryByText(/Reading the prompt/)).not.toBeInTheDocument();
+    });
+  });
+
   Scenario('mw-nqur1n.4: offline the cached list shows with the time it was fetched', ({ Given, When, Then, And }) => {
     Given('the phone fetched the prompts {string} and {string} at {string} and is now offline', async (_c, _a: string, _b: string, at: string) => {
       const [hours, minutes] = at.split(':').map(Number);

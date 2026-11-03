@@ -1,13 +1,17 @@
 // src/cockpit/PromptNote.tsx — what an empty prompt channel ('prompt:top5', opened by Edit
 // on the Prompts screen) shows in place of "nothing said": the prompt's current body as an
 // app-side quote, so he can say what to change. It is not a message and is never sent.
-import { EmptyState, Spinner } from '../ui';
+import { Spinner } from '../ui';
+import type { ThreadRead } from './hooks';
+import { NoPosts } from './NoPosts';
 import { usePrompts } from './usePrompts';
 
-export function PromptNote({ name }: { name: string }) {
+export function PromptNote({ name, read }: { name: string; read: ThreadRead }) {
   const { prompts, held, fresh } = usePrompts();
   const prompt = prompts?.find((candidate) => candidate.name === name);
   if (!prompt) {
+    // Nor "nothing" before the channel's own thread read has answered: it is the same read NoPosts waits on (mw-gq6.910).
+    if (read !== 'empty') return <NoPosts read={read} />;
     // Never "nothing" before the list has answered: the phone has not read its copy, or holds none and the first ask is out (mw-gq6.904).
     if (prompts === undefined && (!held || fresh === undefined)) {
       return (
@@ -17,11 +21,7 @@ export function PromptNote({ name }: { name: string }) {
         </p>
       );
     }
-    return (
-      <EmptyState icon="talk" title="Nothing said here yet">
-        Say what you want to change about /{name}; the Mayor answers in this channel.
-      </EmptyState>
-    );
+    return <NoPosts read={read} hint={`Say what you want to change about /${name}; the Mayor answers in this channel.`} />;
   }
   return (
     <div className="flex flex-col gap-2" data-testid="prompt-current">

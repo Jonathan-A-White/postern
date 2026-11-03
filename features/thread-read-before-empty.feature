@@ -31,3 +31,22 @@ Feature: A channel never says it is empty before the phone has read it, and says
     Given the phone holds nothing in the channel "quiet" and the backend has not answered yet
     When the reply thread of a post in the channel "quiet" is opened
     Then "Reading this channel…" is shown and "That post is not on this phone" is not
+
+  Scenario: mw-gq6.910: a prompt channel with no such prompt reads Reading until the first sync has answered
+    Given the phone holds the prompt list "sweep" and nothing in the channel "prompt:top5" and the backend has not answered yet
+    When the channel "prompt:top5" is opened
+    Then "Reading this channel…" is shown and "Nothing said here yet" is not
+    When the backend answers
+    Then it then reads "Nothing said here yet" and not "Reading this channel…"
+
+  Scenario: mw-gq6.910: a prompt channel with no such prompt says plainly that the backend could not be reached
+    Given the phone holds the prompt list "sweep" and nothing in the channel "prompt:top5" and the first sync has failed
+    When the channel "prompt:top5" is opened
+    Then "Can't reach the Mayor yet" is shown and "Nothing said here yet" is not
+    When the backend answers
+    Then it then reads "Nothing said here yet" and not "Can't reach the Mayor yet"
+
+  Scenario: mw-gq6.910: a prompt channel with no such prompt and a read that answered shows the empty line as before
+    Given the phone holds the prompt list "sweep" and nothing in the channel "prompt:top5" and the backend has answered
+    When the channel "prompt:top5" is opened
+    Then "Nothing said here yet" is shown once the phone has read it

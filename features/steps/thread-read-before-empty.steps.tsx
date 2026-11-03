@@ -9,7 +9,7 @@ import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { TalkScreen } from '../../src/cockpit/TalkScreen';
 import { navigate, useRoute } from '../../src/router';
 import { db, type MessageRow } from '../../src/data/db';
-import { messagesRepo } from '../../src/data/repositories';
+import { messagesRepo, settingsRepo } from '../../src/data/repositories';
 import type { LiveState } from '../../src/services/live';
 
 const fake = vi.hoisted(() => {
@@ -98,6 +98,12 @@ function slowRead(): void {
   });
 }
 
+// A prompt list the phone holds, without 'top5': the prompt channel's note then has nothing to show but the empty line (mw-gq6.910).
+async function holdPromptList(): Promise<void> {
+  const sweep = { name: 'sweep', summary: 'Sweep a place', signature: [], body: 'Sweep.', updatedAt: '2026-10-01T12:00:00Z', updatedBy: '02'.padEnd(66, '0') };
+  await settingsRepo.setPromptsCache({ etag: '"v1"', prompts: [sweep], at: Date.now() });
+}
+
 const conversation = () => document.body;
 const shownNot = (_ctx: unknown, shown: string, not: string) => {
   expect(conversation()).toHaveTextContent(shown);
@@ -180,6 +186,44 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('{string} is shown and {string} is not', async (_ctx, shown: string, not: string) => {
       await waitFor(() => expect(conversation()).toHaveTextContent(shown));
       expect(conversation()).not.toHaveTextContent(not);
+    });
+  });
+
+  Scenario('mw-gq6.910: a prompt channel with no such prompt reads Reading until the first sync has answered', ({ Given, When, Then }) => {
+    Given('the phone holds the prompt list {string} and nothing in the channel {string} and the backend has not answered yet', async () => {
+      await holdPromptList();
+      setLive(notAnswered);
+    });
+    When('the channel {string} is opened', (_ctx, name: string) => opened(name));
+    Then('{string} is shown and {string} is not', async (_ctx, shown: string, not: string) => {
+      await waitFor(() => expect(conversation()).toHaveTextContent(shown));
+      shownNot(_ctx, shown, not);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      shownNot(_ctx, shown, not);
+    });
+    When('the backend answers', () => setLive(answered));
+    Then('it then reads {string} and not {string}', shownThen);
+  });
+
+  Scenario('mw-gq6.910: a prompt channel with no such prompt says plainly that the backend could not be reached', ({ Given, When, Then }) => {
+    Given('the phone holds the prompt list {string} and nothing in the channel {string} and the first sync has failed', async () => {
+      await holdPromptList();
+      setLive(failed);
+    });
+    When('the channel {string} is opened', (_ctx, name: string) => opened(name));
+    Then('{string} is shown and {string} is not', shownThen);
+    When('the backend answers', () => setLive(answered));
+    Then('it then reads {string} and not {string}', shownThen);
+  });
+
+  Scenario('mw-gq6.910: a prompt channel with no such prompt and a read that answered shows the empty line as before', ({ Given, When, Then }) => {
+    Given('the phone holds the prompt list {string} and nothing in the channel {string} and the backend has answered', async () => {
+      await holdPromptList();
+      setLive(answered);
+    });
+    When('the channel {string} is opened', (_ctx, name: string) => opened(name));
+    Then('{string} is shown once the phone has read it', async (_ctx, text: string) => {
+      expect(await screen.findByText(text)).toBeInTheDocument();
     });
   });
 });

@@ -75,8 +75,13 @@ export async function decryptPendingMessages(unlockedKey: Uint8Array): Promise<v
     if (row.plaintext !== undefined || row.decryptFailed) continue;
     const payload: MessagePayload = { v: 1, kind: 'msg', class: row.class, to: row.to, from: row.from, ts: row.ts, ct: row.ciphertext };
     const decrypted = tryDecrypt(payload, unlockedKeyHex, row.direction);
-    const opened = { ...row, ...decrypted, thread: threadKey(threadOf(row.class, decrypted.plaintext)) };
-    await messagesRepo.put(opened);
+    // the row is read again inside the write, so a mark made since the list was read (heard, read) is kept (mw-gq6.912)
+    const opened = await messagesRepo.atomically(async () => {
+      const latest = (await messagesRepo.get(row.id)) ?? row;
+      const merged = { ...latest, ...decrypted, thread: threadKey(threadOf(row.class, decrypted.plaintext)) };
+      await messagesRepo.put(merged);
+      return merged;
+    });
     await applyCardRow(opened);
   }
 }
@@ -103,42 +108,49 @@ export async function storeRecord(record: RecordToStore, publicKeyHex: string, u
   const isFromMe = payload.from === publicKeyHex;
   if (!isToMe && !isFromMe) return undefined;
 
-  const id = `${record.txid}:${record.vout}`;
-  let existing = await messagesRepo.get(id);
-  // The same message already kept under another id (the Mayor's reply comes direct and on chain,
-  // mw-f758y.40): one row, the direct one, which carries the channel and the bead.
-  const twin = existing ? undefined : await messagesRepo.findTwin({ id, ciphertext: payload.ct, from: payload.from, to: payload.to, ts: payload.ts });
-  if (twin) {
-    if (isDirect(twin) || !isDirect(record)) return undefined;
-    // The direct copy arrives after its chain copy: it replaces the row, keeping what the phone already knows of it.
-    await messagesRepo.remove(twin.id);
-    existing = { ...twin, id };
-  }
-  const direction: MessageRow['direction'] = isFromMe ? 'sent' : 'received';
+  // The row is read, changed and written back in one transaction, so a write that lands in between (the Talk line marking an answer
+  // heard, a message marked read) is not put over with the copy read before it (mw-gq6.912).
+  const kept = await messagesRepo.atomically(async () => {
+    const id = `${record.txid}:${record.vout}`;
+    let existing = await messagesRepo.get(id);
+    // The same message already kept under another id (the Mayor's reply comes direct and on chain,
+    // mw-f758y.40): one row, the direct one, which carries the channel and the bead.
+    const twin = existing ? undefined : await messagesRepo.findTwin({ id, ciphertext: payload.ct, from: payload.from, to: payload.to, ts: payload.ts });
+    if (twin) {
+      if (isDirect(twin) || !isDirect(record)) return undefined;
+      // The direct copy arrives after its chain copy: it replaces the row, keeping what the phone already knows of it.
+      await messagesRepo.remove(twin.id);
+      existing = { ...twin, id };
+    }
+    const direction: MessageRow['direction'] = isFromMe ? 'sent' : 'received';
 
-  const decrypted = unlockedKeyHex ? tryDecrypt(payload, unlockedKeyHex, direction) : {};
-  const plaintext = existing?.plaintext ?? decrypted.plaintext;
+    const decrypted = unlockedKeyHex ? tryDecrypt(payload, unlockedKeyHex, direction) : {};
+    const plaintext = existing?.plaintext ?? decrypted.plaintext;
 
-  const row: MessageRow = {
-    id,
-    txid: record.txid,
-    vout: record.vout,
-    seq: record.seq,
-    class: payload.class,
-    to: payload.to,
-    from: payload.from,
-    ts: payload.ts,
-    ciphertext: payload.ct,
-    plaintext,
-    decryptFailed: existing?.decryptFailed ?? decrypted.decryptFailed,
-    direction,
-    // A Talk turn, a call record or a live card is never unread: it is heard on the Talk line, not counted (§20, §21).
-    read: existing?.read ?? (payload.class === 'talk' || payload.class === 'call' || payload.class === 'card' || payload.class === 'card-update'),
-    thread: existing?.thread ?? threadKey(threadOf(payload.class, plaintext)),
-    // What the Mayor says on the Talk line is unheard until it has been played or stopped (mw-am3yjh.1).
-    ...(payload.class === 'talk' && direction === 'received' ? { heard: existing?.heard ?? false } : {}),
-  };
-  await messagesRepo.put(row);
+    const row: MessageRow = {
+      id,
+      txid: record.txid,
+      vout: record.vout,
+      seq: record.seq,
+      class: payload.class,
+      to: payload.to,
+      from: payload.from,
+      ts: payload.ts,
+      ciphertext: payload.ct,
+      plaintext,
+      decryptFailed: existing?.decryptFailed ?? decrypted.decryptFailed,
+      direction,
+      // A Talk turn, a call record or a live card is never unread: it is heard on the Talk line, not counted (§20, §21).
+      read: existing?.read ?? (payload.class === 'talk' || payload.class === 'call' || payload.class === 'card' || payload.class === 'card-update'),
+      thread: existing?.thread ?? threadKey(threadOf(payload.class, plaintext)),
+      // What the Mayor says on the Talk line is unheard until it has been played or stopped (mw-am3yjh.1).
+      ...(payload.class === 'talk' && direction === 'received' ? { heard: existing?.heard ?? false } : {}),
+    };
+    await messagesRepo.put(row);
+    return { row, existing };
+  });
+  if (!kept) return undefined;
+  const { row, existing } = kept;
   await applyCardRow(row);
   if (!existing) noteArrivedAnswer(row, Date.now() / 1000);
   return row;

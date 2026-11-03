@@ -33,6 +33,11 @@ const byTime = (a: MessageRow, b: MessageRow) => a.ts - b.ts || (a.id < b.id ? -
 const unreadMessage = (row: MessageRow) => listed(row) && notTalk(row) && row.direction === 'received' && !row.read;
 
 export const messagesRepo = {
+  /** Runs `work` (reads and writes of the messages table alone) as one transaction: a write that comes meanwhile waits for it, so it is not written over. */
+  atomically<T>(work: () => Promise<T>): Promise<T> {
+    return db.transaction('rw', db.messages, work);
+  },
+
   async getAll(): Promise<MessageRow[]> {
     return (await heldOldestFirst()).filter(listed).reverse();
   },

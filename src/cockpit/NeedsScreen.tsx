@@ -10,7 +10,7 @@ import { OpenLists } from './OpenLists';
 import { NeedCard } from './NeedCard';
 import { LiveCard } from './LiveCard';
 import { ArchivedCardsLink } from './ArchiveScreen';
-import { useAnswers, useCardArchive, useEmergencyCount, useMessages, useUnlockedKey, useViewIndex } from './hooks';
+import { useAnswers, useCardArchiveRead, useEmergencyCount, useMessages, useUnlockedKey, useViewIndex } from './hooks';
 import type { MessageRow } from '../data/db';
 import { refreshNow, useLive } from '../services/live';
 import { acceptOfferedMayorKey, fingerprint } from '../services/me';
@@ -242,7 +242,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
   const split = useMemo(() => needsByWaiter(apart.open), [apart]);
   const needs = split[who];
   const folded = useMemo(() => needsByWaiter(apart.folded)[who], [apart, who]);
-  const { fresh: cards } = useCardArchive();
+  const { fresh: cards, answered: cardsRead } = useCardArchiveRead();
   const openCards = useMemo(() => cards.filter((card) => !card.done), [cards]);
   const doneCards = useMemo(() => cards.filter((card) => card.done), [cards]);
   const youCount = split.you.length + openCards.length;
@@ -314,7 +314,13 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
                 ]}
               />
             </div>
-            {needs.length === 0 && (who !== 'you' || openCards.length === 0) ? (
+            {needs.length === 0 && who === 'you' && openCards.length === 0 && !cardsRead ? (
+              // The "You" line is empty only once the phone has read its cards and messages; until then they may still be there (mw-gq6.909).
+              <p role="status" className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
+                <Spinner size={14} />
+                Reading your cards…
+              </p>
+            ) : needs.length === 0 && (who !== 'you' || openCards.length === 0) ? (
               <div className="rounded-2xl border border-dashed border-line">
                 <EmptyState icon="check" title={EMPTY[who].title}>
                   {EMPTY[who].text}

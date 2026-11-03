@@ -68,3 +68,17 @@ Feature: A live card untouched for 48 hours leaves Needs you for 'Archived cards
     Given the Mayor sent a card titled "Top 5" on beads "mw-a.1" and "mw-b.1"
     When Me is opened 49 hours later
     Then an "Archived cards · 1" row links to the archive
+
+  Scenario: mw-gq6.909: the archive does not say nothing is archived before the phone has read its cards
+    Given the phone has not yet read its cards
+    When the archive is opened
+    Then the screen says it is reading, not "Nothing is archived"
+    When the phone's read of its cards answers with none
+    Then the archive says "Nothing is archived"
+
+  Scenario: mw-gq6.909: Needs you does not say nothing needs you before the phone has read its cards
+    Given the phone has not yet read its cards
+    When Needs you is opened with no needs
+    Then the screen says it is reading, not "Nothing needs you"
+    When the phone's read of its cards answers with none
+    Then Needs you says "Nothing needs you"

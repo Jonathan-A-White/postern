@@ -3,10 +3,10 @@
 // now reads; every one keeps listening for its events, open or not, and an event that ticks an item,
 // an update, a tap on a link or a message naming its bead brings it back to Needs you. Nothing is deleted.
 import { useState } from 'react';
-import { EmptyState, Icon, TimeAgo, cx } from '../ui';
+import { EmptyState, Icon, Spinner, TimeAgo, cx } from '../ui';
 import { Screen } from './Shell';
 import { LiveCard } from './LiveCard';
-import { useCardArchive, useViewIndex } from './hooks';
+import { useCardArchive, useCardArchiveRead, useViewIndex } from './hooks';
 import { useCardTicking } from './useCardTicking';
 import { formatRoute } from '../nav/route';
 import type { LiveCard as LiveCardData } from '../model/cards';
@@ -71,13 +71,19 @@ function ArchivedEntry({ card, titleOf }: { card: LiveCardData; titleOf: (bead: 
 }
 
 export function ArchiveScreen() {
-  const { archived } = useCardArchive();
+  const { archived, answered } = useCardArchiveRead();
   const view = useViewIndex();
   const titleOf = (bead: string) => view?.index.byId.get(bead)?.title;
   return (
     <Screen title="Archived cards" back={{ view: 'needs' }}>
       <CardTickers cards={archived} />
-      {archived.length === 0 ? (
+      {archived.length === 0 && !answered ? (
+        // Never "nothing" before the phone has read its cards and messages (mw-gq6.909).
+        <p role="status" className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
+          <Spinner size={14} />
+          Reading your cards…
+        </p>
+      ) : archived.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line">
           <EmptyState icon="archive" title="Nothing is archived">
             A card that nobody has touched for 48 hours waits here. An item ticking, an update, a tap on one of its links or a message about its bead brings it back to Needs you.

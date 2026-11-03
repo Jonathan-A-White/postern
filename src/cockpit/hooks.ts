@@ -256,12 +256,21 @@ export function useCardRoot(txid: string | undefined): { card: LiveCard; updates
 }
 
 /** The live cards split at 48 h untouched (mw-v1uyku.1): the fresh ones for Needs you, the archived ones newest touch first.
- * A message that names one of a card's beads counts as a touch. Nothing is deleted. */
-export function useCardArchive(): { fresh: LiveCard[]; archived: LiveCard[] } {
-  const cards = useCards();
-  const messages = useMessages();
+ * A message that names one of a card's beads counts as a touch. Nothing is deleted. `answered` is whether the phone has read
+ * both its cards and its messages: until it has, the lists are empty because nothing was read, not because nothing is held
+ * (mw-gq6.909), so a screen's empty line waits for it. */
+export function useCardArchiveRead(): { fresh: LiveCard[]; archived: LiveCard[]; answered: boolean } {
+  const rows = useLiveQuery(() => cardsRepo.getAll(), [], undefined as CardRow[] | undefined, 'cards');
+  const messages = useLiveQuery(() => messagesRepo.getAllOldestFirst(), [], undefined as MessageRow[] | undefined, 'messages');
   const at = useNow(60_000);
-  return useMemo(() => splitArchive(cards, messages, at), [cards, messages, at]);
+  const cards = useMemo(() => (rows ?? []).map(liveCard).filter((card): card is LiveCard => card !== undefined).sort((a, b) => b.sentAt - a.sentAt), [rows]);
+  const split = useMemo(() => splitArchive(cards, messages ?? NO_MESSAGES, at), [cards, messages, at]);
+  return { ...split, answered: rows !== undefined && messages !== undefined };
+}
+
+/** useCardArchiveRead without whether it has answered: empty until the phone has read. */
+export function useCardArchive(): { fresh: LiveCard[]; archived: LiveCard[] } {
+  return useCardArchiveRead();
 }
 
 /** What he archived or brought back by hand in Talk, on this device. */

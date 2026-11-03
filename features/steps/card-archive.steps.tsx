@@ -2,7 +2,7 @@
 // message sync pages sealed `card`, `card-update`, `message` and `events` records, the clock is frozen
 // (Date only) and moved by hand, and Needs you, the archive or Me is opened at the hour a scenario names.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -10,8 +10,9 @@ import { PrivateKey, Utils } from '@bsv/sdk';
 import { NeedsScreen } from '../../src/cockpit/NeedsScreen';
 import { ArchiveScreen } from '../../src/cockpit/ArchiveScreen';
 import { MeScreen } from '../../src/cockpit/MeScreen';
-import { db } from '../../src/data/db';
-import { viewRepo } from '../../src/data/repositories';
+import { db, type CardRow } from '../../src/data/db';
+import { cardsRepo, viewRepo } from '../../src/data/repositories';
+import { forgetLastKnown } from '../../src/cockpit/lastKnown';
 import { syncMessagesAndEvents } from '../../src/services/events';
 import { encryptMessage, type MessageClass } from '../../src/services/messages';
 import { type View, type ViewBead } from '../../src/model/view';
@@ -37,6 +38,8 @@ let page: ApiRecord[] = [];
 let recordSeq = 0;
 let eventSeq = 0;
 let cardTxid = '';
+/** Lets the phone's held-back read of its cards answer (mw-gq6.909). */
+let answerCards: (rows: CardRow[]) => void = () => undefined;
 
 function viewBead(id: string): ViewBead {
   return { id, title: `Title of ${id}`, type: 'task', status: 'in_progress', priority: 2, labels: [], assignee: '', waits: [], created: '', updated: '', started: '', closed: '', attempts: 0, summary: '', comments: 0, done_earlier: 0 };
@@ -85,6 +88,8 @@ function atHour(hours: number): void {
 
 async function fresh(): Promise<void> {
   cleanup();
+  vi.restoreAllMocks();
+  forgetLastKnown();
   freezeClock();
   page = [];
   recordSeq = 0;
@@ -129,6 +134,17 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   const notInYouList = async (_c: unknown, title: string) => {
     await screen.findByRole('tab', { name: /^You · \d+$/ });
     await waitFor(() => expect(screen.queryByRole('article', { name: `Card: ${title}` })).toBeNull());
+  };
+  const holdCards = async () => {
+    vi.spyOn(cardsRepo, 'getAll').mockReturnValue(new Promise<CardRow[]>((resolve) => (answerCards = resolve)));
+  };
+  const saysReading = async (_c: unknown, line: string) => {
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
+    expect(screen.queryByText(line)).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('Reading');
+  };
+  const saysEmptyLine = async (_c: unknown, line: string) => {
+    expect(await screen.findByText(line)).toBeInTheDocument();
   };
   const archiveRow = async (_c: unknown, label: string) => {
     await waitFor(() => expect(archiveLink()).toHaveTextContent(label));
@@ -261,5 +277,31 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       render(<MeScreen />);
     });
     Then('an {string} row links to the archive', archiveRow);
+  });
+  Scenario('mw-gq6.909: the archive does not say nothing is archived before the phone has read its cards', ({ Given, When, Then }) => {
+    Given('the phone has not yet read its cards', holdCards);
+    When('the archive is opened', async () => {
+      render(<ArchiveScreen />);
+      await screen.findByRole('heading', { name: 'Archived cards' });
+    });
+    Then('the screen says it is reading, not {string}', saysReading);
+    When("the phone's read of its cards answers with none", async () => {
+      await act(async () => answerCards([]));
+    });
+    Then('the archive says {string}', saysEmptyLine);
+  });
+
+  Scenario('mw-gq6.909: Needs you does not say nothing needs you before the phone has read its cards', ({ Given, When, Then }) => {
+    Given('the phone has not yet read its cards', holdCards);
+    When('Needs you is opened with no needs', async () => {
+      await storeView([]);
+      render(<NeedsScreen />);
+      await screen.findByRole('tab', { name: /^You · \d+$/ });
+    });
+    Then('the screen says it is reading, not {string}', saysReading);
+    When("the phone's read of its cards answers with none", async () => {
+      await act(async () => answerCards([]));
+    });
+    Then('Needs you says {string}', saysEmptyLine);
   });
 });

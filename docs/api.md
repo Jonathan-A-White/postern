@@ -240,6 +240,22 @@ the site's proxy reaches it as `/api/healthz`.
   git checkout). In standby the same line answers with `"standby": true` and
   `"home": …`, still carrying `commit`.
 
+  Beside them rides `poll`, the chain poller's own account of itself (left out
+  in standby and without a poller):
+
+  ```json
+  { "poll": { "ok": false, "lastGoodPoll": "2026-11-04T16:00:00Z",
+              "lastError": "fetching anchor history: WhatsOnChain said 503",
+              "lastErrorAt": "2026-11-04T16:11:05Z", "failingSince": "2026-11-04T16:00:05Z", "alarm": true } }
+  ```
+
+  `lastGoodPoll` is when a poll last read everything new at the anchor;
+  `lastError`, `lastErrorAt` and `failingSince` appear only while polls fail, and
+  `alarm` is true once they have failed for 10 minutes (the backend's log says
+  `poll alarm` once at that moment). `ok` stays true whatever `poll` says: the
+  watchdog restarts a backend whose `/healthz` is not ok, and a restart does not
+  cure the chain provider's refusal.
+
 ## GET /api/challenge
 
 Issues a nonce for the caller to sign (see Authentication, above).

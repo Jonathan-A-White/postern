@@ -29,6 +29,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/index"
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
+	"github.com/Jonathan-A-White/postern/server/internal/poller"
 	"github.com/Jonathan-A-White/postern/server/internal/prompts"
 	"github.com/Jonathan-A-White/postern/server/internal/push"
 	"github.com/Jonathan-A-White/postern/server/internal/record"
@@ -67,6 +68,8 @@ type options struct {
 	cors     []string          // POSTERN_CORS_ORIGINS
 	prompts  *prompts.Store    // the saved prompts; nil answers 501
 	ideas    *ideasonly.Store  // each key's Ideas only setting (§25); nil answers 501
+
+	pollStatus func() poller.Status // the poller's own account of itself for /healthz; nil leaves it out
 
 	alerts        *alerts.Store // a family's alerts (§26); nil answers 501
 	alertFamilies Families      // which keys are one family; nil makes each key its own
@@ -164,6 +167,12 @@ func WithIdeasOnly(store *ideasonly.Store) Option {
 	return func(o *options) { o.ideas = store }
 }
 
+// WithPollStatus sets where GET /healthz reads the chain poller's last good
+// poll and last error from. Without it /healthz says nothing of polling.
+func WithPollStatus(status func() poller.Status) Option {
+	return func(o *options) { o.pollStatus = status }
+}
+
 // WithView sets the view file GET /api/view serves (POSTERN_VIEW_FILE).
 // Without it, GET /api/view answers 404.
 func WithView(v *view.File) Option {
@@ -238,7 +247,7 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", handleHealthz)
+	mux.HandleFunc("GET /healthz", handleHealthz(o.pollStatus))
 	mux.HandleFunc("GET /api/challenge", handleChallenge(nonces))
 	// Registration is open: the caller has no licence yet. Its own per-IP
 	// and per-destination limits, its send cap and 5-try codes are what guard
@@ -543,12 +552,24 @@ func handleChallenge(nonces *auth.NonceStore) http.HandlerFunc {
 	}
 }
 
-func handleHealthz(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, struct {
-		OK      bool   `json:"ok"`
-		Standby bool   `json:"standby"`
-		Commit  string `json:"commit"`
-	}{OK: true, Commit: buildinfo.Commit()})
+// handleHealthz answers liveness and the build. `ok` is liveness only: the
+// watchdog restarts a backend whose /healthz is not ok, and a restart does not
+// cure a chain provider's refusal, so the poller's state rides beside it in
+// `poll` for whatever watches for a poll that is failing.
+func handleHealthz(pollStatus func() poller.Status) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body := struct {
+			OK      bool           `json:"ok"`
+			Standby bool           `json:"standby"`
+			Commit  string         `json:"commit"`
+			Poll    *poller.Status `json:"poll,omitempty"`
+		}{OK: true, Commit: buildinfo.Commit()}
+		if pollStatus != nil {
+			st := pollStatus()
+			body.Poll = &st
+		}
+		writeJSON(w, http.StatusOK, body)
+	}
 }
 
 // messagesLimitCap is the most records one GET /api/messages page carries; a

@@ -199,8 +199,11 @@ func newApp(cfg config.Config) (*app, error) {
 		return nil, err
 	}
 
+	chainPoller := poller.New(client, store, cfg.Anchor, poller.WithNotifier(fanout))
+
 	handler := api.NewHandler(store, client, vapidKeys.PublicKey, pushStore, blobStore, auth.NewNonceStore(nonceTTL, auth.WithKey(nonceKey)), licenceChecker,
 		api.WithNotifier(fanout),
+		api.WithPollStatus(chainPoller.Status),
 		api.WithEvents(hub, api.DefaultPingInterval),
 		api.WithView(viewFile),
 		api.WithBeads(beads.New(cfg.BeadCmd)),
@@ -218,7 +221,7 @@ func newApp(cfg config.Config) (*app, error) {
 		if err := blobStore.Sweep(time.Now()); err != nil {
 			log.Printf("sweeping blob store: %v", err)
 		}
-		go poller.New(client, store, cfg.Anchor, poller.WithNotifier(fanout)).Run(stop)
+		go chainPoller.Run(stop)
 		go runBlobSweep(blobStore, stop)
 		go runAlertSweep(alertStore, stop)
 		if cfg.MayorKey != "" {

@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.85
+_2026-11-04_
+- Fixed: A message sent from the phone while the backend could not be reached now reaches the Mayor, and the app says "On chain, not yet received" until it has.
+
 ## 0.8.83
 _2026-11-04_
 - Fixed: Issuing a licence no longer starts on the Postern collection, and says plainly when a licence would give the holder full access to Postern.

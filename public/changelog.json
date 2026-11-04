@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.85",
+    "date": "2026-11-04",
+    "story": "mw-gq6.965",
+    "kind": "fixed",
+    "text": "A message sent from the phone while the backend could not be reached now reaches the Mayor, and the app says \"On chain, not yet received\" until it has."
+  },
+  {
     "version": "0.8.83",
     "date": "2026-11-04",
     "story": "mw-gq6.949",

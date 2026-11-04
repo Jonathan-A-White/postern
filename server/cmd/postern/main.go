@@ -433,9 +433,9 @@ func noteMillLicence(checker auth.LicenceChecker, millKey string, apps map[strin
 // never holds up the receiver's POST; a failure is logged.
 type alertPusher struct{ sender *push.Sender }
 
-func (p alertPusher) NotifyKeys(keys []string, payload push.Payload) (int, error) {
+func (p alertPusher) NotifyAlert(keys []string, ts int64, facts push.AlertFacts) (int, error) {
 	go func() {
-		if _, err := p.sender.NotifyKeys(keys, payload); err != nil {
+		if _, err := p.sender.NotifyAlert(keys, ts, facts); err != nil {
 			log.Printf("push of a new alert: %v", err)
 		}
 	}()

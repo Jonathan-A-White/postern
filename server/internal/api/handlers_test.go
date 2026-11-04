@@ -1382,3 +1382,82 @@ func TestMessagesByTxIDAnswersOnlyThatTransactionsRecords(t *testing.T) {
 		t.Fatalf("page = %+v, want no records for an unknown txid", page)
 	}
 }
+
+func subscribeWith(t *testing.T, server *httptest.Server, key *btcec.PrivateKey, pub, extra string) int {
+	t.Helper()
+	body := `{"pubkey":"` + pub + `","subscription":{"endpoint":"https://push.example/1","keys":{"p256dh":"p","auth":"a"}}` + extra + `}`
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/push/subscribe", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	signRequest(t, server, key, req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestPushSubscribeKeepsTheListOfLastFoursAndAReSubscribeReplacesIt(t *testing.T) {
+	server, _, pushStore := newTestServerWithPush(t, func(w http.ResponseWriter, r *http.Request) {})
+	key, pub := newKey(t)
+	if status := subscribeWith(t, server, key, pub, `,"last4s":["1234","5678","1234"]`); status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	got := pushStore.ByPublicKey(pub)
+	if len(got) != 1 || strings.Join(got[0].Last4s, ",") != "1234,5678" {
+		t.Fatalf("stored = %+v, want the list 1234,5678 (a repeat kept once)", got)
+	}
+	if status := subscribeWith(t, server, key, pub, `,"last4s":["9999"]`); status != http.StatusOK {
+		t.Fatalf("re-subscribe = %d", status)
+	}
+	if got := pushStore.ByPublicKey(pub); len(got) != 1 || strings.Join(got[0].Last4s, ",") != "9999" {
+		t.Fatalf("after a re-subscribe: %+v, want 9999 only", got)
+	}
+	if status := subscribeWith(t, server, key, pub, ``); status != http.StatusOK {
+		t.Fatalf("re-subscribe with no list = %d", status)
+	}
+	if got := pushStore.ByPublicKey(pub); len(got) != 1 || got[0].Last4s != nil {
+		t.Fatalf("a re-subscribe with no list leaves %+v, want none", got)
+	}
+}
+
+func TestPushSubscribeRefusesAListInAWrongForm(t *testing.T) {
+	var tooMany []string
+	for i := 0; i <= push.MaxLast4s; i++ {
+		tooMany = append(tooMany, fmt.Sprintf(`"%04d"`, i))
+	}
+	for name, extra := range map[string]string{
+		"five digits":       `,"last4s":["12345"]`,
+		"a letter":          `,"last4s":["12a4"]`,
+		"empty string":      `,"last4s":[""]`,
+		"a number":          `,"last4s":[1234]`,
+		"not a list":        `,"last4s":"1234"`,
+		"null element":      `,"last4s":[null]`,
+		"too many":          `,"last4s":[` + strings.Join(tooMany, ",") + `]`,
+		"digits with a gap": `,"last4s":["12 4"]`,
+	} {
+		server, _, pushStore := newTestServerWithPush(t, func(w http.ResponseWriter, r *http.Request) {})
+		key, pub := newKey(t)
+		if status := subscribeWith(t, server, key, pub, extra); status != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", name, status)
+		}
+		if got := pushStore.ByPublicKey(pub); len(got) != 0 {
+			t.Errorf("%s: a refused subscribe stored %+v", name, got)
+		}
+	}
+}
+
+func TestPushSubscribeWithNoListIsAsItWas(t *testing.T) {
+	server, _, pushStore := newTestServerWithPush(t, func(w http.ResponseWriter, r *http.Request) {})
+	key, pub := newKey(t)
+	for _, extra := range []string{``, `,"last4s":[]`, `,"last4s":null`} {
+		if status := subscribeWith(t, server, key, pub, extra); status != http.StatusOK {
+			t.Fatalf("%q: status = %d, want 200", extra, status)
+		}
+		if got := pushStore.ByPublicKey(pub); len(got) != 1 || got[0].Last4s != nil {
+			t.Fatalf("%q: stored %+v, want one subscription with no list", extra, got)
+		}
+	}
+}

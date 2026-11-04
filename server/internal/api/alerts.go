@@ -30,10 +30,11 @@ type Families interface {
 	Keys(familyID string) []string
 }
 
-// AlertPusher pushes a payload to every subscription of the given keys.
+// AlertPusher pushes a new alert to every subscription of the given keys, with
+// a charge's facts only to the subscriptions that name its card (§26, The push).
 // *push.Sender is one.
 type AlertPusher interface {
-	NotifyKeys(keys []string, payload push.Payload) (int, error)
+	NotifyAlert(keys []string, ts int64, facts push.AlertFacts) (int, error)
 }
 
 // WithAlerts sets the store behind the alerts routes, how a key's family and
@@ -87,10 +88,22 @@ func (o *options) familyKeys(id string) []string {
 	return nil
 }
 
-// alertPush is the push a new alert makes: its class and time, and a title
+// alertPush is the bare push a new alert makes: its class and time, and a title
 // that says nothing about the alert; the app opens and reads its feed.
 func alertPush(ts int64) push.Payload {
 	return push.Payload{Class: "alert", Ts: ts, Title: "New alert"}
+}
+
+// alertFacts is what the push may carry of a stored alert; the sender decides,
+// per subscription, whether a charge's words go.
+func alertFacts(a alerts.Alert) push.AlertFacts {
+	return push.AlertFacts{
+		ID:       a.ID,
+		Charge:   a.Kind == alerts.KindCharge,
+		Amount:   a.Amount,
+		Merchant: a.Merchant,
+		Last4:    a.Last4,
+	}
 }
 
 func alertsOff(w http.ResponseWriter, o *options) bool {
@@ -248,7 +261,7 @@ func handleAlertInbound(o *options) http.HandlerFunc {
 			return
 		}
 		if o.alertPusher != nil {
-			if _, err := o.alertPusher.NotifyKeys(o.familyKeys(family), alertPush(time.Now().Unix())); err != nil {
+			if _, err := o.alertPusher.NotifyAlert(o.familyKeys(family), time.Now().Unix(), alertFacts(stored)); err != nil {
 				log.Printf("pushing alert %s: %v", stored.ID, err)
 			}
 		}

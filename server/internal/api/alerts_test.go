@@ -159,6 +159,15 @@ func (s alertsServer) inbound(t *testing.T, secret, body string) (int, string) {
 	return doRaw(t, req)
 }
 
+// subscribeCards is subscribe with a list of last fours, as JSON.
+func (s alertsServer) subscribeCards(t *testing.T, key *btcec.PrivateKey, pub, name, last4s string) {
+	t.Helper()
+	body := fmt.Sprintf(`{"pubkey":%q,"subscription":{"endpoint":%q,"keys":{"p256dh":%q,"auth":%q}},"last4s":%s}`, pub, s.pushURL+"/"+name, alertsP256dh, alertsAuth, last4s)
+	if status, out := s.as(t, key, http.MethodPost, "/api/push/subscribe", body); status != http.StatusOK {
+		t.Fatalf("subscribe %s = %d %s", name, status, out)
+	}
+}
+
 // subscribe registers a push subscription for key at the fake push service.
 func (s alertsServer) subscribe(t *testing.T, key *btcec.PrivateKey, pub, name string) {
 	t.Helper()
@@ -502,5 +511,32 @@ func TestRegisteredDevicesOfOnePersonAreOneFamily(t *testing.T) {
 	}
 	if got := s.pushes.Load(); got != 2 {
 		t.Fatalf("sends = %d, want 2", got)
+	}
+}
+
+func TestOnlyAChargeCarriesItsFactsToThePusher(t *testing.T) {
+	charge := alertFacts(alerts.Alert{ID: "a-1", Kind: alerts.KindCharge, Amount: "42.17", Merchant: "Corner Cafe", Last4: "1234", Subject: "s", Code: "c"})
+	if !charge.Charge || charge.ID != "a-1" || charge.Amount != "42.17" || charge.Merchant != "Corner Cafe" || charge.Last4 != "1234" {
+		t.Fatalf("charge facts = %+v", charge)
+	}
+	for _, kind := range []string{alerts.KindAmazon, alerts.KindUnread, alerts.KindForwardConfirm} {
+		if alertFacts(alerts.Alert{ID: "a-2", Kind: kind, Merchant: "Amazon"}).Charge {
+			t.Fatalf("a %s alert is not a charge", kind)
+		}
+	}
+}
+
+// An inbound charge reaches a subscription that named its card, and a phone with no list, through
+// the real sender: both are accepted by the push service, one push each.
+func TestAnInboundChargePushesEveryPhoneOfTheFamilyWhateverItsList(t *testing.T) {
+	s, keys, pubs, _ := twoPhones(t)
+	s.subscribeCards(t, keys[0], pubs[0], "phone-0", `["1234"]`)
+	s.subscribe(t, keys[1], pubs[1], "phone-1")
+	address := s.address(t, keys[0])
+	if status, body := s.inbound(t, alertsSecret, fmt.Sprintf(`{"token":%q,"kind":"charge","amount":"42.17","merchant":"Corner Cafe","last4":"9999"}`, tokenOf(address))); status != http.StatusCreated {
+		t.Fatalf("inbound = %d %s", status, body)
+	}
+	if got := s.pushes.Load(); got != 2 {
+		t.Fatalf("pushes = %d, want 2", got)
 	}
 }

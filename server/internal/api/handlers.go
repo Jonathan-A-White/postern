@@ -720,6 +720,7 @@ func handlePushSubscribe(store *push.Store) http.HandlerFunc {
 		var req struct {
 			PublicKeyHex string              `json:"pubkey"`
 			Subscription webpushSubscription `json:"subscription"`
+			Last4s       []string            `json:"last4s"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, maxSubscribeBodyBytes)).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -738,10 +739,17 @@ func handlePushSubscribe(store *push.Store) http.HandlerFunc {
 			return
 		}
 
+		last4s, err := push.CleanLast4s(req.Last4s)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
 		sub := push.Subscription{
 			PublicKeyHex: req.PublicKeyHex,
 			Endpoint:     req.Subscription.Endpoint,
 			Keys:         req.Subscription.Keys,
+			Last4s:       last4s,
 		}
 		if err := store.Add(sub); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())

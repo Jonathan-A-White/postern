@@ -129,6 +129,12 @@ type Payload struct {
 	Ts    int64  `json:"ts"`
 	Title string `json:"title,omitempty"`
 	Body  string `json:"body,omitempty"`
+	// Amount, Merchant, Last4 and AlertID are a charge's facts, set only on an alert push to a
+	// subscription that names the card (docs/protocol.md §26, The push), and nowhere else.
+	Amount   string `json:"amount,omitempty"`
+	Merchant string `json:"merchant,omitempty"`
+	Last4    string `json:"last4,omitempty"`
+	AlertID  string `json:"id,omitempty"`
 }
 
 // RecordIndexed pushes a newly indexed record (NotifyRecord) in its own

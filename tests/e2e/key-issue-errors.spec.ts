@@ -27,6 +27,7 @@ async function openIssue(page: Page, utxosAnswer: { status: number; error: strin
   await expect(page.getByTestId('issue-cost')).toContainText('Balance: 25,000 sats');
   // Registered after the stub's own, so it answers first: the coin list now refuses.
   await page.route('**/api/utxos/**', (route) => route.fulfill({ status: utxosAnswer.status, json: { error: utxosAnswer.error } }));
+  await issue.getByLabel('Collection').selectOption('trade-tracker');
   await issue.getByLabel("Holder's public key").fill(HOLDER);
   await issue.getByRole('button', { name: 'Issue' }).click();
   await issue.getByRole('button', { name: 'Confirm issue' }).click();

@@ -145,3 +145,29 @@ Feature: The Key screen shows my public key and issues and revokes licences (mw-
     And I confirm the revoke
     Then the held row shows the reason as an alert and keeps Confirm revoke under it
     And the Issued licences section shows no alert outside the row
+
+  Scenario: AC19: the confirm says a postern licence gives the holder full access to Postern, and an app collection's does not
+    Given my key is unlocked and the backend names two collections
+    When the key screen is opened
+    And I type a holder's key and choose postern
+    And I press Issue
+    Then the confirm says this key gets full access to Postern
+    When I cancel the issue
+    And I choose cairn
+    And I press Issue again
+    Then the confirm does not say full access to Postern
+
+  Scenario: AC20: the collection picker starts on no choice, and Issue asks for one before it spends
+    Given my key is unlocked and the backend names two collections
+    When the key screen is opened
+    And I type a holder's key without choosing a collection
+    Then the collection picker shows "Choose a collection"
+    When I press Issue
+    Then I am told to choose a collection and there is no confirm
+    And issueLicence has not been called
+
+  Scenario: AC21: when the holder is my own key the picker starts on postern
+    Given my key is unlocked and the backend names two collections
+    When the key screen is opened
+    And I type my own public key as the holder
+    Then the collection picker shows "postern"

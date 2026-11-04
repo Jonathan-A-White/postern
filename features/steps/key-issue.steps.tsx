@@ -103,6 +103,13 @@ async function openKeyScreen() {
   await screen.findByText('Key unlocked');
 }
 
+async function typeHolder(key = HOLDER_PUBLIC_KEY) {
+  const section = await issueSection();
+  await userEvent.type(within(section).getByLabelText("Holder's public key"), key);
+}
+
+const pickerValue = async () => (within(await issueSection()).getByLabelText('Collection') as HTMLSelectElement);
+
 async function typeHolderAndChooseCairn() {
   const section = await issueSection();
   await userEvent.type(within(section).getByLabelText("Holder's public key"), HOLDER_PUBLIC_KEY);
@@ -196,8 +203,9 @@ describeFeature(feature, ({ Scenario }) => {
     Then('the collection choices are postern and cairn with its app name', async () => {
       const section = await issueSection();
       const options = within(within(section).getByLabelText('Collection')).getAllByRole('option');
-      expect(options.map((o) => o.textContent)).toEqual(['postern', 'cairn (Cairn)']);
-      expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual(['postern', 'cairn']);
+      // The picker also holds "Choose a collection" (value "") until one is picked (AC20).
+      expect(options.map((o) => o.textContent)).toEqual(['Choose a collection', 'postern', 'cairn (Cairn)']);
+      expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual(['', 'postern', 'cairn']);
     });
   });
 
@@ -548,6 +556,74 @@ describeFeature(feature, ({ Scenario }) => {
       const section = screen.getByRole('region', { name: 'Issued licences' });
       expect(within(section).getAllByRole('alert')).toHaveLength(1);
       expect(within(heldRow()).getAllByRole('alert')).toHaveLength(1);
+    });
+  });
+
+  Scenario('AC19: the confirm says a postern licence gives the holder full access to Postern, and an app collection\'s does not', ({ Given, And, When, Then }) => {
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+    });
+    When('the key screen is opened', openKeyScreen);
+    And("I type a holder's key and choose postern", async () => {
+      await typeHolder();
+      await userEvent.selectOptions((await pickerValue()), 'postern');
+    });
+    And('I press Issue', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
+    });
+    Then('the confirm says this key gets full access to Postern', () => {
+      expect(screen.getByText(/This key will get full access to Postern/)).toBeInTheDocument();
+    });
+    When('I cancel the issue', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    });
+    And('I choose cairn', async () => {
+      await userEvent.selectOptions((await pickerValue()), 'cairn');
+    });
+    And('I press Issue again', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
+    });
+    Then('the confirm does not say full access to Postern', () => {
+      expect(screen.getByRole('button', { name: 'Confirm issue' })).toBeInTheDocument();
+      expect(screen.queryByText(/full access to Postern/)).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('AC20: the collection picker starts on no choice, and Issue asks for one before it spends', ({ Given, And, When, Then }) => {
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+    });
+    When('the key screen is opened', openKeyScreen);
+    And("I type a holder's key without choosing a collection", async () => {
+      await typeHolder();
+    });
+    Then('the collection picker shows "Choose a collection"', async () => {
+      const picker = await pickerValue();
+      expect(picker.value).toBe('');
+      expect(picker.selectedOptions[0]).toHaveTextContent('Choose a collection');
+    });
+    When('I press Issue', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
+    });
+    Then('I am told to choose a collection and there is no confirm', () => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Choose a collection to issue in.');
+      expect(screen.queryByRole('button', { name: 'Confirm issue' })).not.toBeInTheDocument();
+    });
+    And('issueLicence has not been called', () => {
+      expect(services.issueLicence).not.toHaveBeenCalled();
+    });
+  });
+
+  Scenario('AC21: when the holder is my own key the picker starts on postern', ({ Given, And, When, Then }) => {
+    Given('my key is unlocked and the backend names two collections', async () => {
+      await unlockedWith(TWO_COLLECTIONS);
+    });
+    When('the key screen is opened', openKeyScreen);
+    And('I type my own public key as the holder', async () => {
+      await typeHolder(MY_PUBLIC_KEY);
+    });
+    Then('the collection picker shows "postern"', async () => {
+      expect((await pickerValue()).value).toBe('postern');
     });
   });
 });

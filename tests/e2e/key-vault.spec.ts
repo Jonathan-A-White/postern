@@ -63,7 +63,7 @@ test('the key screen shows my QR, the Issue a licence form, and the licences I i
 
   const issue = page.getByRole('region', { name: 'Issue a licence' });
   await expect(issue).toBeVisible();
-  await expect(issue.getByLabel('Collection').locator('option')).toHaveText(['postern', 'cairn (Cairn)']);
+  await expect(issue.getByLabel('Collection').locator('option')).toHaveText(['Choose a collection', 'postern', 'cairn (Cairn)']);
   await expect(page.getByTestId('issue-cost')).toContainText('Balance: 25,000 sats');
   await issue.scrollIntoViewIfNeeded();
   await shot(page, 'key-issue');

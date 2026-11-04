@@ -167,6 +167,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
 
   const [holder, setHolder] = useState('');
   const [chosen, setChosen] = useState('');
+  const [needsCollection, setNeedsCollection] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [confirmingIssue, setConfirmingIssue] = useState(false);
   const [outcome, setOutcome] = useState<IssueOutcome>({ name: 'idle' });
@@ -270,7 +271,14 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   if (!enabled) return null;
 
   const cost = chain.issueCost();
-  const collection = collections.some((c) => c.name === chosen) ? chosen : collections[0].name;
+  // No collection is picked for him: a postern licence is a cockpit key, so the picker starts on none,
+  // unless the holder is his own key, which is the one place the cockpit collection is the usual answer.
+  const holderIsIssuer = holder.trim().toLowerCase() === issuerPublicKeyHex.toLowerCase();
+  const ownCollection = holderIsIssuer ? collections.find((c) => !c.app) : undefined;
+  const collection = collections.some((c) => c.name === chosen) ? chosen : (ownCollection?.name ?? '');
+  // A holder edited after Issue was tapped can leave no collection: then nothing is asked to be confirmed.
+  const confirmOpen = confirmingIssue && collection !== '';
+  const grantsCockpit = collections.some((c) => c.name === collection && !c.app);
 
   const balanceSatoshis = balance.name === 'loaded' ? balance.satoshis : null;
   const short = balanceSatoshis !== null && balanceSatoshis < cost.totalSatoshis;
@@ -288,6 +296,14 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
     } catch {
       if (alive()) setAddressCopied('unavailable');
     }
+  }
+
+  function handleAskToIssue() {
+    if (!collection) {
+      setNeedsCollection(true);
+      return;
+    }
+    setConfirmingIssue(true);
   }
 
   async function handleIssue() {
@@ -378,7 +394,16 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
         {scanning && <Scanner onRead={handleRead} onCancel={handleCancelScan} />}
 
         <label htmlFor="issue-collection">Collection</label>
-        <select id="issue-collection" className={FIELD} value={collection} onChange={(e) => setChosen(e.target.value)}>
+        <select
+          id="issue-collection"
+          className={FIELD}
+          value={collection}
+          onChange={(e) => {
+            setChosen(e.target.value);
+            setNeedsCollection(false);
+          }}
+        >
+          {!collection && <option value="">Choose a collection</option>}
           {collections.map((c) => (
             <option key={c.name} value={c.name}>
               {collectionLabel(c)}
@@ -421,16 +446,26 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
             {addressCopied === 'unavailable' && <p className="text-sm">Copy is not available here: select the address by hand</p>}
           </div>
         )}
-        {!confirmingIssue && (
-          <button className={PRIMARY_BUTTON} disabled={!holder.trim() || short} onClick={() => setConfirmingIssue(true)}>
+        {!confirmOpen && (
+          <button className={PRIMARY_BUTTON} disabled={!holder.trim() || short} onClick={handleAskToIssue}>
             Issue
           </button>
         )}
-        {confirmingIssue && !short && (
+        {needsCollection && !collection && (
+          <p role="alert" className="text-danger">
+            Choose a collection to issue in.
+          </p>
+        )}
+        {confirmOpen && !short && (
           <div className="flex flex-col gap-2">
             <p>
               Issue a licence to {shorten(holder.trim(), 8, 6)} in {collection}? Cost about {sats(cost.totalSatoshis)}.
             </p>
+            {grantsCockpit && (
+              <p role="note" className="font-semibold text-danger">
+                This key will get full access to Postern, not just one app.
+              </p>
+            )}
             <div className="flex gap-2">
               <button className={PRIMARY_BUTTON} disabled={outcome.name === 'issuing'} onClick={() => void handleIssue()}>
                 {outcome.name === 'issuing' ? 'Issuing…' : 'Confirm issue'}

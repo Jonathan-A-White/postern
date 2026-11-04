@@ -71,6 +71,19 @@ type SpendReader interface {
 	GetSpender(txid string, vout int) (spender string, spent bool, err error)
 }
 
+// RecentReader reads only the newest of an address's history, which is how
+// the poller follows an anchor whose whole history no longer fits what a
+// provider client reads (mw-gq6.965: the anchor passed 20,000 transactions
+// and every poll failed with a HistoryTooLongError). known says whether the
+// caller has already dealt with a transaction; the read ends at the first
+// page of confirmed history it knows every transaction of, so a poll with
+// nothing new reads one page. It returns what it read, oldest first with the
+// unconfirmed ones last, never failing for the length of the history. A
+// Reader may implement it as well; callers ask by type assertion.
+type RecentReader interface {
+	GetRecentHistory(address string, known func(txid string) bool) ([]HistoryEntry, error)
+}
+
 // Reader reads history: an address's transaction history (oldest first,
 // height 0 for unconfirmed) and a transaction's raw hex. The poller and the
 // licence walk need only this.

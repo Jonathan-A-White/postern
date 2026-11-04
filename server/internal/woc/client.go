@@ -116,6 +116,8 @@ func WithSleep(fn func(time.Duration)) Option {
 	return func(c *Client) { c.sleep = fn }
 }
 
+var _ chain.RecentReader = (*Client)(nil)
+
 // NewClient builds a Client against baseURL (e.g. DefaultTestnetBase).
 func NewClient(baseURL string, opts ...Option) *Client {
 	c := &Client{
@@ -195,6 +197,12 @@ func (c *Client) GetHistory(address string) ([]HistoryEntry, error) {
 		token = page.NextPageToken
 	}
 
+	return assembleHistory(pages, unconfirmed), nil
+}
+
+// assembleHistory is the confirmed pages (newest page first) oldest first,
+// each transaction once, then the unconfirmed ones not already among them.
+func assembleHistory(pages []historyPage, unconfirmed historyPage) []HistoryEntry {
 	var confirmed []HistoryEntry
 	for i := len(pages) - 1; i >= 0; i-- {
 		for _, r := range pages[i].Result {
@@ -217,7 +225,56 @@ func (c *Client) GetHistory(address string) ([]HistoryEntry, error) {
 			history = append(history, HistoryEntry{TxHash: r.TxHash})
 		}
 	}
-	return history, nil
+	return history
+}
+
+// GetRecentHistory is chain.RecentReader: the unconfirmed transactions and
+// the newest pages of confirmed history, back to and including the first page
+// of which known says every transaction is known. It has no page cap, because
+// a read that stopped short of such a page would leave older new transactions
+// behind a page the next poll finds known and never reads again; each page it
+// reads is a page of transactions the caller had not dealt with.
+func (c *Client) GetRecentHistory(address string, known func(txid string) bool) ([]HistoryEntry, error) {
+	unconfirmed, err := c.getHistoryPage(fmt.Sprintf("/address/%s/unconfirmed/history", address))
+	if err != nil {
+		return nil, err
+	}
+
+	var pages []historyPage
+	token := ""
+	for {
+		path := fmt.Sprintf("/address/%s/confirmed/history", address)
+		if token != "" {
+			path += "?token=" + url.QueryEscape(token)
+		}
+		page, err := c.getHistoryPage(path)
+		if err != nil {
+			var apiErr *chain.ProviderError
+			if len(pages) > 0 || !errors.As(err, &apiErr) || apiErr.Status != http.StatusNotFound {
+				return nil, err
+			}
+			page = historyPage{} // never seen: no confirmed history
+		}
+		pages = append(pages, page)
+		if page.NextPageToken == "" || allKnown(page, known) {
+			break
+		}
+		token = page.NextPageToken
+	}
+	return assembleHistory(pages, unconfirmed), nil
+}
+
+// allKnown says whether known holds every transaction of a non-empty page.
+func allKnown(page historyPage, known func(string) bool) bool {
+	if len(page.Result) == 0 {
+		return false
+	}
+	for _, r := range page.Result {
+		if !known(r.TxHash) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Client) getHistoryPage(path string) (historyPage, error) {

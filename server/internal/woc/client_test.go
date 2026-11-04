@@ -566,3 +566,70 @@ func TestRateLimitWithoutAUsableRetryAfterKeepsTheBackoff(t *testing.T) {
 		}
 	}
 }
+
+func TestGetRecentHistoryStopsAtTheFirstPageItKnowsEverythingOf(t *testing.T) {
+	// 450 confirmed transactions in pages of 100 (newest page first); the
+	// newest 130 are new to the caller, so pages 1 and 2 are read and page 3,
+	// which it knows all of, ends the walk (it is read, to prove it is known).
+	heights := map[string]int{}
+	var all []string
+	for h := 1; h <= 450; h++ {
+		txid := fmt.Sprintf("tx%03d", h)
+		heights[txid] = h
+		all = append(all, txid)
+	}
+	pages := [][]string{all[350:450], all[250:350], all[150:250], all[50:150], all[0:50]}
+	client, calls := newTestClient(t, pagedHistory(t, "mAnchor", pages, heights, []string{"mempool"}))
+	known := map[string]bool{}
+	for _, txid := range all[:320] {
+		known[txid] = true
+	}
+
+	history, err := client.GetRecentHistory("mAnchor", func(txid string) bool { return known[txid] })
+	if err != nil {
+		t.Fatalf("GetRecentHistory: %v", err)
+	}
+	if int(*calls) != 1+3 {
+		t.Fatalf("calls = %d, want 4 (unconfirmed, then three confirmed pages)", *calls)
+	}
+	if len(history) != 301 || history[0].TxHash != "tx151" || history[299].TxHash != "tx450" || history[300].TxHash != "mempool" {
+		t.Fatalf("history = %d entries from %+v to %+v, want tx151..tx450 oldest first, then the unconfirmed one", len(history), history[0], history[len(history)-1])
+	}
+}
+
+func TestGetRecentHistoryReadsPastTheWholeHistoryCapWhenTheOldPagesAreKnown(t *testing.T) {
+	// 25,000 transactions is 250 pages: GetHistory refuses, the recent read does not.
+	total := 25_000
+	heights := map[string]int{}
+	var pages [][]string
+	for p := 0; p < total/100; p++ {
+		var page []string
+		for i := 0; i < 100; i++ {
+			h := total - (p+1)*100 + i + 1
+			txid := fmt.Sprintf("tx%06d", h)
+			heights[txid] = h
+			page = append(page, txid)
+		}
+		pages = append(pages, page)
+	}
+	client, _ := newTestClient(t, pagedHistory(t, "mAnchor", pages, heights, nil))
+
+	if _, err := client.GetHistory("mAnchor"); err == nil {
+		t.Fatalf("GetHistory read 250 pages, want it to refuse past the cap")
+	}
+	history, err := client.GetRecentHistory("mAnchor", func(txid string) bool { return heights[txid] <= total-100 })
+	if err != nil {
+		t.Fatalf("GetRecentHistory: %v", err)
+	}
+	if len(history) != 200 {
+		t.Fatalf("history = %d entries, want the newest page and the known one after it", len(history))
+	}
+}
+
+func TestGetRecentHistoryOfAnAddressNeverSeenIsEmpty(t *testing.T) {
+	client, _ := newTestClient(t, neverSeen("mFresh", []string{"mempool"}))
+	history, err := client.GetRecentHistory("mFresh", func(string) bool { return false })
+	if err != nil || len(history) != 1 || history[0].TxHash != "mempool" {
+		t.Fatalf("history = %+v, err = %v, want the unconfirmed one", history, err)
+	}
+}

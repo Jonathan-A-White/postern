@@ -94,3 +94,70 @@ func TestRightsRefusesAnEnvFileItCannotLoad(t *testing.T) {
 		t.Fatalf("exit %d with output %q, want a failure that prints no map", code, out.String())
 	}
 }
+
+// writeRightsEnvNoAnchor is the home's env file: the collection settings and
+// the secrets, but no POSTERN_ANCHOR (the unit sets that with Environment=).
+func writeRightsEnvNoAnchor(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "postern.env")
+	env := "POSTERN_MAYOR_KEY=" + rightsMayorKey + "\n" +
+		"POSTERN_MILL_KEY=" + rightsMillKey + "\n" +
+		"POSTERN_VAPID_PRIVATE_KEY=" + rightsVAPID + "\n" +
+		"POSTERN_COLLECTIONS=postern,second\n" +
+		"POSTERN_APPS=cairn=cairn\n"
+	if err := os.WriteFile(path, []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestRightsPrintsTheMapFromAnEnvFileWithNoAnchor(t *testing.T) {
+	envPath := writeRightsEnvNoAnchor(t)
+	var out, errOut bytes.Buffer
+	if code := runRights([]string{"--json", "--env-file", envPath}, os.Getenv, &out, &errOut); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	var got rightsOut
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	want := api.LicenceMap([]string{"postern", "second"}, []string{"cairn"}, map[string]string{"cairn": "cairn"})
+	if !reflect.DeepEqual(got.Collections, want) {
+		t.Fatalf("printed %v, want %v", got.Collections, want)
+	}
+}
+
+func TestRightsWithNoAnchorPrintsNoKeyOrSecret(t *testing.T) {
+	envPath := writeRightsEnvNoAnchor(t)
+	var out, errOut bytes.Buffer
+	if code := runRights([]string{"--json", "--env-file", envPath}, os.Getenv, &out, &errOut); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	for _, secret := range []string{rightsMayorKey, rightsMillKey, rightsVAPID} {
+		if strings.Contains(out.String(), secret) || strings.Contains(errOut.String(), secret) {
+			t.Fatalf("the output carries %q from the env file", secret)
+		}
+	}
+}
+
+func TestRightsStillRefusesAMalformedEnvFileWithNoAnchor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bad.env")
+	if err := os.WriteFile(path, []byte("POSTERN_COLLECTIONS=postern\nthis line is not a pair\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	if code := runRights([]string{"--json", "--env-file", path}, os.Getenv, &out, &errOut); code == 0 || out.Len() != 0 {
+		t.Fatalf("exit %d with output %q, want a failure that prints no map", code, out.String())
+	}
+}
+
+func TestRightsStillRefusesBadCollectionSettingsWithNoAnchor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bad.env")
+	if err := os.WriteFile(path, []byte("POSTERN_COLLECTIONS=postern\nPOSTERN_APPS=postern=cairn\nPOSTERN_MILL_KEY="+rightsMillKey+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	if code := runRights([]string{"--json", "--env-file", path}, os.Getenv, &out, &errOut); code == 0 || out.Len() != 0 {
+		t.Fatalf("exit %d with output %q, want a failure that prints no map", code, out.String())
+	}
+}

@@ -469,3 +469,26 @@ func TestLoadRejectsAnAlertsDomainThatIsNotAHostName(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadWithoutAnchorAcceptsNoAnchorButChecksTheRest(t *testing.T) {
+	cfg, err := LoadWithoutAnchor(func(key string) string {
+		if key == "POSTERN_COLLECTIONS" {
+			return "postern,second"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("LoadWithoutAnchor: %v", err)
+	}
+	if len(cfg.Collections) != 2 {
+		t.Fatalf("Collections = %v", cfg.Collections)
+	}
+	if _, err := LoadWithoutAnchor(func(key string) string {
+		if key == "POSTERN_MAYOR_KEY" {
+			return "nothex"
+		}
+		return ""
+	}); err == nil {
+		t.Fatal("expected LoadWithoutAnchor to still refuse a bad Mayor key")
+	}
+}

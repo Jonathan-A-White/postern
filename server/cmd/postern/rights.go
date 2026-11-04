@@ -16,7 +16,9 @@ import (
 // (POSTERN_COLLECTIONS, POSTERN_APPS, their defaults) and the gate's own
 // table (api.LicenceMap). It reads the env file and nothing else: no server
 // starts, no key is read, nothing is written, and only collection names, app
-// names and routes are printed. getenv is the environment used without
+// names and routes are printed. A map of collections has no use for the anchor
+// address (the home sets it in the unit, not the env file), so it is not
+// required here. getenv is the environment used without
 // --env-file. It returns the process's exit code.
 func runRights(args []string, getenv func(string) string, out, errOut io.Writer) int {
 	fs := flag.NewFlagSet("postern rights", flag.ContinueOnError)
@@ -40,7 +42,7 @@ func runRights(args []string, getenv func(string) string, out, errOut io.Writer)
 		}
 		getenv = func(key string) string { return env[key] }
 	}
-	cfg, err := config.Load(getenv)
+	cfg, err := config.LoadWithoutAnchor(getenv)
 	if err != nil {
 		fmt.Fprintf(errOut, "postern rights: loading config: %v\n", err)
 		return 1

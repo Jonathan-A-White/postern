@@ -142,6 +142,18 @@ func (c Config) TwilioConfigured() bool {
 // callers should pass os.Getenv), applying defaults for everything except
 // the anchor address, which has none.
 func Load(getenv func(string) string) (Config, error) {
+	return load(getenv, true)
+}
+
+// LoadWithoutAnchor is Load for a read that never polls the chain, such as
+// `postern rights`: every other setting is checked as Load checks it, but a
+// missing POSTERN_ANCHOR is no error (the home sets it in the unit, not the
+// env file). The backend itself starts through Load and still refuses it.
+func LoadWithoutAnchor(getenv func(string) string) (Config, error) {
+	return load(getenv, false)
+}
+
+func load(getenv func(string) string, needAnchor bool) (Config, error) {
 	cfg := Config{
 		Addr:            orDefault(getenv("POSTERN_ADDR"), defaultAddr),
 		Network:         orDefault(getenv("POSTERN_NETWORK"), defaultNetwork),
@@ -168,7 +180,7 @@ func Load(getenv func(string) string) (Config, error) {
 		AlertsSecret:     Secret(strings.TrimSpace(getenv("POSTERN_ALERTS_SECRET"))),
 	}
 
-	if cfg.Anchor == "" {
+	if needAnchor && cfg.Anchor == "" {
 		return Config{}, fmt.Errorf("POSTERN_ANCHOR is required (the anchor address to poll)")
 	}
 

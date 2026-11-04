@@ -44,6 +44,7 @@ async function openKeyScreen(): Promise<void> {
 
 async function issueTo(holder: string, count: number): Promise<void> {
   const section = screen.getByRole('region', { name: 'Issue a licence' });
+  await userEvent.selectOptions(within(section).getByLabelText('Collection'), 'postern');
   await userEvent.type(within(section).getByLabelText("Holder's public key"), holder);
   await userEvent.click(within(section).getByRole('button', { name: 'Issue' }));
   await userEvent.click(await within(section).findByRole('button', { name: 'Confirm issue' }));

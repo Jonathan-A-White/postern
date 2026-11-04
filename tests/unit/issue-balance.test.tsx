@@ -98,6 +98,7 @@ describe('the issue form balance line', () => {
     expect(screen.getByTestId('issue-cost')).toHaveTextContent('Balance: 50,000 sats.');
 
     const form = screen.getByRole('region', { name: 'Issue a licence' });
+    fireEvent.change(within(form).getByLabelText('Collection'), { target: { value: 'legend' } });
     fireEvent.change(within(form).getByLabelText("Holder's public key"), { target: { value: HOLDERS[0] } });
     fireEvent.click(within(form).getByRole('button', { name: 'Issue' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirm issue' }));

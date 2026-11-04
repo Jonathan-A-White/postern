@@ -37,6 +37,7 @@ describe('issuing three licences in a row against a rate-limited WhatsOnChain', 
     render(<IssueLicences issuerKey={ISSUER_MASTER} />);
     const issueSection = await screen.findByRole('region', { name: 'Issue a licence' });
     for (const [n, holder] of HOLDERS.entries()) {
+      await userEvent.selectOptions(within(issueSection).getByLabelText('Collection'), 'postern');
       await userEvent.type(within(issueSection).getByLabelText("Holder's public key"), holder);
       await userEvent.click(within(issueSection).getByRole('button', { name: 'Issue' }));
       await userEvent.click(await within(issueSection).findByRole('button', { name: 'Confirm issue' }));
@@ -71,6 +72,7 @@ describe('issuing three licences in a row against a rate-limited WhatsOnChain', 
     try {
       render(<IssueLicences issuerKey={ISSUER_MASTER} />);
       const issueSection = await screen.findByRole('region', { name: 'Issue a licence' });
+      await userEvent.selectOptions(within(issueSection).getByLabelText('Collection'), 'postern');
       await userEvent.type(within(issueSection).getByLabelText("Holder's public key"), HOLDERS[0]);
       await userEvent.click(within(issueSection).getByRole('button', { name: 'Issue' }));
       await userEvent.click(await within(issueSection).findByRole('button', { name: 'Confirm issue' }));

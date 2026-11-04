@@ -1988,11 +1988,15 @@ and goes the usual way once the backend answers:
 - **What it costs.** One small transaction: the miner fee at `chainConfig.feeRateSatPerKb`
   (a few satoshis for a record this size) plus the 1-sat anchor payment, from his own
   coins. Testnet today. A post sent on chain is final: it cannot be taken back.
-- **What he sees.** A typed post's bubble reads **Sent on chain HH:MM** in place of its plain
-  time, because its sent copy is kept under a transaction id and not a `direct:` id. The Talk line screen reads **Sent on chain HH:MM, txid <first 8 hex>…**
-  in place of **Call sent HH:MM**, until a ring or an answer arrives; the connection mark
-  keeps saying the backend is reconnecting. The sent copy is kept under the transaction id,
-  not a `direct:` id, and the backend's later echo of the same record lands on that row.
+- **What he sees.** A typed post's bubble reads **On chain, not yet received HH:MM** in place of its plain
+  time, because its sent copy is kept under a transaction id and not a `direct:` id: being on chain proves only
+  that WhatsOnChain took the transaction, not that the backend has seen it (mw-gq6.965: the poller had stopped
+  and the old words, 'Sent on chain', read as delivered). It reads **Received on chain HH:MM** once the backend's
+  own copy of the record has come back (its row carries a real `seq`, not the phone's placeholder). The Talk line
+  screen reads **On chain, not yet received HH:MM, txid <first 8 hex>…** (then **Received on chain …**) in place of
+  **Call sent HH:MM**, until a ring or an answer arrives; the connection mark keeps saying the backend is
+  reconnecting. The sent copy is kept under the transaction id, not a `direct:` id, and the backend's later echo
+  of the same record lands on that row.
 
 ### The phone reads the chain itself
 

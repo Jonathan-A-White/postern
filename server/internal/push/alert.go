@@ -15,12 +15,13 @@ import (
 // ring and an emergency. A subscription whose service says it is gone is
 // dropped, as NotifyRecord does.
 func (s *Sender) NotifyKeys(keys []string, payload Payload) (int, error) {
-	return s.notifyEach(keys, payload, func(Subscription) Payload { return payload })
+	return s.notifyEach(keys, payload, func(Subscription) (Payload, bool) { return payload, true })
 }
 
-// notifyEach pushes to every subscription of keys what pick says that subscription gets; class
-// names the push in the one log line for a key withheld in Ideas only.
-func (s *Sender) notifyEach(keys []string, class Payload, pick func(Subscription) Payload) (int, error) {
+// notifyEach pushes to every subscription of keys what pick says that subscription gets, or nothing
+// when pick says false (such a subscription is neither sent to nor counted); class names the push
+// in the one log line for a key withheld in Ideas only.
+func (s *Sender) notifyEach(keys []string, class Payload, pick func(Subscription) (Payload, bool)) (int, error) {
 	var errs []error
 	sent := 0
 	for _, key := range keys {
@@ -31,15 +32,19 @@ func (s *Sender) notifyEach(keys []string, class Payload, pick func(Subscription
 			}
 		}
 		for _, sub := range s.store.ByPublicKey(key) {
-			body, err := json.Marshal(pick(sub))
+			payload, ok := pick(sub)
+			if !ok {
+				continue
+			}
+			body, err := json.Marshal(payload)
 			if err != nil {
 				return sent, fmt.Errorf("marshaling push payload: %w", err)
 			}
-			ok, err := s.deliver(sub, body, defaultTTL)
+			delivered, err := s.deliver(sub, body, defaultTTL)
 			if err != nil {
 				errs = append(errs, err)
 			}
-			if ok {
+			if delivered {
 				sent++
 			}
 		}
@@ -61,21 +66,24 @@ type AlertFacts struct {
 // NotifyAlert pushes a new alert to every subscription of keys, as NotifyKeys does, but a charge
 // goes with its amount, merchant, last four and id to a subscription that sent a list of cards
 // when the charge's card is on that list, the charge has no card, or no subscription anywhere
-// lists that card (the app's "anyone"). Every other subscription, and every subscription that
-// sent no list, gets the bare notice, whatever the alert. Nothing about the charge is logged.
+// lists that card (the app's "anyone"). A subscription with a list that does not name the charge's
+// card, while another's list does, gets no push at all (it is not the person's charge). A
+// subscription that sent no list gets the bare notice, whatever the alert, and so does every
+// subscription for an alert that is not a charge. Nothing about the charge is logged, and a
+// withheld push has no log line (the sent count leaves it out).
 func (s *Sender) NotifyAlert(keys []string, ts int64, facts AlertFacts) (int, error) {
 	bare := Payload{Class: "alert", Ts: ts, Title: "New alert"}
 	full := bare
 	full.Amount, full.Merchant, full.Last4, full.AlertID = facts.Amount, facts.Merchant, facts.Last4, facts.ID
 	anyone := facts.Charge && (facts.Last4 == "" || !s.store.Claims(facts.Last4))
-	return s.notifyEach(keys, bare, func(sub Subscription) Payload {
+	return s.notifyEach(keys, bare, func(sub Subscription) (Payload, bool) {
 		if !facts.Charge || len(sub.Last4s) == 0 {
-			return bare
+			return bare, true
 		}
 		if anyone || containsString(sub.Last4s, facts.Last4) {
-			return full
+			return full, true
 		}
-		return bare
+		return Payload{}, false
 	})
 }
 

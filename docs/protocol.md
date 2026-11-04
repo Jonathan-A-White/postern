@@ -2592,11 +2592,17 @@ alert has none) and `"id"`, the alert's id, beside the bare push's three. Whethe
 decided per subscription, by the `last4s` it sent (§9 item 6): a list of at most 32 card last fours.
 
 - A subscription that sent a list gets the facts when the charge's `last4` is on its list, or the charge has no
-  `last4`, or no subscription anywhere lists that `last4` (the app's "anyone"). Otherwise it gets the bare push.
+  `last4`, or no subscription anywhere lists that `last4` (the app's "anyone"). Otherwise (another
+  subscription's list names the `last4`, and its own does not) it gets **no push at all**: the charge is not that
+  person's.
 - A subscription that sent no list (a cockpit key, an older app) gets the bare push for every alert.
 - An alert that is not a charge (`amazon`, `unread`, `forward-confirm`) is pushed bare to every subscription.
 
 The backend keeps only the lists. It keeps no card name and no owner: which person a card is, and which
 charges a phone shows, stay in the app. The facts are never written to a log line. Two keys on one phone are two
-subscriptions, each judged by its own list. A phone sent the bare push shows nothing of the charge.
+subscriptions, each judged by its own list. A phone with no list, sent the bare push, shows nothing of the
+charge. A phone with a list that names another card is sent no push, so that push does not tell its open page to
+read the feed either; the charge reaches that phone when the app is opened, on pull-to-refresh and on a return to
+the app, and it is fine for a charge that is not that person's to wait for the next read. The choice of no push
+is provisional, as the facts in the push are, until the Governor confirms it (`mw-mr4xgrw.34`).
 A subscription its push service says is gone is dropped, as for any push.

@@ -174,15 +174,23 @@ func wantBare(t *testing.T, got []Payload) {
 	}
 }
 
-func TestAListedCardGetsTheChargeToItsOwnerOnlyAndTheBareAlertToTheRest(t *testing.T) {
+// Changed by mw-mr4xgrw.38: until then the lists of the other cards got the bare push here (count 4).
+func wantNone(t *testing.T, got []Payload) {
+	t.Helper()
+	if len(got) != 0 {
+		t.Fatalf("got %d pushes (%+v), want none", len(got), got)
+	}
+}
+
+func TestAListedCardGetsTheChargeToItsOwnerAndNoPushToTheOtherListsAndTheBareAlertToNoList(t *testing.T) {
 	sender, rec, _ := alertFamily(t)
-	if sent, err := sender.NotifyAlert(allKeys, 5, charge("2222")); err != nil || sent != 4 {
-		t.Fatalf("NotifyAlert = %d, %v, want 4", sent, err)
+	if sent, err := sender.NotifyAlert(allKeys, 5, charge("2222")); err != nil || sent != 2 {
+		t.Fatalf("NotifyAlert = %d, %v, want 2 (the owner and the phone with no list)", sent, err)
 	}
 	wantFull(t, rec.got["/ann2"], charge("2222"))
-	wantBare(t, rec.got["/ann1"])
-	wantBare(t, rec.got["/ben"])
 	wantBare(t, rec.got["/cy"])
+	wantNone(t, rec.got["/ann1"])
+	wantNone(t, rec.got["/ben"])
 }
 
 func TestAChargeWithNoLast4GoesInFullToEverySubscriptionWithAList(t *testing.T) {

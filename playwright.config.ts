@@ -41,6 +41,9 @@ export default defineConfig({
   // pwa-kit/test-preset: a test's 60 s and expect()'s 20 s (its own wait is 5 s) on a loaded host (mw-40qzg4.1).
   ...playwrightTimeouts,
   fullyParallel: false,
+  // One more run, on a fresh browser, for a test whose page setup the watch stopped because the page's target detached
+  // (mw-gq6.946); every other failure is marked not to be retried by the watch, so it fails once, as it always did.
+  retries: 1,
   reporter: 'list',
   use: {
     baseURL: PREVIEW_BASE_URL,

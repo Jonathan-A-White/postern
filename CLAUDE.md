@@ -60,7 +60,9 @@ npm run test:e2e     # playwright, against `npm run preview`
   the `tests/e2e/*.spec.ts` the branch changed at 360x640 and 1280x800 too; no changed spec, no extra run.
 - A context or page still not set up at 30 s puts a `page-setup-watch:` line in the run's output (`tests/support/page-setup-watch.ts`):
   the calls with no answer, the browser's processes, the host's load and memory. Read that line in the gate log first after a
-  `while setting up "page"` timeout.
+  `while setting up "page"` timeout. A setup whose page target detaches (`Inspector.detached`, 'Render process gone.') is
+  stopped at once with a `page setup stopped` line, and only such a test gets the config's `retries: 1`: the watch marks
+  every other failure not to be retried.
 
 ## Layout
 

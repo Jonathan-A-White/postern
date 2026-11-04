@@ -168,10 +168,159 @@ describe('PageSetupWatch', () => {
   });
 });
 
+// mw-gq6.946: two after-landing shots tests waited 2 minutes on page setups whose renderer was gone: Chrome detached the
+// page's inspector ('Render process gone.') and closed nothing, and Playwright 1.63 waits only on answers and on a close.
+describe('PageSetupWatch: a page whose target detached during its setup', () => {
+  const detach = (session: string, reason = 'Render process gone.') =>
+    `2026-11-04T00:08:07.938Z pw:protocol ◀ RECV {"method":"Inspector.detached","params":{"reason":"${reason}"},"sessionId":"${session}"}`;
+
+  function setupOnSession(session: string) {
+    const clock = watchOnAClock();
+    clock.send(1, 'Target.createTarget');
+    clock.answer(1);
+    clock.watch.heard(`2026-11-04T00:08:07.938Z pw:protocol SEND ► {"id":2,"method":"Runtime.runIfWaitingForDebugger","sessionId":"OMNIBOX"}`);
+    clock.watch.heard(`2026-11-04T00:08:07.938Z pw:protocol SEND ► {"id":3,"method":"Page.enable","sessionId":"${session}"}`);
+    return clock;
+  }
+
+  it('names the detach, its reason, and whether it was the page or another target', () => {
+    const { watch, lines, advance } = setupOnSession('PAGE');
+    watch.heard(detach('OMNIBOX'));
+    advance(30_000);
+    expect(lines[0]).toContain('last from the browser 30.0 s ago: Inspector.detached (Render process gone.) from another target');
+    watch.heard(detach('PAGE'));
+    advance(70_000);
+    expect(lines[1]).toContain('Inspector.detached (Render process gone.) from the page');
+  });
+
+  it("tells whoever waits on the page's session, once, and not for another session's detach", () => {
+    const { watch } = setupOnSession('PAGE');
+    const heard: string[] = [];
+    watch.whenDetached('PAGE', (reason) => heard.push(reason));
+    watch.heard(detach('OMNIBOX'));
+    expect(heard).toEqual([]);
+    watch.heard(detach('PAGE'));
+    watch.heard(detach('PAGE'));
+    expect(heard).toEqual(['Render process gone.']);
+  });
+
+  it('a wait that begins after the detach hears it at once', () => {
+    const { watch } = setupOnSession('PAGE');
+    watch.heard(detach('PAGE'));
+    const heard: string[] = [];
+    watch.whenDetached('PAGE', (reason) => heard.push(reason));
+    expect(heard).toEqual(['Render process gone.']);
+  });
+
+  it('a wait that stops listening hears nothing', () => {
+    const { watch } = setupOnSession('PAGE');
+    const heard: string[] = [];
+    watch.whenDetached('PAGE', (reason) => heard.push(reason))();
+    watch.heard(detach('PAGE'));
+    expect(heard).toEqual([]);
+  });
+
+  it('stopping the setup says why, with the calls and the host, gives the error, and says nothing more', () => {
+    const { watch, lines, advance, send } = setupOnSession('PAGE');
+    advance(22_000);
+    watch.heard(detach('PAGE'));
+    const error = watch.stopSetup('Render process gone.');
+    expect(error).toBe(
+      "page-setup-watch: the page's target detached during its setup (Render process gone.), so nothing is left to answer it: stopped after 22 s, not at the test timeout, and the test may run once more on a fresh browser",
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^page-setup-watch: worker 3: page setup stopped after 22 s: the page's target detached during its setup \(Render process gone\.\)/);
+    expect(lines[0]).toContain('no answer to Runtime.runIfWaitingForDebugger (22.0 s), Page.enable (22.0 s)');
+    expect(lines[0]).toContain('load 27.3 of 16');
+    expect(lines[0]).toMatch(/the test may run once more, on a fresh browser$/);
+    expect(watch.said()).toEqual(lines);
+    send(4, 'Target.closeTarget');
+    advance(120_000);
+    expect(lines).toHaveLength(1);
+  });
+
+  it('closes the setup when the browser is closed, whose call has an id below zero', () => {
+    const { lines, advance, send } = watchOnAClock();
+    send(1, 'Target.createTarget');
+    advance(1000);
+    send(-9999, 'Browser.close');
+    advance(120_000);
+    expect(lines).toEqual([]);
+  });
+});
+
+describe('PageSetupWatch: what may run again', () => {
+  const dispatch = (method: string, params: Record<string, unknown>) => ({ method: '__dispatch__', params: { method, params } });
+  const testEnd = (testId: string) => dispatch('testEnd', { testId, status: 'failed', hasNonRetriableError: false, errors: [] });
+
+  function stoppedIn(testId: string) {
+    const { watch, send } = watchOnAClock();
+    watch.toRunner(dispatch('testBegin', { testId }));
+    send(1, 'Target.createTarget');
+    watch.stopSetup('Render process gone.');
+    return watch;
+  }
+
+  it('a test that failed on its own is marked not to be retried, so the config\'s retry never reaches it', () => {
+    const { watch } = watchOnAClock();
+    watch.toRunner(dispatch('testBegin', { testId: 'own-assertion' }));
+    expect(watch.toRunner(testEnd('own-assertion'))).toEqual(dispatch('testEnd', { testId: 'own-assertion', status: 'failed', hasNonRetriableError: true, errors: [] }));
+  });
+
+  it('a test whose setup the watch stopped is left to be retried, once', () => {
+    const watch = stoppedIn('stopped');
+    expect(watch.toRunner(testEnd('stopped'))).toEqual(testEnd('stopped'));
+    watch.toRunner(dispatch('testBegin', { testId: 'stopped' }));
+    expect((watch.toRunner(testEnd('stopped')) as ReturnType<typeof testEnd>).params.params.hasNonRetriableError).toBe(true);
+  });
+
+  it('a stop belongs to the test it happened in, not the next one', () => {
+    const watch = stoppedIn('stopped');
+    watch.toRunner(testEnd('stopped'));
+    watch.toRunner(dispatch('testBegin', { testId: 'next' }));
+    expect((watch.toRunner(testEnd('next')) as ReturnType<typeof testEnd>).params.params.hasNonRetriableError).toBe(true);
+  });
+
+  it('passes every other message as it came', () => {
+    const { watch } = watchOnAClock();
+    for (const message of [{ method: '__heartbeat__' }, dispatch('stepBegin', { testId: 'a' }), { method: '__dispatch__', params: { id: 4, result: {} } }, undefined]) {
+      expect(watch.toRunner(message)).toBe(message);
+    }
+  });
+});
+
+// The watch leans on Playwright's insides in three places; this says which moved, when one does.
+describe('Playwright 1.63, as the watch uses it', () => {
+  const read = (file: string) => readFileSync(path.join(process.cwd(), 'node_modules', file), 'utf-8');
+
+  it('a worker tells the runner about a test end with hasNonRetriableError, through process.send', () => {
+    const worker = read('playwright/lib/worker/workerProcessEntry.js');
+    expect(worker).toContain('this.dispatchEvent("testBegin", buildTestBeginPayload(testInfo))');
+    expect(worker).toContain('this.dispatchEvent("testEnd", buildTestEndPayload(testInfo))');
+    expect(worker).toContain('hasNonRetriableError: testInfo._hasNonRetriableError');
+    const common = read('playwright/lib/common/index.js');
+    expect(common).toContain('sendMessageToParent({ method: "__dispatch__", params: response })');
+    expect(common).toContain('process.send(message)');
+    expect(read('playwright/lib/runner/index.js')).toContain('if (this._failedWithNonRetriableError.has(failedTest))');
+  });
+
+  it("a new page waits on waitForInitializedOrError, and a Chromium page's session id sits where the watch reads it", () => {
+    const core = read('playwright-core/lib/coreBundle.js');
+    expect(core).toContain('const pageOrError = await progress2.race(page.waitForInitializedOrError());');
+    expect(core).toContain('this._mainFrameSession = new FrameSession(this, client, targetId, null);');
+    expect(core).toContain('this._sessionId = sessionId;');
+    expect(core).not.toContain('"Inspector.detached"');
+  });
+});
+
 describe('playwright.config.ts', () => {
   const source = readFileSync(path.join(process.cwd(), 'playwright.config.ts'), 'utf-8');
 
   it('starts the watch in the workers only, where the browsers are', () => {
     expect(source).toMatch(/TEST_WORKER_INDEX !== undefined[^\n]*startPageSetupWatch\(\)/);
+  });
+
+  it('gives one retry, which the watch keeps for the setups it stopped', () => {
+    expect(source).toMatch(/^ {2}retries: 1,$/m);
   });
 });

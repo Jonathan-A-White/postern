@@ -677,6 +677,12 @@ The backend:
    for the Mayor's ring (a `call` record whose clear `role` is `ring`), which is pushed too,
    titled `The Mayor is calling`, its `summary` the body (§21). While the recipient's key is in
    Ideas only (§25) that push is withheld, but for a ring and an emergency per the key's `reaches`.
+   A subscription (`POST /api/push/subscribe`, `docs/api.md`) may also carry an optional `last4s`, the card last
+   fours it is for. Only a new alert's push reads it (§26, The push); a record's push, above, ignores it. The
+   Governor chose this in his tap of 2026-11-04 21:26:54Z, txid
+   `direct:2896ceb59067b0307cf66916b1934daa275b5df595a9ffd22f19b45d7fed2774`, answering A, "Put amount, store and
+   card in the ping", on the card `direct:8d0849af945bab42bedbad06c34d85e1888f45dcc60c6631095cf078d9279acc`
+   (`mw-mr4xgrw.17`).
 
 A body over 256 KiB is refused `413`. The chain channel (§4) keeps working
 unchanged: a reader must accept both kinds of record, in `seq` order.
@@ -2575,7 +2581,22 @@ Only the facts in the table, in `alerts.json` under `POSTERN_DATA`, with the tim
 ### The push
 
 When an inbound alert is stored, the backend pushes every push subscription of every key of the family (`POST
-/api/push/subscribe`, §9 item 6), whether the subscribing key is a cockpit key or an app key. The push is
-`{"class": "alert", "title": "New alert", "ts": <Unix seconds>}` and nothing else: no amount, merchant, card or
-subject leaves the backend in a push; the app opens and reads its feed. A key in Ideas only (§25) is not pushed.
+/api/push/subscribe`, §9 item 6), whether the subscribing key is a cockpit key or an app key. The bare push is
+`{"class": "alert", "title": "New alert", "ts": <Unix seconds>}`: no amount, merchant, card or subject.
+
+By the Governor's tap of 2026-11-04 21:26:54Z (txid
+`direct:2896ceb59067b0307cf66916b1934daa275b5df595a9ffd22f19b45d7fed2774`, A, "Put amount, store and card in the
+ping", on the card `direct:8d0849af945bab42bedbad06c34d85e1888f45dcc60c6631095cf078d9279acc`, `mw-mr4xgrw.17`) a
+**charge's** push may carry its facts: `"amount"`, `"merchant"`, `"last4"` (each as stored, and left out when the
+alert has none) and `"id"`, the alert's id, beside the bare push's three. Whether a subscription gets them is
+decided per subscription, by the `last4s` it sent (§9 item 6): a list of at most 32 card last fours.
+
+- A subscription that sent a list gets the facts when the charge's `last4` is on its list, or the charge has no
+  `last4`, or no subscription anywhere lists that `last4` (the app's "anyone"). Otherwise it gets the bare push.
+- A subscription that sent no list (a cockpit key, an older app) gets the bare push for every alert.
+- An alert that is not a charge (`amazon`, `unread`, `forward-confirm`) is pushed bare to every subscription.
+
+The backend keeps only the lists. It keeps no card name and no owner: which person a card is, and which
+charges a phone shows, stay in the app. The facts are never written to a log line. Two keys on one phone are two
+subscriptions, each judged by its own list. A phone sent the bare push shows nothing of the charge.
 A subscription its push service says is gone is dropped, as for any push.

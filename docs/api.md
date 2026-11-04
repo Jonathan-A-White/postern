@@ -498,15 +498,21 @@ triggers a push to it.
     "subscription": {
       "endpoint": "https://...",
       "keys": { "p256dh": "<base64url>", "auth": "<base64url>" }
-    }
+    },
+    "last4s": ["1234", "5678"]
   }
   ```
 
+  `last4s` is optional: the card last fours this device is for, at most 32, each 1 to 4 digits (repeats are
+  kept once; an empty list is no list). A new alert's push reads it (`docs/protocol.md` §26, The push): a charge's
+  amount, merchant, card and id go to a subscription that names the card, and every other gets the bare "New
+  alert". A subscription with no list gets the bare push for every alert.
+
 - `200 application/json` — `{}` on success. Re-subscribing with the same
-  `endpoint` replaces the stored subscription (its `pubkey` and keys, if
-  either changed).
-- `400` — the body isn't valid JSON, or `pubkey`/`subscription.endpoint` is
-  missing.
+  `endpoint` replaces the stored subscription (its `pubkey`, keys and `last4s`,
+  if any changed; a re-subscribe with no `last4s` leaves none).
+- `400` — the body isn't valid JSON, `pubkey`/`subscription.endpoint` is
+  missing, or `last4s` is not a list of at most 32 strings of 1 to 4 digits.
 - `403` — `pubkey` is not the key that signed the request: a key subscribes only
   its own pushes.
 

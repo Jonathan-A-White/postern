@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.83
+_2026-11-04_
+- Fixed: Issuing a licence no longer starts on the Postern collection, and says plainly when a licence would give the holder full access to Postern.
+
 ## 0.8.79
 _2026-11-03_
 - Fixed: opening a prompt's channel no longer says nothing has been said while the phone is still reading it or cannot reach the Mayor.

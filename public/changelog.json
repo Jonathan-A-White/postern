@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.83",
+    "date": "2026-11-04",
+    "story": "mw-gq6.949",
+    "kind": "fixed",
+    "text": "Issuing a licence no longer starts on the Postern collection, and says plainly when a licence would give the holder full access to Postern."
+  },
+  {
     "version": "0.8.79",
     "date": "2026-11-03",
     "story": "mw-gq6.910",

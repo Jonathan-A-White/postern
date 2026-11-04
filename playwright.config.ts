@@ -5,11 +5,15 @@ import { join } from 'node:path';
 import { playwrightTimeouts, playwrightTimingFilter } from 'pwa-kit/test-preset';
 import { stopLeftoverPreview } from './scripts/preview-guard.mjs';
 import { startPageSetupWatch } from './tests/support/page-setup-watch';
-import { previewPort, reuseExistingPreview } from './tests/support/preview-port';
+import { portIsFree, resolvePreviewPort, reuseExistingPreview } from './tests/support/preview-port';
 import { shotSize } from './tests/support/shot-size';
 
-// One preview server per worktree: see tests/support/preview-port.ts.
-const PREVIEW_PORT = previewPort(process.cwd());
+// One preview server per worktree, on its hashed port or the next free one: see tests/support/preview-port.ts.
+// A leftover preview of this checkout on a candidate port is stopped before the port is asked about.
+const PREVIEW_PORT = resolvePreviewPort(process.cwd(), process.env, (port) => {
+  if (!reuseExistingPreview()) stopLeftoverPreview(port);
+  return portIsFree(port);
+});
 const PREVIEW_BASE_URL = `http://localhost:${PREVIEW_PORT}`;
 
 // A vite preview of this checkout left on the port by an earlier run would fail this one ("already

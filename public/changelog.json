@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.87",
+    "date": "2026-11-04",
+    "story": "mw-mr4xgrw.38",
+    "kind": "fixed",
+    "text": "a card charge no longer pings the phone of the person whose card it is not."
+  },
+  {
     "version": "0.8.85",
     "date": "2026-11-04",
     "story": "mw-gq6.965",

@@ -1,7 +1,7 @@
 {
-  "version": "0.8.84",
-  "commit": "7536870a",
-  "published_at": "2026-11-04T07:38:43.129Z",
+  "version": "0.8.85",
+  "commit": "a16cd464",
+  "published_at": "2026-11-04T18:21:58.103Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1241,6 +1241,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/scroll-back-thread.png"
+    },
+    {
+      "name": "390x844/sent-state.png",
+      "screen": "sent-state",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/sent-state.png"
+    },
+    {
+      "name": "360x640/sent-state.png",
+      "screen": "sent-state",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/sent-state.png"
+    },
+    {
+      "name": "1280x800/sent-state.png",
+      "screen": "sent-state",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/sent-state.png"
     },
     {
       "name": "390x844/speaking-bar-paused-390.png",

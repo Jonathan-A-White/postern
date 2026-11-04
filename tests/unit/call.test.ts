@@ -92,9 +92,16 @@ describe('how the waiting request went', () => {
 
   it('says its time and txid, and a direct id is not on chain', () => {
     const direct = row({ id: `direct:${'e'.repeat(64)}:0`, txid: `direct:${'e'.repeat(64)}`, plaintext });
-    expect(callSent([direct])).toEqual({ at: 1000, txid: direct.txid, onChain: false });
+    expect(callSent([direct])).toEqual({ at: 1000, txid: direct.txid, onChain: false, received: true });
+    const chain = row({ id: `${'f'.repeat(64)}:0`, txid: 'f'.repeat(64), plaintext, seq: Number.MAX_SAFE_INTEGER });
+    expect(callSent([chain])).toEqual({ at: 1000, txid: 'f'.repeat(64), onChain: true, received: false });
+  });
+
+  // mw-gq6.965: on chain proves only that WhatsOnChain took it; the backend's own copy of the record (a real seq) is the Mayor's side having it.
+  it('is received once the backend has its record, and not before', () => {
     const chain = row({ id: `${'f'.repeat(64)}:0`, txid: 'f'.repeat(64), plaintext });
-    expect(callSent([chain])).toEqual({ at: 1000, txid: 'f'.repeat(64), onChain: true });
+    expect(callSent([{ ...chain, seq: Number.MAX_SAFE_INTEGER }])?.received).toBe(false);
+    expect(callSent([{ ...chain, seq: 77 }])?.received).toBe(true);
   });
 
   it('is nothing once the Mayor has answered', () => {

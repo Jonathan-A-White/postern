@@ -3,7 +3,9 @@
 // message left out, and a voice note's transcript folded under it. And one
 // search box finds beads, comments and messages.
 import { describe, it, expect } from 'vitest';
-import { answersGiven, mergeConversation, previewText, speakerOfComment } from '../../src/model/conversation';
+import { answersGiven, itemFromMessage, mergeConversation, previewText, sentWords, speakerOfComment } from '../../src/model/conversation';
+import { pendingMessageItems } from '../../src/model/outbox';
+import type { OutboxRow } from '../../src/data/db';
 import { beadIdQuery, search } from '../../src/model/search';
 import { encodeQuestion, encodeReply } from '../../src/services/questions';
 import { encodeThreadedMessage } from '../../src/services/threads';
@@ -212,5 +214,40 @@ describe('answersGiven (mw-f758y.32)', () => {
   it("ignores another bead's answer and an answer older than the question", () => {
     const items = mergeConversation([answer('b', 'A', 50), ask('b', 100), answer('other', 'B', 160)]);
     expect(answersGiven(items).size).toBe(0);
+  });
+});
+
+// mw-gq6.965: a message he sent on chain from the phone said 'Sent on chain' as if it had reached the Mayor, though
+// it proves only that WhatsOnChain took it; the Mayor's side had not seen it for six days. A sent row says what is
+// known: on chain, not yet received, until the backend's own copy of the record (a real seq) has come back.
+describe('what a sent row says of a message sent on chain', () => {
+  const chainTxid = 'c'.repeat(64);
+  const sent = (overrides: Partial<MessageRow>): MessageRow => row('hello', { direction: 'sent', read: true, txid: chainTxid, id: `${chainTxid}:0`, ...overrides });
+
+  it('is not yet received while the row carries no backend sequence number', () => {
+    const item = itemFromMessage(sent({ seq: Number.MAX_SAFE_INTEGER }));
+    expect(item.onChain).toBe(true);
+    expect(item.onChainReceived).toBeFalsy();
+    expect(sentWords(item, '11:51 AM')).toBe('On chain, not yet received 11:51 AM');
+  });
+
+  it('is received once the backend has indexed it and the sync brought its sequence number back', () => {
+    const item = itemFromMessage(sent({ seq: 405_810 }));
+    expect(item.onChain).toBe(true);
+    expect(item.onChainReceived).toBe(true);
+    expect(sentWords(item, '11:51 AM')).toBe('Received on chain 11:51 AM');
+  });
+
+  it('is only the time for a message the backend took directly', () => {
+    const item = itemFromMessage(sent({ txid: `direct:${chainTxid}`, id: `direct:${chainTxid}:0` }));
+    expect(item.onChain).toBeFalsy();
+    expect(sentWords(item, '11:55 AM')).toBe('11:55 AM');
+  });
+
+  it('is not yet received for a chain post still in the outbox, whose own record has not come back', () => {
+    const outbox = { id: 1, kind: 'message', bead: '', payload: { text: 'hi', files: [] }, state: 'sent', attempts: 1, created: 1, txid: chainTxid } as OutboxRow;
+    const item = pendingMessageItems([outbox], [], () => true)[0];
+    expect(item.onChain).toBe(true);
+    expect(sentWords(item, '11:51 AM')).toBe('On chain, not yet received 11:51 AM');
   });
 });

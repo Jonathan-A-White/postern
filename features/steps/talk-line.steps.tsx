@@ -15,8 +15,9 @@ import { db, type MessageRow } from '../../src/data/db';
 import { ANCHOR_ADDRESS, decryptMessage, type MessagePayload } from '../../src/services/messages';
 import { decodeTurn, deliverTurn, encodeTurn } from '../../src/services/talk';
 import { decodeCall, deliverCallRequest } from '../../src/services/call';
+import { storeRecord } from '../../src/services/inbox';
 import { deliver, deliverThreaded, settledWrites, type Delivered } from '../../src/services/deliver';
-import { itemFromMessage } from '../../src/model/conversation';
+import { itemFromMessage, sentWords } from '../../src/model/conversation';
 import type { Attachment } from '../../src/services/threads';
 import { notificationSpecForTalkAnswer } from '../../src/push/classOptions';
 import { initialTalkLine, isLateAnswer, talkLine, turnRecords, TURN_TEXT_MAX_BYTES, type TalkLineEvent, type TalkLineState, type TalkTurn } from '../../src/model/talkLine';
@@ -567,12 +568,35 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(delivered?.channel).toBe('chain');
       const kept = await db.messages.get(`${delivered?.txid}:0`);
       expect(kept?.class).toBe('message');
-      expect(itemFromMessage(kept as MessageRow).onChain).toBe(true);
-      expect(words).toBe('Sent on chain');
+      expect(sentWords(itemFromMessage(kept as MessageRow), '11:51 AM')).toBe(`${words} 11:51 AM`);
     });
     And('WhatsOnChain was sent one section 4 transaction with the record, the anchor payment and change', () => {
       expect(down.broadcasts).toHaveLength(1);
       expect(broadcastTx().outputs).toHaveLength(3);
+    });
+  });
+
+  Scenario('mw-gq6.965 AC-5: a post sent on chain reads received only once the backend has its record', ({ Given, When, Then }) => {
+    Given("the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin", mayorKnownBackendDown);
+    When('he delivers a message saying {string} while the phone is offline', async (_c, text: string) => {
+      delivered = await deliver(text, 'message', chainOptions({ offline: true }));
+      await settledWrites();
+    });
+    Then('the message went on chain and its sent row reads {string}', async (_c, words: string) => {
+      const kept = (await db.messages.get(`${delivered?.txid}:0`)) as MessageRow;
+      expect(sentWords(itemFromMessage(kept), '11:51 AM')).toBe(`${words} 11:51 AM`);
+    });
+    When("the backend's own copy of that record comes back", async () => {
+      const kept = (await db.messages.get(`${delivered?.txid}:0`)) as MessageRow;
+      await storeRecord(
+        { seq: 405_810, txid: kept.txid, vout: 0, payload: { v: 1, kind: 'msg', class: kept.class, to: kept.to, from: kept.from, ts: kept.ts, ct: kept.ciphertext } as MessagePayload },
+        HIM_PUB,
+        HIM_KEY,
+      );
+    });
+    Then('its sent row reads {string}', async (_c, words: string) => {
+      const kept = (await db.messages.get(`${delivered?.txid}:0`)) as MessageRow;
+      expect(sentWords(itemFromMessage(kept), '11:51 AM')).toBe(`${words} 11:51 AM`);
     });
   });
 

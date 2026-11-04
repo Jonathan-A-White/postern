@@ -1855,7 +1855,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   });
 
   // mw-a0ih0.4: Call me with the backend out of reach goes on chain.
-  Scenario('AC-3: Call me while the phone knows the backend is unreachable goes on chain and the screen says Sent on chain (mw-a0ih0.4, the phone must know it since mw-o14xubc)', ({ Given, When, Then, And }) => {
+  Scenario('AC-3: Call me while the phone knows the backend is unreachable goes on chain and the screen says On chain, not yet received (mw-a0ih0.4, the phone must know it since mw-o14xubc)', ({ Given, When, Then, And }) => {
     let down: BackendDownWoc;
     Given('the time is 14:05 and the Talk line is open with a believable speech recogniser', async () => {
       clock.at = at1405 * 1000;

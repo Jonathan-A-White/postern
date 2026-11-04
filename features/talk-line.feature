@@ -214,8 +214,15 @@ Feature: Talk line turns are records of their own, and the line is a small state
   Scenario: AC-3: a typed post goes on chain when the phone knows the backend cannot be reached (mw-a0ih0.12, the phone must know it since mw-o14xubc)
     Given the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin
     When he delivers a message saying "Hello" while the phone is offline
-    Then the message went on chain and its sent row reads "Sent on chain"
+    Then the message went on chain and its sent row reads "On chain, not yet received"
     And WhatsOnChain was sent one section 4 transaction with the record, the anchor payment and change
+
+  Scenario: mw-gq6.965 AC-5: a post sent on chain reads received only once the backend has its record
+    Given the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin
+    When he delivers a message saying "Hello" while the phone is offline
+    Then the message went on chain and its sent row reads "On chain, not yet received"
+    When the backend's own copy of that record comes back
+    Then its sent row reads "Received on chain"
 
   Scenario: AC-3: a post with a picture does not go on chain, it waits (mw-a0ih0.12)
     Given the Mayor's key is known, the backend cannot be reached and WhatsOnChain lists one coin

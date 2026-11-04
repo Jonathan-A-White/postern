@@ -221,7 +221,7 @@ const CALL_LENGTH_ID = 'call-length';
  * Leaves the Mayor a note to call him back (docs/protocol.md §21): a tap opens a short
  * field, prefilled "Call me", and Send delivers it as a call record. Under the presence mark
  * it says "Call sent HH:MM" until the Mayor rings or answers; a request that went on chain, with the
- * backend out of reach, says "Sent on chain HH:MM, txid <short>" instead (§21).
+ * backend out of reach, says "On chain, not yet received HH:MM, txid <short>" instead (§21).
  */
 function CallMe({ open, onClose, onRecorded }: { open: boolean; onClose: () => void; onRecorded: (words: string | undefined) => void }) {
   const recorded = useRecordedWords();
@@ -677,7 +677,9 @@ export function TalkLineScreen() {
         )}
         {callSent !== undefined && (
           <p data-testid="call-sent" className="text-center text-[11.5px] text-faint">
-            {callSent.onChain ? `Sent on chain ${clockHHMM(callSent.at)}, txid ${callSent.txid.slice(0, 8)}…` : `Call sent ${clockHHMM(callSent.at)}`}
+            {callSent.onChain
+              ? `${callSent.received ? 'Received on chain' : 'On chain, not yet received'} ${clockHHMM(callSent.at)}, txid ${callSent.txid.slice(0, 8)}…`
+              : `Call sent ${clockHHMM(callSent.at)}`}
           </p>
         )}
 

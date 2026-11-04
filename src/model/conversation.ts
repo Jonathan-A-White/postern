@@ -62,6 +62,9 @@ export interface ConversationItem {
   txid?: string;
   /** His own post went on chain from the phone, not through the backend (docs/protocol.md §21): its id is a transaction, not a `direct:` name. */
   onChain?: boolean;
+  /** An on-chain post whose record the backend has indexed and the sync has brought back (a real `seq`): the Mayor's side has it.
+   * Until then the post is only on chain, which proves WhatsOnChain took it and nothing more (mw-gq6.965). */
+  onChainReceived?: boolean;
   /** The txid this message answers or annotates (its record's `re`), when it names one. */
   re?: string;
   unread?: boolean;
@@ -183,6 +186,16 @@ export function attachmentsLabel(files: Attachment[]): string {
   return files.every((file) => file.mime.startsWith('image/')) ? `${files.length} images` : `${files.length} files`;
 }
 
+/** A row kept by the phone's own write, or its own read of the chain, has this seq until the backend's sync brings the real one. */
+const NO_BACKEND_SEQ = Number.MAX_SAFE_INTEGER;
+
+/** The words under his own post: the time, or for a post sent on chain what is known of it. 'Sent on chain' read as delivered, and
+ * proved only that WhatsOnChain took the transaction (mw-gq6.965); the Mayor's side has it once the backend's own copy is back. */
+export function sentWords(item: Pick<ConversationItem, 'onChain' | 'onChainReceived'>, time: string): string {
+  if (!item.onChain) return time;
+  return item.onChainReceived ? `Received on chain ${time}` : `On chain, not yet received ${time}`;
+}
+
 function speakerOfMessage(row: MessageRow): { speaker: Speaker; label: string } {
   return row.direction === 'sent' ? { speaker: 'you', label: 'You' } : { speaker: 'mayor', label: 'Mayor' };
 }
@@ -198,7 +211,7 @@ export function itemFromMessage(row: MessageRow): ConversationItem & { transcrip
     speaker,
     speakerLabel: label,
     txid: row.txid,
-    ...(row.direction === 'sent' && !row.txid.startsWith('direct:') ? { onChain: true } : {}),
+    ...(row.direction === 'sent' && !row.txid.startsWith('direct:') ? { onChain: true, onChainReceived: row.seq !== NO_BACKEND_SEQ } : {}),
     unread: row.direction === 'received' && !row.read,
     source: 'message' as const,
   };

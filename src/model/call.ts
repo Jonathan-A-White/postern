@@ -14,6 +14,8 @@ export interface CallSent {
   at: number;
   txid: string;
   onChain: boolean;
+  /** The backend has the request (it answered the POST, or its own copy of the chain record is back with a real seq): not true of a request only on chain (mw-gq6.965). */
+  received: boolean;
 }
 
 /**
@@ -28,7 +30,8 @@ export function callSent(rows: MessageRow[]): CallSent | undefined {
     if (row.class !== 'call' || row.direction !== 'sent') continue;
     const call = decodeCall(row.plaintext);
     if (call?.role === 'request' && (sent === undefined || call.at > sent.at)) {
-      sent = { at: call.at, txid: row.txid, onChain: !row.txid.startsWith('direct:') };
+      const onChain = !row.txid.startsWith('direct:');
+      sent = { at: call.at, txid: row.txid, onChain, received: !onChain || row.seq !== Number.MAX_SAFE_INTEGER };
     }
   }
   if (sent === undefined) return undefined;

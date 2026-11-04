@@ -6,7 +6,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Chip, Icon, IconButton, cx, useAlive } from '../ui';
 import { Markdown } from '../markdown';
-import { answersGiven, askedAgainAt, attachmentLabel, type ConversationItem, type GivenAnswer } from '../model/conversation';
+import { answersGiven, askedAgainAt, attachmentLabel, type ConversationItem, type GivenAnswer, sentWords } from '../model/conversation';
 import { answeredQuestion, needOfQuestion } from '../model/needs';
 import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
@@ -392,7 +392,7 @@ const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, on
         {item.kind === 'question' && <QuestionBlock item={item} given={given} until={until} />}
       </div>
       <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-faint">
-        <span>{item.onChain ? `Sent on chain ${clockTime(new Date(item.at))}` : clockTime(new Date(item.at))}</span>
+        <span>{sentWords(item, clockTime(new Date(item.at)))}</span>
         {item.pending && item.outboxId !== undefined && (item.failure !== undefined ? <FailedNote id={item.outboxId} failure={item.failure} /> : <TappablePendingMark id={item.outboxId} note={item.note} />)}
         {item.pending && item.outboxId === undefined && <PendingMark />}
         {item.unread && <span className="font-semibold text-accent">· new</span>}

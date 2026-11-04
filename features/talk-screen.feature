@@ -506,12 +506,12 @@ Feature: The Talk line screen: hold to talk, a buzz, a spoken answer, tap to cut
     When the Mayor rings saying "Back now" at "14:06"
     Then the screen no longer reads Call sent
 
-  Scenario: AC-3: Call me while the phone knows the backend is unreachable goes on chain and the screen says Sent on chain (mw-a0ih0.4, the phone must know it since mw-o14xubc)
+  Scenario: AC-3: Call me while the phone knows the backend is unreachable goes on chain and the screen says On chain, not yet received (mw-a0ih0.4, the phone must know it since mw-o14xubc)
     Given the time is 14:05 and the Talk line is open with a believable speech recogniser
     And the phone knows the backend cannot be reached and WhatsOnChain lists one coin
     When he taps the "Call me" button
     And he then taps the "Send" button
-    Then the screen reads "Sent on chain 14:05, txid"
+    Then the screen reads "On chain, not yet received 14:05, txid"
     And the call went to WhatsOnChain as one broadcast
     And the call field is gone
 

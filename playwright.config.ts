@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { playwrightTimeouts, playwrightTimingFilter } from 'pwa-kit/test-preset';
 import { stopLeftoverPreview } from './scripts/preview-guard.mjs';
+import { startPageSetupWatch } from './tests/support/page-setup-watch';
 import { previewPort, reuseExistingPreview } from './tests/support/preview-port';
 import { shotSize } from './tests/support/shot-size';
 
@@ -15,6 +16,9 @@ const PREVIEW_BASE_URL = `http://localhost:${PREVIEW_PORT}`;
 // used", mw-gq6.403): stop it as the main process loads the config. The workers load it too, while
 // the run's own server is up, so they (TEST_WORKER_INDEX) and a person reusing a server (PW_REUSE) skip it.
 if (process.env.TEST_WORKER_INDEX === undefined && !reuseExistingPreview()) stopLeftoverPreview(PREVIEW_PORT);
+
+// A context or page still not set up at 30 s puts a line in the run's output saying what it waits on (mw-gq6.936).
+if (process.env.TEST_WORKER_INDEX !== undefined) startPageSetupWatch();
 
 // This host's Chromium build needs libnspr4/libnss3/libasound2, which aren't
 // installed system-wide here (no sudo). If a local copy has been unpacked to

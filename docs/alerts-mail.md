@@ -15,6 +15,10 @@
   most 5 recipients a mail; a connection idle for 2 minutes is closed.
 - Each mail is parsed in memory into one alert and posted once per family it was sent to:
   - Chase and Citi charge alerts: `charge` with `amount`, `merchant`, `last4` and `when` (the mail's ET time).
+  - PNC's "You sent a Zelle payment to ..." mail (from pnc.com): `zelle-sent` with the payee as `merchant`, `amount`,
+    the account's `last4`, the payment date as `when` and the `memo`; PNC's "A $X deposit was credited to your
+    account." mail: `deposit` with the payer ("Deposit made by") as `merchant`, `amount`, `last4` and the date as
+    `when`. The transaction id is never kept. Any other PNC mail is `unread`.
   - Amazon order and shipment mails: `amazon` with the total as `amount`, `merchant` "Amazon" and the mail's date.
     The order id and items are read too, but §26 has no field for them, so they are not posted.
   - Gmail's forwarding confirmation (subject `(Gmail Forwarding Confirmation - Receive Mail from ...`, from

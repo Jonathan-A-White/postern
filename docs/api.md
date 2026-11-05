@@ -775,7 +775,7 @@ licence, so two keys on it see the same address and feed.
 
 - `POST /api/alerts/address` — `200 {"address": "<token>@<domain>"}`, the same every time for a family.
 - `GET /api/alerts?since=<seq>` — `200 {"alerts": [{"id", "seq", "kind", "amount", "merchant", "last4", "when",
-  "subject", "code", "link"}], "next"}` (`kind` is `charge`, `forward-confirm`, `amazon` or `unread`; the other fields only
+  "subject", "code", "link", "memo"}], "next"}` (`kind` is `charge`, `forward-confirm`, `amazon`, `unread`, `zelle-sent` or `deposit`; the other fields only
   when the kind has them). Answered with `Cache-Control: no-store`.
 - `DELETE /api/alerts/{id}` — claims the alert: `204`, gone for every phone of the family; `404` otherwise.
 - `POST /api/alerts/inbound` — the receiver's, with `Authorization: Bearer <POSTERN_ALERTS_SECRET>` instead of a

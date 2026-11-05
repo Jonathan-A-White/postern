@@ -12,7 +12,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/alerts"
 )
 
-// The Chase, Citi and Amazon fixtures are built by hand from the visible fields
+// The Chase, Citi, PNC and Amazon fixtures are built by hand from the visible fields
 // of real mails printed from Gmail, with every card number, order id, name,
 // address and merchant made up and the headers and MIME structure written to
 // look right: none is a raw mail. gmail-confirm.eml is the shape of a real raw
@@ -42,6 +42,58 @@ func TestCardAlertsYieldAmountMerchantLast4AndWhen(t *testing.T) {
 				t.Fatalf("Parse(%s) =\n %+v\nwant\n %+v", tc.file, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestAPNCZelleSentAlertYieldsPayeeAmountDateAndMemo(t *testing.T) {
+	got := Parse(fixture(t, "pnc-zelle-sent.eml"))
+	want := Facts{Kind: alerts.KindZelleSent, Amount: "25.00", Merchant: "Sam Example", Last4: "5678",
+		When: "2026-11-02T11:34:07-05:00", Memo: "Example lawn care"}
+	if got != want {
+		t.Fatalf("Parse(pnc-zelle-sent.eml) =\n %+v\nwant\n %+v", got, want)
+	}
+	if alert := got.Alert(); alert.Memo != "Example lawn care" || alert.Merchant != "Sam Example" || alert.Kind != "zelle-sent" {
+		t.Fatalf("alert = %+v, want the memo and payee kept", alert)
+	}
+}
+
+// The payment date alone is the day; the mail's own time is kept when the mail
+// came the same day, and a payment with no memo has none (the next row's label
+// is not its memo).
+func TestAPNCZelleSentWithNoMemoHasNoMemoAndABodyDateOnADifferentDayIsMidnight(t *testing.T) {
+	raw := "From: PNC Alerts <pncalerts@pnc.com>\r\nDate: Tue, 3 Nov 2026 09:00:00 -0500\r\n" +
+		"Subject: You sent a Zelle\u00ae payment to Sam Example\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" +
+		"You Sent a Payment to Sam Example\r\nFrom Account: x5678\r\nAmount: $10.00\r\nPayment Date: 11/02/26\r\nMemo:\r\nTransaction ID: PNCEXAMPLE02\r\n"
+	got := Parse([]byte(raw))
+	want := Facts{Kind: alerts.KindZelleSent, Amount: "10.00", Merchant: "Sam Example", Last4: "5678", When: "2026-11-02T00:00:00-05:00"}
+	if got != want {
+		t.Fatalf("Parse(no memo) =\n %+v\nwant\n %+v", got, want)
+	}
+}
+
+func TestAPNCDepositAlertYieldsPayerAmountAndDate(t *testing.T) {
+	got := Parse(fixture(t, "pnc-deposit.eml"))
+	want := Facts{Kind: alerts.KindDeposit, Amount: "64.20", Merchant: "ACH DEP EXAMPLE CARDS CASH REWARD", Last4: "5678",
+		When: "2026-11-01T00:00:00-04:00"}
+	if got != want {
+		t.Fatalf("Parse(pnc-deposit.eml) =\n %+v\nwant\n %+v", got, want)
+	}
+}
+
+// Any other PNC mail, and a PNC-looking mail from anyone else, is unread with
+// its subject only.
+func TestAnyOtherPNCMailIsUnreadWithItsSubject(t *testing.T) {
+	zelle := string(fixture(t, "pnc-zelle-sent.eml"))
+	for name, raw := range map[string]string{
+		"a statement notice":          "From: PNC Alerts <pncalerts@pnc.com>\r\nSubject: Your statement is ready\r\nContent-Type: text/plain\r\n\r\nAmount: $10.00\r\nDate: 11/01/26\r\n",
+		"a zelle received":            "From: PNC Alerts <pncalerts@pnc.com>\r\nSubject: You received a Zelle\u00ae payment from Sam Example\r\nContent-Type: text/plain\r\n\r\nAmount: $10.00\r\nPayment Date: 11/01/26\r\n",
+		"a deposit, no amount":        "From: PNC Alerts <pncalerts@pnc.com>\r\nSubject: A deposit was credited to your account.\r\nContent-Type: text/plain\r\n\r\nDeposit made by: SOMEONE\r\n",
+		"a zelle from another domain": strings.Replace(zelle, "pncalerts@pnc.com", "pncalerts@pnc.example.com", 2),
+	} {
+		got := Parse([]byte(raw))
+		if got.Kind != alerts.KindUnread || got.Amount != "" || got.Merchant != "" || got.Memo != "" || got.Subject == "" {
+			t.Errorf("%s: Parse = %+v, want unread with its subject only", name, got)
+		}
 	}
 }
 
@@ -194,7 +246,7 @@ func TestTheAlertPostedHoldsOnlyTheFieldsTheBackendKeeps(t *testing.T) {
 
 // Every dollar amount in a fixture must be one of these made-up ones: the
 // repo is public and a mail printed from a real inbox carries a real purchase.
-var madeUpAmounts = map[string]bool{"0.00": true, "9.38": true, "187.53": true, "76.25": true, "42.17": true, "10.00": true}
+var madeUpAmounts = map[string]bool{"0.00": true, "9.38": true, "187.53": true, "76.25": true, "42.17": true, "10.00": true, "25.00": true, "64.20": true}
 
 func TestFixturesHoldOnlyMadeUpAmounts(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join("testdata", "*.eml"))

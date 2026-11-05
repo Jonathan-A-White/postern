@@ -92,6 +92,7 @@ func TestAddRefusesAnUnknownTokenAndAnAlertThatIsNotParsedFacts(t *testing.T) {
 		"a bad when":     {Kind: KindCharge, When: "yesterday"},
 		"a mail body":    {Kind: KindUnread, Subject: strings.Repeat("x", MaxFieldRunes+1)},
 		"a long last4":   {Kind: KindCharge, Last4: "12345"},
+		"a long memo":    {Kind: KindZelleSent, Memo: strings.Repeat("x", MaxFieldRunes+1)},
 		"a long link":    {Kind: KindForwardConfirm, Link: "https://mail.google.com/mail/vf-" + strings.Repeat("a", MaxLinkRunes)},
 		"another host":   {Kind: KindForwardConfirm, Link: "https://evil.example/mail/vf-%5BX%5D--y"},
 		"a cancel link":  {Kind: KindForwardConfirm, Link: "https://mail.google.com/mail/uf-%5BX%5D--y"},
@@ -193,5 +194,27 @@ func TestAnAlertsFileFromBeforeLinksStillLoads(t *testing.T) {
 	raw, _ := json.Marshal(got[0])
 	if strings.Contains(string(raw), "link") {
 		t.Fatalf("an alert with no link answers one: %s", raw)
+	}
+}
+
+func TestAZelleSentAndADepositAreKeptWithTheirMemoAndSurviveARestart(t *testing.T) {
+	dir, c := t.TempDir(), newClock()
+	s := openStore(t, dir, c)
+	token, _ := s.Address("family-a")
+	sent, _, err := s.Add(token, Alert{Kind: KindZelleSent, Amount: "25.00", Merchant: "Sam Example", Last4: "5678", Memo: "Example lawn care", When: "2026-11-02T11:34:07-05:00"})
+	if err != nil {
+		t.Fatalf("Add zelle-sent: %v", err)
+	}
+	deposit, _, err := s.Add(token, Alert{Kind: KindDeposit, Amount: "64.20", Merchant: "ACH DEP EXAMPLE", Last4: "5678"})
+	if err != nil {
+		t.Fatalf("Add deposit: %v", err)
+	}
+	got := openStore(t, dir, c).List("family-a", 0)
+	if len(got) != 2 || got[0] != sent || got[1] != deposit || got[0].Memo != "Example lawn care" {
+		t.Fatalf("after a restart: %+v", got)
+	}
+	raw, _ := json.Marshal(deposit)
+	if strings.Contains(string(raw), "memo") {
+		t.Fatalf("an alert with no memo answers one: %s", raw)
 	}
 }

@@ -37,6 +37,7 @@ type Facts struct {
 	Link     string
 	OrderID  string
 	Items    string
+	Memo     string
 }
 
 // Alert is the facts as POST /api/alerts/inbound takes them: only §26's
@@ -51,6 +52,7 @@ func (f Facts) Alert() alerts.Alert {
 		Subject:  cut(f.Subject),
 		Code:     cut(f.Code),
 		Link:     f.Link,
+		Memo:     cut(f.Memo),
 	}
 }
 
@@ -72,7 +74,7 @@ func Parse(raw []byte) Facts {
 	unread := Facts{Kind: alerts.KindUnread, Subject: cut(subject)}
 	m := mailView{subject: subject, from: senderDomain(msg.Header.Get("From")), date: mailDate(msg.Header)}
 	m.lines = textLines(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Body)
-	for _, parse := range []func(mailView) (Facts, bool){parseChase, parseCiti, parseAmazon, parseGmailConfirm} {
+	for _, parse := range []func(mailView) (Facts, bool){parseChase, parseCiti, parsePNCZelleSent, parsePNCDeposit, parseAmazon, parseGmailConfirm} {
 		if facts, ok := parse(m); ok {
 			return facts
 		}
@@ -167,6 +169,87 @@ func parseCiti(m mailView) (Facts, bool) {
 		return Facts{}, false
 	}
 	return f, true
+}
+
+// ---- PNC -------------------------------------------------------------------
+
+var (
+	pncZelleSubject  = regexp.MustCompile(`(?i)^You sent a Zelle\W*\s+payment to (.+)$`)
+	pncZelleHeading  = regexp.MustCompile(`(?i)^You sent a payment to (.+)$`)
+	pncDepositAmount = regexp.MustCompile(`(?i)^A \$([0-9,]+\.\d{2}) deposit was credited`)
+	pncAccount       = regexp.MustCompile(`(?i)\bx(\d{4})$`)
+	pncDate          = []string{"01/02/06", "1/2/06", "01/02/2006", "1/2/2006"}
+)
+
+// parsePNCZelleSent reads PNC's "You sent a Zelle payment to <payee>" alert:
+// "From Account: x1234", "Amount: $25.00", "Payment Date: 11/02/26",
+// "Memo: ...", "Transaction ID: ..." (the id is not kept). A payment with no
+// payee or no amount is unread.
+func parsePNCZelleSent(m mailView) (Facts, bool) {
+	if !m.fromDomain("pnc.com") {
+		return Facts{}, false
+	}
+	var payee string
+	if s := pncZelleSubject.FindStringSubmatch(m.subject); s != nil {
+		payee = strings.TrimSpace(s[1])
+	} else {
+		for _, line := range m.lines {
+			if h := pncZelleHeading.FindStringSubmatch(line); h != nil {
+				payee = strings.TrimSpace(h[1])
+				break
+			}
+		}
+	}
+	f := Facts{Kind: alerts.KindZelleSent, Merchant: payee, Amount: money(m.value("Amount"))}
+	if f.Merchant == "" || f.Amount == "" {
+		return Facts{}, false
+	}
+	if a := pncAccount.FindStringSubmatch(m.value("From Account")); a != nil {
+		f.Last4 = a[1]
+	}
+	f.Memo = m.valueBefore("Memo", "Transaction ID")
+	f.When = pncWhen(m.value("Payment Date"), m.date)
+	return f, true
+}
+
+// parsePNCDeposit reads PNC's "A $64.20 deposit was credited to your account."
+// alert: "Account ending in: x1234", "Amount: $64.20", "Deposit made by:
+// <payer>", "Date: 11/01/26". A deposit with no amount is unread.
+func parsePNCDeposit(m mailView) (Facts, bool) {
+	if !m.fromDomain("pnc.com") || !strings.Contains(strings.ToLower(m.subject), "deposit") {
+		return Facts{}, false
+	}
+	f := Facts{Kind: alerts.KindDeposit, Merchant: m.value("Deposit made by"), Amount: money(m.value("Amount"))}
+	if f.Amount == "" {
+		if s := pncDepositAmount.FindStringSubmatch(m.subject); s != nil {
+			f.Amount = money(s[1])
+		}
+	}
+	if f.Amount == "" {
+		return Facts{}, false
+	}
+	if a := pncAccount.FindStringSubmatch(m.value("Account ending in")); a != nil {
+		f.Last4 = a[1]
+	}
+	f.When = pncWhen(m.value("Date"), m.date)
+	return f, true
+}
+
+// pncWhen reads a PNC alert's date ("11/02/26", with no time) as RFC 3339:
+// the mail's own Date when the mail came that same day (Eastern), which gives
+// the time of day, else midnight Eastern of the day the mail names. A date it
+// cannot read is the mail's own Date.
+func pncWhen(date, mailDate string) string {
+	day := easternTime(date, "", pncDate...)
+	if day == "" {
+		return mailDate
+	}
+	if sent, err := time.Parse(time.RFC3339, mailDate); err == nil {
+		if loc, err := time.LoadLocation("America/New_York"); err == nil && sent.In(loc).Format("2006-01-02") == day[:10] {
+			return mailDate
+		}
+	}
+	return day
 }
 
 // ---- Amazon ----------------------------------------------------------------
@@ -283,6 +366,17 @@ func (m mailView) value(label string) string {
 		}
 	}
 	return ""
+}
+
+// valueBefore is value for a field that may be empty: "Memo:" with nothing
+// after it, then the next row's label (stop), has no value, where value would
+// take that label for it.
+func (m mailView) valueBefore(label, stop string) string {
+	v := m.value(label)
+	if strings.HasPrefix(strings.ToLower(v), strings.ToLower(stop)) {
+		return ""
+	}
+	return v
 }
 
 var wordDecoder = &mime.WordDecoder{CharsetReader: charsetReader}

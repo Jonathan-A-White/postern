@@ -27,6 +27,8 @@ const (
 	KindForwardConfirm = "forward-confirm"
 	KindAmazon         = "amazon"
 	KindUnread         = "unread"
+	KindZelleSent      = "zelle-sent"
+	KindDeposit        = "deposit"
 )
 
 // Keep is how long an alert is kept before the sweep drops it.
@@ -67,6 +69,7 @@ type Alert struct {
 	Subject  string `json:"subject,omitempty"`
 	Code     string `json:"code,omitempty"`
 	Link     string `json:"link,omitempty"`
+	Memo     string `json:"memo,omitempty"`
 }
 
 var (
@@ -214,11 +217,11 @@ func (s *Store) Add(token string, a Alert) (Alert, string, error) {
 // check is the privacy rule: only the kinds there are, only short facts.
 func check(a Alert) error {
 	switch a.Kind {
-	case KindCharge, KindForwardConfirm, KindAmazon, KindUnread:
+	case KindCharge, KindForwardConfirm, KindAmazon, KindUnread, KindZelleSent, KindDeposit:
 	default:
-		return &InvalidError{Msg: fmt.Sprintf("kind must be charge, forward-confirm, amazon or unread, not %q", a.Kind)}
+		return &InvalidError{Msg: fmt.Sprintf("kind must be charge, forward-confirm, amazon, unread, zelle-sent or deposit, not %q", a.Kind)}
 	}
-	for name, value := range map[string]string{"amount": a.Amount, "merchant": a.Merchant, "subject": a.Subject, "code": a.Code} {
+	for name, value := range map[string]string{"amount": a.Amount, "merchant": a.Merchant, "subject": a.Subject, "code": a.Code, "memo": a.Memo} {
 		if utf8.RuneCountInString(value) > MaxFieldRunes {
 			return &InvalidError{Msg: name + " is longer than " + fmt.Sprint(MaxFieldRunes) + " characters; an alert holds parsed facts, never a mail body"}
 		}

@@ -24,6 +24,7 @@ import { lock } from '../../src/services/keySession';
 import { resetSharedChainReads } from '../../src/services/sharedChainReads';
 import { FakeChainProvider } from '../../tests/support/fake-chain-provider';
 import { mintRecordTxHex } from '../../tests/support/nftgate-fixtures';
+import { clickWhenEnabled } from '../../tests/support/click-when-enabled';
 
 const { buildContractMintTransactionMock } = vi.hoisted(() => ({
   buildContractMintTransactionMock: vi.fn(),
@@ -150,7 +151,7 @@ describeFeature(feature, ({ Scenario }) => {
       });
 
       When('"Mint my licence (testnet)" is chosen', async () => {
-        await userEvent.click(await screen.findByRole('button', { name: 'Mint my licence (testnet)' }));
+        await clickWhenEnabled(userEvent.setup(), 'Mint my licence (testnet)');
       });
 
       Then('the txid is shown with a link to WhatsOnChain testnet', async () => {
@@ -190,7 +191,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
 
     When('"Mint my licence (testnet)" is chosen', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Mint my licence (testnet)' }));
+      await clickWhenEnabled(userEvent.setup(), 'Mint my licence (testnet)');
     });
 
     Then("the provider's error is shown in words", async () => {

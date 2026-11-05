@@ -12,6 +12,7 @@ import { resetSharedChainReads } from '../../src/services/sharedChainReads';
 import { FakeChainProvider } from '../support/fake-chain-provider';
 import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../../src/services/collections';
 import { mintRecordTxHex } from '../support/nftgate-fixtures';
+import { clickWhenEnabled } from '../support/click-when-enabled';
 
 let fakeProvider = new FakeChainProvider();
 
@@ -378,6 +379,36 @@ describe('KeyVault', () => {
     ).toBeInTheDocument();
   });
 
+  it('draws the mint button disabled while the balance is still being read, and a click on it is dropped (mw-gq6.985)', async () => {
+    const mnemonic = createMnemonic();
+    const key = await deriveMasterKey(mnemonic);
+    await checkLicence(publicKeyHexFromMasterKey(key), fakeProvider);
+    stubHistory([]);
+    let release: (satoshis: number) => void = () => {};
+    const mint = vi.fn(async () => ({ txid: '8'.repeat(64) }));
+    const restore = setChain({
+      ...chain,
+      balance: vi.fn(() => new Promise<number>((resolve) => (release = resolve))),
+      mint,
+    } as Chain);
+    try {
+      await openUnlocked(mnemonic);
+      // findBy returns the button as soon as it is drawn, and it is drawn disabled until the balance arrives
+      const button = await screen.findByRole('button', { name: 'Mint my licence (testnet)' });
+      await waitFor(() => expect(button).toBeDisabled());
+      await userEvent.click(button);
+      expect(mint).not.toHaveBeenCalled();
+
+      // the balance lands a little after the button is found: the click must wait for it
+      setTimeout(() => release(1_000_000), 100);
+      await clickWhenEnabled(userEvent.setup(), 'Mint my licence (testnet)');
+      await screen.findByText(/waiting for the chain/);
+      expect(mint).toHaveBeenCalledTimes(1);
+    } finally {
+      setChain(restore);
+    }
+  });
+
   it('hides the mint button the moment a mint succeeds, showing the pending line (mw-7ijx65 AC1)', async () => {
     const mnemonic = createMnemonic();
     const key = await deriveMasterKey(mnemonic);
@@ -390,7 +421,7 @@ describe('KeyVault', () => {
     } as Chain);
     try {
       await openUnlocked(mnemonic);
-      await userEvent.click(await screen.findByRole('button', { name: 'Mint my licence (testnet)' }));
+      await clickWhenEnabled(userEvent.setup(), 'Mint my licence (testnet)');
 
       await screen.findByText(/waiting for the chain/);
       expect(screen.queryByRole('button', { name: /Mint my licence/ })).not.toBeInTheDocument();

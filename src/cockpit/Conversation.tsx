@@ -26,6 +26,7 @@ import { messageShareText } from '../model/shareText';
 import { sendAnswer } from './send';
 import { useOneTap } from './oneTap';
 import { threadKey, type Attachment } from '../services/threads';
+import { markSend } from '../services/sendTiming';
 
 function dayLabel(at: number): string {
   const date = new Date(at);
@@ -362,6 +363,11 @@ const Bubble = memo(function Bubble({ item, given, until, shareTitle, titles, on
   const speakKey = `message:${item.id}`;
   const reading = useSpeaking(speakKey);
   const voiceFailure = useSpeechFailure(speakKey);
+  // A message of his own drawn in its thread before it has gone: the 'shown' stage of a send (mw-8xe671n).
+  const queuedId = item.pending ? item.outboxId : undefined;
+  useEffect(() => {
+    if (queuedId !== undefined) markSend('shown');
+  }, [queuedId]);
   const mine = item.speaker === 'you';
   const shared = messageShareText(item);
   const builder = item.speaker === 'builder' || item.speaker === 'factory' || item.speaker === 'other';

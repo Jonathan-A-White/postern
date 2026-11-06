@@ -20,6 +20,7 @@ import { RECORD_PAYLOAD_MAX_BYTES } from './recordCap';
 import { messagesRepo } from '../data/repositories';
 import type { GovernorAction } from '../model/conversation';
 import type { HomeHost } from './standby';
+import { markSend } from './sendTiming';
 
 export interface DeliverOptions {
   key: Uint8Array;
@@ -54,6 +55,7 @@ async function postDirect(scriptHex: string, options: DeliverOptions): Promise<s
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options.clientId ? { scriptHex, clientId: options.clientId } : { scriptHex }) },
     { unlockedKey: options.key, apiBase: options.apiBase, fetchImpl: options.fetchImpl },
   );
+  markSend('answered');
   if (response.status === 404 || response.status === 405) throw new DirectUnsupported();
   if (response.status === 502 || response.status === 503 || response.status === 504) {
     throw new BackendUnreachableError(await readErrorMessage(response, 'The backend refused the message.'));

@@ -1,12 +1,15 @@
 // tests/e2e/picture-send.spec.ts — mw-jtzpw0.10: with the Hold to talk bar out and a picture attached,
 // nothing typed, a round Send arrow stands beside the bar; one tap sends the picture. The bar stays the
 // big button (same height, same left edge, same bottom edge, most of its width), measured at 390x844.
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import { randomFillSync } from 'node:crypto';
+import { crc32, deflateSync } from 'node:zlib';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
 import { LONG_LINK_ROOT_TXID } from '../support/cockpit-fixture';
+import { hostSlowdown } from './host-slowdown';
 
 // the width the shots run is at (390 unless `npm run shots` is on another size): nothing may be wider than it
 const PHONE_WIDTH = sized({ width: 390, height: 844 }).width;
@@ -122,3 +125,156 @@ for (const point of ATTACH_POINTS) {
     expect(uploads).toBe(5);
   });
 }
+
+// mw-8xe671n: sending felt sluggish, worse with a photo. A text and a 2 MB photo are sent in a channel on a phone-sized
+// screen, the browser slowed 4x as a phone's CPU is (Chrome's own throttle), and each send is timed from the tap: when the
+// composer is free again, when the message shows in the thread, and each stage between (the app's postern:send:* marks).
+// The composer is free within 300 ms of the tap and the message shows within 1 s (both scaled by how loaded the host
+// is), whatever is sent, and the page is never frozen for a second while a photo goes.
+
+/** A phone screenshot, 1080x2400, as a PNG of about 2 MB: dark with bands of noise (noise does not compress). */
+function screenshotPng(): Buffer {
+  const width = 1080;
+  const height = 2400;
+  // each row: filter byte 0, then RGB
+  const rows = Buffer.alloc(height * (1 + width * 3));
+  for (let y = 0; y < height; y++) {
+    const start = y * (1 + width * 3) + 1;
+    const row = rows.subarray(start, start + width * 3);
+    if (y % 40 < 11) randomFillSync(row);
+    else for (let x = 0; x < row.length; x += 3) row.set([20, 40, 90], x);
+  }
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8); // 8-bit RGB, no interlace
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', header), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
+}
+
+/** How much slower a phone's main thread is than this browser's (Chrome DevTools' 'mid-tier mobile'). */
+const PHONE_CPU = 4;
+/** The composer is free again within this of the tap (ms, on a calm host). */
+const FREE_WITHIN_MS = 300;
+/** The message shows in its thread, pending, within this of the tap (ms, on a calm host): a 2 MB photo took 3 s. */
+const SHOWN_WITHIN_MS = 1000;
+/** The page's main thread is never busy longer than this at a stretch while a photo goes (ms): its sealing held it 4 s. */
+const BUSY_AT_MOST_MS = 1000;
+
+interface SendTimes {
+  /** From the tap: the composer free (box empty, nothing attached, Send not busy), and the message's bubble in the thread. */
+  free: number;
+  shown: number;
+  /** The longest the main thread was busy at a stretch since the tap (ms). */
+  longest: number;
+  /** The app's own marks, ms after its tap mark. */
+  marks: Record<string, number>;
+}
+
+/** Watches the page from the tap on Send: when the composer is free and when a bubble saying `words` is in the thread. */
+async function watchSend(page: Page, words: string): Promise<void> {
+  await page.evaluate((text) => {
+    performance.clearMarks();
+    const times: { tap?: number; free?: number; shown?: number; longest: number } = { longest: 0 };
+    // the longest the page's main thread was busy at a stretch from the tap on (a frozen page answers no tap)
+    new PerformanceObserver((list) => {
+      for (const task of list.getEntries()) if (times.tap !== undefined && task.startTime + task.duration > times.tap) times.longest = Math.max(times.longest, task.duration);
+    }).observe({ type: 'longtask' });
+    (window as unknown as { sendTimes: typeof times }).sendTimes = times;
+    const composerFree = () => {
+      const composer = document.querySelector('[data-testid="composer"]');
+      if (!composer) return false;
+      const box = composer.querySelector('textarea');
+      return (!box || box.value === '') && !composer.querySelector('[aria-label^="View "]');
+    };
+    const bubbleShown = () => [...document.querySelectorAll('[data-testid="message"]')].some((bubble) => bubble.textContent?.includes(text));
+    const look = () => {
+      if (times.tap === undefined) return;
+      const now = performance.now();
+      if (times.free === undefined && composerFree()) times.free = now;
+      if (times.shown === undefined && bubbleShown()) times.shown = now;
+    };
+    document.addEventListener('pointerdown', () => (times.tap ??= performance.now()), { capture: true, once: true });
+    new MutationObserver(look).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    const frame = () => {
+      look();
+      if (times.free === undefined || times.shown === undefined) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }, words);
+}
+
+async function sendTimes(page: Page): Promise<SendTimes> {
+  await expect.poll(() => page.evaluate(() => {
+    const times = (window as unknown as { sendTimes: { free?: number; shown?: number } }).sendTimes;
+    return times.free !== undefined && times.shown !== undefined;
+  })).toBe(true);
+  return page.evaluate(() => {
+    const times = (window as unknown as { sendTimes: { tap: number; free: number; shown: number; longest: number } }).sendTimes;
+    const marks = performance.getEntriesByType('mark').filter((mark) => mark.name.startsWith('postern:send:'));
+    const tap = marks.find((mark) => mark.name === 'postern:send:tap')?.startTime ?? times.tap;
+    return {
+      free: times.free - times.tap,
+      shown: times.shown - times.tap,
+      longest: times.longest,
+      marks: Object.fromEntries(marks.map((mark) => [mark.name.replace('postern:send:', ''), Math.round(mark.startTime - tap)])),
+    };
+  });
+}
+
+test('a text and a 2 MB photo each show in the thread at once and leave the composer free within 300 ms (mw-8xe671n)', async ({ page }) => {
+  const mnemonic = createMnemonic();
+  const governor = PrivateKey.fromHex(Buffer.from(await deriveMasterKey(mnemonic)).toString('hex'));
+  const { posted } = await stubBackend(page, governor);
+  await page.route('**/api/blobs', (route) => route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ hash: 'cd'.repeat(32), size: 2_000_000 }) }));
+  await seedVault(page, mnemonic);
+  await page.goto('/');
+  await page.getByLabel('Recovery phrase').fill(mnemonic);
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await expect(page.getByTestId('need-card').first()).toBeVisible();
+  await page.goto('/?v=talk&t=general');
+  const box = page.getByRole('textbox', { name: /Message|Reply|Say something/ }).first();
+  await expect(box).toBeVisible();
+
+  const host = await hostSlowdown(page);
+  const [freeWithin, shownWithin, busyAtMost] = [FREE_WITHIN_MS * host, SHOWN_WITHIN_MS * host, BUSY_AT_MOST_MS * host];
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: PHONE_CPU });
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+
+  // a text
+  await box.fill('A quick word to the Mayor');
+  await watchSend(page, 'A quick word to the Mayor');
+  const before = posted.length;
+  await send.click();
+  const text = await sendTimes(page);
+  await expect.poll(() => posted.length).toBe(before + 1);
+  console.log(`mw-8xe671n text (host ${host.toFixed(1)}x, cpu ${PHONE_CPU}x): free ${Math.round(text.free)} ms, shown ${Math.round(text.shown)} ms, longest task ${Math.round(text.longest)} ms, marks ${JSON.stringify(text.marks)}`);
+
+  // a 2 MB photo, with a caption to find its bubble by
+  const photo = screenshotPng();
+  expect(photo.length).toBeGreaterThan(1_900_000);
+  await page.locator('input[type="file"][multiple]').first().setInputFiles({ name: 'terminal.png', mimeType: 'image/png', buffer: photo });
+  await expect(page.getByRole('button', { name: 'View terminal.png' })).toBeVisible();
+  await box.fill('The terminal now');
+  await watchSend(page, 'The terminal now');
+  await send.click();
+  const picture = await sendTimes(page);
+  await expect.poll(() => posted.length, { timeout: 60_000 }).toBe(before + 2);
+  await expect.poll(() => page.evaluate(() => performance.getEntriesByName('postern:send:answered').length)).toBeGreaterThan(0);
+  const done = await sendTimes(page);
+  console.log(`mw-8xe671n photo ${photo.length} B (host ${host.toFixed(1)}x, cpu ${PHONE_CPU}x): free ${Math.round(picture.free)} ms, shown ${Math.round(picture.shown)} ms, longest task ${Math.round(done.longest)} ms, marks ${JSON.stringify(done.marks)}`);
+
+  expect(text.free, 'the composer is free after a text').toBeLessThan(freeWithin);
+  expect(picture.free, 'the composer is free after a photo').toBeLessThan(freeWithin);
+  expect(text.shown, 'a text shows in its thread at once').toBeLessThan(shownWithin);
+  expect(picture.shown, 'a photo shows in its thread at once').toBeLessThan(shownWithin);
+  expect(done.longest, 'the page answers taps while the photo goes').toBeLessThan(busyAtMost);
+});

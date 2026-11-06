@@ -71,6 +71,14 @@ async function pass(ms: number): Promise<void> {
   }
 }
 
+/** Holds the clock until the picture's upload has been made: the file is sealed by the browser's crypto (mw-8xe671n) and the
+ * challenge's signing hashes the body, both off the clock, so on a loaded host the upload's own timer can start late. */
+async function uploadMade(): Promise<void> {
+  const made = () => vi.mocked(fetch).mock.calls.some(([input]) => String(input).endsWith('/blobs'));
+  for (let i = 0; i < 250 && !made(); i++) await letStorageRun();
+  expect(made()).toBe(true);
+}
+
 /** Passes time, a second at a time, until the sender is quiet (a try in flight ends at its own pace) or `maxMs` have gone by. */
 async function quiet(maxMs: number): Promise<void> {
   let done = false;
@@ -177,6 +185,7 @@ describe('his report (mw-o14xubc): Unlocked, Live, the count runs from a minute 
     backend.uplink = SLOW_UPLINK_BYTES_PER_S / 10;
     const id = (await db.outbox.add({ kind: 'message', bead: '', payload: { text: 'look at this', files: [picture] }, created: Date.now(), attempts: 0, state: 'pending' })) as number;
     kickOutbox(true);
+    await uploadMade();
     // The time its size is given, and a second: the one try fails, and the lane is quiet until its retry.
     await pass(requestTimeoutMs(PICTURE_BYTES) + 1_000);
     await quiet(API_TIMEOUT_MS);
@@ -265,7 +274,9 @@ describe('a row whose every try fails while the phone reaches the backend (mw-o1
     await pass(retryDelay(3) + retryDelay(4) + retryDelay(5) + 300);
     await settledOutbox();
     expect(backend.whys).toHaveLength(1);
-    await pass(REPORT_EVERY_MS);
+    // The hour, and one more wait at most: the first try after the hour (a try's own work, the seal and the hash, runs off
+    // the clock, mw-8xe671n, so where the tries fall against the hour mark is not fixed).
+    await pass(REPORT_EVERY_MS + retryDelay(7));
     await settledOutbox();
     expect(backend.whys).toHaveLength(2);
   });

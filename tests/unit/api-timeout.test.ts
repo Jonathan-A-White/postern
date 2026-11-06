@@ -90,11 +90,12 @@ describe('apiFetch timeouts', () => {
   });
 
   it('a blob upload that times out is reported as not sent, though it is a POST', async () => {
-    vi.useFakeTimers();
+    // setImmediate stays real: the file is sealed by the browser's crypto off the clock (mw-8xe671n), and the POST's timer exists only after it.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     const fetchImpl = vi.fn(async (url: RequestInfo | URL) => (isChallengeRequest(String(url)) ? challengeResponse() : hangs()));
-    const err = await failureOf(
-      uploadAttachment({ bytes: new Uint8Array([1, 2, 3]), mime: 'image/png', senderKey: KEY, recipientPublicKeyHex: MAYOR, fetchImpl: fetchImpl as unknown as typeof fetch }),
-    );
+    const upload = uploadAttachment({ bytes: new Uint8Array([1, 2, 3]), mime: 'image/png', senderKey: KEY, recipientPublicKeyHex: MAYOR, fetchImpl: fetchImpl as unknown as typeof fetch });
+    while (fetchImpl.mock.calls.length < 2) await new Promise((resolve) => setImmediate(resolve));
+    const err = await failureOf(upload);
     expect(describeSendError(err)).toBe(NOT_SENT);
   });
 

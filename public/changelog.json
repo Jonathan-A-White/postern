@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.90",
+    "date": "2026-11-06",
+    "story": "mw-8xe671n",
+    "kind": "fixed",
+    "text": "Sending is quick again: the box clears at once and the message shows in the thread straight away, and sending a photo no longer freezes the screen for seconds."
+  },
+  {
     "version": "0.8.87",
     "date": "2026-11-04",
     "story": "mw-mr4xgrw.38",

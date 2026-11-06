@@ -1,14 +1,15 @@
 // src/services/attachments.ts — uploads an encrypted file to POST /api/blobs
 // (docs/protocol.md §8): the same challenge-signed fetch every /api call goes
 // through (src/services/apiAuth.ts), the ciphertext built by
-// src/services/messages.ts's encryptAttachment. The backend answers with the
+// src/services/messages.ts's sealAttachment (the browser's own AES-GCM, mw-8xe671n). The backend answers with the
 // ciphertext's own sha256 hash and byte length; this never computes either
 // itself.
 import { Utils } from '@bsv/sdk';
 import { ApiTimeoutError, RefusedError, apiFetch, withTimeout } from './apiAuth';
-import { encryptAttachment } from './messages';
+import { sealAttachment } from './messages';
 import { readErrorMessage } from './errorMessage';
 import type { Attachment } from './threads';
+import { markSend } from './sendTiming';
 
 /** 8 MB (docs/protocol.md §8's cap; the epic's "8 MB", not "MiB" — the cap this
  * app enforces before any upload is attempted). */
@@ -46,11 +47,12 @@ export interface UploadAttachmentParams {
  */
 export async function uploadAttachment(params: UploadAttachmentParams): Promise<Attachment> {
   const senderPrivateKeyHex = Utils.toHex(Array.from(params.senderKey));
-  const ciphertext = encryptAttachment({
+  const ciphertext = await sealAttachment({
     bytes: params.bytes,
     senderPrivateKeyHex,
     recipientPublicKeyHex: params.recipientPublicKeyHex,
   });
+  markSend('sealed');
 
   // An upload that times out has not sent the message it was for: nothing has gone.
   const notSent = (err: unknown) => (err instanceof ApiTimeoutError ? new ApiTimeoutError(false) : err);
@@ -70,6 +72,7 @@ export async function uploadAttachment(params: UploadAttachmentParams): Promise<
   if (typeof body.hash !== 'string' || typeof body.size !== 'number') {
     throw new Error('The upload succeeded but returned no hash.');
   }
+  markSend('uploaded');
   const name = params.name === undefined ? undefined : attachmentName(params.name);
   return { hash: body.hash, size: body.size, mime: params.mime, ...(name !== undefined ? { name } : {}) };
 }

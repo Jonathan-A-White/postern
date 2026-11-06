@@ -73,6 +73,37 @@ export function encryptAttachment(params: EncryptAttachmentParams): Uint8Array {
   return new Uint8Array(encrypted);
 }
 
+/** The same BRC-78 bytes as encryptAttachment, the file's AES-GCM done by the browser's own crypto (mw-8xe671n): in a
+ * browser @bsv/sdk's AES is plain JavaScript, and a 2 MB photo took 4 s of a phone's main thread, the page frozen. Only
+ * the key is derived by the SDK, as EncryptedMessage.encrypt derives it: version, sender's key, recipient's key, key id,
+ * then the IV (32 bytes), the ciphertext and its 16-byte tag. Where the browser has no crypto.subtle (a page not served
+ * over https) or it refuses, the SDK seals it as before. */
+export async function sealAttachment(params: EncryptAttachmentParams): Promise<Uint8Array> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return encryptAttachment(params);
+  const sender = PrivateKey.fromHex(params.senderPrivateKeyHex);
+  const recipient = PublicKey.fromString(params.recipientPublicKeyHex);
+  const keyId = crypto.getRandomValues(new Uint8Array(32));
+  const invoice = `2-message encryption-${Utils.toBase64(Array.from(keyId))}`;
+  const shared = sender.deriveChild(recipient, invoice).deriveSharedSecret(recipient.deriveChild(sender, invoice));
+  const keyBytes = new Uint8Array(new SymmetricKey(shared.encode(true).slice(1)).toArray('be', 32));
+  const iv = crypto.getRandomValues(new Uint8Array(32));
+  let sealed: Uint8Array;
+  try {
+    const key = await subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
+    sealed = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, params.bytes as BufferSource));
+  } catch {
+    return encryptAttachment(params);
+  }
+  const head = [...Utils.toArray(BRC78_VERSION, 'hex'), ...sender.toPublicKey().encode(true), ...recipient.encode(true)];
+  const out = new Uint8Array(head.length + keyId.length + iv.length + sealed.length);
+  out.set(head, 0);
+  out.set(keyId, head.length);
+  out.set(iv, head.length + keyId.length);
+  out.set(sealed, head.length + keyId.length + iv.length);
+  return out;
+}
+
 /** Decrypts a record payload's `ct` field with the recipient's private key. Throws
  * if `recipientPrivateKeyHex` isn't the key the message was encrypted for. */
 export function decryptMessage(payload: MessagePayload, recipientPrivateKeyHex: string): string {

@@ -7,7 +7,7 @@
 // What is Postern's own rides on the kit's ways in: the words are this component's (a draft kept per channel, a
 // saved prompt's '/name'), whatever he quotes sits on top and leads what he sends, files shared in from another app
 // arrive after mount (and bring the bar out when they came with no words), a tap on a waiting picture opens the
-// viewer and on any other file opens or downloads it, a picture is cut down on Send, and the send is Postern's.
+// viewer and on any other file opens or downloads it, a picture is cut down by the outbox after Send, and the send is Postern's.
 import { useEffect, useRef, useState } from 'react';
 import { Composer as KitComposer, isListenSupported, type ComposerMessage, type ComposerOpen, type WaitingFile } from 'voice-kit/composer';
 import { Icon, IconButton, cx, useAlive } from '../ui';
@@ -25,8 +25,8 @@ import { useLiveRoom } from './useLiveRoom';
 import { usePictureViewer } from 'pwa-kit/picture-viewer';
 import { PosternPictureViewer } from './PosternPictureViewer';
 import { openFile } from './openFile';
-import { toSent } from './pickedFile';
 import { draftsRepo } from '../data/repositories';
+import { markSend } from '../services/sendTiming';
 
 /** How long a file's object URL lives after a tap opened or downloaded it: the new tab or the save has read it by then. */
 const OPENED_URL_MS = 60_000;
@@ -95,15 +95,22 @@ export function Composer({ thread, placeholder = 'Message the Mayor…', quote, 
     else if (file.preview) openFile(file.preview, file.type, file.name);
   }
 
-  async function send({ text: words, files }: ComposerMessage): Promise<boolean> {
+  // Send is free at once (mw-8xe671n): a 2 MB photo held the box 3 s on a phone while it was cut down and written. The message
+  // is handed to the outbox and the box empties now; its bubble shows in the thread, pending, once it is written, and the outbox
+  // cuts a picture down before its upload. Should the phone fail to keep it, the toast says so and his words and files come back.
+  function send({ text: words, files }: ComposerMessage): boolean {
+    markSend('tap');
     const body = `${quote ? quoteBlock(quote) : ''}${words}`;
-    const sent = await run(async () => sendToThread(thread, body, await Promise.all(files.map(toSent)), re));
-    if (!sent) return false;
+    void run(() => sendToThread(thread, body, files, re)).then((queued) => {
+      if (queued || !alive()) return;
+      setText((current) => (current.trim() ? current : body));
+      if (files.length > 0) setShared(files.map((file) => new File([file.bytes as BlobPart], file.name, { type: file.type })));
+    });
     draft.discard();
     others.current.clear();
-    if (!alive()) return true;
     setOpen(root.current?.querySelector<HTMLElement>('[data-testid="composer"]')?.dataset.layout === 'bar' ? 'bar' : 'box');
     onClearQuote?.();
+    markSend('free');
     return true;
   }
 

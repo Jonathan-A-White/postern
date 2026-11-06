@@ -40,6 +40,11 @@ export const imageSeam = {
   },
 };
 
+/** A picture's name once it is re-encoded as a JPEG. */
+export function jpegName(name: string): string {
+  return name.replace(/\.(png|webp|jpe?g)$/i, '') + '.jpg';
+}
+
 /** `width` x `height` with the long edge cut to `max`, the shape kept; a picture already within it is left as it is. */
 export function fitWithin(width: number, height: number, max: number): { width: number; height: number } {
   const scale = Math.min(1, max / Math.max(width, height));

@@ -12,7 +12,7 @@ import { plainMessage } from '../services/chainBusy';
 import { deliverOptions } from '../services/live';
 import { getKey } from '../services/keySession';
 import { MAX_ATTACHMENT_BYTES } from '../services/attachments';
-import { enqueue, packBytes, type QueuedMessage } from '../services/outbox';
+import { enqueue, packFile, type QueuedMessage } from '../services/outbox';
 import type { GovernorAction } from '../model/conversation';
 import { verifiedWords, type VerifiedWhere } from '../model/verified';
 import type { HandsStep } from '../model/hands';
@@ -55,7 +55,7 @@ export async function sendAction(action: GovernorAction): Promise<Queued> {
 /** Queues one turn of the Talk line (docs/protocol.md §20): class `talk`, straight to the backend once it answers.
  * Pictures and files go with it, in the order given: kept whole in the outbox and uploaded first when the turn's turn comes. */
 export async function sendTurn(turn: TalkTurn, files: OutgoingFile[] = []): Promise<Queued> {
-  const queued = files.map(({ name, type, bytes }) => ({ name, type, data: packBytes(bytes) }));
+  const queued = await Promise.all(files.map(async ({ name, type, bytes }) => ({ name, type, data: await packFile(bytes) })));
   const label = turn.text || (files.length > 1 ? `${files.length} files` : files.length === 1 ? (files[0].type.startsWith('image/') ? 'Picture' : files[0].name) : '');
   return { id: await enqueue({ kind: 'turn', payload: { turn, ...(queued.length ? { files: queued } : {}) }, label }) };
 }
@@ -98,10 +98,12 @@ export function refuseFile(file: { name: string; type: string; size: number }): 
 
 /** Queues text and files for a thread as ONE message (docs/protocol.md §8): one
  * file as `attachment`, two or more as `attachments` in the order given, the
- * text as its caption. The files are kept whole in the outbox and uploaded first
- * when the message's turn comes, so nothing is sent until every file is up. */
+ * text as its caption. The files are kept whole in the outbox, as he chose them, and when the
+ * message's turn comes its pictures are cut down (mw-8xe671n) and every file uploaded first,
+ * so nothing is sent until every file is up. */
 export async function sendToThread(thread: ThreadRef | undefined, text: string, files: OutgoingFile[] = [], re?: string, settles?: string): Promise<Queued[]> {
-  const payload: QueuedMessage = { text, files: files.map(({ name, type, bytes }) => ({ name, type, data: packBytes(bytes) })), ...(thread !== undefined ? { thread } : {}), ...(re !== undefined ? { re } : {}), ...(settles !== undefined ? { settles } : {}) };
+  const queued = await Promise.all(files.map(async ({ name, type, bytes }) => ({ name, type, data: await packFile(bytes), ...(type.startsWith('image/') ? { shrink: true as const } : {}) })));
+  const payload: QueuedMessage = { text, files: queued, ...(thread !== undefined ? { thread } : {}), ...(re !== undefined ? { re } : {}), ...(settles !== undefined ? { settles } : {}) };
   // While Ideas only is on the message goes out as always, and its row remembers it was recorded for later.
   const recorded = await recordedNoteNow();
   return [{ id: await enqueue({ kind: 'message', bead: thread && 'bead' in thread ? thread.bead : '', payload: payload as unknown as Record<string, unknown>, thread: threadKey(thread), ...(recorded !== undefined ? { recorded } : {}) }) }];

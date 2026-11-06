@@ -115,6 +115,12 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     fireEvent.click(screen.getByRole('button', { name: 'Speak a message' }));
     await screen.findByRole('button', { name: 'Hold to talk' });
   };
+  // The message is written to the outbox after the box is free (mw-8xe671n): the sender is settled once it is there.
+  const tapSendArrow = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+    await waitFor(async () => expect(await db.outbox.count()).toBe(1));
+    await act(async () => settledOutbox());
+  };
   const noArrow = () => {
     expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
   };
@@ -142,10 +148,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Given('the composer is open', open);
     When('he attaches the picture {string}', attachPicture);
     And('he taps the mic', tapMic);
-    And('he taps the Send arrow', async () => {
-      fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
-      await act(async () => settledOutbox());
-    });
+    And('he taps the Send arrow', tapSendArrow);
     Then('one message is delivered with one attachment and no text', async () => {
       await waitFor(() => expect(doubles.delivered).toHaveLength(1));
       const [message] = doubles.delivered;
@@ -195,15 +198,56 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       await screen.findByLabelText('Remove photo.png');
     });
     And('he taps the mic', tapMic);
-    And('he taps the Send arrow', async () => {
-      fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
-      await act(async () => settledOutbox());
-    });
+    And('he taps the Send arrow', tapSendArrow);
     Then('the picture was drawn at {int} by {int} pixels', (_c, width: number, height: number) => {
       expect(encode).toHaveBeenCalledWith(expect.anything(), width, height, 0.85);
     });
     And('one message is delivered with a JPEG attachment named {string}', async (_c, name: string) => {
       await waitFor(() => expect(doubles.delivered).toHaveLength(1));
+      expect(doubles.delivered[0].attachments?.[0]).toMatchObject({ mime: 'image/jpeg', name });
+    });
+  });
+
+  Scenario('AC-3 of mw-8xe671n: Send is free at once while a big photo is still being cut down, and the photo goes after', ({ Given, And, When, Then }) => {
+    // The picture's encode is held on a promise until the scenario lets it go: a phone cutting a 2 MB photo down takes seconds.
+    let encodeStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => (encodeStarted = resolve));
+    let releaseEncode: () => void = () => {};
+    const released = new Promise<void>((resolve) => (releaseEncode = resolve));
+    Given('the composer is open', open);
+    And('the phone is slow to cut a picture down', () => {
+      vi.spyOn(imageSeam, 'decode').mockResolvedValue({ width: 1080, height: 2400, source: null });
+      vi.spyOn(imageSeam, 'encode').mockImplementation(async () => {
+        encodeStarted();
+        await released;
+        return new Blob([new Uint8Array(2)], { type: 'image/jpeg' });
+      });
+    });
+    When('he attaches the picture {string}', attachPicture);
+    And('he types {string}', (_c, words: string) => {
+      fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: words } });
+    });
+    And('he taps Send', async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+      await act(async () => started);
+    });
+    Then('the box is empty, nothing is attached and Send is ready again while the picture is still being cut down', async () => {
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue(''));
+      expect(screen.queryByLabelText('Remove photo.png')).toBeNull();
+      fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'And another' } });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled());
+      expect(doubles.delivered).toHaveLength(0);
+    });
+    And('the message waits in the outbox to go', async () => {
+      await waitFor(async () => expect(await db.outbox.toArray()).toEqual([expect.objectContaining({ kind: 'message', payload: expect.objectContaining({ text: 'The terminal now' }) })]));
+    });
+    When('the picture is cut down', async () => {
+      releaseEncode();
+      await act(async () => settledOutbox());
+    });
+    Then('one message is delivered with a JPEG attachment named {string}', async (_c, name: string) => {
+      await waitFor(() => expect(doubles.delivered).toHaveLength(1));
+      expect(doubles.delivered[0]).toMatchObject({ text: 'The terminal now' });
       expect(doubles.delivered[0].attachments?.[0]).toMatchObject({ mime: 'image/jpeg', name });
     });
   });

@@ -41,3 +41,14 @@ Feature: A picture sends with one tap, no typing (mw-jtzpw0.10; the Send arrow c
     And he taps the Send arrow
     Then the picture was drawn at 2400 by 1800 pixels
     And one message is delivered with a JPEG attachment named "photo.jpg"
+
+  Scenario: AC-3 of mw-8xe671n: Send is free at once while a big photo is still being cut down, and the photo goes after
+    Given the composer is open
+    And the phone is slow to cut a picture down
+    When he attaches the picture "photo.png"
+    And he types "The terminal now"
+    And he taps Send
+    Then the box is empty, nothing is attached and Send is ready again while the picture is still being cut down
+    And the message waits in the outbox to go
+    When the picture is cut down
+    Then one message is delivered with a JPEG attachment named "photo.jpg"

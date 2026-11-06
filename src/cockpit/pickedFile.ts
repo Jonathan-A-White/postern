@@ -2,8 +2,8 @@
 // first (src/images/shrink.ts, mw-7dige5.2), and read into bytes with a local preview. The composer's attachments and
 // the Talk line's one picture are made the same way, so a screenshot goes as the same blob wherever it is chosen.
 // The compose bar is voice-kit's Composer (mw-06ggew.5), which keeps a file as it was chosen: its pictures are cut down
-// on Send (toSent), the same way.
-import { prepareImage } from '../images/shrink';
+// the same way by the outbox before their upload (mw-8xe671n), so Send is free at once.
+import { jpegName, prepareImage } from '../images/shrink';
 import type { OutgoingFile } from './send';
 
 export interface PickedFile extends OutgoingFile {
@@ -18,17 +18,4 @@ export async function toPicked(original: File | Blob, name: string): Promise<Pic
   const bytes = new Uint8Array(await file.arrayBuffer());
   const type = file.type || 'application/octet-stream';
   return { name: kept, type, bytes, preview: type.startsWith('image/') || type.startsWith('audio/') ? URL.createObjectURL(file) : undefined };
-}
-
-/** A picture's name once it is re-encoded as a JPEG. */
-function jpegName(name: string): string {
-  return name.replace(/\.(png|webp|jpe?g)$/i, '') + '.jpg';
-}
-
-/** A file as it will be sent: a picture cut down and re-encoded as toPicked does it, any other file as it is. */
-export async function toSent(file: OutgoingFile): Promise<OutgoingFile> {
-  const original = new Blob([file.bytes as BlobPart], { type: file.type });
-  const shrunk = await prepareImage(original);
-  if (shrunk === original) return file;
-  return { name: jpegName(file.name), type: shrunk.type, bytes: new Uint8Array(await shrunk.arrayBuffer()) };
 }

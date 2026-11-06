@@ -13,7 +13,8 @@
 // that fails is its own trouble and the rows behind it go on; out of reach, it holds them, in his order. A file's upload is
 // given the time its size needs on a weak signal (timedFetch's requestTimeoutMs), not the 30 s of a small call: a camera
 // picture cut off at 30 s sent nothing and was tried again every minute for ever, the typed messages held behind it (mw-o14xubc).
-// Talk turns are a lane of their own, so no upload or failing message holds one back; within the lane a turn never
+// A picture sent from a compose bar is queued as he chose it and cut down here when its turn comes (mw-8xe671n), so Send
+// is free and the message shows, pending, at once. Talk turns are a lane of their own, so no upload or failing message holds one back; within the lane a turn never
 // goes ahead of an earlier one that was refused or went on the chain and has not been seen (mw-q6n8m0.12).
 import { answersRepo, eventsRepo, messagesRepo, newClientId, outboxRepo, settingsRepo, viewRepo } from '../data/repositories';
 import type { OutboxKind, OutboxRow } from '../data/db';
@@ -32,12 +33,16 @@ import { getKey, onKeyChange } from './keySession';
 import { getActiveAccount, onAccountChange, onAccountLeaving } from './accounts';
 import { deliverTurn } from './talk';
 import { messageRecords, type Attachment, type ThreadedBody, type ThreadRef } from './threads';
+import { markSend } from './sendTiming';
+import { jpegName, prepareImage } from '../images/shrink';
 
 /** A file waiting to go with a message: stored whole, as base64 text (so no browser or test realm can lose its bytes), uploaded when its turn comes. */
 export interface QueuedFile {
   name: string;
   type: string;
   data: string;
+  /** A picture queued as he chose it, to be cut down (src/images/shrink.ts) before its upload (mw-8xe671n). */
+  shrink?: true;
 }
 
 const CHUNK = 0x8000;
@@ -47,6 +52,30 @@ export function packBytes(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i += CHUNK) binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   return btoa(binary);
+}
+
+/** A picture queued as he chose it, cut down and re-encoded as a JPEG as the composer once did on Send (mw-8xe671n): now in
+ * the sender's time, so Send is free and the message in its thread at once. Any other file, or a picture the phone cannot
+ * cut down, goes as it is. */
+async function shrunk(file: QueuedFile): Promise<QueuedFile> {
+  if (!file.shrink) return file;
+  const original = new Blob([unpackBytes(file.data) as BlobPart], { type: file.type });
+  const picture = await prepareImage(original);
+  if (picture === original) return { name: file.name, type: file.type, data: file.data };
+  return { name: jpegName(file.name), type: picture.type, data: await packFile(new Uint8Array(await picture.arrayBuffer())) };
+}
+
+/** packBytes in the browser's own time (mw-8xe671n): a FileReader's data URL, so a 2 MB photo does not hold the page for
+ * half a second on a phone as packBytes does. Where there is no FileReader, packBytes. */
+export async function packFile(bytes: Uint8Array): Promise<string> {
+  if (typeof FileReader === 'undefined') return packBytes(bytes);
+  const url = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('The file could not be read.'));
+    reader.readAsDataURL(new Blob([bytes as BlobPart]));
+  });
+  return url.slice(url.indexOf(',') + 1);
 }
 
 function unpackBytes(data: string): Uint8Array {
@@ -139,6 +168,7 @@ export async function enqueue(row: { kind: OutboxKind; bead?: string; payload: R
   // What he taps is judged against the view he was shown: its seq travels with the row (docs/protocol.md §13).
   const viewSeq = row.kind === 'action' || row.kind === 'answer' || (row.kind === 'message' && typeof row.payload.settles === 'string') ? await shownViewSeq() : undefined;
   const id = await outboxRepo.add({ kind: row.kind, bead: row.bead ?? '', payload: viewSeq !== undefined ? { ...row.payload, viewSeq } : row.payload, ...(row.thread !== undefined ? { thread: row.thread } : {}), ...(row.label !== undefined ? { label: row.label } : {}), ...(row.recorded !== undefined ? { recorded: row.recorded } : {}) });
+  markSend('queued');
   kickOutbox();
   return id;
 }
@@ -200,8 +230,17 @@ async function deliverQueuedTurn(row: OutboxRow, options: DeliverOptions, stillH
 async function deliverMessage(row: OutboxRow, options: DeliverOptions, stillHere: () => boolean): Promise<Delivered> {
   const message = row.payload as unknown as QueuedMessage;
   let payload = row.payload;
+  let files = message.files;
+  if (files.some((file) => file.shrink)) {
+    // its pictures are cut down first, once: the row keeps them as they will go
+    files = [];
+    for (const file of message.files) files.push(await stage(shrunk(file), false));
+    payload = { ...payload, files };
+    await keepProgress(stillHere, row.id as number, payload);
+    markSend('shrunk');
+  }
   const uploaded = [...(message.uploaded ?? [])];
-  for (const file of message.files.slice(uploaded.length)) {
+  for (const file of files.slice(uploaded.length)) {
     uploaded.push(await uploadStage(file, options));
     payload = { ...payload, uploaded };
     await keepProgress(stillHere, row.id as number, payload);

@@ -273,7 +273,11 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 		if !ok {
 			panic("api: routeTable names " + route.pattern + ", which has no handler")
 		}
-		mux.HandleFunc(route.pattern, gate(route.who, handler))
+		gated := gate(route.who, handler)
+		if strings.HasPrefix(route.pattern, "POST ") {
+			gated = timedPost(gated)
+		}
+		mux.HandleFunc(route.pattern, gated)
 	}
 	if len(handlers) != len(routeTable) {
 		panic("api: a handler has no entry in routeTable")
@@ -444,6 +448,44 @@ func whyLogged(r *http.Request) string {
 // standard logger does, in the same format, but is its own logger so a route's
 // own log lines are told apart from the gate's.
 var acceptLog = log.New(os.Stderr, "", log.LstdFlags)
+
+// postLog takes the one line each POST through the gate writes once it is
+// answered (mw-8xe671n): a message, a card answer, a reaction, a file, a
+// broadcast. Its own logger, like acceptLog, so a slow send is found by
+// "posted" in the journal.
+var postLog = log.New(os.Stderr, "", log.LstdFlags)
+
+// timedPost wraps a gated POST route so that, once it has answered, it logs
+// how long the backend took from the request's arrival (the proof checked, the
+// body read, the route's own work) and the body's size in bytes: "posted POST
+// /api/messages in 12ms body 532 bytes". A refused POST is logged too; its
+// refusal has its own line.
+func timedPost(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		body := &countedBody{ReadCloser: r.Body}
+		r.Body = body
+		next(w, r)
+		size := r.ContentLength
+		if size < 0 {
+			size = body.n
+		}
+		postLog.Printf("posted %s %s in %dms body %d bytes", r.Method, r.URL.EscapedPath(), time.Since(start).Milliseconds(), size)
+	}
+}
+
+// countedBody counts the bytes read from a request body, for a body sent with
+// no length.
+type countedBody struct {
+	io.ReadCloser
+	n int64
+}
+
+func (b *countedBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	b.n += int64(n)
+	return n, err
+}
 
 // The machine-readable reason in a refusal's body ({"error", "reason"}): the
 // app matches on these, never on the English in "error" (docs/api.md). Only

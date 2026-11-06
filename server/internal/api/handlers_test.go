@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -1459,5 +1460,52 @@ func TestPushSubscribeWithNoListIsAsItWas(t *testing.T) {
 		if got := pushStore.ByPublicKey(pub); len(got) != 1 || got[0].Last4s != nil {
 			t.Fatalf("%q: stored %+v, want one subscription with no list", extra, got)
 		}
+	}
+}
+
+// capturePostLog sends the POST timing lines to a buffer until the test ends.
+func capturePostLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	postLog.SetOutput(&buf)
+	t.Cleanup(func() { postLog.SetOutput(os.Stderr) })
+	return &buf
+}
+
+// mw-8xe671n: sending felt sluggish and the log said nothing of time. Every
+// POST through the gate (a message, a card answer, a reaction, a file, a
+// broadcast) logs one line with how long the backend took from its arrival to
+// its answer, and the body's size; a refused one too. A GET writes none.
+func TestEveryPostLogsItsDurationAndBodySize(t *testing.T) {
+	server, _ := newTestServerWithBlobs(t, http.NotFound)
+	buf := capturePostLog(t)
+	for _, c := range []struct {
+		target string
+		body   []byte
+		signed bool
+	}{
+		{"/api/messages", []byte(`{"scriptHex":"00"}`), true},
+		{"/api/blobs", bytes.Repeat([]byte("b"), 2048), true},
+		{"/api/broadcast", []byte(`{"txhex":"00"}`), true},
+		{"/api/messages", []byte(`{"scriptHex":"00"}`), false},
+	} {
+		buf.Reset()
+		header := http.Header{}
+		if c.signed {
+			header = v2Header(t, server, "POST", c.target, c.body)
+		}
+		sendWith(t, server, "POST", c.target, c.body, header)
+		want := regexp.MustCompile(fmt.Sprintf(`^\d{4}/\d\d/\d\d \d\d:\d\d:\d\d posted POST %s in \d+ms body %d bytes$`, regexp.QuoteMeta(c.target), len(c.body)))
+		if lines := logLines(buf); len(lines) != 1 || !want.MatchString(lines[0]) {
+			t.Fatalf("POST %s (signed %v) logged %q, want one line matching %s", c.target, c.signed, lines, want)
+		}
+	}
+
+	buf.Reset()
+	if status, _, body := sendWith(t, server, "GET", "/api/messages", nil, v2Header(t, server, "GET", "/api/messages", nil)); status != http.StatusOK {
+		t.Fatalf("GET /api/messages: %d %s", status, body)
+	}
+	if lines := logLines(buf); len(lines) != 0 {
+		t.Fatalf("a GET logged %q as a POST", lines)
 	}
 }

@@ -113,6 +113,9 @@ writes one log line, `accepted <METHOD> <path> (scheme=v2 key <first 12 hex>)`; 
 request that says why it was made (`?why=<reason>`, as the app's `GET /api/view` does)
 has it after the path, `accepted GET /api/view why=gap (scheme=v2 key …)`, and a reason
 that is not one short word of `a-z`, `0-9` and `-` (at most 24) is written `why=?`.
+Every `POST` that takes a proof (a message, a card answer, a reaction, a file, a broadcast)
+also writes, once it is answered, how long the backend took from its arrival and its body's
+size: `posted POST /api/messages in 12ms body 532 bytes`, a refused one too (mw-8xe671n).
 `GET /api/challenge` stays unsigned.
 
 A nonce is consumed the moment it's presented and verified — it can never be

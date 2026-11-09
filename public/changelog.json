@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.91",
+    "date": "2026-11-09",
+    "story": "mw-azvrhbq",
+    "kind": "new",
+    "text": "A PDF or text file attached in a thread now has a Save button beside it that keeps the file under its own name."
+  },
+  {
     "version": "0.8.90",
     "date": "2026-11-06",
     "story": "mw-8xe671n",

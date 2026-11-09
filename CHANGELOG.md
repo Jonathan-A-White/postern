@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.91
+_2026-11-09_
+- New: A PDF or text file attached in a thread now has a Save button beside it that keeps the file under its own name.
+
 ## 0.8.90
 _2026-11-06_
 - Fixed: Sending is quick again: the box clears at once and the message shows in the thread straight away, and sending a photo no longer freezes the screen for seconds.

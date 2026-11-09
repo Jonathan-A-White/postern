@@ -233,10 +233,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       render(<Conversation items={mergeConversation([sentRow(plaintext)])} />);
     });
     Then('it shows the file {string} with its size {string}', (_c, name: string, size: string) => {
-      expect(within(screen.getByTestId('message')).getByRole('button', { name: new RegExp(name) })).toHaveTextContent(`${name} · ${size}`);
+      expect(within(screen.getByTestId('message')).getByRole('button', { name: new RegExp(`^${name.replace('.', '\\.')}`) })).toHaveTextContent(`${name} · ${size}`);
     });
     When('he taps the file {string}', (_c, name: string) => {
-      fireEvent.click(screen.getByRole('button', { name: new RegExp(name.replace('.', '\\.')) }));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name.replace('.', '\\.')}`) }));
     });
     Then('a new tab is opened', async () => {
       await waitFor(() => expect(opened).toEqual([['blob:attachment', '_blank', 'noopener']]));

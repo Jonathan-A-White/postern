@@ -10,6 +10,7 @@ import { answersGiven, askedAgainAt, attachmentLabel, type ConversationItem, typ
 import { answeredQuestion, needOfQuestion } from '../model/needs';
 import { clockTime } from '../services/age';
 import { openAttachment } from '../services/blobs';
+import { toast } from '../ui/toastStore';
 import { useLive } from '../services/live';
 import { isSupported as canSpeak, speak, stop as stopSpeaking, useSpeechFailure } from '../services/speech';
 import { useSpeaking } from './useSpeaking';
@@ -21,7 +22,7 @@ import { ShareButton } from './ShareButton';
 import { VoicePlayer } from './VoicePlayer';
 import { usePictureViewer } from 'pwa-kit/picture-viewer';
 import { PosternPictureViewer } from './PosternPictureViewer';
-import { openFile } from './openFile';
+import { hasSave, openFile, saveFile } from './openFile';
 import { messageShareText } from '../model/shareText';
 import { sendAnswer } from './send';
 import { useOneTap } from './oneTap';
@@ -142,6 +143,17 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
     }
   }
 
+  async function save() {
+    if (!key) return;
+    try {
+      saveFile(url ?? (await openAttachment(attachment, { key, direction })), attachment.name);
+      toast(`Saved ${attachment.name ?? 'file'} to Downloads`);
+    } catch (err) {
+      failed.current = true;
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   if (error) {
     return (
       <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-danger">
@@ -169,11 +181,22 @@ function AttachmentBody({ attachment, direction, near }: { attachment: Attachmen
   if (attachment.mime.startsWith('audio/')) {
     return url ? <VoicePlayer src={url} /> : <div className="h-10 w-64 animate-pulse rounded-full bg-sunken" />;
   }
-  return (
-    <button type="button" onClick={() => void open()} className="inline-flex items-center gap-2 rounded-xl border border-line bg-sunken px-3 py-2 text-sm hover:border-line-strong">
+  const chip = (
+    <button type="button" onClick={() => void open()} className="inline-flex min-w-0 items-center gap-2 rounded-xl border border-line bg-sunken px-3 py-2 text-sm hover:border-line-strong">
       <Icon name="file" size={18} />
       <span className="min-w-0 truncate">{attachment.name ?? attachmentLabel(attachment)}</span> · {fileSize(attachment.size)}
     </button>
+  );
+  // A PDF or text file opens in a tab on the tap, so a Save sits beside it: nothing else would keep it under its name.
+  if (!hasSave(attachment.mime)) return chip;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      {chip}
+      <Button size="sm" variant="secondary" aria-label={`Save ${attachment.name ?? 'file'}`} onClick={() => void save()}>
+        <Icon name="save" size={15} />
+        Save
+      </Button>
+    </div>
   );
 }
 

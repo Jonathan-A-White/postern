@@ -103,17 +103,17 @@ export interface StubExtras {
 export async function stubBackend(
   page: Page,
   governor: PrivateKey,
-  voice?: { bytes: Uint8Array; mime: string },
+  voice?: { bytes: Uint8Array; mime: string; name?: string },
   extras: StubExtras = {},
 ): Promise<{ posted: string[] }> {
   const governorPub = governor.toPublicKey().toString();
   const now = Date.now();
   const view = await sealDocument(JSON.stringify(withNeeds(extras.view ?? fixtureView(now), extras.needs, extras.beads)), MAYOR.toHex(), governorPub);
-  let voiceAttachment: { hash: string; size: number; mime: string } | undefined;
+  let voiceAttachment: { hash: string; size: number; mime: string; name?: string } | undefined;
   let voiceCiphertext: Uint8Array | undefined;
   if (voice) {
     voiceCiphertext = encryptAttachment({ bytes: voice.bytes, senderPrivateKeyHex: governor.toHex(), recipientPublicKeyHex: MAYOR.toPublicKey().toString() });
-    voiceAttachment = { hash: createHash('sha256').update(voiceCiphertext).digest('hex'), size: voice.bytes.length, mime: voice.mime };
+    voiceAttachment = { hash: createHash('sha256').update(voiceCiphertext).digest('hex'), size: voice.bytes.length, mime: voice.mime, ...(voice.name ? { name: voice.name } : {}) };
   }
   const records = extras.otherChannels ? otherBackendRecords(governor, now) : fixtureRecords(governor, now, voiceAttachment);
   const base = extras.base ?? '/api';

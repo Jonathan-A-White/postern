@@ -213,7 +213,7 @@ function hex64(seed: number): string {
 export const FIXTURE_QUESTION_TXID = `direct:${hex64(4)}`;
 
 /** The conversation, as the backend's GET /api/messages would return it. */
-export function fixtureRecords(governorKey: PrivateKey, now: number = Date.now(), voice?: { hash: string; size: number; mime: string }): FixtureRecord[] {
+export function fixtureRecords(governorKey: PrivateKey, now: number = Date.now(), voice?: { hash: string; size: number; mime: string; name?: string }): FixtureRecord[] {
   const governorPub = governorKey.toPublicKey().toString();
   const mayorPub = MAYOR.toPublicKey().toString();
   const ts = (m: number) => Math.floor((now - m * 60_000) / 1000);

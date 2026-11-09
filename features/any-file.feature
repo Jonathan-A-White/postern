@@ -27,3 +27,23 @@ Feature: Attach files takes any file of any type, each sent with its name (mw-gq
     Then it shows the file "data.zip" with its size "2 KB"
     When he taps the file "data.zip"
     Then the file is downloaded as "data.zip"
+
+  Scenario: mw-azvrhbq AC-1: a received PDF or text file has a Save beside it that saves it under its name
+    Given a received message with a file "plan.pdf" of type "application/pdf" and 4096 bytes
+    When the conversation is shown
+    Then it shows the file "plan.pdf" with its size "4 KB"
+    When he taps Save on "plan.pdf"
+    Then the file is downloaded as "plan.pdf"
+    And no tab is opened
+
+  Scenario: mw-azvrhbq AC-2: tapping a received PDF or text file still opens it in a new tab and saves nothing
+    Given a received message with a file "notes.txt" of type "text/plain" and 300 bytes
+    When the conversation is shown
+    And he taps the file "notes.txt"
+    Then a new tab is opened on the file
+    And nothing is downloaded
+
+  Scenario: mw-azvrhbq AC-3: a file a tap already downloads gets no second Save
+    Given a received message with a file "data.zip" of type "application/zip" and 2048 bytes
+    When the conversation is shown
+    Then there is no Save beside "data.zip"

@@ -48,6 +48,7 @@ const MIB = 1024 * 1024;
 const now = Date.now();
 let plaintext = '';
 let downloads: string[] = [];
+let opened: unknown[][] = [];
 
 function fileInput(): HTMLInputElement {
   return document.querySelector('input[type="file"][multiple]') as HTMLInputElement;
@@ -98,6 +99,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     doubles.delivered = [];
     doubles.uploads = 0;
     downloads = [];
+    opened = [];
     plaintext = '';
     await settlePhone();
     forgetOutboxState();
@@ -123,6 +125,19 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
         <ToastHost />
       </>,
     );
+  };
+  const receivedFile = (_c: unknown, name: string, mime: string, size: number) => {
+    plaintext = encodeThreadedMessage({ text: '', attachment: { hash: '01'.repeat(32), size, mime, name } });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download);
+    });
+    vi.spyOn(window, 'open').mockImplementation((...args: unknown[]) => {
+      opened.push(args);
+      return null;
+    });
+  };
+  const showConversation = () => {
+    render(<Conversation items={mergeConversation([receivedRow(plaintext)])} />);
   };
   const tapSend = async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -178,15 +193,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
   });
 
   Scenario('AC-3: a received file of a type the app does not show is a file chip that downloads on tap', ({ Given, When, Then }) => {
-    Given('a received message with a file {string} of type {string} and {int} bytes', (_c, name: string, mime: string, size: number) => {
-      plaintext = encodeThreadedMessage({ text: '', attachment: { hash: '01'.repeat(32), size, mime, name } });
-      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-        downloads.push(this.download);
-      });
-    });
-    When('the conversation is shown', () => {
-      render(<Conversation items={mergeConversation([receivedRow(plaintext)])} />);
-    });
+    Given('a received message with a file {string} of type {string} and {int} bytes', receivedFile);
+    When('the conversation is shown', showConversation);
     Then('it shows the file {string} with its size {string}', (_c, name: string, size: string) => {
       const chip = within(screen.getByTestId('message')).getByRole('button', { name: new RegExp(name) });
       expect(chip).toHaveTextContent(`${name} · ${size}`);
@@ -196,6 +204,45 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     Then('the file is downloaded as {string}', async (_c, name: string) => {
       await waitFor(() => expect(downloads).toEqual([name]));
+    });
+  });
+
+  Scenario('mw-azvrhbq AC-1: a received PDF or text file has a Save beside it that saves it under its name', ({ Given, When, Then, And }) => {
+    Given('a received message with a file {string} of type {string} and {int} bytes', receivedFile);
+    When('the conversation is shown', showConversation);
+    Then('it shows the file {string} with its size {string}', (_c, name: string, size: string) => {
+      expect(within(screen.getByTestId('message')).getByRole('button', { name: new RegExp(`^${name}`) })).toHaveTextContent(`${name} · ${size}`);
+    });
+    When('he taps Save on {string}', (_c, name: string) => {
+      fireEvent.click(screen.getByRole('button', { name: `Save ${name}` }));
+    });
+    Then('the file is downloaded as {string}', async (_c, name: string) => {
+      await waitFor(() => expect(downloads).toEqual([name]));
+    });
+    And('no tab is opened', () => {
+      expect(opened).toEqual([]);
+    });
+  });
+
+  Scenario('mw-azvrhbq AC-2: tapping a received PDF or text file still opens it in a new tab and saves nothing', ({ Given, When, Then, And }) => {
+    Given('a received message with a file {string} of type {string} and {int} bytes', receivedFile);
+    When('the conversation is shown', showConversation);
+    And('he taps the file {string}', (_c, name: string) => {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}`) }));
+    });
+    Then('a new tab is opened on the file', async () => {
+      await waitFor(() => expect(opened).toEqual([['blob:file', '_blank', 'noopener']]));
+    });
+    And('nothing is downloaded', () => {
+      expect(downloads).toEqual([]);
+    });
+  });
+
+  Scenario('mw-azvrhbq AC-3: a file a tap already downloads gets no second Save', ({ Given, When, Then }) => {
+    Given('a received message with a file {string} of type {string} and {int} bytes', receivedFile);
+    When('the conversation is shown', showConversation);
+    Then('there is no Save beside {string}', (_c, name: string) => {
+      expect(screen.queryByRole('button', { name: `Save ${name}` })).toBeNull();
     });
   });
 });

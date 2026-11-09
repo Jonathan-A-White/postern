@@ -244,7 +244,10 @@ func (h *HTTPInbound) Post(ctx context.Context, token string, alert alerts.Alert
 		When     string `json:"when,omitempty"`
 		Subject  string `json:"subject,omitempty"`
 		Code     string `json:"code,omitempty"`
-	}{token, alert.Kind, alert.Amount, alert.Merchant, alert.Last4, alert.When, alert.Subject, alert.Code})
+		// a sermon-notes alert's own two facts; every other kind leaves them out
+		Title     string `json:"title,omitempty"`
+		Reference string `json:"reference,omitempty"`
+	}{token, alert.Kind, alert.Amount, alert.Merchant, alert.Last4, alert.When, alert.Subject, alert.Code, alert.Title, alert.Reference})
 	if err != nil {
 		return err
 	}

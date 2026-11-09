@@ -218,3 +218,27 @@ func TestAZelleSentAndADepositAreKeptWithTheirMemoAndSurviveARestart(t *testing.
 		t.Fatalf("an alert with no memo answers one: %s", raw)
 	}
 }
+
+func TestASermonNotesAlertIsKeptWithItsTitleReferenceAndDateAndSurvivesARestart(t *testing.T) {
+	dir, c := t.TempDir(), newClock()
+	s := openStore(t, dir, c)
+	token, _ := s.Address("sermons")
+	notes, _, err := s.Add(token, Alert{Kind: KindSermonNotes, Title: "The Day of the Lord", Reference: "2 Peter 3:10-18", When: "2026-11-08T00:00:00-05:00"})
+	if err != nil {
+		t.Fatalf("Add sermon-notes: %v", err)
+	}
+	got := openStore(t, dir, c).List("sermons", 0)
+	if len(got) != 1 || got[0] != notes || got[0].Title != "The Day of the Lord" || got[0].Reference != "2 Peter 3:10-18" {
+		t.Fatalf("after a restart: %+v", got)
+	}
+	if _, _, err := s.Add(token, Alert{Kind: KindSermonNotes, Title: strings.Repeat("t", MaxFieldRunes+1)}); err == nil {
+		t.Fatal("an over-long title was kept")
+	}
+	if _, _, err := s.Add(token, Alert{Kind: KindSermonNotes, Reference: strings.Repeat("r", MaxFieldRunes+1)}); err == nil {
+		t.Fatal("an over-long reference was kept")
+	}
+	raw, _ := json.Marshal(Alert{Kind: KindCharge, Amount: "1.00"})
+	if strings.Contains(string(raw), "title") || strings.Contains(string(raw), "reference") {
+		t.Fatalf("a charge answers a title or reference: %s", raw)
+	}
+}

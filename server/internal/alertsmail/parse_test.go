@@ -203,6 +203,96 @@ func TestTheCancelLinkIsNeverKeptEvenBesideTheConfirmLink(t *testing.T) {
 	}
 }
 
+// A Subsplash notes mail (invented, shaped like the one the church sends): the
+// title and passage are in the subject, the date in the body, and the notes PDF
+// is attached. Only the title, the reference and the date are kept.
+func TestASubsplashNotesMailYieldsTitleReferenceAndTheBodysDate(t *testing.T) {
+	got := Parse(fixture(t, "subsplash-notes.eml"))
+	want := Facts{Kind: alerts.KindSermonNotes, Title: "The Day of the Lord", Reference: "2 Peter 3:10-18", When: "2026-11-08T00:00:00-05:00"}
+	if got != want {
+		t.Fatalf("Parse(subsplash-notes.eml) =\n %+v\nwant\n %+v", got, want)
+	}
+	if alert := got.Alert(); alert != (alerts.Alert{Kind: "sermon-notes", Title: "The Day of the Lord", Reference: "2 Peter 3:10-18", When: "2026-11-08T00:00:00-05:00"}) {
+		t.Fatalf("alert = %+v, want the title, reference and date only", alert)
+	}
+}
+
+// The attached notes are never read: a part that is an attachment is skipped
+// whatever its type, and nothing of it reaches the facts.
+func TestASermonNotesAttachmentIsNeverReadOrKept(t *testing.T) {
+	raw := fixture(t, "subsplash-notes.eml")
+	got := Parse(raw)
+	for name, field := range map[string]string{"title": got.Title, "reference": got.Reference, "when": got.When, "subject": got.Subject, "memo": got.Memo, "merchant": got.Merchant} {
+		if strings.Contains(field, "INVENTED-NOTES-BODY-MARKER") {
+			t.Errorf("%s holds the attachment's text", name)
+		}
+	}
+	// a text attachment sorted before the body is still not the body
+	text := strings.Replace(string(raw), "Content-Type: application/pdf; name=\"notes.pdf\"", "Content-Type: text/plain; name=\"notes.txt\"", 1)
+	text = strings.Replace(text, "SU5WRU5URUQtTk9URVMtQk9EWS1NQVJLRVI=", "Tm92IDEsIDIwMjYK", 1) // "Nov 1, 2026"
+	if again := Parse([]byte(text)); again != got {
+		t.Fatalf("a text attachment changed the facts: %+v, want %+v", again, got)
+	}
+	if lines := textLines("multipart/mixed; boundary=\"b\"", "", strings.NewReader("--b\r\nContent-Type: text/plain\r\nContent-Disposition: attachment; filename=\"n.txt\"\r\n\r\nSECRET NOTES\r\n--b--\r\n")); len(lines) != 0 {
+		t.Fatalf("an attachment was read: %q", lines)
+	}
+}
+
+// The body's date is read whatever way the church writes it; with none, the
+// mail's own Date is the date. The subject's dash may be a typographic one,
+// and a forward's prefix is dropped.
+func TestASermonNotesDateAndSubjectAreReadInTheShapesTheyComeIn(t *testing.T) {
+	mail := func(subject string, body string) []byte {
+		return []byte("From: Example Church <noreply@subsplash.com>\r\nDate: Mon, 9 Nov 2026 09:00:00 -0500\r\nSubject: " + subject +
+			"\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body)
+	}
+	for name, tc := range map[string]struct {
+		raw  []byte
+		want Facts
+	}{
+		"a labelled short date": {mail("Notes for \"Grace\" - Romans 8:1-4", "Date: Nov 1, 2026\r\n"),
+			Facts{Kind: alerts.KindSermonNotes, Title: "Grace", Reference: "Romans 8:1-4", When: "2026-11-01T00:00:00-04:00"}},
+		"a numeric date and curly quotes": {mail("Notes for \u201cGrace\u201d \u2013 Romans 8:1-4", "10/25/2026\r\n"),
+			Facts{Kind: alerts.KindSermonNotes, Title: "Grace", Reference: "Romans 8:1-4", When: "2026-10-25T00:00:00-04:00"}},
+		"a forwarded subject, no date in the body": {mail("Fwd: Notes for \"Grace\" - Romans 8:1-4", "Your notes are attached.\r\n"),
+			Facts{Kind: alerts.KindSermonNotes, Title: "Grace", Reference: "Romans 8:1-4", When: "2026-11-09T09:00:00-05:00"}},
+		"a title with a dash and a quote in it": {mail("Notes for \"Rest - the \"quiet\" kind\" - Psalm 23", "November 1, 2026\r\n"),
+			Facts{Kind: alerts.KindSermonNotes, Title: "Rest - the \"quiet\" kind", Reference: "Psalm 23", When: "2026-11-01T00:00:00-04:00"}},
+		"no passage": {mail("Notes for \"Grace\"", "Date: Nov 1, 2026\r\n"),
+			Facts{Kind: alerts.KindSermonNotes, Title: "Grace", When: "2026-11-01T00:00:00-04:00"}},
+	} {
+		if got := Parse(tc.raw); got != tc.want {
+			t.Errorf("%s: Parse =\n %+v\nwant\n %+v", name, got, tc.want)
+		}
+	}
+}
+
+// A notes-looking subject from anyone but Subsplash, or a subject that is not
+// "Notes for "...", is unread with its subject only: nothing of a forger's body
+// is kept.
+func TestSermonNotesFromAnyoneButSubsplashOrOfAnotherShapeAreUnread(t *testing.T) {
+	for name, raw := range map[string]string{
+		"another sender":  "From: x <x@example.com>\r\nSubject: Notes for \"Grace\" - Romans 8:1-4\r\nContent-Type: text/plain\r\n\r\nNov 1, 2026\r\n",
+		"a lookalike":     "From: x <x@notsubsplash.com>\r\nSubject: Notes for \"Grace\" - Romans 8:1-4\r\nContent-Type: text/plain\r\n\r\nNov 1, 2026\r\n",
+		"another subject": "From: x <noreply@subsplash.com>\r\nSubject: Your receipt\r\nContent-Type: text/plain\r\n\r\nNov 1, 2026\r\n",
+		"no quoted title": "From: x <noreply@subsplash.com>\r\nSubject: Notes for Grace - Romans\r\nContent-Type: text/plain\r\n\r\nNov 1, 2026\r\n",
+	} {
+		got := Parse([]byte(raw))
+		if got.Kind != alerts.KindUnread || got.Title != "" || got.Reference != "" || got.When != "" || got.Subject == "" {
+			t.Errorf("%s: Parse = %+v, want unread with its subject only", name, got)
+		}
+	}
+}
+
+// A title or passage over the field limit is cut to it, as a subject is.
+func TestAnOverLongSermonTitleIsCutToTheFieldLimit(t *testing.T) {
+	raw := "From: x <noreply@subsplash.com>\r\nSubject: Notes for \"" + strings.Repeat("é", 500) + "\" - " + strings.Repeat("r", 500) + "\r\nContent-Type: text/plain\r\n\r\nNov 1, 2026\r\n"
+	alert := Parse([]byte(raw)).Alert()
+	if len([]rune(alert.Title)) != alerts.MaxFieldRunes || len([]rune(alert.Reference)) != alerts.MaxFieldRunes {
+		t.Fatalf("title %d, reference %d runes, want %d each", len([]rune(alert.Title)), len([]rune(alert.Reference)), alerts.MaxFieldRunes)
+	}
+}
+
 func TestAnUnknownMailYieldsUnreadWithItsSubjectOnly(t *testing.T) {
 	got := Parse(fixture(t, "unknown.eml"))
 	want := Facts{Kind: alerts.KindUnread, Subject: "Your November statement is ready — view it online"}

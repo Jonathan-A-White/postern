@@ -540,3 +540,39 @@ func TestAnInboundChargePushesEveryPhoneOfTheFamilyWhateverItsList(t *testing.T)
 		t.Fatalf("pushes = %d, want 2", got)
 	}
 }
+
+// The second token: the sermon-index reader is a licensed key of its own, so
+// its family is its own, and a sermon-notes alert posted to its token is its
+// feed alone; the family's bank feed never lists it, and a claim by one family
+// never reaches the other.
+func TestASermonNotesAlertIsListedAndClaimedOnlyByTheFamilyOfItsToken(t *testing.T) {
+	s, keys, _, sermons := twoPhones(t)
+	bank, notes := s.address(t, keys[0]), s.address(t, sermons)
+	if bank == notes {
+		t.Fatalf("both families have %q", bank)
+	}
+	if status, out := s.inbound(t, alertsSecret, fmt.Sprintf(`{"token":%q,"kind":"sermon-notes","title":"The Day of the Lord","reference":"2 Peter 3:10-18","when":"2026-11-08T00:00:00-05:00"}`, tokenOf(notes))); status != http.StatusCreated {
+		t.Fatalf("inbound sermon-notes = %d %s", status, out)
+	}
+	if status, out := s.inbound(t, alertsSecret, fmt.Sprintf(`{"token":%q,"kind":"charge","amount":"42.17","merchant":"Corner Cafe","last4":"1234"}`, tokenOf(bank))); status != http.StatusCreated {
+		t.Fatalf("inbound charge = %d %s", status, out)
+	}
+	got := s.list(t, sermons, 0).Alerts
+	if len(got) != 1 || got[0].Kind != "sermon-notes" || got[0].Title != "The Day of the Lord" || got[0].Reference != "2 Peter 3:10-18" || got[0].When != "2026-11-08T00:00:00-05:00" {
+		t.Fatalf("the sermon reader's feed = %+v, want the one sermon-notes alert", got)
+	}
+	for _, a := range s.list(t, keys[0], 0).Alerts {
+		if a.Kind == "sermon-notes" {
+			t.Fatalf("the bank family's feed lists a sermon-notes alert: %+v", a)
+		}
+	}
+	if status, _ := s.as(t, keys[0], http.MethodDelete, "/api/alerts/"+got[0].ID, ""); status != http.StatusNotFound {
+		t.Fatalf("the bank family's claim of a sermon alert = %d, want 404", status)
+	}
+	if status, _ := s.as(t, sermons, http.MethodDelete, "/api/alerts/"+got[0].ID, ""); status != http.StatusNoContent {
+		t.Fatalf("the sermon reader's claim = %d, want 204", status)
+	}
+	if left := s.list(t, keys[0], 0).Alerts; len(left) != 1 || left[0].Kind != "charge" {
+		t.Fatalf("the bank feed after the sermon claim = %+v, want its charge", left)
+	}
+}

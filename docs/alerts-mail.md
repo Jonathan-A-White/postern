@@ -26,9 +26,23 @@
     app shows to tap and confirm. Gmail's real mail has a confirm link and a cancel link (`.../uf-...`) and no code;
     a code (`(#123456789)` in the subject or `Confirmation code:` in the body) is read too, should one come. A mail
     from any other domain, a link on any other host or path, and the cancel link are never kept: the mail is `unread`.
+  - Subsplash notes mail (a church's "Notes for "The Day of the Lord" - 2 Peter 3:10-18", from subsplash.com):
+    `sermon-notes` with the `title` and `reference` from the subject and the date a line of the body gives as `when`
+    (midnight Eastern; the mail's own Date when no line is a date). The body is read for that date and nothing else;
+    the attached notes PDF, like every attachment, is skipped unread and never kept. A "Notes for ..." subject from
+    any other domain is `unread`.
   - Anything else: `unread` with its subject only.
 - Nothing is written to disk: no queue, no spool, no mail in the log. The log says only that an alert of a kind was
   posted, or why one was not.
+
+## A second token, for sermon notes
+
+The sermon-notes reader (sermon-index) is a licensed key of its own, so it is a family of its own
+(`docs/protocol.md` §26) with its own `<token>@alerts.allmymind.org`. The receiver is the same, with no new
+domain, certificate or daemon: a Gmail filter forwards the Subsplash notes mail to that address, and the bank
+filters keep forwarding to the family's. A family's token is the only thing that routes a mail, so a notes mail sent to
+the bank token would be listed in the bank feed and a bank mail sent to the sermon token in the reader's: the
+filters decide. The reader claims only its own alerts.
 
 The parsers were built from mails printed from Gmail, so the first real forwarded mail of each kind is the one to
 check them against (`journalctl -u alerts-mail` says `posted a charge alert`, not `posted a unread alert`).

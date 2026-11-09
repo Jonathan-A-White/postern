@@ -2538,6 +2538,12 @@ A family's **address** is `<token>@<domain>`: `token` is 12 random characters of
 first time the family asks and the same for ever after; `domain` is `POSTERN_ALERTS_DOMAIN` (the alerts mail
 domain), never written in the repo. The receiver finds the family from the token alone.
 
+A family may be a licensed key alone, and **a second address is a second family**: the sermon-notes reader
+(sermon-index) holds a licensed key of its own, asks `POST /api/alerts/address` and gets a token of its own. Nothing
+makes one family hold two tokens. The receiver posts a `sermon-notes` alert to that token, so the alert is listed,
+pushed and claimed by that family only, and the family's bank feed never sees it (and a bank alert never reaches the
+reader). Which token a mail is sent to is decided by the Gmail filter that forwards it, not by the backend.
+
 ### The alert
 
 One alert is parsed facts, as JSON:
@@ -2546,17 +2552,20 @@ One alert is parsed facts, as JSON:
 |---|---|
 | `id` | the backend's name for it: 16 hex characters, new for every alert |
 | `seq` | a whole number that only grows, for `since`; never reused, even after a claim |
-| `kind` | `charge`, `forward-confirm`, `amazon`, `unread`, `zelle-sent` or `deposit` |
+| `kind` | `charge`, `forward-confirm`, `amazon`, `unread`, `zelle-sent`, `deposit` or `sermon-notes` |
 | `amount` | a charge's amount, as the receiver parsed it (`"42.17"`); optional |
 | `merchant` | the merchant of a charge, the shop of an `amazon` alert, the payee of a `zelle-sent` alert or the payer of a `deposit` alert (PNC's "Deposit made by"); optional |
 | `last4` | the last four digits of the card (of the account, for a `zelle-sent` or `deposit` alert), at most 4 characters; optional |
-| `when` | when the mail says it happened, RFC 3339; for a `zelle-sent` or `deposit` alert, whose mail gives a date only, the mail's own time when it came that day (Eastern), else midnight Eastern of that date; optional |
+| `when` | when the mail says it happened, RFC 3339; for a `zelle-sent` or `deposit` alert, whose mail gives a date only, the mail's own time when it came that day (Eastern), else midnight Eastern of that date; for a `sermon-notes` alert, midnight Eastern of the date in the mail's body (the mail's own `Date` when the body gives none); optional |
 | `subject` | an `unread` alert's subject line; optional |
 | `code` | a `forward-confirm` alert's confirmation code, the one the mail provider sent when the family forwarded its first mail (Gmail sends a link and no code, so it is usually absent); optional |
 | `memo` | a `zelle-sent` alert's memo, the words its sender wrote with the payment; optional |
+| `title` | a `sermon-notes` alert's sermon title, from the mail's subject; optional |
+| `reference` | a `sermon-notes` alert's passage (`2 Peter 3:10-18`), from the mail's subject; optional |
 | `link` | a `forward-confirm` alert's confirmation link, `https://mail.google.com/mail/vf-...` whole, at most 500 characters, the one link an alert carries; optional |
 
-Every text field but `link` is at most 200 characters, and there is no field for a mail's body. **A mail body never reaches
+A `sermon-notes` alert is the forwarded Subsplash notes mail's title, passage and date: the notes attached to that mail
+(a PDF) are never read or kept. Every text field but `link` is at most 200 characters, and there is no field for a mail's body. **A mail body never reaches
 the backend**: the receiver reads the mail, keeps nothing of it, and posts the facts above. An alert with any
 field not in this table is refused, so a body cannot be posted by mistake.
 
@@ -2597,7 +2606,7 @@ decided per subscription, by the `last4s` it sent (§9 item 6): a list of at mos
   subscription's list names the `last4`, and its own does not) it gets **no push at all**: the charge is not that
   person's.
 - A subscription that sent no list (a cockpit key, an older app) gets the bare push for every alert.
-- An alert that is not a charge (`amazon`, `unread`, `forward-confirm`, `zelle-sent`, `deposit`) is pushed bare to every subscription.
+- An alert that is not a charge (`amazon`, `unread`, `forward-confirm`, `zelle-sent`, `deposit`, `sermon-notes`) is pushed bare to every subscription.
 
 The backend keeps only the lists. It keeps no card name and no owner: which person a card is, and which
 charges a phone shows, stay in the app. The facts are never written to a log line. Two keys on one phone are two

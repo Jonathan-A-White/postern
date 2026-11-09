@@ -314,3 +314,32 @@ func selfSigned(t *testing.T) *tls.Config {
 	}
 	return &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
 }
+
+// The sermon-notes mail posts the title, reference and date, and the attachment
+// never reaches the backend.
+func TestASermonNotesMailIsPostedWithItsTitleReferenceAndDateOnly(t *testing.T) {
+	backend := newFakeBackend(t)
+	c := dial(t, listen(t, backend, nil))
+	if err := c.Mail("noreply@mail.subsplash.com", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Rcpt(knownToken+"@"+testDomain, nil); err != nil {
+		t.Fatalf("RCPT = %v", err)
+	}
+	if err := send(t, c, fixture(t, "subsplash-notes.eml")); err != nil {
+		t.Fatalf("DATA = %v", err)
+	}
+	if err := c.Quit(); err != nil {
+		t.Fatal(err)
+	}
+	got := backend.received()
+	want := map[string]string{"token": knownToken, "kind": "sermon-notes", "title": "The Day of the Lord", "reference": "2 Peter 3:10-18", "when": "2026-11-08T00:00:00-05:00"}
+	if len(got) != 1 || len(got[0]) != len(want) {
+		t.Fatalf("posted %+v, want %+v", got, want)
+	}
+	for k, v := range want {
+		if got[0][k] != v {
+			t.Fatalf("posted %+v, want %+v", got[0], want)
+		}
+	}
+}

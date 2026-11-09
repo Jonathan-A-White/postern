@@ -38,6 +38,9 @@ type Facts struct {
 	OrderID  string
 	Items    string
 	Memo     string
+	// Title and Reference are a sermon-notes mail's: the sermon and its passage.
+	Title     string
+	Reference string
 }
 
 // Alert is the facts as POST /api/alerts/inbound takes them: only §26's
@@ -53,6 +56,8 @@ func (f Facts) Alert() alerts.Alert {
 		Code:     cut(f.Code),
 		Link:     f.Link,
 		Memo:     cut(f.Memo),
+		Title:     cut(f.Title),
+		Reference: cut(f.Reference),
 	}
 }
 
@@ -74,7 +79,7 @@ func Parse(raw []byte) Facts {
 	unread := Facts{Kind: alerts.KindUnread, Subject: cut(subject)}
 	m := mailView{subject: subject, from: senderDomain(msg.Header.Get("From")), date: mailDate(msg.Header)}
 	m.lines = textLines(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Body)
-	for _, parse := range []func(mailView) (Facts, bool){parseChase, parseCiti, parsePNCZelleSent, parsePNCDeposit, parseAmazon, parseGmailConfirm} {
+	for _, parse := range []func(mailView) (Facts, bool){parseChase, parseCiti, parsePNCZelleSent, parsePNCDeposit, parseAmazon, parseGmailConfirm, parseSermonNotes} {
 		if facts, ok := parse(m); ok {
 			return facts
 		}
@@ -346,6 +351,46 @@ func parseGmailConfirm(m mailView) (Facts, bool) {
 	return f, true
 }
 
+// ---- Subsplash sermon notes ------------------------------------------------
+
+var (
+	// sermonNotesSubject: Notes for "The Day of the Lord" - 2 Peter 3:10-18,
+	// the title in straight or curly quotes, the passage after a hyphen or a
+	// typographic dash, the passage optional, a forward's prefix allowed. The
+	// title takes everything up to the last closing quote before the dash.
+	sermonNotesSubject = regexp.MustCompile(`(?i)^(?:(?:fwd?|re):\s*)*Notes for [“"](.+)[”"](?:\s+[-–—]\s+(.+))?$`)
+	// sermonNotesDate: the layouts a notes mail's date line may take.
+	sermonNotesDate = []string{
+		"January 2, 2006", "Jan 2, 2006", "Monday, January 2, 2006", "Mon, Jan 2, 2006",
+		"1/2/2006", "01/02/2006", "1/2/06", "01/02/06", "2006-01-02",
+	}
+	sermonNotesLabel = regexp.MustCompile(`(?i)^(?:sermon\s+)?date:\s*`)
+)
+
+// parseSermonNotes reads the notes mail a church sends from Subsplash, as the
+// family forwards it to its sermon-notes address: the title and passage are in
+// the subject ('Notes for "The Day of the Lord" - 2 Peter 3:10-18'), the date
+// is a line of the body, and the notes are an attached PDF, which is never
+// read (textLines skips every attachment). Only the title, the passage and
+// the date are kept; the date is the mail's own Date when no line is a date.
+func parseSermonNotes(m mailView) (Facts, bool) {
+	if !m.fromDomain("subsplash.com") {
+		return Facts{}, false
+	}
+	s := sermonNotesSubject.FindStringSubmatch(m.subject)
+	if s == nil || strings.TrimSpace(s[1]) == "" {
+		return Facts{}, false
+	}
+	f := Facts{Kind: alerts.KindSermonNotes, Title: strings.TrimSpace(s[1]), Reference: strings.TrimSpace(s[2]), When: m.date}
+	for _, line := range m.lines {
+		if when := easternTime(sermonNotesLabel.ReplaceAllString(line, ""), "", sermonNotesDate...); when != "" {
+			f.When = when
+			break
+		}
+	}
+	return f, true
+}
+
 // ---- reading a mail --------------------------------------------------------
 
 // value is what follows a label: the rest of the line ("Label: value") or,
@@ -411,10 +456,13 @@ func mailDate(h mail.Header) string {
 func textLines(contentType, encoding string, body io.Reader) []string {
 	var plain, htmlText string
 	parts := 0
-	var walk func(contentType, encoding string, body io.Reader, depth int)
-	walk = func(contentType, encoding string, body io.Reader, depth int) {
+	var walk func(contentType, encoding, disposition string, body io.Reader, depth int)
+	walk = func(contentType, encoding, disposition string, body io.Reader, depth int) {
 		parts++
 		if parts > maxParts {
+			return
+		}
+		if kind, _, err := mime.ParseMediaType(disposition); err == nil && kind == "attachment" {
 			return
 		}
 		mediaType, params, err := mime.ParseMediaType(contentType)
@@ -432,7 +480,7 @@ func textLines(contentType, encoding string, body io.Reader) []string {
 				if err != nil {
 					return
 				}
-				walk(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part, depth+1)
+				walk(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part.Header.Get("Content-Disposition"), part, depth+1)
 			}
 		case mediaType == "text/html" && htmlText == "":
 			htmlText = htmlToText(decodeBody(encoding, params["charset"], body))
@@ -440,7 +488,7 @@ func textLines(contentType, encoding string, body io.Reader) []string {
 			plain = decodeBody(encoding, params["charset"], body)
 		}
 	}
-	walk(contentType, encoding, body, 0)
+	walk(contentType, encoding, "", body, 0)
 	text := htmlText
 	if strings.TrimSpace(text) == "" {
 		text = plain

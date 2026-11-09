@@ -5,6 +5,15 @@
 `<token>@alerts.allmymind.org`; the receiver reads each mail in memory, posts only the parsed facts to the backend's
 `POST /api/alerts/inbound`, and keeps nothing of the mail.
 
+<!-- toc -->
+
+- [What it does](#what-it-does)
+- [A second token, for sermon notes](#a-second-token-for-sermon-notes)
+- [Install on the VPS](#install-on-the-vps)
+- [The way back](#the-way-back)
+
+<!-- /toc -->
+
 ## What it does
 
 - Listens on port 25 only. With a certificate configured it offers STARTTLS; it offers no AUTH and relays nothing.

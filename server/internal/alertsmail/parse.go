@@ -47,15 +47,15 @@ type Facts struct {
 // fields, each cut to its limit.
 func (f Facts) Alert() alerts.Alert {
 	return alerts.Alert{
-		Kind:     f.Kind,
-		Amount:   cut(f.Amount),
-		Merchant: cut(f.Merchant),
-		Last4:    f.Last4,
-		When:     f.When,
-		Subject:  cut(f.Subject),
-		Code:     cut(f.Code),
-		Link:     f.Link,
-		Memo:     cut(f.Memo),
+		Kind:      f.Kind,
+		Amount:    cut(f.Amount),
+		Merchant:  cut(f.Merchant),
+		Last4:     f.Last4,
+		When:      f.When,
+		Subject:   cut(f.Subject),
+		Code:      cut(f.Code),
+		Link:      f.Link,
+		Memo:      cut(f.Memo),
 		Title:     cut(f.Title),
 		Reference: cut(f.Reference),
 	}

@@ -1,12 +1,17 @@
 // Package alerts keeps a family's alert feed (docs/protocol.md §26): the
 // parsed facts of the mails its alert address received, never a mail body.
 // Each family has one address token; an alert is kept until a phone claims it
-// or it is 30 days old.
+// or it is 30 days old. A sermon-notes alert may carry its mail's notes PDF,
+// kept as its bytes beside the feed (alert-notes/<id>.pdf) for as long as the
+// alert is, and never read.
 package alerts
 
 import (
+	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base32"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -21,6 +26,20 @@ import (
 )
 
 const fileName = "alerts.json"
+
+// notesDirName is the directory beside alerts.json that holds the notes of
+// sermon-notes alerts, one file per alert, named by its id.
+const notesDirName = "alert-notes"
+
+// MaxNotesBytes caps the notes PDF a sermon-notes alert may carry: 5 MiB. The
+// receiver keeps no larger PDF, the inbound route takes no larger body (with
+// the base64 JSON carries bytes in), and the receiver's own mail cap fits a
+// mail carrying one.
+const MaxNotesBytes = 5 << 20
+
+// pdfMagic is how every PDF begins. It is the only thing of a PDF anything
+// here looks at.
+const pdfMagic = "%PDF-"
 
 // Kinds of alert.
 const (
@@ -92,6 +111,13 @@ type Alert struct {
 	// the passage it is on, from the mail's subject.
 	Title     string `json:"title,omitempty"`
 	Reference string `json:"reference,omitempty"`
+	// Notes is the base64 of a sermon-notes mail's notes PDF, as the receiver
+	// posts it. The store keeps the bytes in a file of their own and never in
+	// the feed: an alert it answers has no Notes, only NotesSHA256 (hex) and
+	// NotesSize (bytes), which the store gives and a post may not.
+	Notes       string `json:"notes,omitempty"`
+	NotesSHA256 string `json:"notes_sha256,omitempty"`
+	NotesSize   int    `json:"notes_size,omitempty"`
 }
 
 var (
@@ -119,11 +145,12 @@ type fileShape struct {
 // Store is the durable set of addresses and alerts, one JSON file in
 // POSTERN_DATA. Safe for concurrent use.
 type Store struct {
-	mu     sync.Mutex
-	path   string
-	now    func() time.Time
-	data   fileShape
-	tokens map[string]string // token -> family
+	mu       sync.Mutex
+	path     string
+	notesDir string
+	now      func() time.Time
+	data     fileShape
+	tokens   map[string]string // token -> family
 }
 
 // Option configures OpenStore.
@@ -134,7 +161,7 @@ func WithClock(now func() time.Time) Option { return func(s *Store) { s.now = no
 
 // OpenStore loads dir/alerts.json, starting empty if it does not exist.
 func OpenStore(dir string, opts ...Option) (*Store, error) {
-	s := &Store{path: filepath.Join(dir, fileName), now: time.Now, tokens: map[string]string{}}
+	s := &Store{path: filepath.Join(dir, fileName), notesDir: filepath.Join(dir, notesDirName), now: time.Now, tokens: map[string]string{}}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -210,10 +237,16 @@ func (s *Store) FamilyOf(token string) (string, bool) {
 }
 
 // Add keeps a parsed alert for the family that owns token, and answers it
-// (with its id and seq) and the family. An alert that is not parsed facts is
-// an *InvalidError; an unknown token is ErrUnknownToken.
+// (with its id and seq) and the family. A sermon-notes alert's notes are
+// written to their own file and answered as their sha256 and size. An alert
+// that is not parsed facts is an *InvalidError; an unknown token is
+// ErrUnknownToken.
 func (s *Store) Add(token string, a Alert) (Alert, string, error) {
 	if err := check(a); err != nil {
+		return Alert{}, "", err
+	}
+	notes, err := notesOf(a)
+	if err != nil {
 		return Alert{}, "", err
 	}
 	s.mu.Lock()
@@ -226,14 +259,99 @@ func (s *Store) Add(token string, a Alert) (Alert, string, error) {
 	if err != nil {
 		return Alert{}, "", err
 	}
+	a.Notes = ""
+	if notes != nil {
+		if err := s.writeNotes(id, notes); err != nil {
+			return Alert{}, "", err
+		}
+		sum := sha256.Sum256(notes)
+		a.NotesSHA256, a.NotesSize = hex.EncodeToString(sum[:]), len(notes)
+	}
 	s.data.NextSeq++
 	a.ID, a.Seq = id, s.data.NextSeq
 	s.data.Alerts = append(s.data.Alerts, stored{Alert: a, Family: family, ReceivedAt: s.now()})
 	if err := s.save(); err != nil {
 		s.data.Alerts = s.data.Alerts[:len(s.data.Alerts)-1]
+		s.removeNotes(id)
 		return Alert{}, "", err
 	}
 	return a, family, nil
+}
+
+// notesOf is the PDF a sermon-notes alert carries, or nil for none: base64 of
+// bytes that begin '%PDF-', at most MaxNotesBytes, on a sermon-notes alert
+// only. The sha256 and size are the store's to give, never a post's.
+func notesOf(a Alert) ([]byte, error) {
+	if a.NotesSHA256 != "" || a.NotesSize != 0 {
+		return nil, &InvalidError{Msg: "notes_sha256 and notes_size are the backend's to give; post the notes themselves"}
+	}
+	if a.Notes == "" {
+		return nil, nil
+	}
+	if a.Kind != KindSermonNotes {
+		return nil, &InvalidError{Msg: "only a sermon-notes alert carries notes"}
+	}
+	if len(a.Notes) > base64.StdEncoding.EncodedLen(MaxNotesBytes) {
+		return nil, &InvalidError{Msg: fmt.Sprintf("notes are at most %d bytes", MaxNotesBytes)}
+	}
+	notes, err := base64.StdEncoding.DecodeString(a.Notes)
+	switch {
+	case err != nil:
+		return nil, &InvalidError{Msg: "notes must be base64"}
+	case len(notes) > MaxNotesBytes:
+		return nil, &InvalidError{Msg: fmt.Sprintf("notes are at most %d bytes", MaxNotesBytes)}
+	case !bytes.HasPrefix(notes, []byte(pdfMagic)):
+		return nil, &InvalidError{Msg: "notes must be a PDF, beginning " + pdfMagic}
+	}
+	return notes, nil
+}
+
+// notesPath is where the alert id's notes are kept.
+func (s *Store) notesPath(id string) string { return filepath.Join(s.notesDir, id+".pdf") }
+
+// writeNotes writes the alert id's notes atomically, readable by the backend
+// alone. Callers hold s.mu.
+func (s *Store) writeNotes(id string, notes []byte) error {
+	if err := os.MkdirAll(s.notesDir, 0o700); err != nil {
+		return fmt.Errorf("creating the notes directory: %w", err)
+	}
+	tmp := s.notesPath(id) + ".tmp"
+	if err := os.WriteFile(tmp, notes, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("writing an alert's notes: %w", err)
+	}
+	if err := os.Rename(tmp, s.notesPath(id)); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("keeping an alert's notes: %w", err)
+	}
+	return nil
+}
+
+// removeNotes deletes the alert id's notes, if it has any. A file left by a
+// failure here is one no alert names, which the next Sweep removes.
+func (s *Store) removeNotes(id string) { _ = os.Remove(s.notesPath(id)) }
+
+// Notes is the notes PDF of the family's alert id, and whether there is one:
+// another family's alert, an unknown id and an alert with no notes have none.
+func (s *Store) Notes(family, id string) ([]byte, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.data.Alerts {
+		if a.Family == family && a.ID == id {
+			if a.NotesSize == 0 {
+				return nil, false, nil
+			}
+			notes, err := os.ReadFile(s.notesPath(id))
+			if os.IsNotExist(err) {
+				return nil, false, nil
+			}
+			if err != nil {
+				return nil, false, fmt.Errorf("reading an alert's notes: %w", err)
+			}
+			return notes, true, nil
+		}
+	}
+	return nil, false, nil
 }
 
 // check is the privacy rule: only the kinds there are, only short facts.
@@ -289,13 +407,16 @@ func (s *Store) Claim(family, id string) (bool, error) {
 				s.data.Alerts = previous
 				return false, err
 			}
+			s.removeNotes(id)
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-// Sweep drops every alert older than Keep and answers how many.
+// Sweep drops every alert older than Keep, and its notes, and answers how
+// many. Notes that no kept alert names (left by a claim or an add that failed
+// halfway) are removed too.
 func (s *Store) Sweep() (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -307,16 +428,41 @@ func (s *Store) Sweep() (int, error) {
 		}
 	}
 	dropped := len(s.data.Alerts) - len(kept)
-	if dropped == 0 {
-		return 0, nil
+	if dropped > 0 {
+		previous := s.data.Alerts
+		s.data.Alerts = kept
+		if err := s.save(); err != nil {
+			s.data.Alerts = previous
+			return 0, err
+		}
 	}
-	previous := s.data.Alerts
-	s.data.Alerts = kept
-	if err := s.save(); err != nil {
-		s.data.Alerts = previous
-		return 0, err
+	return dropped, s.sweepNotes()
+}
+
+// sweepNotes removes every file in the notes directory that is not the notes
+// of a kept alert. Callers hold s.mu.
+func (s *Store) sweepNotes() error {
+	entries, err := os.ReadDir(s.notesDir)
+	if os.IsNotExist(err) {
+		return nil
 	}
-	return dropped, nil
+	if err != nil {
+		return fmt.Errorf("reading the notes directory: %w", err)
+	}
+	named := map[string]bool{}
+	for _, a := range s.data.Alerts {
+		if a.NotesSize > 0 {
+			named[a.ID+".pdf"] = true
+		}
+	}
+	for _, e := range entries {
+		if !named[e.Name()] {
+			if err := os.RemoveAll(filepath.Join(s.notesDir, e.Name())); err != nil {
+				return fmt.Errorf("removing notes no alert names: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 // save writes the file atomically. Callers hold s.mu.

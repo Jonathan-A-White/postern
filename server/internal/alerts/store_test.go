@@ -1,6 +1,10 @@
 package alerts
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -277,5 +281,204 @@ func TestAConfirmLinkIsOnAnExactAllowListOfGmailHosts(t *testing.T) {
 	token, _ := s.Address("family-a")
 	if _, _, err := s.Add(token, Alert{Kind: KindForwardConfirm, Link: "https://mail-settings.google.com/mail/vf-%5BMADE-UP%5D-y"}); err != nil {
 		t.Fatalf("Add a mail-settings link: %v", err)
+	}
+}
+
+// ---- a sermon-notes alert's notes ------------------------------------------
+
+// notesPDF is n bytes that begin '%PDF-', with a marker a test can look for
+// in the store's files.
+func notesPDF(n int) []byte {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte(i*5 + 1)
+	}
+	copy(b, "%PDF-1.7 NOTES-MARKER-7f3a")
+	return b
+}
+
+// filesHold reports whether any file under dir holds the marker.
+func filesHold(t *testing.T, dir string, marker []byte) bool {
+	t.Helper()
+	held := false
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(raw, marker) {
+			held = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return held
+}
+
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// A sermon-notes alert posted with its notes keeps their bytes beside the
+// list, which carries their sha256 and size and never the bytes; the bytes are
+// the family's alone, and survive a restart.
+func TestASermonNotesAlertKeepsItsNotesForItsFamilyOnly(t *testing.T) {
+	dir, c := t.TempDir(), newClock()
+	s := openStore(t, dir, c)
+	token, _ := s.Address("sermons")
+	s.Address("bank")
+	pdf := notesPDF(3000)
+	added, _, err := s.Add(token, Alert{Kind: KindSermonNotes, Title: "Grace", Notes: base64.StdEncoding.EncodeToString(pdf)})
+	if err != nil {
+		t.Fatalf("Add with notes: %v", err)
+	}
+	want := Alert{ID: added.ID, Seq: added.Seq, Kind: KindSermonNotes, Title: "Grace", NotesSHA256: sha256Hex(pdf), NotesSize: len(pdf)}
+	if added != want {
+		t.Fatalf("Add answered %+v, want %+v", added, want)
+	}
+	if got := s.List("sermons", 0); len(got) != 1 || got[0] != want {
+		t.Fatalf("List = %+v, want %+v", got, want)
+	}
+	listed, _ := json.Marshal(s.List("sermons", 0))
+	if strings.Contains(string(listed), `"notes"`) || strings.Contains(string(listed), base64.StdEncoding.EncodeToString(pdf[:30])) {
+		t.Fatalf("the list carries the notes' bytes: %s", listed)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(dir, "alerts.json")); bytes.Contains(raw, []byte("NOTES-MARKER")) || strings.Contains(string(raw), base64.StdEncoding.EncodeToString(pdf[:30])) {
+		t.Fatal("alerts.json holds the notes' bytes")
+	}
+	for _, store := range []*Store{s, openStore(t, dir, c)} {
+		got, found, err := store.Notes("sermons", added.ID)
+		if err != nil || !found || !bytes.Equal(got, pdf) {
+			t.Fatalf("Notes = %d bytes, %v, %v; want the PDF", len(got), found, err)
+		}
+	}
+	if _, found, _ := s.Notes("bank", added.ID); found {
+		t.Fatal("another family was given the notes")
+	}
+	if _, found, _ := s.Notes("sermons", "0123456789abcdef"); found {
+		t.Fatal("an unknown id was given notes")
+	}
+	plain, _, _ := s.Add(token, Alert{Kind: KindSermonNotes, Title: "No notes"})
+	if plain.NotesSHA256 != "" || plain.NotesSize != 0 {
+		t.Fatalf("an alert with no notes answers %+v", plain)
+	}
+	if _, found, _ := s.Notes("sermons", plain.ID); found {
+		t.Fatal("an alert with no notes was given notes")
+	}
+	raw, _ := json.Marshal(plain)
+	if strings.Contains(string(raw), `"notes`) {
+		t.Fatalf("an alert with no notes answers notes fields: %s", raw)
+	}
+}
+
+// Notes are kept only for a sermon-notes alert, only as base64 of bytes that
+// begin '%PDF-' and are no more than MaxNotesBytes; the sha256 and size are
+// the store's to give. A refused alert leaves nothing in the store's files.
+func TestNotesAreKeptOnlyAsASermonNotesPDFWithinTheLimit(t *testing.T) {
+	dir := t.TempDir()
+	s := openStore(t, dir, newClock())
+	token, _ := s.Address("sermons")
+	b64 := base64.StdEncoding.EncodeToString
+	for name, a := range map[string]Alert{
+		"a charge with notes":   {Kind: KindCharge, Amount: "1.00", Notes: b64(notesPDF(100))},
+		"an unread with notes":  {Kind: KindUnread, Subject: "x", Notes: b64(notesPDF(100))},
+		"not base64":            {Kind: KindSermonNotes, Title: "t", Notes: "%PDF-1.7 NOTES-MARKER-7f3a raw"},
+		"not '%PDF-'":           {Kind: KindSermonNotes, Title: "t", Notes: b64(append([]byte("<html>NOTES-MARKER-7f3a"), notesPDF(50)...))},
+		"over the limit":        {Kind: KindSermonNotes, Title: "t", Notes: b64(notesPDF(MaxNotesBytes + 1))},
+		"a posted sha256":       {Kind: KindSermonNotes, Title: "t", NotesSHA256: sha256Hex([]byte("x"))},
+		"a posted size":         {Kind: KindSermonNotes, Title: "t", NotesSize: 10},
+		"a posted size + notes": {Kind: KindSermonNotes, Title: "t", Notes: b64(notesPDF(100)), NotesSize: 100},
+	} {
+		var invalid *InvalidError
+		if _, _, err := s.Add(token, a); !errors.As(err, &invalid) {
+			t.Errorf("%s: Add = %v, want an InvalidError", name, err)
+		}
+	}
+	if got := s.List("sermons", 0); len(got) != 0 {
+		t.Fatalf("a refused alert was kept: %+v", got)
+	}
+	if filesHold(t, dir, []byte("NOTES-MARKER-7f3a")) {
+		t.Fatal("a refused alert's notes were written to the store's files")
+	}
+	atLimit := notesPDF(MaxNotesBytes)
+	added, _, err := s.Add(token, Alert{Kind: KindSermonNotes, Title: "t", Notes: b64(atLimit)})
+	if err != nil || added.NotesSize != MaxNotesBytes {
+		t.Fatalf("notes at the limit: %+v, %v", added, err)
+	}
+}
+
+// Claiming the alert removes its notes, and nothing of the PDF is left in the
+// store's files.
+func TestClaimingASermonNotesAlertRemovesItsNotes(t *testing.T) {
+	dir := t.TempDir()
+	s := openStore(t, dir, newClock())
+	token, _ := s.Address("sermons")
+	pdf := notesPDF(2000)
+	added, _, err := s.Add(token, Alert{Kind: KindSermonNotes, Title: "Grace", Notes: base64.StdEncoding.EncodeToString(pdf)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filesHold(t, dir, []byte("NOTES-MARKER-7f3a")) {
+		t.Fatal("the notes are not in the store's files: the test checks nothing")
+	}
+	if found, err := s.Claim("sermons", added.ID); !found || err != nil {
+		t.Fatalf("Claim = %v, %v", found, err)
+	}
+	if _, found, _ := s.Notes("sermons", added.ID); found {
+		t.Fatal("the notes are served after the claim")
+	}
+	if filesHold(t, dir, []byte("NOTES-MARKER-7f3a")) {
+		t.Fatal("the notes are left in the store's files after the claim")
+	}
+}
+
+// The 30-day forgetting removes an alert's notes with it, and leaves a
+// younger alert's; notes no alert names (left by a crash) are swept too.
+func TestTheSweepRemovesTheNotesOfTheAlertsItDrops(t *testing.T) {
+	dir, c := t.TempDir(), newClock()
+	s := openStore(t, dir, c)
+	token, _ := s.Address("sermons")
+	old, _, err := s.Add(token, Alert{Kind: KindSermonNotes, Title: "Old", Notes: base64.StdEncoding.EncodeToString(notesPDF(2000))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.now = c.now.Add(29 * 24 * time.Hour)
+	young := []byte("%PDF-1.7 YOUNG-NOTES and garbage \x00\xff")
+	fresh, _, err := s.Add(token, Alert{Kind: KindSermonNotes, Title: "Fresh", Notes: base64.StdEncoding.EncodeToString(young)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.now = c.now.Add(2 * 24 * time.Hour)
+	if n, err := s.Sweep(); err != nil || n != 1 {
+		t.Fatalf("Sweep = %d, %v, want the old alert dropped", n, err)
+	}
+	if _, found, _ := s.Notes("sermons", old.ID); found {
+		t.Fatal("the swept alert's notes are served")
+	}
+	if filesHold(t, dir, []byte("NOTES-MARKER-7f3a")) {
+		t.Fatal("the swept alert's notes are left in the store's files")
+	}
+	if got, found, _ := s.Notes("sermons", fresh.ID); !found || !bytes.Equal(got, young) {
+		t.Fatal("the sweep took a younger alert's notes")
+	}
+
+	stray := filepath.Join(dir, "alert-notes", "00000000deadbeef.pdf")
+	if err := os.WriteFile(stray, []byte("%PDF- STRAY-NOTES"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Sweep(); err != nil {
+		t.Fatal(err)
+	}
+	if filesHold(t, dir, []byte("STRAY-NOTES")) {
+		t.Fatal("notes no alert names were left by the sweep")
+	}
+	if _, found, _ := s.Notes("sermons", fresh.ID); !found {
+		t.Fatal("the stray sweep took a kept alert's notes")
 	}
 }

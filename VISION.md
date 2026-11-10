@@ -20,7 +20,7 @@
 
 ## Vision (draft, from his words above)
 - The Governor's cockpit for the factory: see what needs him, the whole map at any zoom, and talk to the Mayor by text, voice, pictures and files.
-- For him alone; it replaces an SSH session, from his phone.
+- His cockpit first; his family under his licence; free to others who bring their own backend and Claude; it replaces an SSH session, from his phone.
 - Most important: fast, never clunky, and a control that does what it says.
 - Lines: his key stays on his phone; the VPS never sees plaintext; real sats are only his to move; a voice note is never sent to a third party.
 

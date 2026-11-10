@@ -1,0 +1,43 @@
+MIME-Version: 1.0
+Date: Mon, 18 Jan 2021 13:13:39 -0500
+Subject: (#12345678) Gmail Forwarding Confirmation - Receive Mail from
+ someone@gmail.com
+From: Gmail Team <forwarding-noreply@google.com>
+To: abcdefghijkl@alerts.allmymind.org
+Content-Type: text/plain; charset="UTF-8"
+
+someone@gmail.com has requested to automatically forward mail to your email
+address abcdefghijkl@alerts.allmymind.org.
+Confirmation code: 12345678
+
+To allow someone@gmail.com to automatically forward mail to your address,
+please click the link below to confirm the request:
+
+https://mail-settings.google.com/mail/vf-%5BMADE-UP-2021_CONFIRM-TOKEN-0123456789abcdef%5D-MadeUpSuffix-0123456789
+
+If you click the link and it appears to be broken, please copy and paste it
+into a new browser window. If you aren't able to access the link, you
+can send the confirmation code
+12345678 to someone@gmail.com.
+
+Thanks for using Gmail!
+
+Sincerely,
+
+The Gmail Team
+
+If you do not approve of this request, no further action is required.
+someone@gmail.com cannot automatically forward messages to your email address
+unless you confirm the request by clicking the link above. If you accidentally
+clicked the link, but you do not want to allow someone@gmail.com to
+automatically forward messages to your address, click this link to cancel this
+verification:
+https://mail-settings.google.com/mail/uf-%5BMADE-UP-2021_CANCEL-TOKEN-0123456789abcdef%5D-MadeUpSuffix-0123456789
+
+To learn more about why you might have received this message, please
+visit: http://support.google.com/mail/bin/answer.py?answer=184973.
+
+Please do not respond to this message. If you'd like to contact the
+Google.com Team, please log in to your account and click 'Help' at
+the top of any page. Then, click 'Contact Us' along the bottom of the
+Help Center.

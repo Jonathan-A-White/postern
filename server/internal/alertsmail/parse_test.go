@@ -2,6 +2,7 @@ package alertsmail
 
 import (
 	"bytes"
+	"log"
 	"net/mail"
 	"os"
 	"path/filepath"
@@ -164,26 +165,74 @@ func TestGmailsConfirmationCodeIsStillReadWhenItComes(t *testing.T) {
 	}
 }
 
+// The mail Gmail sent him on 2026-11-10 (mw-qtu3zvz.49.5) was filed unread:
+// its subject had no code and its link, as Google's real mails show it, is on
+// mail-settings.google.com, not mail.google.com. gmail-confirm-mail-settings.eml
+// is that shape, quoted-printable with the link wrapped by soft breaks, its
+// token and addresses made up.
+func TestGmailsConfirmationOnMailSettingsYieldsItsConfirmLink(t *testing.T) {
+	got := Parse(fixture(t, "gmail-confirm-mail-settings.eml"))
+	want := Facts{Kind: alerts.KindForwardConfirm, When: "2026-11-09T20:32:10-05:00",
+		Link: "https://mail-settings.google.com/mail/vf-%5BMADE-UP-SETTINGS_CONFIRM-TOKEN-0123456789abcdefABCDEF%5D-MadeUpSuffix0123456789ab"}
+	if got != want {
+		t.Fatalf("Parse(gmail-confirm-mail-settings.eml) =\n %+v\nwant\n %+v", got, want)
+	}
+	if alert := got.Alert(); alert.Link != want.Link || alert.Subject != "" {
+		t.Fatalf("alert = %+v, want the confirm link and no subject", alert)
+	}
+}
+
+// Each real confirmation read in an archive, values made up: a 2021 mail
+// (lkml.rescloud.iu.edu/2101.2/01750.html), its link on mail-settings.google.com,
+// and a 2012 mail (lists.ubuntu.com/archives/ubuntu-sn/2012-July/000010.html),
+// its link on isolated.mail.google.com; both with a code and a cancel link.
+func TestEveryRealConfirmationShapeYieldsItsConfirmLink(t *testing.T) {
+	for _, tc := range []struct {
+		file string
+		want Facts
+	}{
+		{"gmail-confirm-2021.eml", Facts{Kind: alerts.KindForwardConfirm, When: "2021-01-18T13:13:39-05:00", Code: "12345678",
+			Link: "https://mail-settings.google.com/mail/vf-%5BMADE-UP-2021_CONFIRM-TOKEN-0123456789abcdef%5D-MadeUpSuffix-0123456789"}},
+		{"gmail-confirm-2012.eml", Facts{Kind: alerts.KindForwardConfirm, When: "2012-07-10T14:43:27Z", Code: "87654321",
+			Link: "https://isolated.mail.google.com/mail/vf-0a1b2c3d4e-abcdefghijkl%40alerts.allmymind.org-tlr-MadeUp_Token-01"}},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			if got := Parse(fixture(t, tc.file)); got != tc.want {
+				t.Fatalf("Parse(%s) =\n %+v\nwant\n %+v", tc.file, got, tc.want)
+			}
+		})
+	}
+}
+
 // A mail to a family's address can be forged, and From with it: the link on
 // the family's screen is only ever one Gmail's confirmation can carry.
 func TestAForgedConfirmationKeepsNoLinkAndIsUnread(t *testing.T) {
 	cancel := "https://mail.google.com/mail/uf-%5BMADE-UP-CANCEL-TOKEN%5D--r8dYHz83JJWhOIEjymPq3BFiaY"
 	for name, raw := range map[string][]byte{
-		"from another domain":           gmailConfirmMail("forwarding-noreply@example.com", confirmLink),
-		"from a look-alike domain":      gmailConfirmMail("forwarding-noreply@google.com.evil.example", confirmLink),
-		"from a domain ending in it":    gmailConfirmMail("forwarding-noreply@notgoogle.com", confirmLink),
-		"from no one":                   []byte("Subject: (Gmail Forwarding Confirmation - Receive Mail from x\r\n\r\n" + confirmLink + "\r\n"),
-		"a link on another host":        gmailConfirmMail("forwarding-noreply@google.com", "https://evil.example/mail/vf-%5BX%5D--y"),
-		"a link on a look-alike host":   gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com.evil.example/mail/vf-%5BX%5D--y"),
-		"a link with userinfo":          gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com@evil.example/mail/vf-%5BX%5D--y"),
-		"a link on a sibling host":      gmailConfirmMail("forwarding-noreply@google.com", "https://mail-settings.google.com/mail/vf-%5BX%5D--y"),
-		"a link over plain http":        gmailConfirmMail("forwarding-noreply@google.com", "http://mail.google.com/mail/vf-%5BX%5D--y"),
-		"a link on another path":        gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/accounts/vf-%5BX%5D--y"),
-		"a link with a path before vf-": gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/mail/x/../vf-%5BX%5D--y"),
-		"a link that redirects":         gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/mail/vf-%5BX%5D--y?continue=https://evil.example"),
-		"a link with a fragment":        gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/mail/vf-%5BX%5D--y#https://evil.example"),
-		"a link longer than any real":   gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/mail/vf-"+strings.Repeat("a", alerts.MaxLinkRunes)),
-		"only the cancel link":          gmailConfirmMail("forwarding-noreply@google.com", cancel),
+		"from another domain":            gmailConfirmMail("forwarding-noreply@example.com", confirmLink),
+		"from a look-alike domain":       gmailConfirmMail("forwarding-noreply@google.com.evil.example", confirmLink),
+		"from a domain ending in it":     gmailConfirmMail("forwarding-noreply@notgoogle.com", confirmLink),
+		"from no one":                    []byte("Subject: (Gmail Forwarding Confirmation - Receive Mail from x\r\n\r\n" + confirmLink + "\r\n"),
+		"a link on another host":         gmailConfirmMail("forwarding-noreply@google.com", "https://evil.example/mail/vf-%5BX%5D--y"),
+		"a link on a look-alike host":    gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com.evil.example/mail/vf-%5BX%5D--y"),
+		"a link with userinfo":           gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com@evil.example/mail/vf-%5BX%5D--y"),
+		"a link on a sibling host":       gmailConfirmMail("forwarding-noreply@google.com", "https://accounts.google.com/mail/vf-%5BX%5D--y"),
+		"a link on google.com itself":    gmailConfirmMail("forwarding-noreply@google.com", "https://google.com/mail/vf-%5BX%5D--y"),
+		"a link under an allowed host":   gmailConfirmMail("forwarding-noreply@google.com", "https://evil.mail-settings.google.com/mail/vf-%5BX%5D--y"),
+		"a link on a host ending in it":  gmailConfirmMail("forwarding-noreply@google.com", "https://notmail-settings.google.com/mail/vf-%5BX%5D--y"),
+		"a link past an allowed host":    gmailConfirmMail("forwarding-noreply@google.com", "https://isolated.mail.google.com.evil.example/mail/vf-%5BX%5D--y"),
+		"a link with a port":             gmailConfirmMail("forwarding-noreply@google.com", "https://mail-settings.google.com:8443/mail/vf-%5BX%5D--y"),
+		"the settings cancel link":       gmailConfirmMail("forwarding-noreply@google.com", "https://mail-settings.google.com/mail/uf-%5BX%5D--y"),
+		"the isolated cancel link":       gmailConfirmMail("forwarding-noreply@google.com", "https://isolated.mail.google.com/mail/uf-0a1b-x%40example.org-tlr-y"),
+		"a settings link redirecting":    gmailConfirmMail("forwarding-noreply@google.com", "https://mail-settings.google.com/mail/vf-%5BX%5D--y?continue=https://evil.example"),
+		"a settings link from elsewhere": gmailConfirmMail("forwarding-noreply@example.com", "https://mail-settings.google.com/mail/vf-%5BX%5D--y"),
+		"a link over plain http":         gmailConfirmMail("forwarding-noreply@google.com", "http://mail.google.com/mail/vf-%5BX%5D--y"),
+		"a link on another path":         gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/accounts/vf-%5BX%5D--y"),
+		"a link with a path before vf-":  gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/mail/x/../vf-%5BX%5D--y"),
+		"a link that redirects":          gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/mail/vf-%5BX%5D--y?continue=https://evil.example"),
+		"a link with a fragment":         gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/mail/vf-%5BX%5D--y#https://evil.example"),
+		"a link longer than any real":    gmailConfirmMail("forwarding-noreply@google.com", "https://mail.google.com/mail/vf-"+strings.Repeat("a", alerts.MaxLinkRunes)),
+		"only the cancel link":           gmailConfirmMail("forwarding-noreply@google.com", cancel),
 	} {
 		got := Parse(raw)
 		if got.Kind != alerts.KindUnread || got.Link != "" || got.Code != "" {
@@ -360,6 +409,94 @@ func TestFixturesHoldOnlyMadeUpAmounts(t *testing.T) {
 			if !madeUpAmounts[strings.ReplaceAll(strings.TrimPrefix(m, "$"), ",", "")] {
 				t.Errorf("%s holds an amount that is not a made-up one", f)
 			}
+		}
+	}
+}
+
+// parseLogged is Parse with what it logs.
+func parseLogged(t *testing.T, raw []byte) (Facts, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	out, flags := log.Writer(), log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	t.Cleanup(func() { log.SetOutput(out); log.SetFlags(flags) })
+	got := Parse(raw)
+	return got, buf.String()
+}
+
+// A confirmation from google.com that still yields no link says in the log
+// which check failed and the host of each link it turned down, so the next
+// miss can be read; the log never holds a token or an address.
+func TestAConfirmationWithNoLinkLogsWhichCheckFailedAndEachHost(t *testing.T) {
+	secrets := []string{"MADE-UP", "someone", "gmail.com", "abcdefghijkl", "allmymind", "%5B", "://", "/mail/vf-%", "/mail/uf-%"}
+	for _, tc := range []struct {
+		name  string
+		raw   []byte
+		wants []string
+	}{
+		{"links on hosts not allowed", gmailConfirmMail("forwarding-noreply@google.com",
+			"someone@gmail.com wants to forward to abcdefghijkl@alerts.allmymind.org",
+			"https://evil.example/mail/vf-%5BMADE-UP-TOKEN%5D--y",
+			"https://mail-settings.google.com/mail/uf-%5BMADE-UP-CANCEL%5D--y",
+			"http://support.google.com/mail/bin/answer.py?answer=184973."),
+			[]string{"alerts-mail: a Gmail forwarding confirmation from google.com gave no confirm link: links turned down: ",
+				`"evil.example" (host not on the allow-list)`, `"mail-settings.google.com" (the cancel link)`,
+				`"support.google.com" (not https)`}},
+		{"a confirm link with more after it", gmailConfirmMail("forwarding-noreply@google.com",
+			"https://mail-settings.google.com/mail/vf-%5BMADE-UP-TOKEN%5D--y?continue=x"),
+			[]string{`"mail-settings.google.com" (not a token after /mail/vf-)`}},
+		{"a confirm link too long", gmailConfirmMail("forwarding-noreply@google.com",
+			"https://mail-settings.google.com/mail/vf-MADE-UP"+strings.Repeat("a", alerts.MaxLinkRunes)),
+			[]string{`"mail-settings.google.com" (longer than 500 characters)`}},
+		{"a link on another path", gmailConfirmMail("forwarding-noreply@google.com",
+			"https://mail.google.com/accounts/MADE-UP"),
+			[]string{`"mail.google.com" (path not /mail/vf-)`}},
+		{"no link at all", gmailConfirmMail("forwarding-noreply@google.com", "someone@gmail.com wants to forward"),
+			[]string{"gave no confirm link: no link in 1 lines"}},
+		{"a sender not google.com", gmailConfirmMail("forwarding-noreply@example.com", confirmLink),
+			[]string{`alerts-mail: a Gmail forwarding confirmation is unread: sender's domain "example.com", not google.com`}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, logged := parseLogged(t, tc.raw)
+			if got.Kind != alerts.KindUnread {
+				t.Fatalf("Parse = %+v, want unread", got)
+			}
+			if strings.Count(logged, "\n") != 1 {
+				t.Fatalf("logged %q, want one line", logged)
+			}
+			for _, want := range tc.wants {
+				if !strings.Contains(logged, want) {
+					t.Errorf("logged %q, want it to hold %q", logged, want)
+				}
+			}
+			for _, secret := range secrets {
+				if strings.Contains(logged, secret) {
+					t.Errorf("logged %q, which holds %q", logged, secret)
+				}
+			}
+		})
+	}
+}
+
+// A confirmation read for its code alone still logs why it has no link.
+func TestAConfirmationWithACodeButNoLinkLogsTheMiss(t *testing.T) {
+	got, logged := parseLogged(t, gmailConfirmMail("forwarding-noreply@google.com",
+		"Confirmation code: 123456789", "https://mail-settings.google.com/mail/uf-%5BMADE-UP-CANCEL%5D--y"))
+	if got.Kind != alerts.KindForwardConfirm || got.Code != "123456789" || got.Link != "" {
+		t.Fatalf("Parse = %+v, want forward-confirm with its code and no link", got)
+	}
+	if want := `gave no confirm link: links turned down: "mail-settings.google.com" (the cancel link)`; !strings.Contains(logged, want) || strings.Contains(logged, "MADE-UP") {
+		t.Fatalf("logged %q, want it to hold %q and no token", logged, want)
+	}
+}
+
+// A confirmation that is read with its link, and any other mail, logs nothing
+// from the parse.
+func TestOnlyAMissedConfirmationIsLogged(t *testing.T) {
+	for _, file := range []string{"gmail-confirm-mail-settings.eml", "gmail-confirm.eml", "chase.eml", "unknown.eml"} {
+		if _, logged := parseLogged(t, fixture(t, file)); logged != "" {
+			t.Errorf("%s: logged %q, want nothing", file, logged)
 		}
 	}
 }

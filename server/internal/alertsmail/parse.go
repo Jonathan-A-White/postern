@@ -7,12 +7,15 @@ package alertsmail
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"html"
 	"io"
+	"log"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -314,16 +317,22 @@ var (
 
 // parseGmailConfirm reads the mail Gmail sends to a new forwarding address:
 // "(Gmail Forwarding Confirmation - Receive Mail from ...", with a link to
-// confirm (https://mail.google.com/mail/vf-...) and one to cancel (.../uf-...)
-// and no code. A "(#123456789) ..." subject or "Confirmation code: 123456789"
-// line is still read, should Gmail ever send one.
+// confirm (https://mail-settings.google.com/mail/vf-..., or on another of
+// alerts.ConfirmHosts) and one to cancel (.../uf-...), and no code. A
+// "(#123456789) ..." subject or "Confirmation code: 123456789" line, as older
+// mails had, is still read.
 //
 // A mail to a family's address can be forged, From included, so the family
 // sees nothing of this mail unless it is from google.com, and a link only when
 // its whole form is a confirm link: the cancel link and any link of a forger
-// are never kept. A mail that gives neither code nor link is unread.
+// are never kept. A mail that gives neither code nor link is unread; one that
+// gives no link says in the log which check failed (logConfirmMiss).
 func parseGmailConfirm(m mailView) (Facts, bool) {
-	if m.from != "google.com" || !strings.Contains(m.subject, "Gmail Forwarding Confirmation") {
+	if !strings.Contains(m.subject, "Gmail Forwarding Confirmation") {
+		return Facts{}, false
+	}
+	if m.from != "google.com" {
+		log.Printf("alerts-mail: a Gmail forwarding confirmation is unread: sender's domain %q, not google.com", hostName(m.from))
 		return Facts{}, false
 	}
 	f := Facts{Kind: alerts.KindForwardConfirm, When: m.date}
@@ -345,10 +354,76 @@ func parseGmailConfirm(m mailView) (Facts, bool) {
 			}
 		}
 	}
+	if f.Link == "" {
+		logConfirmMiss(m.lines)
+	}
 	if f.Code == "" && f.Link == "" {
 		return Facts{}, false
 	}
 	return f, true
+}
+
+// logConfirmMiss logs why a confirmation from google.com gave no link: the
+// host of each link in it and the check that link failed, or that it had no
+// link at all. It never logs a token, a path or an address.
+func logConfirmMiss(lines []string) {
+	var rejected []string
+	for _, line := range lines {
+		for _, word := range strings.Fields(line) {
+			if strings.Contains(word, "://") {
+				host, failed := confirmLinkMiss(word)
+				rejected = append(rejected, fmt.Sprintf("%q (%s)", host, failed))
+			}
+		}
+	}
+	if len(rejected) == 0 {
+		log.Printf("alerts-mail: a Gmail forwarding confirmation from google.com gave no confirm link: no link in %d lines", len(lines))
+		return
+	}
+	log.Printf("alerts-mail: a Gmail forwarding confirmation from google.com gave no confirm link: links turned down: %s", strings.Join(rejected, ", "))
+}
+
+// confirmLinkMiss is the host of a link that is not a confirm link, and the
+// first check of alerts.IsConfirmLink it fails.
+func confirmLinkMiss(link string) (host, failed string) {
+	u, err := url.Parse(link)
+	if err != nil {
+		return "", "not a link"
+	}
+	host = hostName(u.Hostname())
+	scheme, rest, _ := strings.Cut(link, "://")
+	if scheme != "https" {
+		return host, "not https"
+	}
+	allowed := false
+	for _, h := range alerts.ConfirmHosts {
+		if strings.HasPrefix(rest, h+"/") {
+			allowed, rest = true, strings.TrimPrefix(rest, h)
+			break
+		}
+	}
+	switch {
+	case !allowed:
+		return host, "host not on the allow-list"
+	case strings.HasPrefix(rest, "/mail/uf-"):
+		return host, "the cancel link"
+	case !strings.HasPrefix(rest, "/mail/vf-"):
+		return host, "path not /mail/vf-"
+	case utf8.RuneCountInString(link) > alerts.MaxLinkRunes:
+		return host, fmt.Sprintf("longer than %d characters", alerts.MaxLinkRunes)
+	}
+	return host, "not a token after /mail/vf-"
+}
+
+var hostPattern = regexp.MustCompile(`^[a-z0-9.-]{1,253}$`)
+
+// hostName is a host as the log may hold it: a host name, and nothing that
+// could be an address or a token.
+func hostName(host string) string {
+	if host = strings.ToLower(host); hostPattern.MatchString(host) {
+		return host
+	}
+	return "(not a host name)"
 }
 
 // ---- Subsplash sermon notes ------------------------------------------------

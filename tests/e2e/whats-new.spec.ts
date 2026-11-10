@@ -6,6 +6,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
+import { startBuildOrigin } from '../support/build-origin';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
 
@@ -41,34 +42,41 @@ async function openUnlocked(page: Page, path: string) {
 
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
-test('the banner names the waiting version and what is in it, and What\'s new opens the lines', async ({ page, context }) => {
+test('the banner names the waiting version and what is in it, and What\'s new opens the lines', async ({ page, baseURL }) => {
   await routeChangelog(page);
-  let build = 1;
-  await context.route('**/sw.js', async (route) => {
-    const response = await route.fetch();
-    await route.fulfill({ response, body: `${await response.text()}\n// build ${build}\n`, headers: { ...response.headers(), 'cache-control': 'no-store' } });
-  });
-  await page.goto('/');
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+  // The newer build is served by an origin of the test's own: an update check's fetch of sw.js is not seen by context.route (mw-qtu3zvz.49.21).
+  const origin = await startBuildOrigin(baseURL!);
+  try {
+    await page.goto(origin.url + '/');
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+    });
+    await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+    // The browser is asked whether a newer build is up, and none is: nothing installing, no banner.
+    await page.evaluate(async () => {
+      await (await navigator.serviceWorker.getRegistration())?.update();
+    });
+    await expect.poll(() => page.evaluate(async () => Boolean((await navigator.serviceWorker.getRegistration())?.installing))).toBe(false);
+    await expect(page.getByRole('button', { name: 'Update ready, tap to reload' })).toHaveCount(0);
 
-  build = 2;
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await expect(page.getByRole('button', { name: 'Update ready, tap to reload' })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(`${WAITING} · 2 new, 1 fixed ·`)).toBeVisible();
-  expect(await noSideways(page)).toBe(true);
-  await shot(page, 'whats-new-banner');
+    origin.setBuild(2);
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(page.getByRole('button', { name: 'Update ready, tap to reload' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(`${WAITING} · 2 new, 1 fixed ·`)).toBeVisible();
+    expect(await noSideways(page)).toBe(true);
+    await shot(page, 'whats-new-banner');
 
-  await page.getByRole('button', { name: "What's new" }).click();
-  const sheet = page.getByRole('dialog', { name: "What's new" });
-  await expect(sheet.getByText('Pin a message to the top.')).toBeVisible();
-  await expect(sheet.getByText('The list no longer jumps.')).toBeVisible();
-  await expect(sheet.getByText('Search finds beads.')).toHaveCount(0);
-  const box = await sheet.boundingBox();
-  expect(box!.width).toBeLessThanOrEqual(PHONE_WIDTH);
-  await shot(page, 'whats-new-sheet');
+    await page.getByRole('button', { name: "What's new" }).click();
+    const sheet = page.getByRole('dialog', { name: "What's new" });
+    await expect(sheet.getByText('Pin a message to the top.')).toBeVisible();
+    await expect(sheet.getByText('The list no longer jumps.')).toBeVisible();
+    await expect(sheet.getByText('Search finds beads.')).toHaveCount(0);
+    const box = await sheet.boundingBox();
+    expect(box!.width).toBeLessThanOrEqual(PHONE_WIDTH);
+    await shot(page, 'whats-new-sheet');
+  } finally {
+    await origin.close();
+  }
 });
 
 test('the sheet shows once after an update', async ({ page }) => {

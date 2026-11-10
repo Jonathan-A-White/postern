@@ -2562,7 +2562,7 @@ One alert is parsed facts, as JSON:
 | `memo` | a `zelle-sent` alert's memo, the words its sender wrote with the payment; optional |
 | `title` | a `sermon-notes` alert's sermon title, from the mail's subject; optional |
 | `reference` | a `sermon-notes` alert's passage (`2 Peter 3:10-18`), from the mail's subject; optional |
-| `link` | a `forward-confirm` alert's confirmation link, `https://mail.google.com/mail/vf-...` whole, at most 500 characters, the one link an alert carries; optional |
+| `link` | a `forward-confirm` alert's confirmation link, `https://<host>/mail/vf-...` whole, its host exactly `mail.google.com`, `mail-settings.google.com` or `isolated.mail.google.com`, at most 500 characters, the one link an alert carries; optional |
 
 A `sermon-notes` alert is the forwarded Subsplash notes mail's title, passage and date: the notes attached to that mail
 (a PDF) are never read or kept. Every text field but `link` is at most 200 characters, and there is no field for a mail's body. **A mail body never reaches

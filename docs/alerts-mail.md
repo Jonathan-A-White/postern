@@ -31,10 +31,17 @@
   - Amazon order and shipment mails: `amazon` with the total as `amount`, `merchant` "Amazon" and the mail's date.
     The order id and items are read too, but §26 has no field for them, so they are not posted.
   - Gmail's forwarding confirmation (subject `(Gmail Forwarding Confirmation - Receive Mail from ...`, from
-    google.com): `forward-confirm` with its `link`, the `https://mail.google.com/mail/vf-...` one, which the family's
-    app shows to tap and confirm. Gmail's real mail has a confirm link and a cancel link (`.../uf-...`) and no code;
-    a code (`(#123456789)` in the subject or `Confirmation code:` in the body) is read too, should one come. A mail
-    from any other domain, a link on any other host or path, and the cancel link are never kept: the mail is `unread`.
+    google.com): `forward-confirm` with its `link`, the `https://<host>/mail/vf-...` one, which the family's app shows
+    to tap and confirm. The host is one of an exact list, the hosts Gmail's real confirmations have used:
+    `mail-settings.google.com` (a real mail of 2021, lkml.rescloud.iu.edu/2101.2/01750.html, read 2026-11-09),
+    `isolated.mail.google.com` (of 2012, lists.ubuntu.com/archives/ubuntu-sn/2012-July/000010.html) and
+    `mail.google.com`. Gmail's mail has a confirm link and a cancel link (`.../uf-...`), and now no code; a code
+    (`(#123456789)` in the subject or `Confirmation code:` in the body, as older mails had) is read too. A mail from
+    any other domain, a link on any other host (google.com's other hosts too) or path, and the cancel link are never
+    kept: the mail is `unread`. When a confirmation from google.com gives no link (a code read alone is still kept),
+    the log says so in one line with the host of each link it turned down and the check that link failed
+    (`"mail-settings.google.com" (the cancel link)`, `"evil.example" (host not on the allow-list)`), or `no link in N
+    lines`; one from another domain logs that domain. Neither line holds a token, a path or an address.
   - Subsplash notes mail (a church's "Notes for "The Day of the Lord" - 2 Peter 3:10-18", from subsplash.com):
     `sermon-notes` with the `title` and `reference` from the subject and the date a line of the body gives as `when`
     (midnight Eastern; the mail's own Date when no line is a date). The body is read for that date and nothing else;
@@ -42,7 +49,7 @@
     any other domain is `unread`.
   - Anything else: `unread` with its subject only.
 - Nothing is written to disk: no queue, no spool, no mail in the log. The log says only that an alert of a kind was
-  posted, or why one was not.
+  posted, or why one was not, and why a Gmail confirmation gave no link (above).
 
 ## A second token, for sermon notes
 

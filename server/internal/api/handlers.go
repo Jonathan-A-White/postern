@@ -244,6 +244,7 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 		"POST /api/alerts/address":       handleAlertAddress(&o),
 		"GET /api/alerts":                handleAlertList(&o),
 		"DELETE /api/alerts/{id}":        handleAlertClaim(&o),
+		"GET /api/alerts/{id}/notes":     handleAlertNotes(&o),
 	}
 
 	mux := http.NewServeMux()
@@ -264,7 +265,7 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	mux.HandleFunc("PATCH /api/register/device", handleRegisterRenameDevice(o.register, nonces))
 	// The receiver proves itself with a shared secret, not a key (§26).
 	mux.HandleFunc("POST /api/alerts/inbound", handleAlertInbound(&o))
-	mux.HandleFunc("GET /api/alerts/inbound/{token}", handleAlertToken(&o))
+	mux.HandleFunc(alertTokenPattern, handleAlertTokenRoute(&o))
 	// The routes and who each admits are routeTable's: nothing is registered
 	// here that the table does not name, and the table names nothing that is
 	// not registered, so LicenceMap (postern rights) reads the same gate.

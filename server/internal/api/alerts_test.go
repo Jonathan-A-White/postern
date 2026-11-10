@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -600,5 +602,217 @@ func TestAConfirmMailThroughTheReceiverKeepsItsLinkInTheFeed(t *testing.T) {
 	}
 	if list := s.list(t, solo, 0).Alerts; len(list) != 1 || list[0].Link != alert.Link {
 		t.Fatalf("feed = %+v, want the link %q", list, alert.Link)
+	}
+}
+
+// ---- a sermon-notes alert's notes (GET /api/alerts/{id}/notes) --------------
+
+// notesPDF is n bytes that begin '%PDF-' and are garbage after.
+func notesPDF(n int) []byte {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte(i*11 + 2)
+	}
+	copy(b, "%PDF-1.7 API-NOTES-MARKER")
+	return b
+}
+
+// notes asks for an alert's notes as key: the status, the body's bytes and
+// the Content-Type.
+func (s alertsServer) notes(t *testing.T, key *btcec.PrivateKey, id string) (int, []byte, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, s.URL+"/api/alerts/"+id+"/notes", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signRequest(t, s.Server, key, req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, data, resp.Header.Get("Content-Type")
+}
+
+// postNotes posts a sermon-notes alert with the PDF's bytes to the token.
+func (s alertsServer) postNotes(t *testing.T, token string, pdf []byte) string {
+	t.Helper()
+	body := fmt.Sprintf(`{"token":%q,"kind":"sermon-notes","title":"Grace","reference":"Romans 8:1-4","notes":%q}`, token, base64.StdEncoding.EncodeToString(pdf))
+	status, out := s.inbound(t, alertsSecret, body)
+	if status != http.StatusCreated {
+		t.Fatalf("inbound sermon-notes with notes = %d %s", status, out)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &created); err != nil || created.ID == "" {
+		t.Fatalf("inbound answered %s", out)
+	}
+	return created.ID
+}
+
+// The list carries a sermon-notes alert's notes_sha256 and notes_size and
+// never its bytes; GET /api/alerts/{id}/notes answers the bytes, signed, to
+// the alert's own family only: 404 for another family's alert, an unknown id
+// or an alert with no notes, and the licence rule of GET /api/alerts.
+func TestASermonNotesAlertsNotesAreListedByHashAndServedToItsFamilyOnly(t *testing.T) {
+	s, keys, _, sermons := twoPhones(t)
+	bank, notes := tokenOf(s.address(t, keys[0])), tokenOf(s.address(t, sermons))
+	pdf := notesPDF(70000)
+	id := s.postNotes(t, notes, pdf)
+	sum := sha256.Sum256(pdf)
+
+	status, body := s.as(t, sermons, http.MethodGet, "/api/alerts?since=0", "")
+	if status != http.StatusOK {
+		t.Fatalf("GET /api/alerts = %d %s", status, body)
+	}
+	if !strings.Contains(body, `"notes_sha256":"`+hex.EncodeToString(sum[:])+`"`) || !strings.Contains(body, fmt.Sprintf(`"notes_size":%d`, len(pdf))) {
+		t.Fatalf("the list = %s, want notes_sha256 and notes_size", body)
+	}
+	if strings.Contains(body, `"notes"`) || strings.Contains(body, base64.StdEncoding.EncodeToString(pdf[:30])) {
+		t.Fatalf("the list carries the notes' bytes: %.300s", body)
+	}
+
+	status, got, contentType := s.notes(t, sermons, id)
+	if status != http.StatusOK || contentType != "application/pdf" {
+		t.Fatalf("GET notes = %d %q", status, contentType)
+	}
+	if gotSum := sha256.Sum256(got); gotSum != sum {
+		t.Fatalf("GET notes answered %d bytes whose sha256 is not the PDF's", len(got))
+	}
+
+	if status, _, _ := s.notes(t, keys[0], id); status != http.StatusNotFound {
+		t.Fatalf("another family's GET notes = %d, want 404", status)
+	}
+	if status, _, _ := s.notes(t, sermons, "0123456789abcdef"); status != http.StatusNotFound {
+		t.Fatalf("an unknown id's notes = %d, want 404", status)
+	}
+	status, out := s.inbound(t, alertsSecret, fmt.Sprintf(`{"token":%q,"kind":"sermon-notes","title":"No notes"}`, notes))
+	var plain struct {
+		ID string `json:"id"`
+	}
+	if status != http.StatusCreated || json.Unmarshal([]byte(out), &plain) != nil {
+		t.Fatalf("inbound without notes = %d %s", status, out)
+	}
+	if status, _, _ := s.notes(t, sermons, plain.ID); status != http.StatusNotFound {
+		t.Fatalf("an alert with no notes = %d, want 404", status)
+	}
+	listed := s.list(t, sermons, 0).Alerts
+	if len(listed) != 2 || listed[1].NotesSHA256 != "" || listed[1].NotesSize != 0 {
+		t.Fatalf("the alert with no notes is listed as %+v", listed)
+	}
+
+	stranger, _ := newKey(t)
+	if status, body := s.as(t, stranger, http.MethodGet, "/api/alerts/"+id+"/notes", ""); status != http.StatusUnauthorized || !strings.Contains(body, "no_licence") {
+		t.Fatalf("unlicensed GET notes = %d %s, want 401 no_licence", status, body)
+	}
+	unsigned, _ := http.NewRequest(http.MethodGet, s.URL+"/api/alerts/"+id+"/notes", nil)
+	if status, _ := doRaw(t, unsigned); status != http.StatusUnauthorized {
+		t.Fatalf("unsigned GET notes = %d, want 401", status)
+	}
+	if status, _ := s.inbound(t, alertsSecret, fmt.Sprintf(`{"token":%q,"kind":"charge","amount":"1.00","notes":%q}`, bank, base64.StdEncoding.EncodeToString(pdf))); status != http.StatusBadRequest {
+		t.Fatalf("a charge with notes = %d, want 400", status)
+	}
+}
+
+// Claiming the alert removes its notes, and the 30-day forgetting does too:
+// the notes route answers 404 after each.
+func TestTheNotesRouteAnswers404AfterAClaimAndAfterTheSweep(t *testing.T) {
+	s, _, _, sermons := twoPhones(t)
+	token := tokenOf(s.address(t, sermons))
+	claimed := s.postNotes(t, token, notesPDF(500))
+	if status, _ := s.as(t, sermons, http.MethodDelete, "/api/alerts/"+claimed, ""); status != http.StatusNoContent {
+		t.Fatalf("claim = %d", status)
+	}
+	if status, _, _ := s.notes(t, sermons, claimed); status != http.StatusNotFound {
+		t.Fatalf("notes after the claim = %d, want 404", status)
+	}
+	forgotten := s.postNotes(t, token, notesPDF(500))
+	s.clock.now = s.clock.now.Add(31 * 24 * time.Hour)
+	if _, err := s.store.Sweep(); err != nil {
+		t.Fatal(err)
+	}
+	if status, _, _ := s.notes(t, sermons, forgotten); status != http.StatusNotFound {
+		t.Fatalf("notes after 31 days = %d, want 404", status)
+	}
+}
+
+// The inbound route takes a body up to its limit, which fits notes of
+// alerts.MaxNotesBytes, and refuses one byte more; notes over MaxNotesBytes
+// are refused though their base64 is no longer.
+func TestInboundTakesABodyUpToItsLimitAndRefusesALargerOne(t *testing.T) {
+	s, _, _, sermons := twoPhones(t)
+	token := tokenOf(s.address(t, sermons))
+	body := func(pdf []byte, size int) string {
+		head := fmt.Sprintf(`{"token":%q,"kind":"sermon-notes","title":"Grace",`, token)
+		tail := fmt.Sprintf(`"notes":%q}`, base64.StdEncoding.EncodeToString(pdf))
+		pad := size - len(head) - len(tail)
+		if pad < 0 {
+			t.Fatalf("a body of %d bytes cannot hold these notes", size)
+		}
+		return head + strings.Repeat(" ", pad) + tail
+	}
+	atLimit := notesPDF(alerts.MaxNotesBytes)
+	if status, out := s.inbound(t, alertsSecret, body(atLimit, maxInboundBodyBytes)); status != http.StatusCreated {
+		t.Fatalf("a body of the limit, %d bytes = %d %.200s, want 201", maxInboundBodyBytes, status, out)
+	}
+	if status, _ := s.inbound(t, alertsSecret, body(atLimit, maxInboundBodyBytes+1)); status != http.StatusBadRequest {
+		t.Fatalf("a body one byte over the limit = %d, want 400", status)
+	}
+	if status, _ := s.inbound(t, alertsSecret, body(notesPDF(alerts.MaxNotesBytes+1), maxInboundBodyBytes)); status != http.StatusBadRequest {
+		t.Fatalf("notes one byte over MaxNotesBytes = %d, want 400", status)
+	}
+	if got := s.list(t, sermons, 0).Alerts; len(got) != 1 || got[0].NotesSize != alerts.MaxNotesBytes {
+		t.Fatalf("the feed = %+v, want the one alert at the limit", got)
+	}
+	// the limit is the alert's 16 KiB and the base64 of the notes, no more
+	if want := maxAlertBodyBytes + base64.StdEncoding.EncodedLen(alerts.MaxNotesBytes); maxInboundBodyBytes != want {
+		t.Fatalf("maxInboundBodyBytes = %d, want %d", maxInboundBodyBytes, want)
+	}
+}
+
+// The receiver's token check still answers beside the notes route, which
+// shares its path's shape: only /api/alerts/inbound/{token} is the check.
+func TestTheTokenCheckAndTheNotesRouteShareTheirShapeApart(t *testing.T) {
+	s, _, _, sermons := twoPhones(t)
+	token := tokenOf(s.address(t, sermons))
+	if status, out := s.tokenCheck(t, alertsSecret, token); status != http.StatusNoContent {
+		t.Fatalf("the token check = %d %s, want 204", status, out)
+	}
+	req, _ := http.NewRequest(http.MethodGet, s.URL+"/api/alerts/elsewhere/"+token, nil)
+	req.Header.Set("Authorization", "Bearer "+alertsSecret)
+	if status, _ := doRaw(t, req); status != http.StatusNotFound {
+		t.Fatalf("GET /api/alerts/elsewhere/{token} = %d, want 404", status)
+	}
+	if status, _, _ := s.notes(t, sermons, "inbound"); status != http.StatusNotFound {
+		t.Fatalf("GET /api/alerts/inbound/notes as a key = %d, want 404", status)
+	}
+}
+
+// A Subsplash notes mail goes through the receiver's parse and its real post
+// to the real inbound handler, and the notes read back are its PDF's bytes.
+func TestANotesMailThroughTheReceiverServesItsPDF(t *testing.T) {
+	raw, err := os.ReadFile("../alertsmail/testdata/subsplash-notes.eml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts := alertsmail.Parse(raw)
+	if facts.Kind != "sermon-notes" || facts.Notes == "" {
+		t.Fatalf("the parse gave kind %q and %d bytes of notes (%s), want sermon-notes with notes", facts.Kind, len(facts.Notes), facts.NotesWhy)
+	}
+	solo, soloPub := newKey(t)
+	s := newAlertsServer(t, []string{soloPub}, nil, alertsSecret)
+	inbound := &alertsmail.HTTPInbound{URL: s.URL, Secret: alertsSecret}
+	if err := inbound.Post(context.Background(), tokenOf(s.address(t, solo)), facts.Alert()); err != nil {
+		t.Fatalf("Post = %v", err)
+	}
+	list := s.list(t, solo, 0).Alerts
+	sum := sha256.Sum256([]byte(facts.Notes))
+	if len(list) != 1 || list[0].NotesSHA256 != hex.EncodeToString(sum[:]) || list[0].NotesSize != len(facts.Notes) {
+		t.Fatalf("feed = %+v, want the notes' sha256 and size", list)
+	}
+	if status, got, _ := s.notes(t, solo, list[0].ID); status != http.StatusOK || string(got) != facts.Notes {
+		t.Fatalf("GET notes = %d, %d bytes; want the PDF's %d", status, len(got), len(facts.Notes))
 	}
 }

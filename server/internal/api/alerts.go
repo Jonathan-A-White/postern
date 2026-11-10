@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -21,6 +22,11 @@ import (
 // maxAlertBodyBytes caps a parsed alert from the receiver; a real one is a few
 // hundred bytes.
 const maxAlertBodyBytes = 1 << 14
+
+// maxInboundBodyBytes caps a post to POST /api/alerts/inbound: a parsed alert
+// and, for a sermon-notes alert, the base64 of a notes PDF of at most
+// alerts.MaxNotesBytes. It is that route's limit alone.
+var maxInboundBodyBytes = maxAlertBodyBytes + base64.StdEncoding.EncodedLen(alerts.MaxNotesBytes)
 
 // Families names the family a key belongs to: the keys of one licence, its
 // devices. Family answers "" for a key that belongs to no family, which is a
@@ -185,6 +191,54 @@ func handleAlertClaim(o *options) http.HandlerFunc {
 	}
 }
 
+// handleAlertNotes answers GET /api/alerts/{id}/notes: the notes PDF of a
+// sermon-notes alert of the family, as it came (application/pdf), or 404 for
+// an alert of another family, an unknown id or an alert with no notes.
+func handleAlertNotes(o *options) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if alertsOff(w, o) {
+			return
+		}
+		notes, found, err := o.alerts.Notes(o.familyOf(AuthenticatedKey(r.Context())), r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeError(w, http.StatusNotFound, "no notes for this alert")
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Length", strconv.Itoa(len(notes)))
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(notes)
+	}
+}
+
+// alertTokenPattern is how the receiver's token check is registered:
+// "GET /api/alerts/inbound/{token}" and the notes route,
+// "GET /api/alerts/{id}/notes", both match /api/alerts/inbound/notes and
+// neither is more specific, which http.ServeMux refuses. Written with a
+// wildcard first segment, the check is the less specific, so the notes route
+// takes that one path (a token is 12 characters, never "notes") and
+// handleAlertTokenRoute answers only when the segment is "inbound".
+const alertTokenPattern = "GET /api/alerts/{inbound}/{token}"
+
+// handleAlertTokenRoute is handleAlertToken for /api/alerts/inbound/{token}
+// alone; any other /api/alerts/{x}/{y} is 404.
+func handleAlertTokenRoute(o *options) http.HandlerFunc {
+	check := handleAlertToken(o)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("inbound") != "inbound" {
+			writeError(w, http.StatusNotFound, "no such route")
+			return
+		}
+		check(w, r)
+	}
+}
+
 // inboundAlert is what the receiver posts: the address token the mail came to
 // and the parsed facts. An unknown field, a mail body above all, is refused.
 type inboundAlert struct {
@@ -240,7 +294,7 @@ func handleAlertInbound(o *options) http.HandlerFunc {
 		if !receiverProved(w, r, o) {
 			return
 		}
-		decoder := json.NewDecoder(io.LimitReader(r.Body, maxAlertBodyBytes))
+		decoder := json.NewDecoder(io.LimitReader(r.Body, int64(maxInboundBodyBytes)))
 		decoder.DisallowUnknownFields()
 		var in inboundAlert
 		if err := decoder.Decode(&in); err != nil {

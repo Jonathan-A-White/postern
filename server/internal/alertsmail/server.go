@@ -20,8 +20,10 @@ import (
 )
 
 // MaxMessageBytes is the largest mail the receiver takes: a card alert is a
-// few tens of kilobytes.
-const MaxMessageBytes = 1 << 20
+// few tens of kilobytes, but a sermon-notes mail carries a PDF of up to
+// alerts.MaxNotesBytes (5 MiB), which base64 makes about 6.9 MiB with its line
+// breaks. 8 MiB takes that and the mail around it.
+const MaxMessageBytes = 8 << 20
 
 // maxRecipients caps the recipients of one mail: a forwarded alert has one.
 const maxRecipients = 5
@@ -169,13 +171,26 @@ func (s *session) Data(r io.Reader) error {
 			}
 		default:
 			posted++
-			log.Printf("alerts-mail: posted a %s alert", alert.Kind)
+			log.Printf("alerts-mail: %s", postedLine(facts))
 		}
 	}
 	if posted == 0 {
 		return errNoSuchAddress
 	}
 	return nil
+}
+
+// postedLine is what the log says of a posted alert: its kind, and for a
+// sermon-notes alert whether it carried notes (their size) or why not. It
+// never holds a token, an address, a subject or a byte of the notes.
+func postedLine(facts Facts) string {
+	switch {
+	case facts.Kind != alerts.KindSermonNotes:
+		return fmt.Sprintf("posted a %s alert", facts.Kind)
+	case facts.Notes != "":
+		return fmt.Sprintf("posted a sermon-notes alert with notes (%d bytes)", len(facts.Notes))
+	}
+	return "posted a sermon-notes alert without notes: " + facts.NotesWhy
 }
 
 func (s *session) Reset()        { s.tokens = nil }
@@ -246,10 +261,12 @@ func (h *HTTPInbound) Post(ctx context.Context, token string, alert alerts.Alert
 		Code     string `json:"code,omitempty"`
 		Link     string `json:"link,omitempty"`
 		Memo     string `json:"memo,omitempty"`
-		// a sermon-notes alert's own two facts; every other kind leaves them out
+		// a sermon-notes alert's own facts; every other kind leaves them out.
+		// Notes is the base64 of the mail's notes PDF, when it had one.
 		Title     string `json:"title,omitempty"`
 		Reference string `json:"reference,omitempty"`
-	}{token, alert.Kind, alert.Amount, alert.Merchant, alert.Last4, alert.When, alert.Subject, alert.Code, alert.Link, alert.Memo, alert.Title, alert.Reference})
+		Notes     string `json:"notes,omitempty"`
+	}{token, alert.Kind, alert.Amount, alert.Merchant, alert.Last4, alert.When, alert.Subject, alert.Code, alert.Link, alert.Memo, alert.Title, alert.Reference, alert.Notes})
 	if err != nil {
 		return err
 	}

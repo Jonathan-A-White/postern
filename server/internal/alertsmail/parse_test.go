@@ -2,6 +2,9 @@ package alertsmail
 
 import (
 	"bytes"
+	"encoding/base64"
+	"fmt"
+	"io"
 	"log"
 	"net/mail"
 	"os"
@@ -252,23 +255,29 @@ func TestTheCancelLinkIsNeverKeptEvenBesideTheConfirmLink(t *testing.T) {
 	}
 }
 
+// fixtureNotesPDF is the notes attached to subsplash-notes.eml: '%PDF-' and
+// then garbage, never a real PDF, as the receiver never reads one.
+const fixtureNotesPDF = "%PDF-1.7\n%\xe2\xe3\xcf\xd3\nINVENTED-NOTES-BODY-MARKER: not a real PDF, garbage after the magic\n\x00\x01\xfe\xff\x80 stream endstream\n%%EOF\n"
+
 // A Subsplash notes mail (invented, shaped like the one the church sends): the
 // title and passage are in the subject, the date in the body, and the notes PDF
-// is attached. Only the title, the reference and the date are kept.
+// is attached. The title, the reference, the date and the PDF's bytes are kept.
 func TestASubsplashNotesMailYieldsTitleReferenceAndTheBodysDate(t *testing.T) {
 	got := Parse(fixture(t, "subsplash-notes.eml"))
-	want := Facts{Kind: alerts.KindSermonNotes, Title: "The Day of the Lord", Reference: "2 Peter 3:10-18", When: "2026-11-08T00:00:00-05:00"}
+	want := Facts{Kind: alerts.KindSermonNotes, Title: "The Day of the Lord", Reference: "2 Peter 3:10-18", When: "2026-11-08T00:00:00-05:00", Notes: fixtureNotesPDF}
 	if got != want {
 		t.Fatalf("Parse(subsplash-notes.eml) =\n %+v\nwant\n %+v", got, want)
 	}
-	if alert := got.Alert(); alert != (alerts.Alert{Kind: "sermon-notes", Title: "The Day of the Lord", Reference: "2 Peter 3:10-18", When: "2026-11-08T00:00:00-05:00"}) {
-		t.Fatalf("alert = %+v, want the title, reference and date only", alert)
+	if alert := got.Alert(); alert != (alerts.Alert{Kind: "sermon-notes", Title: "The Day of the Lord", Reference: "2 Peter 3:10-18", When: "2026-11-08T00:00:00-05:00",
+		Notes: base64.StdEncoding.EncodeToString([]byte(fixtureNotesPDF))}) {
+		t.Fatalf("alert = %+v, want the title, reference, date and the notes' bytes", alert)
 	}
 }
 
-// The attached notes are never read: a part that is an attachment is skipped
-// whatever its type, and nothing of it reaches the facts.
-func TestASermonNotesAttachmentIsNeverReadOrKept(t *testing.T) {
+// The attached notes are never read as text: a part that is an attachment is
+// skipped by textLines whatever its type, and nothing of it reaches the text
+// facts. An attachment that is not a PDF is not kept either.
+func TestASermonNotesAttachmentIsNeverReadAsText(t *testing.T) {
 	raw := fixture(t, "subsplash-notes.eml")
 	got := Parse(raw)
 	for name, field := range map[string]string{"title": got.Title, "reference": got.Reference, "when": got.When, "subject": got.Subject, "memo": got.Memo, "merchant": got.Merchant} {
@@ -276,15 +285,35 @@ func TestASermonNotesAttachmentIsNeverReadOrKept(t *testing.T) {
 			t.Errorf("%s holds the attachment's text", name)
 		}
 	}
-	// a text attachment sorted before the body is still not the body
+	// a text attachment sorted before the body is still not the body, nor notes
 	text := strings.Replace(string(raw), "Content-Type: application/pdf; name=\"notes.pdf\"", "Content-Type: text/plain; name=\"notes.txt\"", 1)
-	text = strings.Replace(text, "SU5WRU5URUQtTk9URVMtQk9EWS1NQVJLRVI=", "Tm92IDEsIDIwMjYK", 1) // "Nov 1, 2026"
-	if again := Parse([]byte(text)); again != got {
-		t.Fatalf("a text attachment changed the facts: %+v, want %+v", again, got)
+	text = strings.Replace(text, "filename=\"notes.pdf\"", "filename=\"notes.txt\"", 1)
+	text = strings.Replace(text, fixtureNotesBase64(t, raw), "Tm92IDEsIDIwMjYK", 1) // "Nov 1, 2026"
+	want := got
+	want.Notes, want.NotesWhy = "", "no PDF attached"
+	if again := Parse([]byte(text)); again != want {
+		t.Fatalf("a text attachment changed the facts: %+v, want %+v", again, want)
 	}
 	if lines := textLines("multipart/mixed; boundary=\"b\"", "", strings.NewReader("--b\r\nContent-Type: text/plain\r\nContent-Disposition: attachment; filename=\"n.txt\"\r\n\r\nSECRET NOTES\r\n--b--\r\n")); len(lines) != 0 {
 		t.Fatalf("an attachment was read: %q", lines)
 	}
+	// nor is the text inside a multipart that is attached
+	nested := "--b\r\nContent-Type: multipart/alternative; boundary=\"n\"\r\nContent-Disposition: attachment\r\n\r\n--n\r\nContent-Type: text/plain\r\n\r\nSECRET NOTES\r\n--n--\r\n--b--\r\n"
+	if lines := textLines("multipart/mixed; boundary=\"b\"", "", strings.NewReader(nested)); len(lines) != 0 {
+		t.Fatalf("the text of an attached multipart was read: %q", lines)
+	}
+}
+
+// fixtureNotesBase64 is the base64 body of subsplash-notes.eml's attachment,
+// as it stands in the file.
+func fixtureNotesBase64(t *testing.T, raw []byte) string {
+	t.Helper()
+	_, after, ok := strings.Cut(string(raw), "Content-Transfer-Encoding: base64\n\n")
+	body, _, ok2 := strings.Cut(after, "\n\n")
+	if !ok || !ok2 {
+		t.Fatal("subsplash-notes.eml has no base64 attachment")
+	}
+	return body
 }
 
 // The body's date is read whatever way the church writes it; with none, the
@@ -310,6 +339,7 @@ func TestASermonNotesDateAndSubjectAreReadInTheShapesTheyComeIn(t *testing.T) {
 		"no passage": {mail("Notes for \"Grace\"", "Date: Nov 1, 2026\r\n"),
 			Facts{Kind: alerts.KindSermonNotes, Title: "Grace", When: "2026-11-01T00:00:00-04:00"}},
 	} {
+		tc.want.NotesWhy = "no PDF attached"
 		if got := Parse(tc.raw); got != tc.want {
 			t.Errorf("%s: Parse =\n %+v\nwant\n %+v", name, got, tc.want)
 		}
@@ -578,5 +608,167 @@ func TestOnlyAMailThatNearlyFitsAndIsUnreadLogsAMiss(t *testing.T) {
 		if got, logged := parseLogged(t, []byte(raw)); got.Kind != alerts.KindUnread || logged != "" {
 			t.Errorf("%s: Parse = %+v, logged %q, want unread and nothing logged", name, got, logged)
 		}
+	}
+}
+
+// ---- the notes PDF of a sermon-notes mail ----------------------------------
+
+// notesMail is a sermon-notes mail from Subsplash with the given parts after
+// its HTML body, each part whole (its headers, a blank line, its body).
+func notesMail(parts ...string) []byte {
+	var b strings.Builder
+	b.WriteString("From: Example Church <noreply@mail.subsplash.com>\r\nDate: Sun, 8 Nov 2026 18:20:05 -0500\r\n" +
+		"Subject: Notes for \"Grace\" - Romans 8:1-4\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"mix\"\r\n\r\n" +
+		"--mix\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<p>Sunday, November 8, 2026</p><p>Your notes are attached.</p>\r\n")
+	for _, part := range parts {
+		b.WriteString("--mix\r\n" + part + "\r\n")
+	}
+	b.WriteString("--mix--\r\n")
+	return []byte(b.String())
+}
+
+// pdfPart is an attached part: its Content-Type, its filename ("" for none)
+// and its bytes, base64 in lines of 76.
+func pdfPart(contentType, filename string, data []byte) string {
+	head := "Content-Type: " + contentType + "\r\n"
+	if filename != "" {
+		head += "Content-Disposition: attachment; filename=\"" + filename + "\"\r\n"
+	}
+	encoded := base64.StdEncoding.EncodeToString(data)
+	var lines []string
+	for len(encoded) > 76 {
+		lines = append(lines, encoded[:76])
+		encoded = encoded[76:]
+	}
+	lines = append(lines, encoded)
+	return head + "Content-Transfer-Encoding: base64\r\n\r\n" + strings.Join(lines, "\r\n")
+}
+
+// garbagePDF is n bytes that begin '%PDF-' and are otherwise noise, every
+// byte value among them.
+func garbagePDF(n int) []byte {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte(i*7 + 3)
+	}
+	copy(b, "%PDF-")
+	return b
+}
+
+var graceFacts = Facts{Kind: alerts.KindSermonNotes, Title: "Grace", Reference: "Romans 8:1-4", When: "2026-11-08T00:00:00-05:00"}
+
+// The one attached PDF is kept as its bytes, whether the mail says so by its
+// type or by its file name, and nothing reads it: bytes that begin '%PDF-' and
+// are garbage after are passed through as they are, up to the limit exactly.
+func TestASermonNotesMailKeepsItsOnePDFAsItsBytesUnread(t *testing.T) {
+	for name, tc := range map[string]struct {
+		part string
+		pdf  []byte
+	}{
+		"typed application/pdf":     {pdfPart("application/pdf; name=\"notes.pdf\"", "notes.pdf", garbagePDF(4000)), garbagePDF(4000)},
+		"typed only, no file name":  {pdfPart("application/pdf", "", garbagePDF(300)), garbagePDF(300)},
+		"a .pdf name, octet-stream": {pdfPart("application/octet-stream", "Sermon Notes.PDF", garbagePDF(300)), garbagePDF(300)},
+		"at the limit exactly":      {pdfPart("application/pdf", "notes.pdf", garbagePDF(alerts.MaxNotesBytes)), garbagePDF(alerts.MaxNotesBytes)},
+	} {
+		got := Parse(notesMail(tc.part, pdfPart("image/png", "logo.png", []byte("\x89PNG not a pdf"))))
+		want := graceFacts
+		want.Notes = string(tc.pdf)
+		if got != want {
+			t.Errorf("%s: Parse kept %d bytes of notes (why %q), want %d bytes; facts %+v", name, len(got.Notes), got.NotesWhy, len(tc.pdf), Facts{Kind: got.Kind, Title: got.Title, Reference: got.Reference, When: got.When})
+			continue
+		}
+		decoded, err := base64.StdEncoding.DecodeString(got.Alert().Notes)
+		if err != nil || !bytes.Equal(decoded, tc.pdf) {
+			t.Errorf("%s: the alert's notes are not the PDF's bytes (%v)", name, err)
+		}
+	}
+}
+
+// A sermon-notes mail whose notes cannot be kept is still read and posted with
+// its title, reference and when, and says why it has no notes.
+func TestASermonNotesMailWithoutOneGoodPDFIsReadWithoutNotes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		parts []string
+		why   string
+	}{
+		"no attachment":     {nil, "no PDF attached"},
+		"an image only":     {[]string{pdfPart("image/png", "logo.png", []byte("\x89PNG"))}, "no PDF attached"},
+		"two PDFs":          {[]string{pdfPart("application/pdf", "a.pdf", garbagePDF(100)), pdfPart("application/pdf", "b.pdf", garbagePDF(100))}, "2 PDFs attached, not one"},
+		"over the limit":    {[]string{pdfPart("application/pdf", "notes.pdf", garbagePDF(alerts.MaxNotesBytes+1))}, fmt.Sprintf("the PDF is over %d bytes", alerts.MaxNotesBytes)},
+		"not '%PDF-'":       {[]string{pdfPart("application/pdf", "notes.pdf", []byte("<html>a page, not a PDF</html>"))}, "the PDF does not begin %PDF-"},
+		"a .pdf, not a PDF": {[]string{pdfPart("application/octet-stream", "notes.pdf", []byte("PK\x03\x04 a zip"))}, "the PDF does not begin %PDF-"},
+		"broken base64":     {[]string{"Content-Type: application/pdf\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERi0x!!!!not base64"}, "the PDF could not be decoded"},
+	} {
+		got := Parse(notesMail(tc.parts...))
+		want := graceFacts
+		want.NotesWhy = tc.why
+		if got != want {
+			t.Errorf("%s: Parse =\n %+v\nwant\n %+v", name, Facts{Kind: got.Kind, Title: got.Title, Reference: got.Reference, When: got.When, NotesWhy: got.NotesWhy, Subject: got.Subject}, want)
+		}
+		if got.Alert().Notes != "" {
+			t.Errorf("%s: the alert carries notes", name)
+		}
+	}
+}
+
+// withPDF is a fixture with a PDF attached: the mail made multipart/mixed, its
+// own body the first part.
+func withPDF(t *testing.T, raw []byte) []byte {
+	t.Helper()
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(msg.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for name, values := range msg.Header {
+		if strings.EqualFold(name, "Content-Type") || strings.EqualFold(name, "Content-Transfer-Encoding") {
+			continue
+		}
+		for _, v := range values {
+			b.WriteString(name + ": " + v + "\r\n")
+		}
+	}
+	b.WriteString("Content-Type: multipart/mixed; boundary=\"withpdf\"\r\n\r\n--withpdf\r\n")
+	b.WriteString("Content-Type: " + msg.Header.Get("Content-Type") + "\r\n")
+	if cte := msg.Header.Get("Content-Transfer-Encoding"); cte != "" {
+		b.WriteString("Content-Transfer-Encoding: " + cte + "\r\n")
+	}
+	b.WriteString("\r\n" + string(body) + "\r\n--withpdf\r\n" + pdfPart("application/pdf", "statement.pdf", garbagePDF(500)) + "\r\n--withpdf--\r\n")
+	return []byte(b.String())
+}
+
+// Nothing but a sermon-notes mail keeps an attachment: a bank alert, a Gmail
+// confirmation and a "Notes for" subject from another domain, each with a PDF
+// attached, are read as before and carry no notes.
+func TestOnlyASermonNotesMailKeepsItsPDF(t *testing.T) {
+	for _, file := range []string{"chase.eml", "citi.eml", "pnc-deposit.eml", "pnc-zelle-sent.eml", "amazon-order.eml", "gmail-confirm.eml", "unknown.eml"} {
+		plain := Parse(fixture(t, file))
+		got := Parse(withPDF(t, fixture(t, file)))
+		if got != plain {
+			t.Errorf("%s with a PDF attached: Parse =\n %+v\nwant, as without it,\n %+v", file, got, plain)
+		}
+		if got.Notes != "" || got.Alert().Notes != "" {
+			t.Errorf("%s: a PDF was kept", file)
+		}
+	}
+	forged := strings.Replace(string(notesMail(pdfPart("application/pdf", "notes.pdf", garbagePDF(500)))), "noreply@mail.subsplash.com", "x@example.com", 1)
+	if got := Parse([]byte(forged)); got.Kind != alerts.KindUnread || got.Notes != "" || got.Alert().Notes != "" {
+		t.Fatalf("a Notes for subject from another domain = kind %q, %d bytes of notes; want unread with none", got.Kind, len(got.Notes))
+	}
+}
+
+// The receiver keeps the PDF's bytes and never reads one, so it needs no PDF
+// library: go.mod requires none.
+func TestNoPDFLibraryIsRequired(t *testing.T) {
+	mod, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(mod)), "pdf") {
+		t.Fatalf("go.mod requires a PDF library:\n%s", mod)
 	}
 }

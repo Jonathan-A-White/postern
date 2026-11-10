@@ -1,14 +1,18 @@
 package alertsmail
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -180,7 +184,12 @@ func TestARelayAttemptIsRefused(t *testing.T) {
 	}
 }
 
-func TestAMailOverOneMebibyteIsRefused(t *testing.T) {
+// The receiver's cap fits a notes mail with a PDF at alerts.MaxNotesBytes
+// (base64 is 4/3 of it, with line breaks), and refuses a larger mail.
+func TestAMailOverMaxMessageBytesIsRefused(t *testing.T) {
+	if MaxMessageBytes != 8<<20 {
+		t.Fatalf("MaxMessageBytes = %d, want 8 MiB", MaxMessageBytes)
+	}
 	backend := newFakeBackend(t)
 	c := dial(t, listen(t, backend, nil))
 	if err := c.Mail("no.reply.alerts@chase.com", nil); err != nil {
@@ -189,20 +198,20 @@ func TestAMailOverOneMebibyteIsRefused(t *testing.T) {
 	if err := c.Rcpt(knownToken+"@"+testDomain, nil); err != nil {
 		t.Fatal(err)
 	}
-	big := append(fixture(t, "chase.eml"), []byte(strings.Repeat(strings.Repeat("x", 76)+"\r\n", (1<<20)/78+10))...)
+	big := append(fixture(t, "chase.eml"), []byte(strings.Repeat(strings.Repeat("x", 76)+"\r\n", MaxMessageBytes/78+10))...)
 	if err := send(t, c, big); code(err) != 552 {
-		t.Fatalf("DATA over 1 MiB = %v, want 552", err)
+		t.Fatalf("DATA over %d bytes = %v, want 552", MaxMessageBytes, err)
 	}
 	if got := backend.received(); len(got) != 0 {
 		t.Fatalf("a refused mail was posted: %+v", got)
 	}
 }
 
-func TestAMailDeclaredOverOneMebibyteIsRefusedAtMail(t *testing.T) {
+func TestAMailDeclaredOverMaxMessageBytesIsRefusedAtMail(t *testing.T) {
 	backend := newFakeBackend(t)
 	c := dial(t, listen(t, backend, nil))
-	if err := c.Mail("no.reply.alerts@chase.com", &smtp.MailOptions{Size: 2 << 20}); code(err) != 552 {
-		t.Fatalf("MAIL with SIZE over 1 MiB = %v, want 552", err)
+	if err := c.Mail("no.reply.alerts@chase.com", &smtp.MailOptions{Size: MaxMessageBytes + 1}); code(err) != 552 {
+		t.Fatalf("MAIL with SIZE over %d bytes = %v, want 552", MaxMessageBytes, err)
 	}
 }
 
@@ -318,9 +327,38 @@ func selfSigned(t *testing.T) *tls.Config {
 	return &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
 }
 
-// The sermon-notes mail posts the title, reference and date, and the attachment
-// never reaches the backend.
-func TestASermonNotesMailIsPostedWithItsTitleReferenceAndDateOnly(t *testing.T) {
+// captureLog collects what the receiver logs while the test runs.
+func captureLog(t *testing.T) func() string {
+	t.Helper()
+	w := &lockedBuffer{}
+	out, flags := log.Writer(), log.Flags()
+	log.SetOutput(w)
+	log.SetFlags(0)
+	t.Cleanup(func() { log.SetOutput(out); log.SetFlags(flags) })
+	return w.String
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+// sendNotes sends one mail from Subsplash to the known token and answers what
+// the backend was posted.
+func sendNotes(t *testing.T, raw []byte) []map[string]string {
+	t.Helper()
 	backend := newFakeBackend(t)
 	c := dial(t, listen(t, backend, nil))
 	if err := c.Mail("noreply@mail.subsplash.com", nil); err != nil {
@@ -329,21 +367,102 @@ func TestASermonNotesMailIsPostedWithItsTitleReferenceAndDateOnly(t *testing.T) 
 	if err := c.Rcpt(knownToken+"@"+testDomain, nil); err != nil {
 		t.Fatalf("RCPT = %v", err)
 	}
-	if err := send(t, c, fixture(t, "subsplash-notes.eml")); err != nil {
+	if err := send(t, c, raw); err != nil {
 		t.Fatalf("DATA = %v", err)
 	}
 	if err := c.Quit(); err != nil {
 		t.Fatal(err)
 	}
-	got := backend.received()
-	want := map[string]string{"token": knownToken, "kind": "sermon-notes", "title": "The Day of the Lord", "reference": "2 Peter 3:10-18", "when": "2026-11-08T00:00:00-05:00"}
+	return backend.received()
+}
+
+// A log line of the receiver holds no token, address, subject or byte of
+// the notes.
+func assertLogHoldsNothingOfTheMail(t *testing.T, logged string, notes []byte) {
+	t.Helper()
+	// the one fixed phrase that names the magic every PDF begins with
+	logged = strings.ReplaceAll(logged, "does not begin %PDF-", "does not begin (the magic)")
+	for _, secret := range []string{knownToken, testDomain, "subsplash.com", "Notes for", "The Day of the Lord", "Grace", "Romans", "INVENTED-NOTES-BODY-MARKER", "%PDF", "JVBER"} {
+		if strings.Contains(logged, secret) {
+			t.Errorf("the log holds %q: %q", secret, logged)
+		}
+	}
+	if len(notes) > 16 && strings.Contains(logged, string(notes[8:16])) {
+		t.Errorf("the log holds bytes of the PDF: %q", logged)
+	}
+}
+
+// The sermon-notes mail posts the title, reference and date and the attached
+// PDF's bytes (base64, as JSON carries bytes), and logs one line with their
+// size.
+func TestASermonNotesMailIsPostedWithItsNotesAndLogsTheirSize(t *testing.T) {
+	logged := captureLog(t)
+	got := sendNotes(t, fixture(t, "subsplash-notes.eml"))
+	want := map[string]string{"token": knownToken, "kind": "sermon-notes", "title": "The Day of the Lord", "reference": "2 Peter 3:10-18", "when": "2026-11-08T00:00:00-05:00",
+		"notes": base64.StdEncoding.EncodeToString([]byte(fixtureNotesPDF))}
 	if len(got) != 1 || len(got[0]) != len(want) {
 		t.Fatalf("posted %+v, want %+v", got, want)
 	}
 	for k, v := range want {
 		if got[0][k] != v {
-			t.Fatalf("posted %+v, want %+v", got[0], want)
+			t.Fatalf("posted %s = %q, want %q", k, got[0][k], v)
 		}
+	}
+	line := fmt.Sprintf("alerts-mail: posted a sermon-notes alert with notes (%d bytes)\n", len(fixtureNotesPDF))
+	if logged() != line {
+		t.Fatalf("logged %q, want %q", logged(), line)
+	}
+	assertLogHoldsNothingOfTheMail(t, logged(), []byte(fixtureNotesPDF))
+}
+
+// A notes PDF at the limit fits in a mail the receiver takes, and reaches the
+// backend whole.
+func TestASermonNotesMailWithAPDFAtTheLimitIsTaken(t *testing.T) {
+	logged := captureLog(t)
+	pdf := garbagePDF(alerts.MaxNotesBytes)
+	got := sendNotes(t, notesMail(pdfPart("application/pdf", "notes.pdf", pdf)))
+	if len(got) != 1 {
+		t.Fatalf("posted %d alerts, want 1", len(got))
+	}
+	decoded, err := base64.StdEncoding.DecodeString(got[0]["notes"])
+	if err != nil || !bytes.Equal(decoded, pdf) {
+		t.Fatalf("the posted notes are not the PDF (%d bytes, %v)", len(decoded), err)
+	}
+	if want := fmt.Sprintf("alerts-mail: posted a sermon-notes alert with notes (%d bytes)\n", alerts.MaxNotesBytes); logged() != want {
+		t.Fatalf("logged %q, want %q", logged(), want)
+	}
+}
+
+// A sermon-notes mail with no notes to keep is still posted, title, reference
+// and when, with no notes field, and the log says why in one line.
+func TestASermonNotesMailWithoutNotesIsPostedAndLogsWhy(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  []byte
+		why  string
+	}{
+		{"no PDF", notesMail(), "no PDF attached"},
+		{"two PDFs", notesMail(pdfPart("application/pdf", "a.pdf", garbagePDF(64)), pdfPart("application/pdf", "b.pdf", garbagePDF(64))), "2 PDFs attached, not one"},
+		{"over the limit", notesMail(pdfPart("application/pdf", "notes.pdf", garbagePDF(alerts.MaxNotesBytes+1))), fmt.Sprintf("the PDF is over %d bytes", alerts.MaxNotesBytes)},
+		{"not a PDF", notesMail(pdfPart("application/pdf", "notes.pdf", []byte("Grace INVENTED-NOTES-BODY-MARKER"))), "the PDF does not begin %PDF-"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logged := captureLog(t)
+			got := sendNotes(t, tc.raw)
+			want := map[string]string{"token": knownToken, "kind": "sermon-notes", "title": "Grace", "reference": "Romans 8:1-4", "when": "2026-11-08T00:00:00-05:00"}
+			if len(got) != 1 || len(got[0]) != len(want) {
+				t.Fatalf("posted %+v, want %+v", got, want)
+			}
+			for k, v := range want {
+				if got[0][k] != v {
+					t.Fatalf("posted %s = %q, want %q", k, got[0][k], v)
+				}
+			}
+			if line := "alerts-mail: posted a sermon-notes alert without notes: " + tc.why + "\n"; logged() != line {
+				t.Fatalf("logged %q, want %q", logged(), line)
+			}
+			assertLogHoldsNothingOfTheMail(t, logged(), nil)
+		})
 	}
 }
 
@@ -374,15 +493,16 @@ func TestAMailsLinkAndMemoAreInTheBodyPosted(t *testing.T) {
 }
 
 // Every field of alerts.Alert the receiver can know is in what Post sends, so
-// the next field added to Alert cannot be dropped as link and memo were. The
-// id and seq are the backend's to give.
+// the next field added to Alert cannot be dropped as link and memo were; the
+// notes (base64 of a sermon-notes mail's PDF) are one. The id and seq, and the
+// notes' sha256 and size, are the backend's to give.
 func TestPostSendsEveryFieldOfAnAlert(t *testing.T) {
 	var alert alerts.Alert
 	v := reflect.ValueOf(&alert).Elem()
 	var names []string
 	for i := 0; i < v.NumField(); i++ {
 		name, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("json"), ",")
-		if name == "id" || name == "seq" {
+		if name == "id" || name == "seq" || name == "notes_sha256" || name == "notes_size" {
 			continue
 		}
 		if v.Field(i).Kind() != reflect.String {

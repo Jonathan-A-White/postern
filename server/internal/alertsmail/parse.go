@@ -1,7 +1,8 @@
 // Package alertsmail is the alerts mail receiver (docs/protocol.md §26,
 // docs/alerts-mail.md): an SMTP listener that takes mail only for a family's
 // address token, reads each mail in memory into the facts §26 keeps, posts
-// them to the backend and keeps nothing of the mail.
+// them to the backend and keeps nothing of the mail. The one exception is a
+// sermon-notes mail's attached notes PDF, whose bytes it posts unread.
 package alertsmail
 
 import (
@@ -44,6 +45,11 @@ type Facts struct {
 	// Title and Reference are a sermon-notes mail's: the sermon and its passage.
 	Title     string
 	Reference string
+	// Notes is a sermon-notes mail's one attached PDF, its bytes as they came
+	// and never read; NotesWhy says why a sermon-notes mail has none. Every
+	// other kind of mail leaves both empty: its attachments are never read.
+	Notes    string
+	NotesWhy string
 }
 
 // Alert is the facts as POST /api/alerts/inbound takes them: only §26's
@@ -61,7 +67,17 @@ func (f Facts) Alert() alerts.Alert {
 		Memo:      cut(f.Memo),
 		Title:     cut(f.Title),
 		Reference: cut(f.Reference),
+		Notes:     f.notesBase64(),
 	}
+}
+
+// notesBase64 is the notes as POST /api/alerts/inbound takes them: base64, and
+// only for a sermon-notes alert.
+func (f Facts) notesBase64() string {
+	if f.Kind != alerts.KindSermonNotes || f.Notes == "" {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString([]byte(f.Notes))
 }
 
 // maxParts caps how many MIME parts are read from one mail, and maxDepth how
@@ -84,6 +100,9 @@ func Parse(raw []byte) Facts {
 	m.lines = textLines(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Body)
 	for _, parse := range []func(mailView) (Facts, bool){parseChase, parseCiti, parsePNCZelleSent, parsePNCDeposit, parseAmazon, parseGmailConfirm, parseSermonNotes} {
 		if facts, ok := parse(m); ok {
+			if facts.Kind == alerts.KindSermonNotes {
+				facts.Notes, facts.NotesWhy = sermonNotesPDF(raw)
+			}
 			return facts
 		}
 	}
@@ -480,8 +499,8 @@ var (
 // family forwards it to its sermon-notes address: the title and passage are in
 // the subject ('Notes for "The Day of the Lord" - 2 Peter 3:10-18'), the date
 // is a line of the body, and the notes are an attached PDF, which is never
-// read (textLines skips every attachment). Only the title, the passage and
-// the date are kept; the date is the mail's own Date when no line is a date.
+// read as text (textLines skips every attachment); Parse takes its bytes with
+// sermonNotesPDF. The date is the mail's own Date when no line is a date.
 func parseSermonNotes(m mailView) (Facts, bool) {
 	s := sermonNotesSubject.FindStringSubmatch(m.subject)
 	if !m.fromDomain("subsplash.com") {
@@ -506,6 +525,43 @@ func parseSermonNotes(m mailView) (Facts, bool) {
 		}
 	}
 	return f, true
+}
+
+// sermonNotesPDF is the one PDF attached to a sermon-notes mail, as the bytes
+// it came as, or "" and why there is none: no PDF, more than one, one over
+// alerts.MaxNotesBytes, one that does not begin '%PDF-' or cannot be decoded.
+// A part is a PDF by its type (application/pdf) or its file name (.pdf).
+// Nothing reads the PDF past its first five bytes: the sermon index reads it.
+func sermonNotesPDF(raw []byte) (notes, why string) {
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return "", "the mail could not be read again"
+	}
+	var pdfs []mimePart
+	walkParts(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Body, func(p mimePart) {
+		if p.mediaType == "application/pdf" || strings.HasSuffix(strings.ToLower(p.filename), ".pdf") {
+			pdf := p
+			// the body is read before the walk moves on: keep the bytes only
+			pdf.data, pdf.err = io.ReadAll(io.LimitReader(decodeReader(p.encoding, p.body), alerts.MaxNotesBytes+1))
+			pdfs = append(pdfs, pdf)
+		}
+	})
+	switch {
+	case len(pdfs) == 0:
+		return "", "no PDF attached"
+	case len(pdfs) > 1:
+		return "", fmt.Sprintf("%d PDFs attached, not one", len(pdfs))
+	}
+	pdf := pdfs[0]
+	switch {
+	case pdf.err != nil:
+		return "", "the PDF could not be decoded"
+	case len(pdf.data) > alerts.MaxNotesBytes:
+		return "", fmt.Sprintf("the PDF is over %d bytes", alerts.MaxNotesBytes)
+	case !bytes.HasPrefix(pdf.data, []byte("%PDF-")):
+		return "", "the PDF does not begin %PDF-"
+	}
+	return string(pdf.data), ""
 }
 
 // ---- reading a mail --------------------------------------------------------
@@ -567,27 +623,42 @@ func mailDate(h mail.Header) string {
 	return t.Format(time.RFC3339)
 }
 
-// textLines is the mail's text, one trimmed line per line of text or block of
-// HTML, empty lines dropped. The HTML part is read when there is one, as it
-// is the part a mail app shows; the plain part otherwise.
-func textLines(contentType, encoding string, body io.Reader) []string {
-	var plain, htmlText string
+// mimePart is one part of a mail that is not a multipart, as walkParts finds
+// it: its type, the disposition's kind ("attachment", "inline" or "") and the
+// file name the disposition or the type gives, and its body, still encoded.
+type mimePart struct {
+	mediaType   string
+	params      map[string]string
+	disposition string
+	filename    string
+	encoding    string
+	body        io.Reader
+	// data and err are what sermonNotesPDF decoded of the body.
+	data []byte
+	err  error
+}
+
+// walkParts calls visit with each part of a mail that is not a multipart, in
+// order, at most maxParts parts and maxDepth multiparts deep. A part inside a
+// multipart that is an attachment is an attachment too. A part's body is good
+// only until visit returns.
+func walkParts(contentType, encoding string, body io.Reader, visit func(mimePart)) {
 	parts := 0
-	var walk func(contentType, encoding, disposition string, body io.Reader, depth int)
-	walk = func(contentType, encoding, disposition string, body io.Reader, depth int) {
+	var walk func(contentType, encoding, disposition string, body io.Reader, depth int, inAttachment bool)
+	walk = func(contentType, encoding, disposition string, body io.Reader, depth int, inAttachment bool) {
 		parts++
 		if parts > maxParts {
-			return
-		}
-		if kind, _, err := mime.ParseMediaType(disposition); err == nil && kind == "attachment" {
 			return
 		}
 		mediaType, params, err := mime.ParseMediaType(contentType)
 		if err != nil {
 			mediaType, params = "text/plain", map[string]string{}
 		}
-		switch {
-		case strings.HasPrefix(mediaType, "multipart/"):
+		kind, dispParams, dispErr := mime.ParseMediaType(disposition)
+		if dispErr == nil && kind == "attachment" {
+			inAttachment = true
+		}
+		if strings.HasPrefix(mediaType, "multipart/") {
 			if depth >= maxDepth || params["boundary"] == "" {
 				return
 			}
@@ -597,15 +668,39 @@ func textLines(contentType, encoding string, body io.Reader) []string {
 				if err != nil {
 					return
 				}
-				walk(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part.Header.Get("Content-Disposition"), part, depth+1)
+				walk(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part.Header.Get("Content-Disposition"), part, depth+1, inAttachment)
 			}
-		case mediaType == "text/html" && htmlText == "":
-			htmlText = htmlToText(decodeBody(encoding, params["charset"], body))
-		case mediaType == "text/plain" && plain == "":
-			plain = decodeBody(encoding, params["charset"], body)
 		}
+		p := mimePart{mediaType: mediaType, params: params, encoding: encoding, body: body, filename: params["name"]}
+		if dispErr == nil {
+			p.disposition = kind
+			if dispParams["filename"] != "" {
+				p.filename = dispParams["filename"]
+			}
+		}
+		if inAttachment {
+			p.disposition = "attachment"
+		}
+		visit(p)
 	}
-	walk(contentType, encoding, "", body, 0)
+	walk(contentType, encoding, "", body, 0, false)
+}
+
+// textLines is the mail's text, one trimmed line per line of text or block of
+// HTML, empty lines dropped. The HTML part is read when there is one, as it
+// is the part a mail app shows; the plain part otherwise. An attachment is
+// never read.
+func textLines(contentType, encoding string, body io.Reader) []string {
+	var plain, htmlText string
+	walkParts(contentType, encoding, body, func(p mimePart) {
+		switch {
+		case p.disposition == "attachment":
+		case p.mediaType == "text/html" && htmlText == "":
+			htmlText = htmlToText(decodeBody(p.encoding, p.params["charset"], p.body))
+		case p.mediaType == "text/plain" && plain == "":
+			plain = decodeBody(p.encoding, p.params["charset"], p.body)
+		}
+	})
 	text := htmlText
 	if strings.TrimSpace(text) == "" {
 		text = plain
@@ -619,14 +714,19 @@ func textLines(contentType, encoding string, body io.Reader) []string {
 	return lines
 }
 
-func decodeBody(encoding, charset string, body io.Reader) string {
+// decodeReader reads a part's body through its transfer encoding.
+func decodeReader(encoding string, body io.Reader) io.Reader {
 	switch strings.ToLower(strings.TrimSpace(encoding)) {
 	case "quoted-printable":
-		body = quotedprintable.NewReader(body)
+		return quotedprintable.NewReader(body)
 	case "base64":
-		body = base64.NewDecoder(base64.StdEncoding, &skipSpace{r: body})
+		return base64.NewDecoder(base64.StdEncoding, &skipSpace{r: body})
 	}
-	raw, _ := io.ReadAll(body)
+	return body
+}
+
+func decodeBody(encoding, charset string, body io.Reader) string {
+	raw, _ := io.ReadAll(decodeReader(encoding, body))
 	if r, err := charsetReader(charset, bytes.NewReader(raw)); err == nil {
 		raw, _ = io.ReadAll(r)
 	}

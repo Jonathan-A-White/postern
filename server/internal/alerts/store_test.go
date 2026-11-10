@@ -242,3 +242,40 @@ func TestASermonNotesAlertIsKeptWithItsTitleReferenceAndDateAndSurvivesARestart(
 		t.Fatalf("a charge answers a title or reference: %s", raw)
 	}
 }
+
+// A confirm link is https, on one of Gmail's own hosts exactly (the ones real
+// confirmations have carried: mail.google.com, mail-settings.google.com in
+// 2021, isolated.mail.google.com in 2012), the /mail/vf- path, a token and
+// nothing more; the cancel link (uf-) and every other host are refused.
+func TestAConfirmLinkIsOnAnExactAllowListOfGmailHosts(t *testing.T) {
+	for _, host := range []string{"mail.google.com", "mail-settings.google.com", "isolated.mail.google.com"} {
+		if link := "https://" + host + "/mail/vf-%5BMADE-UP%5D-y_z"; !IsConfirmLink(link) {
+			t.Errorf("%s refused", link)
+		}
+	}
+	for _, link := range []string{
+		"https://mail-settings.google.com/mail/uf-%5BMADE-UP%5D-y",
+		"https://isolated.mail.google.com/mail/uf-0a1b-x%40example.org-tlr-y",
+		"https://google.com/mail/vf-%5BMADE-UP%5D-y",
+		"https://accounts.google.com/mail/vf-%5BMADE-UP%5D-y",
+		"https://settings.google.com/mail/vf-%5BMADE-UP%5D-y",
+		"https://evil.mail-settings.google.com/mail/vf-%5BMADE-UP%5D-y",
+		"https://notmail-settings.google.com/mail/vf-%5BMADE-UP%5D-y",
+		"https://isolated.mail.google.com.evil.example/mail/vf-%5BMADE-UP%5D-y",
+		"https://mail-settings.google.com:8443/mail/vf-%5BMADE-UP%5D-y",
+		"https://mail-settings.google.com@evil.example/mail/vf-%5BMADE-UP%5D-y",
+		"http://mail-settings.google.com/mail/vf-%5BMADE-UP%5D-y",
+		"https://mail-settings.google.com/mail/vf-%5BMADE-UP%5D-y?continue=https://evil.example",
+		"https://mail-settings.google.com/mail/vf-%5BMADE-UP%5D-y#x",
+		"https://mail-settings.google.com/settings/vf-%5BMADE-UP%5D-y",
+	} {
+		if IsConfirmLink(link) {
+			t.Errorf("%s accepted", link)
+		}
+	}
+	s := openStore(t, t.TempDir(), newClock())
+	token, _ := s.Address("family-a")
+	if _, _, err := s.Add(token, Alert{Kind: KindForwardConfirm, Link: "https://mail-settings.google.com/mail/vf-%5BMADE-UP%5D-y"}); err != nil {
+		t.Fatalf("Add a mail-settings link: %v", err)
+	}
+}

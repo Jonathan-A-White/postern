@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -43,13 +44,29 @@ const MaxFieldRunes = 200
 // than a text field, but still a link and never a mail body.
 const MaxLinkRunes = 500
 
+// ConfirmHosts are the hosts a Gmail forwarding confirmation link is on, each
+// exact: mail.google.com, mail-settings.google.com (Gmail's real mail of 2021,
+// lkml.rescloud.iu.edu/2101.2/01750.html) and isolated.mail.google.com (of
+// 2012, lists.ubuntu.com/archives/ubuntu-sn/2012-July/000010.html). No other
+// host, google.com's own included, is ever kept.
+var ConfirmHosts = []string{"mail.google.com", "mail-settings.google.com", "isolated.mail.google.com"}
+
 // confirmLink is the only link an alert carries: the one that confirms Gmail's
-// forwarding. The host and path are exact, and nothing after the token but
-// URL-safe characters (no query, no fragment, no userinfo, no further path).
-var confirmLink = regexp.MustCompile(`^https://mail\.google\.com/mail/vf-[A-Za-z0-9%._~+=-]+$`)
+// forwarding. The host is one of ConfirmHosts and the path exact, and nothing
+// after the token but URL-safe characters (no query, no fragment, no
+// userinfo, no port, no further path).
+var confirmLink = regexp.MustCompile(`^https://(?:` + strings.Join(quoteAll(ConfirmHosts), "|") + `)/mail/vf-[A-Za-z0-9%._~+=-]+$`)
+
+func quoteAll(hosts []string) []string {
+	quoted := make([]string, len(hosts))
+	for i, h := range hosts {
+		quoted[i] = regexp.QuoteMeta(h)
+	}
+	return quoted
+}
 
 // IsConfirmLink reports whether s is whole of the form
-// https://mail.google.com/mail/vf-..., within MaxLinkRunes.
+// https://<one of ConfirmHosts>/mail/vf-..., within MaxLinkRunes.
 func IsConfirmLink(s string) bool {
 	return utf8.RuneCountInString(s) <= MaxLinkRunes && confirmLink.MatchString(s)
 }
@@ -232,7 +249,7 @@ func check(a Alert) error {
 		}
 	}
 	if a.Link != "" && !IsConfirmLink(a.Link) {
-		return &InvalidError{Msg: "link must be a Gmail forwarding confirmation link (https://mail.google.com/mail/vf-...) of at most " + fmt.Sprint(MaxLinkRunes) + " characters"}
+		return &InvalidError{Msg: "link must be a Gmail forwarding confirmation link (https://mail.google.com/mail/vf-..., or on mail-settings.google.com or isolated.mail.google.com) of at most " + fmt.Sprint(MaxLinkRunes) + " characters"}
 	}
 	if len(a.Last4) > 4 {
 		return &InvalidError{Msg: "last4 is at most 4 characters"}

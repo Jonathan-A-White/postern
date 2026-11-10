@@ -20,7 +20,8 @@
 - `RCPT TO` is taken only at the alerts domain, and only when the local part is a token a family owns: it asks the
   backend once (`GET /api/alerts/inbound/{token}`, with the shared secret). Another domain is refused `550 5.7.1`; an
   unknown token `550 5.1.1`; a backend that does not answer `451` (the sender tries again later).
-- A mail over 1 MiB is refused `552` (at `MAIL FROM` when the sender declares its size, else while it is sent). At
+- A mail over 8 MiB is refused `552` (at `MAIL FROM` when the sender declares its size, else while it is sent): a
+  card alert is a few tens of kilobytes, and 8 MiB fits a notes mail with a 5 MiB PDF in base64. At
   most 5 recipients a mail; a connection idle for 2 minutes is closed.
 - Each mail is parsed in memory into one alert and posted once per family it was sent to:
   - Chase and Citi charge alerts: `charge` with `amount`, `merchant`, `last4` and `when` (the mail's ET time).
@@ -44,9 +45,20 @@
     lines`; one from another domain logs that domain. Neither line holds a token, a path or an address.
   - Subsplash notes mail (a church's "Notes for "The Day of the Lord" - 2 Peter 3:10-18", from subsplash.com):
     `sermon-notes` with the `title` and `reference` from the subject and the date a line of the body gives as `when`
-    (midnight Eastern; the mail's own Date when no line is a date). The body is read for that date and nothing else;
-    the attached notes PDF, like every attachment, is skipped unread and never kept. A "Notes for ..." subject from
-    any other domain is `unread`.
+    (midnight Eastern; the mail's own Date when no line is a date). The body is read for that date and nothing else.
+    The attached notes PDF is the one attachment the receiver keeps: when the mail has exactly one PDF (a part typed
+    `application/pdf` or named `*.pdf`) whose bytes begin `%PDF-` and are at most 5 MiB (5242880 bytes,
+    `alerts.MaxNotesBytes`), those bytes are posted as they came, base64, as the alert's `notes`, and nothing reads
+    them: no PDF library is used, and the sermon index on the Laptop reads the notes. The backend keeps them with the
+    alert (`alert-notes/<id>.pdf` under `POSTERN_DATA`) until the alert is claimed or is 30 days old, and serves them
+    to the alert's family at `GET /api/alerts/{id}/notes`. A notes mail with no PDF, more than one, one over 5 MiB or
+    one that does not begin `%PDF-` is posted with its title, reference and date and no notes. The log says one line
+    for each notes mail posted: `posted a sermon-notes alert with notes (N bytes)`, or `posted a sermon-notes alert
+    without notes: <why>`, the why one of `no PDF attached`, `N PDFs attached, not one`, `the PDF is over 5242880
+    bytes`, `the PDF does not begin %PDF-` or `the PDF could not be decoded`; neither holds a token, an address, a
+    subject or a byte of the PDF. A "Notes for ..." subject from any other domain is `unread`, and keeps nothing.
+    No other mail's attachments are read or kept: a bank mail, a Gmail confirmation or an unread mail with a PDF
+    attached is read as it would be without it.
   - Anything else: `unread` with its subject only. When the sender or subject of an unread mail nearly fit a
     parser (a sermon-notes subject from another domain, a subsplash.com mail with another subject, a mail from chase.com,
     citi.com, pnc.com or amazon.com that gave no amount, payee or order number) the log says so in one line:
@@ -54,7 +66,8 @@
     subsplash.com; ...`. Each note is a fixed phrase and at most the sender's domain; no token, address, subject,
     body, amount, merchant or account is ever logged. A mail that some parser reads logs nothing of this kind.
 - Nothing is written to disk: no queue, no spool, no mail in the log. The log says only that an alert of a kind was
-  posted, or why one was not, and why a Gmail confirmation gave no link (above).
+  posted (for a notes mail, with its notes' size or why it has none), or why one was not, and why a Gmail
+  confirmation gave no link (above).
 
 ## A second token, for sermon notes
 

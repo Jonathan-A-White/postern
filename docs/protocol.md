@@ -2563,30 +2563,42 @@ One alert is parsed facts, as JSON:
 | `title` | a `sermon-notes` alert's sermon title, from the mail's subject; optional |
 | `reference` | a `sermon-notes` alert's passage (`2 Peter 3:10-18`), from the mail's subject; optional |
 | `link` | a `forward-confirm` alert's confirmation link, `https://<host>/mail/vf-...` whole, its host exactly `mail.google.com`, `mail-settings.google.com` or `isolated.mail.google.com`, at most 500 characters, the one link an alert carries; optional |
+| `notes_sha256` | a `sermon-notes` alert's notes PDF: the sha256 of its bytes, 64 hex characters; only when the alert has notes, given by the backend |
+| `notes_size` | the same PDF's size in bytes, at most 5 MiB (5242880); only with `notes_sha256` |
 
-A `sermon-notes` alert is the forwarded Subsplash notes mail's title, passage and date: the notes attached to that mail
-(a PDF) are never read or kept. Every text field but `link` is at most 200 characters, and there is no field for a mail's body. **A mail body never reaches
+A `sermon-notes` alert is the forwarded Subsplash notes mail's title, passage and date and, when the mail had exactly
+one attached PDF (by its type, `application/pdf`, or a `.pdf` file name) that begins `%PDF-` and is at most 5 MiB,
+that PDF's bytes as they came. The receiver posts them, base64, as `notes` (a field of the post only: an alert as
+listed has `notes_sha256` and `notes_size` instead, and the bytes are fetched with `GET /api/alerts/{id}/notes`).
+Nothing on the VPS reads the PDF; the sermon index does. No other kind of alert carries notes, and no other
+attachment of any mail is read or kept. (Keeping the notes is the Mayor's decision of 2026-11-10, provisional until
+the Governor confirms it; `mw-qtu3zvz.49.19`.)
+
+Every text field but `link` is at most 200 characters, and there is no field for a mail's body. **A mail body never reaches
 the backend**: the receiver reads the mail, keeps nothing of it, and posts the facts above. An alert with any
-field not in this table is refused, so a body cannot be posted by mistake.
+field not in this table (but `notes`) is refused, so a body cannot be posted by mistake.
 
 ### The routes
 
-The first three are signed (§19) by a licensed key, a cockpit key or an app key; the mill's key is refused
+The first four are signed (§19) by a licensed key, a cockpit key or an app key; the mill's key is refused
 `403`. A key with no licence is `401`, `no_licence`. Without `POSTERN_ALERTS_DOMAIN` and the store they answer `501`.
 
 | Route | Does |
 |---|---|
 | `POST /api/alerts/address` | `200 {"address": "<token>@<domain>"}`: makes the family's address, or returns it |
 | `GET /api/alerts?since=<seq>` | `200 {"alerts": [...], "next": <seq>}`: the family's alerts with a `seq` above `since` (default 0), oldest first; `next` is the highest `seq` in the list, or `since` when it is empty, the value to ask from next time. `400` for a `since` that is no whole number |
-| `DELETE /api/alerts/{id}` | **claims** one: `204`, and it is gone for every phone of the family. `404` for an id the family does not have, another family's included |
-| `POST /api/alerts/inbound` | from the receiver, not a key: body `{"token": "<token>", ...the alert's fields without id and seq}`. Proved by the shared secret `POSTERN_ALERTS_SECRET`, sent as `Authorization: Bearer <secret>`. `201 {"id", "seq"}` once stored; `401` for a wrong or missing secret; `404` for a token no family has; `400` for an unknown field, a `kind` not in the table, a text field over 200 characters or a `when` that is no RFC 3339 time. With no secret configured the backend answers `501` and takes nothing |
+| `DELETE /api/alerts/{id}` | **claims** one: `204`, and it is gone for every phone of the family, its notes too. `404` for an id the family does not have, another family's included |
+| `GET /api/alerts/{id}/notes` | a `sermon-notes` alert's notes PDF: `200`, `Content-Type: application/pdf`, the bytes as the mail carried them (their sha256 is the listed `notes_sha256`), `Cache-Control: no-store`. `404` for an id the family does not have (another family's included), an unknown id, or an alert with no notes |
+| `POST /api/alerts/inbound` | from the receiver, not a key: body `{"token": "<token>", ...the alert's fields without id, seq, notes_sha256 and notes_size}`, and `notes` (base64 of the PDF) on a `sermon-notes` alert that has them. Proved by the shared secret `POSTERN_ALERTS_SECRET`, sent as `Authorization: Bearer <secret>`. `201 {"id", "seq"}` once stored; `401` for a wrong or missing secret; `404` for a token no family has; `400` for an unknown field, a `kind` not in the table, a text field over 200 characters, a `when` that is no RFC 3339 time, a body over 16 KiB plus the base64 of 5 MiB (7006892 bytes), or `notes` on another kind, not base64, over 5 MiB or not beginning `%PDF-`, or a posted `notes_sha256` or `notes_size`. With no secret configured the backend answers `501` and takes nothing |
 | `GET /api/alerts/inbound/{token}` | from the receiver, proved by the same secret: `204` when a family owns the token, `404` when none does, `401` for a wrong or missing secret, `501` with no secret configured. It stores nothing; the receiver asks it before it takes a mail's body (`docs/alerts-mail.md`) |
 
 ### What is kept, and for how long
 
-Only the facts in the table, in `alerts.json` under `POSTERN_DATA`, with the time the backend received each. A
-**claim deletes** the alert at once. A sweep, at start and every hour, drops every alert received more than
-**30 days** ago, claimed or not. A family keeps its address when its alerts are gone.
+Only the facts in the table, in `alerts.json` under `POSTERN_DATA`, with the time the backend received each, and a
+`sermon-notes` alert's notes PDF in a file of its own, `alert-notes/<id>.pdf` beside it (readable by the backend
+alone), never in `alerts.json`. A **claim deletes** the alert and its notes at once. A sweep, at start and every hour,
+drops every alert received more than **30 days** ago, claimed or not, with its notes, and any notes file no kept
+alert names. A family keeps its address when its alerts are gone.
 
 ### The push
 

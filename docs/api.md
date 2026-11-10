@@ -218,7 +218,7 @@ A proved key is one of three kinds, and each endpoint below admits only some:
   `GET/POST /api/messages`, `GET /api/me`, `GET /api/events` (narrowed to its own
   records), `POST /api/blobs`, `GET /api/push/vapid-public-key`,
   `POST /api/push/subscribe`, and the alerts routes (`POST /api/alerts/address`,
-  `GET /api/alerts`, `DELETE /api/alerts/{id}`, below).
+  `GET /api/alerts`, `DELETE /api/alerts/{id}`, `GET /api/alerts/{id}/notes`, below).
 
 A proved key of a kind an endpoint does not admit gets `403`. A key holding both a
 cockpit and an app licence is a cockpit key.
@@ -778,17 +778,27 @@ licence, so two keys on it see the same address and feed.
 
 - `POST /api/alerts/address` — `200 {"address": "<token>@<domain>"}`, the same every time for a family.
 - `GET /api/alerts?since=<seq>` — `200 {"alerts": [{"id", "seq", "kind", "amount", "merchant", "last4", "when",
-  "subject", "code", "link", "memo", "title", "reference"}], "next"}` (`kind` is `charge`, `forward-confirm`, `amazon`, `unread`, `zelle-sent`, `deposit` or `sermon-notes`; the other fields only
-  when the kind has them). Answered with `Cache-Control: no-store`.
-- `DELETE /api/alerts/{id}` — claims the alert: `204`, gone for every phone of the family; `404` otherwise.
+  "subject", "code", "link", "memo", "title", "reference", "notes_sha256", "notes_size"}], "next"}` (`kind` is `charge`, `forward-confirm`, `amazon`, `unread`, `zelle-sent`, `deposit` or `sermon-notes`; the other fields only
+  when the kind has them). A `sermon-notes` alert whose mail had its notes PDF carries `notes_sha256` (hex sha256 of
+  the PDF's bytes) and `notes_size` (bytes, at most 5 MiB); one without carries neither. The list never carries the
+  bytes. Answered with `Cache-Control: no-store`.
+- `DELETE /api/alerts/{id}` — claims the alert: `204`, gone for every phone of the family, its notes too; `404`
+  otherwise.
+- `GET /api/alerts/{id}/notes` — the alert's notes PDF: `200`, `Content-Type: application/pdf`, the bytes as the
+  mail carried them (sha256 equal to `notes_sha256`), `Cache-Control: no-store`. `404` for an alert of another
+  family, an unknown id, or an alert with no notes.
 - `POST /api/alerts/inbound` — the receiver's, with `Authorization: Bearer <POSTERN_ALERTS_SECRET>` instead of a
-  signed proof; body `{"token", "kind", ...}` of parsed facts only (`201 {"id", "seq"}`, `401` a wrong secret,
-  `404` an unknown token, `400` an unknown field or a bad value). It pushes every phone of the family.
+  signed proof; body `{"token", "kind", ...}` of parsed facts only, and on a `sermon-notes` alert `"notes"`, the
+  base64 of its PDF (`201 {"id", "seq"}`, `401` a wrong secret, `404` an unknown token, `400` an unknown field or a
+  bad value: `notes` on another kind, not base64, over 5 MiB or not beginning `%PDF-`, or a posted `notes_sha256`
+  or `notes_size`). The body may be up to 16 KiB plus the base64 of 5 MiB, 7006892 bytes; a longer one is `400`.
+  This route's limit alone grew for the notes. It pushes every phone of the family.
 - `GET /api/alerts/inbound/{token}` — the receiver's, with the same secret: `204` when a family owns the token,
   `404` when none does, `401` a wrong secret. The receiver (`docs/alerts-mail.md`) asks it at `RCPT TO`, so a mail
   for no family is refused before its body is sent. It stores nothing.
 
-The first three admit a cockpit key or an app key (`403` for the mill's). Alerts older than 30 days are dropped.
+The first four admit a cockpit key or an app key (`403` for the mill's). Alerts older than 30 days are dropped,
+with their notes.
 Without `POSTERN_ALERTS_DOMAIN` they answer `501`; without `POSTERN_ALERTS_SECRET` so does inbound.
 
 ## The record fan-out

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.95",
+    "date": "2026-11-10",
+    "story": "mw-qtu3zvz.49.17",
+    "kind": "fixed",
+    "text": "Gmail's forwarding confirmation now reaches Postern with its link, and a PNC Zelle payment keeps its memo."
+  },
+  {
     "version": "0.8.93",
     "date": "2026-11-10",
     "story": "mw-qtu3zvz.49.5",

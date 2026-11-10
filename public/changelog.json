@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.93",
+    "date": "2026-11-10",
+    "story": "mw-qtu3zvz.49.5",
+    "kind": "fixed",
+    "text": "Gmail's forwarding confirmation now arrives as a link to tap instead of an unread mail, once the backend and the mail receiver are updated on the server."
+  },
+  {
     "version": "0.8.91",
     "date": "2026-11-09",
     "story": "mw-azvrhbq",

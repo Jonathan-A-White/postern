@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.93
+_2026-11-10_
+- Fixed: Gmail's forwarding confirmation now arrives as a link to tap instead of an unread mail, once the backend and the mail receiver are updated on the server.
+
 ## 0.8.91
 _2026-11-09_
 - New: A PDF or text file attached in a thread now has a Save button beside it that keeps the file under its own name.

@@ -243,8 +243,7 @@ test('a text and a 2 MB photo each show in the thread at once and leave the comp
   const box = page.getByRole('textbox', { name: /Message|Reply|Say something/ }).first();
   await expect(box).toBeVisible();
 
-  const host = await hostSlowdown(page);
-  const [freeWithin, shownWithin, busyAtMost] = [FREE_WITHIN_MS * host, SHOWN_WITHIN_MS * host, BUSY_AT_MOST_MS * host];
+  const hostBefore = await hostSlowdown(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: PHONE_CPU });
   const send = page.getByRole('button', { name: 'Send', exact: true });
@@ -256,7 +255,7 @@ test('a text and a 2 MB photo each show in the thread at once and leave the comp
   await send.click();
   const text = await sendTimes(page);
   await expect.poll(() => posted.length).toBe(before + 1);
-  console.log(`mw-8xe671n text (host ${host.toFixed(1)}x, cpu ${PHONE_CPU}x): free ${Math.round(text.free)} ms, shown ${Math.round(text.shown)} ms, longest task ${Math.round(text.longest)} ms, marks ${JSON.stringify(text.marks)}`);
+  console.log(`mw-8xe671n text (host ${hostBefore.toFixed(1)}x before, cpu ${PHONE_CPU}x): free ${Math.round(text.free)} ms, shown ${Math.round(text.shown)} ms, longest task ${Math.round(text.longest)} ms, marks ${JSON.stringify(text.marks)}`);
 
   // a 2 MB photo, with a caption to find its bubble by
   const photo = screenshotPng();
@@ -270,7 +269,16 @@ test('a text and a 2 MB photo each show in the thread at once and leave the comp
   await expect.poll(() => posted.length, { timeout: 60_000 }).toBe(before + 2);
   await expect.poll(() => page.evaluate(() => performance.getEntriesByName('postern:send:answered').length)).toBeGreaterThan(0);
   const done = await sendTimes(page);
-  console.log(`mw-8xe671n photo ${photo.length} B (host ${host.toFixed(1)}x, cpu ${PHONE_CPU}x): free ${Math.round(picture.free)} ms, shown ${Math.round(picture.shown)} ms, longest task ${Math.round(done.longest)} ms, marks ${JSON.stringify(done.marks)}`);
+  console.log(`mw-8xe671n photo ${photo.length} B (host ${hostBefore.toFixed(1)}x before, cpu ${PHONE_CPU}x): free ${Math.round(picture.free)} ms, shown ${Math.round(picture.shown)} ms, longest task ${Math.round(done.longest)} ms, marks ${JSON.stringify(done.marks)}`);
+
+  // mw-qtu3zvz.49.23: the host is read again now, with the phone's slowing lifted for the spins, and the larger of the two readings
+  // scales the promise. One reading before the sends went stale: the sends take 15 to 25 s on a loaded host, and a 5x reading
+  // taken while the other workers were still starting held a photo that then met 10x to 13x to a 5x promise (shown 6319 ms of 5047).
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  const hostAfter = await hostSlowdown(page);
+  const host = Math.max(hostBefore, hostAfter);
+  const [freeWithin, shownWithin, busyAtMost] = [FREE_WITHIN_MS * host, SHOWN_WITHIN_MS * host, BUSY_AT_MOST_MS * host];
+  console.log(`mw-8xe671n host ${hostBefore.toFixed(1)}x before the sends, ${hostAfter.toFixed(1)}x after: the promise is scaled by ${host.toFixed(1)}x`);
 
   expect(text.free, 'the composer is free after a text').toBeLessThan(freeWithin);
   expect(picture.free, 'the composer is free after a photo').toBeLessThan(freeWithin);

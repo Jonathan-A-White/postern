@@ -500,3 +500,83 @@ func TestOnlyAMissedConfirmationIsLogged(t *testing.T) {
 		}
 	}
 }
+
+// A mail that nearly fits a parser (its sender or its subject) but is filed
+// unread says in the log which check failed, in one line; the line holds only
+// fixed words and a sender's domain, never a token, an address, the subject,
+// the body, an amount, a merchant or an account.
+func TestAMailThatNearlyFitsAParserButIsUnreadLogsWhichCheckFailed(t *testing.T) {
+	const head = "alerts-mail: a mail is unread; the checks that nearly fit it failed: "
+	secrets := []string{"Grace", "Romans", "noreply", "x@", "@", "MADE-UP", "25.00", "9.38", "1234", "4321", "Sam Example", "SOMEONE", "ACME", "111-", "Widget", "Nov 1"}
+	mailOf := func(from, subject string, body ...string) []byte {
+		return []byte("From: x <" + from + ">\r\nSubject: " + subject + "\r\nContent-Type: text/plain\r\n\r\n" + strings.Join(body, "\r\n") + "\r\n")
+	}
+	for _, tc := range []struct {
+		name string
+		raw  []byte
+		want string
+	}{
+		{"notes, another sender", mailOf("x@example.com", `Notes for "Grace" - Romans 8:1-4`, "Nov 1, 2026"),
+			`sermon notes: sender's domain "example.com", not subsplash.com`},
+		{"notes, a lookalike sender", mailOf("x@notsubsplash.com", `Notes for "Grace" - Romans 8:1-4`, "Nov 1, 2026"),
+			`sermon notes: sender's domain "notsubsplash.com", not subsplash.com`},
+		{"notes, another subject", mailOf("noreply@subsplash.com", "Your receipt", "Nov 1, 2026"),
+			"sermon notes: subject is not Notes for \"title\""},
+		{"notes, no quoted title", mailOf("noreply@subsplash.com", "Notes for Grace - Romans", "Nov 1, 2026"),
+			"sermon notes: subject is not Notes for \"title\""},
+		{"notes, a blank title", mailOf("noreply@subsplash.com", `Notes for " " - Romans`, "Nov 1, 2026"),
+			"sermon notes: the title is blank"},
+		{"chase, no amount", mailOf("alerts@chase.com", "Your card", "Merchant ACME", "Account Prime Visa (...1234)"),
+			"chase: no amount"},
+		{"citi, no transaction subject", mailOf("alerts@citi.com", "Your statement", "Amount: $25.00", "Card Ending In 4321"),
+			`citi: subject has no "transaction"`},
+		{"citi, no amount", mailOf("alerts@citi.com", "A transaction was made", "Merchant ACME", "Card Ending In 4321"),
+			"citi: no amount"},
+		{"zelle, no payee", mailOf("pncalerts@pnc.com", "Your statement is ready", "Amount: $25.00", "From Account: x1234"),
+			"pnc zelle-sent: no payee"},
+		{"zelle, no amount", mailOf("pncalerts@pnc.com", "You sent a Zelle® payment to Sam Example", "From Account: x1234"),
+			"pnc zelle-sent: no amount"},
+		{"pnc, no deposit subject", mailOf("pncalerts@pnc.com", "Your statement is ready", "Amount: $25.00", "Account ending in: x1234"),
+			`pnc deposit: subject has no "deposit"`},
+		{"pnc deposit, no amount", mailOf("pncalerts@pnc.com", "A deposit was credited to your account.", "Deposit made by: SOMEONE", "Account ending in: x1234"),
+			"pnc deposit: no amount"},
+		{"amazon, no order id", mailOf("auto-confirm@amazon.com", "Ordered: Widget", "Order # 12-34", "Grand Total: $25.00"),
+			"amazon: no order number"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, logged := parseLogged(t, tc.raw)
+			if got.Kind != alerts.KindUnread {
+				t.Fatalf("Parse = %+v, want unread", got)
+			}
+			if strings.Count(logged, "\n") != 1 || !strings.HasPrefix(logged, head) {
+				t.Fatalf("logged %q, want one line starting %q", logged, head)
+			}
+			if !strings.Contains(logged, tc.want) {
+				t.Errorf("logged %q, want it to hold %q", logged, tc.want)
+			}
+			for _, secret := range secrets {
+				if strings.Contains(logged[len(head):], secret) {
+					t.Errorf("logged %q, which holds %q", logged, secret)
+				}
+			}
+		})
+	}
+}
+
+// A mail that is read, one no parser nearly fits, and a mail that one parser
+// misses but another reads, log nothing of this kind.
+func TestOnlyAMailThatNearlyFitsAndIsUnreadLogsAMiss(t *testing.T) {
+	for _, file := range []string{"subsplash-notes.eml", "chase.eml", "chase-amazon.eml", "citi.eml", "citi-costco.eml", "pnc-zelle-sent.eml", "pnc-deposit.eml", "amazon-order.eml", "unknown.eml"} {
+		if _, logged := parseLogged(t, fixture(t, file)); logged != "" {
+			t.Errorf("%s: logged %q, want nothing", file, logged)
+		}
+	}
+	for name, raw := range map[string]string{
+		"from nobody we read": "From: x <x@example.com>\r\nSubject: Hello\r\nContent-Type: text/plain\r\n\r\nAmount: $10.00\r\n",
+		"not mail":            "not mail at all",
+	} {
+		if got, logged := parseLogged(t, []byte(raw)); got.Kind != alerts.KindUnread || logged != "" {
+			t.Errorf("%s: Parse = %+v, logged %q, want unread and nothing logged", name, got, logged)
+		}
+	}
+}

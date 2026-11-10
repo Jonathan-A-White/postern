@@ -80,12 +80,15 @@ func Parse(raw []byte) Facts {
 	}
 	subject := decodeHeader(msg.Header.Get("Subject"))
 	unread := Facts{Kind: alerts.KindUnread, Subject: cut(subject)}
-	m := mailView{subject: subject, from: senderDomain(msg.Header.Get("From")), date: mailDate(msg.Header)}
+	m := mailView{subject: subject, from: senderDomain(msg.Header.Get("From")), date: mailDate(msg.Header), misses: new([]string)}
 	m.lines = textLines(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Body)
 	for _, parse := range []func(mailView) (Facts, bool){parseChase, parseCiti, parsePNCZelleSent, parsePNCDeposit, parseAmazon, parseGmailConfirm, parseSermonNotes} {
 		if facts, ok := parse(m); ok {
 			return facts
 		}
+	}
+	if len(*m.misses) > 0 {
+		log.Printf("alerts-mail: a mail is unread; the checks that nearly fit it failed: %s", strings.Join(*m.misses, "; "))
 	}
 	return unread
 }
@@ -97,6 +100,20 @@ type mailView struct {
 	from    string
 	date    string
 	lines   []string
+	// misses is what the parsers a mail nearly fit say failed (see miss).
+	misses *[]string
+}
+
+// miss notes which check of a parser a mail failed, when its sender or its
+// subject nearly fit that parser. Parse logs the notes in one line, and only
+// if no parser reads the mail, so a PNC deposit that the Zelle parser passes
+// over logs nothing. A note is fixed words and, at most, the sender's domain
+// through hostName: never a token, an address, a subject, a body, an amount, a
+// merchant or an account.
+func (m mailView) miss(parser, failed string) {
+	if m.misses != nil {
+		*m.misses = append(*m.misses, parser+": "+failed)
+	}
 }
 
 func (m mailView) fromDomain(domain string) bool {
@@ -133,6 +150,7 @@ func parseChase(m mailView) (Facts, bool) {
 	f.When = easternTime(strings.Replace(m.value("Date"), " at ", " ", 1), m.date,
 		"Jan 2, 2006 3:04 PM", "January 2, 2006 3:04 PM", "Jan 2, 2006 15:04")
 	if f.Amount == "" {
+		m.miss("chase", "no amount")
 		return Facts{}, false
 	}
 	return f, true
@@ -148,7 +166,11 @@ var (
 // parseCiti reads a Citi custom alert: "Amount: $187.53", "Card Ending In
 // 4321", "Merchant ...", "Date 10/31/2026", "Time 04:53 PM ET".
 func parseCiti(m mailView) (Facts, bool) {
-	if !m.fromDomain("citi.com") || !strings.Contains(strings.ToLower(m.subject), "transaction") {
+	if !m.fromDomain("citi.com") {
+		return Facts{}, false
+	}
+	if !strings.Contains(strings.ToLower(m.subject), "transaction") {
+		m.miss("citi", `subject has no "transaction"`)
 		return Facts{}, false
 	}
 	f := Facts{Kind: alerts.KindCharge}
@@ -174,6 +196,7 @@ func parseCiti(m mailView) (Facts, bool) {
 	}
 	f.When = easternTime(m.value("Date")+" "+m.value("Time"), m.date, "01/02/2006 03:04 PM", "1/2/2006 3:04 PM")
 	if f.Amount == "" {
+		m.miss("citi", "no amount")
 		return Facts{}, false
 	}
 	return f, true
@@ -209,7 +232,12 @@ func parsePNCZelleSent(m mailView) (Facts, bool) {
 		}
 	}
 	f := Facts{Kind: alerts.KindZelleSent, Merchant: payee, Amount: money(m.value("Amount"))}
-	if f.Merchant == "" || f.Amount == "" {
+	if f.Merchant == "" {
+		m.miss("pnc zelle-sent", "no payee")
+		return Facts{}, false
+	}
+	if f.Amount == "" {
+		m.miss("pnc zelle-sent", "no amount")
 		return Facts{}, false
 	}
 	if a := pncAccount.FindStringSubmatch(m.value("From Account")); a != nil {
@@ -224,7 +252,11 @@ func parsePNCZelleSent(m mailView) (Facts, bool) {
 // alert: "Account ending in: x1234", "Amount: $64.20", "Deposit made by:
 // <payer>", "Date: 11/01/26". A deposit with no amount is unread.
 func parsePNCDeposit(m mailView) (Facts, bool) {
-	if !m.fromDomain("pnc.com") || !strings.Contains(strings.ToLower(m.subject), "deposit") {
+	if !m.fromDomain("pnc.com") {
+		return Facts{}, false
+	}
+	if !strings.Contains(strings.ToLower(m.subject), "deposit") {
+		m.miss("pnc deposit", `subject has no "deposit"`)
 		return Facts{}, false
 	}
 	f := Facts{Kind: alerts.KindDeposit, Merchant: m.value("Deposit made by"), Amount: money(m.value("Amount"))}
@@ -234,6 +266,7 @@ func parsePNCDeposit(m mailView) (Facts, bool) {
 		}
 	}
 	if f.Amount == "" {
+		m.miss("pnc deposit", "no amount")
 		return Facts{}, false
 	}
 	if a := pncAccount.FindStringSubmatch(m.value("Account ending in")); a != nil {
@@ -303,6 +336,7 @@ func parseAmazon(m mailView) (Facts, bool) {
 		}
 	}
 	if f.OrderID == "" {
+		m.miss("amazon", "no order number")
 		return Facts{}, false
 	}
 	return f, true
@@ -449,11 +483,19 @@ var (
 // read (textLines skips every attachment). Only the title, the passage and
 // the date are kept; the date is the mail's own Date when no line is a date.
 func parseSermonNotes(m mailView) (Facts, bool) {
+	s := sermonNotesSubject.FindStringSubmatch(m.subject)
 	if !m.fromDomain("subsplash.com") {
+		if s != nil {
+			m.miss("sermon notes", fmt.Sprintf("sender's domain %q, not subsplash.com", hostName(m.from)))
+		}
 		return Facts{}, false
 	}
-	s := sermonNotesSubject.FindStringSubmatch(m.subject)
-	if s == nil || strings.TrimSpace(s[1]) == "" {
+	if s == nil {
+		m.miss("sermon notes", `subject is not Notes for "title"`)
+		return Facts{}, false
+	}
+	if strings.TrimSpace(s[1]) == "" {
+		m.miss("sermon notes", "the title is blank")
 		return Facts{}, false
 	}
 	f := Facts{Kind: alerts.KindSermonNotes, Title: strings.TrimSpace(s[1]), Reference: strings.TrimSpace(s[2]), When: m.date}

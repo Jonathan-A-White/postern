@@ -47,7 +47,12 @@
     (midnight Eastern; the mail's own Date when no line is a date). The body is read for that date and nothing else;
     the attached notes PDF, like every attachment, is skipped unread and never kept. A "Notes for ..." subject from
     any other domain is `unread`.
-  - Anything else: `unread` with its subject only.
+  - Anything else: `unread` with its subject only. When the sender or subject of an unread mail nearly fit a
+    parser (a sermon-notes subject from another domain, a subsplash.com mail with another subject, a mail from chase.com,
+    citi.com, pnc.com or amazon.com that gave no amount, payee or order number) the log says so in one line:
+    `a mail is unread; the checks that nearly fit it failed: sermon notes: sender's domain "example.com", not
+    subsplash.com; ...`. Each note is a fixed phrase and at most the sender's domain; no token, address, subject,
+    body, amount, merchant or account is ever logged. A mail that some parser reads logs nothing of this kind.
 - Nothing is written to disk: no queue, no spool, no mail in the log. The log says only that an alert of a kind was
   posted, or why one was not, and why a Gmail confirmation gave no link (above).
 

@@ -1,6 +1,7 @@
 package alertsmail
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -12,11 +13,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Jonathan-A-White/postern/server/internal/alerts"
 	"github.com/emersion/go-smtp"
 )
 
@@ -340,6 +343,66 @@ func TestASermonNotesMailIsPostedWithItsTitleReferenceAndDateOnly(t *testing.T) 
 	for k, v := range want {
 		if got[0][k] != v {
 			t.Fatalf("posted %+v, want %+v", got[0], want)
+		}
+	}
+}
+
+// The Gmail confirmation mail's link and the PNC payment's memo reach the
+// backend in the post: they were parsed but left out of the body.
+func TestAMailsLinkAndMemoAreInTheBodyPosted(t *testing.T) {
+	for _, tc := range []struct{ file, field string }{
+		{"gmail-confirm.eml", "link"},
+		{"gmail-confirm-mail-settings.eml", "link"},
+		{"pnc-zelle-sent.eml", "memo"},
+	} {
+		facts := Parse(fixture(t, tc.file))
+		alert := facts.Alert()
+		want := map[string]string{"link": alert.Link, "memo": alert.Memo}[tc.field]
+		if want == "" {
+			t.Fatalf("%s: the parse found no %s, the test has nothing to check", tc.file, tc.field)
+		}
+		backend := newFakeBackend(t)
+		inbound := &HTTPInbound{URL: backend.URL, Secret: testSecret}
+		if err := inbound.Post(context.Background(), knownToken, alert); err != nil {
+			t.Fatalf("%s: Post = %v", tc.file, err)
+		}
+		got := backend.received()
+		if len(got) != 1 || got[0][tc.field] != want {
+			t.Fatalf("%s: posted %+v, want %s %q", tc.file, got, tc.field, want)
+		}
+	}
+}
+
+// Every field of alerts.Alert the receiver can know is in what Post sends, so
+// the next field added to Alert cannot be dropped as link and memo were. The
+// id and seq are the backend's to give.
+func TestPostSendsEveryFieldOfAnAlert(t *testing.T) {
+	var alert alerts.Alert
+	v := reflect.ValueOf(&alert).Elem()
+	var names []string
+	for i := 0; i < v.NumField(); i++ {
+		name, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("json"), ",")
+		if name == "id" || name == "seq" {
+			continue
+		}
+		if v.Field(i).Kind() != reflect.String {
+			t.Fatalf("alerts.Alert.%s is not a string: teach this test how Post sends it", v.Type().Field(i).Name)
+		}
+		v.Field(i).SetString("made-up " + name)
+		names = append(names, name)
+	}
+	backend := newFakeBackend(t)
+	inbound := &HTTPInbound{URL: backend.URL, Secret: testSecret}
+	if err := inbound.Post(context.Background(), knownToken, alert); err != nil {
+		t.Fatalf("Post = %v", err)
+	}
+	got := backend.received()
+	if len(got) != 1 {
+		t.Fatalf("posted %+v, want one body", got)
+	}
+	for _, name := range names {
+		if got[0][name] != "made-up "+name {
+			t.Errorf("Post left %q out of the body: %+v", name, got[0])
 		}
 	}
 }

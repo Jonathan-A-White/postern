@@ -8,12 +8,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Jonathan-A-White/postern/server/internal/alerts"
+	"github.com/Jonathan-A-White/postern/server/internal/alertsmail"
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
 	"github.com/Jonathan-A-White/postern/server/internal/blobs"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
@@ -574,5 +576,29 @@ func TestASermonNotesAlertIsListedAndClaimedOnlyByTheFamilyOfItsToken(t *testing
 	}
 	if left := s.list(t, keys[0], 0).Alerts; len(left) != 1 || left[0].Kind != "charge" {
 		t.Fatalf("the bank feed after the sermon claim = %+v, want its charge", left)
+	}
+}
+
+// A Gmail confirmation mail goes through the receiver's parse and its real
+// post to the real inbound handler, and the alert read back carries the link:
+// the receiver left the link out of its post, so it was parsed and lost.
+func TestAConfirmMailThroughTheReceiverKeepsItsLinkInTheFeed(t *testing.T) {
+	raw, err := os.ReadFile("../alertsmail/testdata/gmail-confirm.eml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	alert := alertsmail.Parse(raw).Alert()
+	if alert.Kind != "forward-confirm" || alert.Link == "" {
+		t.Fatalf("the parse gave %+v, want a forward-confirm with a link", alert)
+	}
+	solo, soloPub := newKey(t)
+	s := newAlertsServer(t, []string{soloPub}, nil, alertsSecret)
+	address := s.address(t, solo)
+	inbound := &alertsmail.HTTPInbound{URL: s.URL, Secret: alertsSecret}
+	if err := inbound.Post(context.Background(), tokenOf(address), alert); err != nil {
+		t.Fatalf("Post = %v", err)
+	}
+	if list := s.list(t, solo, 0).Alerts; len(list) != 1 || list[0].Link != alert.Link {
+		t.Fatalf("feed = %+v, want the link %q", list, alert.Link)
 	}
 }

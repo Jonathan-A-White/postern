@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrivateKey, Utils } from '@bsv/sdk';
+import { parseRoute } from '../../src/nav/route';
 import { SearchScreen } from '../../src/cockpit/SearchScreen';
 import { db } from '../../src/data/db';
 import { viewRepo } from '../../src/data/repositories';
@@ -69,6 +70,19 @@ describe('Search offers a bead by its id even when the view does not hold it', (
     await waitForRoute({ view: 'bead', id: ABSENT });
     expect(beadCalls(fetchImpl)).toEqual([`/api/beads/${ABSENT}`]);
     expect(screen.queryByText(`no bead ${ABSENT}`)).toBeNull();
+  });
+
+  it('keeps the bead route when the fetch resolves before the 300 ms address debounce fires (mw-qtu3zvz.49.26)', async () => {
+    const sealed = await sealDocument(JSON.stringify({ ...fixtureDetail(IN_VIEW)!, id: ABSENT }), MAYOR.toHex(), GOV.toPublicKey().toString());
+    stubBackend(async () => new Response(sealed, { status: 200 }));
+    render(<SearchScreen q={ABSENT} />);
+    const open = await screen.findByRole('button', { name: `Open ${ABSENT}` });
+    // Open is tapped inside the debounce window and the answer comes at once; Search stays
+    // mounted here (the app unmounts it on navigate), so its timer fires after the bead route is set.
+    await userEvent.click(open);
+    await waitForRoute({ view: 'bead', id: ABSENT });
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(parseRoute(window.location.search)).toEqual({ view: 'bead', id: ABSENT });
   });
 
   it('says "no bead <id>" for an id the backend does not know, and stays on Search', async () => {

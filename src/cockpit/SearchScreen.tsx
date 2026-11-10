@@ -13,7 +13,7 @@ import { describeFilter } from '../model/filter';
 import { allStoredBeadDetails, fetchBeadDetail } from '../services/beads';
 import { getLiveState } from '../services/live';
 import type { BeadDetail } from '../model/view';
-import { beadHref, formatRoute, threadHrefFor } from '../nav/route';
+import { beadHref, formatRoute, parseRoute, threadHrefFor } from '../nav/route';
 import { navigate } from '../router';
 
 const GROUPS: { kind: SearchHitKind; label: string }[] = [
@@ -92,6 +92,9 @@ export function SearchScreen({ q }: { q?: string }) {
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      // Only mirror the query while the address is still a search route: a navigate made since
+      // (Open by id landing on the bead) must not be written over by this late timer.
+      if (parseRoute(window.location.search).view !== 'search') return;
       const next = formatRoute({ view: 'search', q: query.trim() || undefined });
       if (next !== window.location.search) navigate(next, { replace: true });
     }, 300);

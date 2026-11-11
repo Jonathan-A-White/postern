@@ -816,3 +816,43 @@ func TestANotesMailThroughTheReceiverServesItsPDF(t *testing.T) {
 		t.Fatalf("GET notes = %d, %d bytes; want the PDF's %d", status, len(got), len(facts.Notes))
 	}
 }
+
+// Only an alert a phone has something to do with is pushed: a charge (to sort) and Gmail's
+// forwarding confirmation (to tap). Every other kind is stored and listed, and no phone is pinged
+// for it: the Governor's Amazon order mail pinged "A new charge to sort" with nothing to sort
+// (mw-mr4xgrw.48).
+func TestAnAlertNoPhoneCanActOnIsStoredAndListedButNotPushed(t *testing.T) {
+	cases := []struct {
+		kind, fields string
+		pushed       bool
+	}{
+		{"charge", `"amount":"9.99","merchant":"Hardware Store","last4":"4321"`, true},
+		{"forward-confirm", `"code":"123456"`, true},
+		{"amazon", `"merchant":"Amazon","amount":"0.00"`, false},
+		{"zelle-sent", `"merchant":"A Payee","amount":"20.00","last4":"1234"`, false},
+		{"deposit", `"merchant":"An Employer","amount":"100.00","last4":"1234"`, false},
+		{"unread", `"subject":"Something we could not read"`, false},
+		{"sermon-notes", `"title":"The Day of the Lord","reference":"2 Peter 3:10-18"`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.kind, func(t *testing.T) {
+			s, keys, pubs, _ := twoPhones(t)
+			s.subscribe(t, keys[0], pubs[0], "phone-0")
+			s.subscribeCards(t, keys[1], pubs[1], "phone-1", `["4321"]`)
+			address := s.address(t, keys[0])
+			if status, body := s.inbound(t, alertsSecret, fmt.Sprintf(`{"token":%q,"kind":%q,%s}`, tokenOf(address), c.kind, c.fields)); status != http.StatusCreated {
+				t.Fatalf("inbound = %d %s", status, body)
+			}
+			want := int32(0)
+			if c.pushed {
+				want = 2
+			}
+			if got := s.pushes.Load(); got != want {
+				t.Fatalf("a %s alert made %d pushes, want %d", c.kind, got, want)
+			}
+			if list := s.list(t, keys[0], 0).Alerts; len(list) != 1 || list[0].Kind != c.kind {
+				t.Fatalf("the feed after a %s alert = %+v, want that one alert", c.kind, list)
+			}
+		})
+	}
+}

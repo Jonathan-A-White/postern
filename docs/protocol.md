@@ -2525,7 +2525,7 @@ A family's **alert address** and **feed**: the Governor, or a family on a Lampas
 a bank, a card or a shop sends to one address on the backend's alerts domain; a receiver (a separate service
 that runs the mail server) parses each mail and hands the backend only the facts; the backend keeps them for the
 family, lists them to its phones, forgets one when a phone claims it, and pushes every phone of the family when a
-new one comes. This section is the backend's half, the **writer**. The receiver is its first reader, and the
+new one comes that a phone has something to do with (a charge, a forwarding confirmation; see The push). This section is the backend's half, the **writer**. The receiver is its first reader, and the
 phones are its second: they list and claim.
 
 ### The family and its address
@@ -2541,7 +2541,7 @@ domain), never written in the repo. The receiver finds the family from the token
 A family may be a licensed key alone, and **a second address is a second family**: the sermon-notes reader
 (sermon-index) holds a licensed key of its own, asks `POST /api/alerts/address` and gets a token of its own. Nothing
 makes one family hold two tokens. The receiver posts a `sermon-notes` alert to that token, so the alert is listed,
-pushed and claimed by that family only, and the family's bank feed never sees it (and a bank alert never reaches the
+listed and claimed by that family only (a `sermon-notes` alert is not pushed), and the family's bank feed never sees it (and a bank alert never reaches the
 reader). Which token a mail is sent to is decided by the Gmail filter that forwards it, not by the backend.
 
 ### The alert
@@ -2603,7 +2603,13 @@ alert names. A family keeps its address when its alerts are gone.
 ### The push
 
 When an inbound alert is stored, the backend pushes every push subscription of every key of the family (`POST
-/api/push/subscribe`, §9 item 6), whether the subscribing key is a cockpit key or an app key. The bare push is
+/api/push/subscribe`, §9 item 6), whether the subscribing key is a cockpit key or an app key, **only when a phone
+has something to do with that kind of alert**: a `charge` (the app's Waiting list holds a card to sort) and a
+`forward-confirm` (Gmail's confirmation link waits in the app to be tapped). An alert of any other kind (`amazon`,
+`zelle-sent`, `deposit`, `unread`, `sermon-notes`) is stored and listed exactly as before and **sends no push**:
+a bare push names no kind, a phone must show a notification for every push it gets, and the apps word a bare
+push as a charge to sort, so a push for an alert with nothing to sort is a false ping (the Governor's Amazon order
+mail, 2026-11-11; `mw-mr4xgrw.48`). Such an alert reaches a phone when the app reads the feed. The bare push is
 `{"class": "alert", "title": "New alert", "ts": <Unix seconds>}`: no amount, merchant, card or subject.
 
 By the Governor's tap of 2026-11-04 21:26:54Z (txid
@@ -2617,8 +2623,8 @@ decided per subscription, by the `last4s` it sent (§9 item 6): a list of at mos
   `last4`, or no subscription anywhere lists that `last4` (the app's "anyone"). Otherwise (another
   subscription's list names the `last4`, and its own does not) it gets **no push at all**: the charge is not that
   person's.
-- A subscription that sent no list (a cockpit key, an older app) gets the bare push for every alert.
-- An alert that is not a charge (`amazon`, `unread`, `forward-confirm`, `zelle-sent`, `deposit`, `sermon-notes`) is pushed bare to every subscription.
+- A subscription that sent no list (a cockpit key, an older app) gets the bare push for every alert that is pushed at all (a `charge` or a `forward-confirm`).
+- A `forward-confirm` alert is pushed bare to every subscription. An alert of any other kind that is not a charge (`amazon`, `unread`, `zelle-sent`, `deposit`, `sermon-notes`) is pushed to none.
 
 The backend keeps only the lists. It keeps no card name and no owner: which person a card is, and which
 charges a phone shows, stay in the app. The facts are never written to a log line. Two keys on one phone are two

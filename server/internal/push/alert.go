@@ -63,7 +63,7 @@ type AlertFacts struct {
 	Last4    string
 }
 
-// NotifyAlert pushes a new alert to every subscription of keys, as NotifyKeys does, but a charge
+// NotifyAlert pushes a new alert to every subscription of keys, as NotifyKeys does (the API calls it only for a charge or a forwarding confirmation), but a charge
 // goes with its amount, merchant, last four and id to a subscription that sent a list of cards
 // when the charge's card is on that list, the charge has no card, or no subscription anywhere
 // lists that card (the app's "anyone"). A subscription with a list that does not name the charge's

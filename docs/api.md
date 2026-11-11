@@ -509,7 +509,8 @@ triggers a push to it.
   `last4s` is optional: the card last fours this device is for, at most 32, each 1 to 4 digits (repeats are
   kept once; an empty list is no list). A new alert's push reads it (`docs/protocol.md` §26, The push): a charge's
   amount, merchant, card and id go to a subscription that names the card, and every other gets the bare "New
-  alert". A subscription with no list gets the bare push for every alert.
+  alert". A subscription with no list gets the bare push for every alert that is pushed at all: only a charge and
+  a Gmail forwarding confirmation are (every other kind of alert is stored and pushes no one).
 
 - `200 application/json` — `{}` on success. Re-subscribing with the same
   `endpoint` replaces the stored subscription (its `pubkey`, keys and `last4s`,

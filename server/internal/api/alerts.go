@@ -36,7 +36,7 @@ type Families interface {
 	Keys(familyID string) []string
 }
 
-// AlertPusher pushes a new alert to every subscription of the given keys, with
+// AlertPusher pushes a new alert (one pushesKind says is worth a push) to every subscription of the given keys, with
 // a charge's facts only to the subscriptions that name its card (§26, The push).
 // *push.Sender is one.
 type AlertPusher interface {
@@ -110,6 +110,15 @@ func alertFacts(a alerts.Alert) push.AlertFacts {
 		Merchant: a.Merchant,
 		Last4:    a.Last4,
 	}
+}
+
+// pushesKind says whether a stored alert of kind makes a push. Only an alert a phone has something to
+// do with does: a charge (the app's Waiting list holds a card to sort) and Gmail's forwarding
+// confirmation (its link waits in the app's family settings to be tapped). Every other kind is stored
+// and listed, and pings no one: a bare push can only be worded as a charge to sort, and the apps
+// keep no card or action for amazon, zelle-sent, deposit, unread or sermon-notes (docs/protocol.md §26).
+func pushesKind(kind string) bool {
+	return kind == alerts.KindCharge || kind == alerts.KindForwardConfirm
 }
 
 func alertsOff(w http.ResponseWriter, o *options) bool {
@@ -284,8 +293,8 @@ func handleAlertToken(o *options) http.HandlerFunc {
 
 // handleAlertInbound answers POST /api/alerts/inbound: a parsed alert from the
 // receiver, proved by the shared secret (Authorization: Bearer <secret>), not
-// by a key. It is stored for the family that owns the token and pushed to every
-// phone of the family.
+// by a key. It is stored for the family that owns the token and, when a phone has something to do
+// with it (pushesKind), pushed to every phone of the family.
 func handleAlertInbound(o *options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if alertsOff(w, o) {
@@ -314,7 +323,7 @@ func handleAlertInbound(o *options) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if o.alertPusher != nil {
+		if o.alertPusher != nil && pushesKind(stored.Kind) {
 			if _, err := o.alertPusher.NotifyAlert(o.familyKeys(family), time.Now().Unix(), alertFacts(stored)); err != nil {
 				log.Printf("pushing alert %s: %v", stored.ID, err)
 			}

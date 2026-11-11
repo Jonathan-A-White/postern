@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.101",
+    "date": "2026-11-11",
+    "story": "mw-6ww.166.1",
+    "kind": "new",
+    "text": "Postern has a Jobs page, opened from a chip on Home, that shows how far each by-hand job has got, sermon by sermon, with a \"you are here\" marker and when it was last refreshed."
+  },
+  {
     "version": "0.8.100",
     "date": "2026-11-11",
     "story": "mw-mr4xgrw.48",

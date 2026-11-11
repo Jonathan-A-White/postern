@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.101
+_2026-11-11_
+- New: Postern has a Jobs page, opened from a chip on Home, that shows how far each by-hand job has got, sermon by sermon, with a "you are here" marker and when it was last refreshed.
+
 ## 0.8.100
 _2026-11-11_
 - Fixed: Trade Tracker no longer pings "A new charge to sort" for an Amazon order mail; it pings only when the card's charge arrives.

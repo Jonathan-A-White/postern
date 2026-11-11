@@ -2552,7 +2552,7 @@ One alert is parsed facts, as JSON:
 |---|---|
 | `id` | the backend's name for it: 16 hex characters, new for every alert |
 | `seq` | a whole number that only grows, for `since`; never reused, even after a claim |
-| `kind` | `charge`, `forward-confirm`, `amazon`, `unread`, `zelle-sent`, `deposit` or `sermon-notes` |
+| `kind` | `charge`, `forward-confirm`, `amazon`, `unread`, `zelle-sent`, `deposit`, `sermon-notes` or `hold` |
 | `amount` | a charge's amount, as the receiver parsed it (`"42.17"`); optional |
 | `merchant` | the merchant of a charge, the shop of an `amazon` alert, the payee of a `zelle-sent` alert or the payer of a `deposit` alert (PNC's "Deposit made by"); optional |
 | `last4` | the last four digits of the card (of the account, for a `zelle-sent` or `deposit` alert), at most 4 characters; optional |
@@ -2565,6 +2565,8 @@ One alert is parsed facts, as JSON:
 | `link` | a `forward-confirm` alert's confirmation link, `https://<host>/mail/vf-...` whole, its host exactly `mail.google.com`, `mail-settings.google.com` or `isolated.mail.google.com`, at most 500 characters, the one link an alert carries; optional |
 | `notes_sha256` | a `sermon-notes` alert's notes PDF: the sha256 of its bytes, 64 hex characters; only when the alert has notes, given by the backend |
 | `notes_size` | the same PDF's size in bytes, at most 5 MiB (5242880); only with `notes_sha256` |
+
+A `hold` is a gas pump's pre-authorisation, a card alert of exactly $1.00 at a fuel seller (a merchant whose name holds the word GAS or FUEL, or begins with a pump brand, `alerts.IsPumpHold`); it never posts as $1.00, so it is stored and listed, sends no push and is no charge to sort, and a charge the rule calls a hold that was stored before is made a hold once when the backend starts (the Governor, 2026-11-11; `mw-mr4xgrw.49`).
 
 A `sermon-notes` alert is the forwarded Subsplash notes mail's title, passage and date and, when the mail had exactly
 one attached PDF (by its type, `application/pdf`, or a `.pdf` file name) that begins `%PDF-` and is at most 5 MiB,
@@ -2606,7 +2608,7 @@ When an inbound alert is stored, the backend pushes every push subscription of e
 /api/push/subscribe`, §9 item 6), whether the subscribing key is a cockpit key or an app key, **only when a phone
 has something to do with that kind of alert**: a `charge` (the app's Waiting list holds a card to sort) and a
 `forward-confirm` (Gmail's confirmation link waits in the app to be tapped). An alert of any other kind (`amazon`,
-`zelle-sent`, `deposit`, `unread`, `sermon-notes`) is stored and listed exactly as before and **sends no push**:
+`zelle-sent`, `deposit`, `unread`, `sermon-notes`, `hold`) is stored and listed exactly as before and **sends no push**:
 a bare push names no kind, a phone must show a notification for every push it gets, and the apps word a bare
 push as a charge to sort, so a push for an alert with nothing to sort is a false ping (the Governor's Amazon order
 mail, 2026-11-11; `mw-mr4xgrw.48`). Such an alert reaches a phone when the app reads the feed. The bare push is
@@ -2624,7 +2626,7 @@ decided per subscription, by the `last4s` it sent (§9 item 6): a list of at mos
   subscription's list names the `last4`, and its own does not) it gets **no push at all**: the charge is not that
   person's.
 - A subscription that sent no list (a cockpit key, an older app) gets the bare push for every alert that is pushed at all (a `charge` or a `forward-confirm`).
-- A `forward-confirm` alert is pushed bare to every subscription. An alert of any other kind that is not a charge (`amazon`, `unread`, `zelle-sent`, `deposit`, `sermon-notes`) is pushed to none.
+- A `forward-confirm` alert is pushed bare to every subscription. An alert of any other kind that is not a charge (`amazon`, `unread`, `zelle-sent`, `deposit`, `sermon-notes`, `hold`) is pushed to none.
 
 The backend keeps only the lists. It keeps no card name and no owner: which person a card is, and which
 charges a phone shows, stay in the app. The facts are never written to a log line. Two keys on one phone are two

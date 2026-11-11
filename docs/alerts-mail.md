@@ -24,7 +24,9 @@
   card alert is a few tens of kilobytes, and 8 MiB fits a notes mail with a 5 MiB PDF in base64. At
   most 5 recipients a mail; a connection idle for 2 minutes is closed.
 - Each mail is parsed in memory into one alert and posted once per family it was sent to:
-  - Chase and Citi charge alerts: `charge` with `amount`, `merchant`, `last4` and `when` (the mail's ET time).
+  - Chase and Citi charge alerts: `charge` with `amount`, `merchant`, `last4` and `when` (the mail's ET time); but
+    exactly $1.00 at a fuel seller (GAS or FUEL in the merchant's name, or a pump brand at its start) is a gas pump's
+    pre-authorisation, `hold` with the same fields, which sends no push (`alerts.IsPumpHold`).
   - PNC's "You sent a Zelle payment to ..." mail (from pnc.com): `zelle-sent` with the payee as `merchant`, `amount`,
     the account's `last4`, the payment date as `when` and the `memo`; PNC's "A $X deposit was credited to your
     account." mail: `deposit` with the payer ("Deposit made by") as `merchant`, `amount`, `last4` and the date as

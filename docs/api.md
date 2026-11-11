@@ -780,7 +780,7 @@ licence, so two keys on it see the same address and feed.
 
 - `POST /api/alerts/address` — `200 {"address": "<token>@<domain>"}`, the same every time for a family.
 - `GET /api/alerts?since=<seq>` — `200 {"alerts": [{"id", "seq", "kind", "amount", "merchant", "last4", "when",
-  "subject", "code", "link", "memo", "title", "reference", "notes_sha256", "notes_size"}], "next"}` (`kind` is `charge`, `forward-confirm`, `amazon`, `unread`, `zelle-sent`, `deposit` or `sermon-notes`; the other fields only
+  "subject", "code", "link", "memo", "title", "reference", "notes_sha256", "notes_size"}], "next"}` (`kind` is `charge`, `forward-confirm`, `amazon`, `unread`, `zelle-sent`, `deposit`, `sermon-notes` or `hold`; the other fields only
   when the kind has them). A `sermon-notes` alert whose mail had its notes PDF carries `notes_sha256` (hex sha256 of
   the PDF's bytes) and `notes_size` (bytes, at most 5 MiB); one without carries neither. The list never carries the
   bytes. Answered with `Cache-Control: no-store`.

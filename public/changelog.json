@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.100",
+    "date": "2026-11-11",
+    "story": "mw-mr4xgrw.48",
+    "kind": "fixed",
+    "text": "Trade Tracker no longer pings \"A new charge to sort\" for an Amazon order mail; it pings only when the card's charge arrives."
+  },
+  {
     "version": "0.8.95",
     "date": "2026-11-10",
     "story": "mw-qtu3zvz.49.17",

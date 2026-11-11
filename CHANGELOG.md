@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.100
+_2026-11-11_
+- Fixed: Trade Tracker no longer pings "A new charge to sort" for an Amazon order mail; it pings only when the card's charge arrives.
+
 ## 0.8.95
 _2026-11-10_
 - Fixed: Gmail's forwarding confirmation now reaches Postern with its link, and a PNC Zelle payment keeps its memo.

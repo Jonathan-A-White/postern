@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +54,9 @@ const (
 	// KindHold is a gas pump's $1.00 pre-authorisation (IsPumpHold): kept, never pushed, never a charge to sort.
 	KindHold = "hold"
 )
+
+// Kinds is every kind of alert there is, in the order above; check accepts these and no other.
+var Kinds = []string{KindCharge, KindForwardConfirm, KindAmazon, KindUnread, KindZelleSent, KindDeposit, KindSermonNotes, KindHold}
 
 // Keep is how long an alert is kept before the sweep drops it.
 const Keep = 30 * 24 * time.Hour
@@ -381,9 +385,7 @@ func (s *Store) Notes(family, id string) ([]byte, bool, error) {
 
 // check is the privacy rule: only the kinds there are, only short facts.
 func check(a Alert) error {
-	switch a.Kind {
-	case KindCharge, KindForwardConfirm, KindAmazon, KindUnread, KindZelleSent, KindDeposit, KindSermonNotes, KindHold:
-	default:
+	if !slices.Contains(Kinds, a.Kind) {
 		return &InvalidError{Msg: fmt.Sprintf("kind must be charge, forward-confirm, amazon, unread, zelle-sent, deposit, sermon-notes or hold, not %q", a.Kind)}
 	}
 	for name, value := range map[string]string{"amount": a.Amount, "merchant": a.Merchant, "subject": a.Subject, "code": a.Code, "memo": a.Memo, "title": a.Title, "reference": a.Reference} {

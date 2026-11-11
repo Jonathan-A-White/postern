@@ -105,6 +105,7 @@ func alertPush(ts int64) push.Payload {
 func alertFacts(a alerts.Alert) push.AlertFacts {
 	return push.AlertFacts{
 		ID:       a.ID,
+		Kind:     a.Kind,
 		Charge:   a.Kind == alerts.KindCharge,
 		Amount:   a.Amount,
 		Merchant: a.Merchant,

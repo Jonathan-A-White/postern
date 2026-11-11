@@ -857,3 +857,21 @@ func TestAnAlertNoPhoneCanActOnIsStoredAndListedButNotPushed(t *testing.T) {
 		})
 	}
 }
+
+// mw-mr4xgrw.51 sweep: every kind pushesKind lets through reaches the sender naming itself, so a kind
+// added to pushesKind later without the kind in the facts (and so in the payload) fails here.
+func TestEveryKindThatPushesCarriesItsKindToThePusher(t *testing.T) {
+	pushed := 0
+	for _, kind := range alerts.Kinds {
+		if !pushesKind(kind) {
+			continue
+		}
+		pushed++
+		if got := alertFacts(alerts.Alert{ID: "a-1", Kind: kind}).Kind; got != kind {
+			t.Fatalf("a %s alert is pushed with kind %q, want %q", kind, got, kind)
+		}
+	}
+	if pushed < 2 {
+		t.Fatalf("only %d kinds push; charge and forward-confirm both should", pushed)
+	}
+}

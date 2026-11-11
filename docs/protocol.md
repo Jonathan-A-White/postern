@@ -2612,7 +2612,7 @@ has something to do with that kind of alert**: a `charge` (the app's Waiting lis
 a bare push names no kind, a phone must show a notification for every push it gets, and the apps word a bare
 push as a charge to sort, so a push for an alert with nothing to sort is a false ping (the Governor's Amazon order
 mail, 2026-11-11; `mw-mr4xgrw.48`). Such an alert reaches a phone when the app reads the feed. The bare push is
-`{"class": "alert", "title": "New alert", "ts": <Unix seconds>}`: no amount, merchant, card or subject.
+`{"class": "alert", "title": "New alert", "ts": <Unix seconds>, "kind": "charge" | "forward-confirm"}`: no amount, merchant, card or subject. Every alert push names the alert's `kind`, so the app words a `forward-confirm` push as a forwarding confirmation and not as a charge to sort (`mw-mr4xgrw.51`); a push of a `charge` that goes in full carries `kind` beside its facts below.
 
 By the Governor's tap of 2026-11-04 21:26:54Z (txid
 `direct:2896ceb59067b0307cf66916b1934daa275b5df595a9ffd22f19b45d7fed2774`, A, "Put amount, store and card in the

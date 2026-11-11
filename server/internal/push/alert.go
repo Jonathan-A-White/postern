@@ -57,6 +57,7 @@ func (s *Sender) notifyEach(keys []string, class Payload, pick func(Subscription
 // kind of alert, which is pushed bare to all.
 type AlertFacts struct {
 	ID       string
+	Kind     string // the alert's kind (charge, forward-confirm); every alert push names it
 	Charge   bool
 	Amount   string
 	Merchant string
@@ -72,7 +73,7 @@ type AlertFacts struct {
 // subscription for an alert that is not a charge. Nothing about the charge is logged, and a
 // withheld push has no log line (the sent count leaves it out).
 func (s *Sender) NotifyAlert(keys []string, ts int64, facts AlertFacts) (int, error) {
-	bare := Payload{Class: "alert", Ts: ts, Title: "New alert"}
+	bare := Payload{Class: "alert", Ts: ts, Title: "New alert", Kind: facts.Kind}
 	full := bare
 	full.Amount, full.Merchant, full.Last4, full.AlertID = facts.Amount, facts.Merchant, facts.Last4, facts.ID
 	anyone := facts.Charge && (facts.Last4 == "" || !s.store.Claims(facts.Last4))

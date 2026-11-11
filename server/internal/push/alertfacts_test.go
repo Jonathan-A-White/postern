@@ -280,3 +280,52 @@ func TestNoLogLineCarriesTheChargesWords(t *testing.T) {
 		}
 	}
 }
+
+// mw-mr4xgrw.51: every alert push names its kind, so the phone can word a Gmail forwarding
+// confirmation as one rather than as a charge to sort. The JSON is what the service worker reads.
+func TestEveryAlertPushNamesItsKindInItsJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		facts AlertFacts
+		keys  []string
+		path  string
+		want  string
+	}{
+		{"a charge in full", AlertFacts{ID: "a-1", Kind: "charge", Charge: true, Amount: "42.17", Merchant: "Corner Cafe", Last4: "2222"}, []string{"ann-2"}, "/ann2", `"kind":"charge"`},
+		{"a charge, bare, to a phone with no list", AlertFacts{ID: "a-1", Kind: "charge", Charge: true, Amount: "42.17", Merchant: "Corner Cafe", Last4: "2222"}, []string{"cy"}, "/cy", `"kind":"charge"`},
+		{"a forwarding confirmation", AlertFacts{ID: "a-3", Kind: "forward-confirm"}, []string{"ann-1"}, "/ann1", `"kind":"forward-confirm"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sender, rec, _ := alertFamily(t)
+			if sent, err := sender.NotifyAlert(tc.keys, 5, tc.facts); err != nil || sent != 1 {
+				t.Fatalf("NotifyAlert = %d, %v, want 1", sent, err)
+			}
+			if len(rec.got[tc.path]) != 1 {
+				t.Fatalf("got %d pushes, want 1", len(rec.got[tc.path]))
+			}
+			raw, err := json.Marshal(rec.got[tc.path][0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(raw), tc.want) {
+				t.Fatalf("push JSON %s lacks %s", raw, tc.want)
+			}
+			if !strings.Contains(string(raw), `"class":"alert"`) {
+				t.Fatalf("push JSON %s lacks class alert", raw)
+			}
+		})
+	}
+}
+
+// The charge's own fields are as before beside the kind.
+func TestTheKindDoesNotChangeTheChargesFields(t *testing.T) {
+	sender, rec, _ := alertFamily(t)
+	facts := AlertFacts{ID: "a-1", Kind: "charge", Charge: true, Amount: "42.17", Merchant: "Corner Cafe", Last4: "2222"}
+	if _, err := sender.NotifyAlert([]string{"ann-2"}, 5, facts); err != nil {
+		t.Fatal(err)
+	}
+	wantFull(t, rec.got["/ann2"], facts)
+	if rec.got["/ann2"][0].Kind != "charge" {
+		t.Fatalf("kind = %q", rec.got["/ann2"][0].Kind)
+	}
+}

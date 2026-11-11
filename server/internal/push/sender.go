@@ -135,6 +135,9 @@ type Payload struct {
 	Merchant string `json:"merchant,omitempty"`
 	Last4    string `json:"last4,omitempty"`
 	AlertID  string `json:"id,omitempty"`
+	// Kind names an alert push's kind (charge, forward-confirm), on every alert push, so the app can
+	// word it; a push of any other class has none (docs/protocol.md §26, The push).
+	Kind string `json:"kind,omitempty"`
 }
 
 // RecordIndexed pushes a newly indexed record (NotifyRecord) in its own

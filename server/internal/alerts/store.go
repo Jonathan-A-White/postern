@@ -50,6 +50,8 @@ const (
 	KindZelleSent      = "zelle-sent"
 	KindDeposit        = "deposit"
 	KindSermonNotes    = "sermon-notes"
+	// KindHold is a gas pump's $1.00 pre-authorisation (IsPumpHold): kept, never pushed, never a charge to sort.
+	KindHold = "hold"
 )
 
 // Keep is how long an alert is kept before the sweep drops it.
@@ -180,7 +182,30 @@ func OpenStore(dir string, opts ...Option) (*Store, error) {
 	for family, token := range s.data.Addresses {
 		s.tokens[token] = family
 	}
+	if err := s.holdStoredPumpHolds(); err != nil {
+		return nil, err
+	}
 	return s, nil
+}
+
+// holdStoredPumpHolds makes every stored charge the pump-hold rule calls a hold a hold, and writes the
+// file only if one changed, so a second start changes nothing (mw-mr4xgrw.49). Before holds were a
+// kind, a pump's $1.00 pre-authorisation was stored as a charge and waited in the apps until sorted.
+func (s *Store) holdStoredPumpHolds() error {
+	changed := false
+	for i, a := range s.data.Alerts {
+		if a.Kind == KindCharge && IsPumpHold(a.Amount, a.Merchant) {
+			s.data.Alerts[i].Kind = KindHold
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	if err := s.save(); err != nil {
+		return fmt.Errorf("keeping stored pump holds as holds: %w", err)
+	}
+	return nil
 }
 
 var tokenEncoding = base32.NewEncoding("abcdefghijklmnopqrstuvwxyz234567").WithPadding(base32.NoPadding)
@@ -357,9 +382,9 @@ func (s *Store) Notes(family, id string) ([]byte, bool, error) {
 // check is the privacy rule: only the kinds there are, only short facts.
 func check(a Alert) error {
 	switch a.Kind {
-	case KindCharge, KindForwardConfirm, KindAmazon, KindUnread, KindZelleSent, KindDeposit, KindSermonNotes:
+	case KindCharge, KindForwardConfirm, KindAmazon, KindUnread, KindZelleSent, KindDeposit, KindSermonNotes, KindHold:
 	default:
-		return &InvalidError{Msg: fmt.Sprintf("kind must be charge, forward-confirm, amazon, unread, zelle-sent, deposit or sermon-notes, not %q", a.Kind)}
+		return &InvalidError{Msg: fmt.Sprintf("kind must be charge, forward-confirm, amazon, unread, zelle-sent, deposit, sermon-notes or hold, not %q", a.Kind)}
 	}
 	for name, value := range map[string]string{"amount": a.Amount, "merchant": a.Merchant, "subject": a.Subject, "code": a.Code, "memo": a.Memo, "title": a.Title, "reference": a.Reference} {
 		if utf8.RuneCountInString(value) > MaxFieldRunes {

@@ -116,7 +116,8 @@ func alertFacts(a alerts.Alert) push.AlertFacts {
 // do with does: a charge (the app's Waiting list holds a card to sort) and Gmail's forwarding
 // confirmation (its link waits in the app's family settings to be tapped). Every other kind is stored
 // and listed, and pings no one: a bare push can only be worded as a charge to sort, and the apps
-// keep no card or action for amazon, zelle-sent, deposit, unread or sermon-notes (docs/protocol.md §26).
+// keep no card or action for amazon, zelle-sent, deposit, unread, sermon-notes or hold (a gas pump's $1.00
+// pre-authorisation, which never posts as $1.00; docs/protocol.md §26).
 func pushesKind(kind string) bool {
 	return kind == alerts.KindCharge || kind == alerts.KindForwardConfirm
 }

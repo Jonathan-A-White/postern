@@ -482,3 +482,72 @@ func TestTheSweepRemovesTheNotesOfTheAlertsItDrops(t *testing.T) {
 		t.Fatal("the stray sweep took a kept alert's notes")
 	}
 }
+
+// A store file written before holds were a kind holds a pump's $1.00 pre-authorisation as a charge,
+// waiting in the Governor's Trade Tracker. Opening it makes that alert a hold, once (mw-mr4xgrw.49).
+func TestOpeningTheStoreMakesAStoredPumpHoldAHoldOnceAndChangesNothingElse(t *testing.T) {
+	dir := t.TempDir()
+	old := `{"nextSeq":5,"addresses":{"family-a":"abcdefghijkl"},"alerts":[` +
+		`{"id":"0000000000000001","seq":1,"kind":"charge","amount":"41.27","merchant":"COSTCO GAS #0304 BROOKFIELD US","last4":"5678","when":"2026-11-07T13:01:00-05:00","family":"family-a","receivedAt":"2026-11-07T18:01:10Z"},` +
+		`{"id":"0000000000000002","seq":2,"kind":"charge","amount":"1.00","merchant":"COSTCO GAS #0304 BROOKFIELD US","last4":"5678","when":"2026-11-08T13:01:00-05:00","family":"family-a","receivedAt":"2026-11-08T18:01:10Z"},` +
+		`{"id":"0000000000000003","seq":3,"kind":"charge","amount":"1.00","merchant":"Example Market 0001","last4":"1234","family":"family-a","receivedAt":"2026-11-08T19:00:00Z"},` +
+		`{"id":"0000000000000004","seq":4,"kind":"unread","subject":"Gas $1.00 hold","family":"family-a","receivedAt":"2026-11-08T20:00:00Z"},` +
+		`{"id":"0000000000000005","seq":5,"kind":"amazon","amount":"1.00","merchant":"Amazon fuel","family":"family-a","receivedAt":"2026-11-08T21:00:00Z"}]}`
+	path := filepath.Join(dir, fileName)
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := newClock()
+	c.now = time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
+	s := openStore(t, dir, c)
+	got := s.List("family-a", 0)
+	kinds := []string{}
+	for _, a := range got {
+		kinds = append(kinds, a.Kind)
+	}
+	if want := []string{"charge", "hold", "charge", "unread", "amazon"}; strings.Join(kinds, ",") != strings.Join(want, ",") {
+		t.Fatalf("kinds after opening = %v, want %v", kinds, want)
+	}
+	if got[1].ID != "0000000000000002" || got[1].Seq != 2 || got[1].Amount != "1.00" || got[1].Merchant != "COSTCO GAS #0304 BROOKFIELD US" || got[1].Last4 != "5678" || got[1].When != "2026-11-08T13:01:00-05:00" {
+		t.Fatalf("the hold lost a fact: %+v", got[1])
+	}
+
+	// the file on disk is the old one with that one kind changed, every other byte the same
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	onlyThatKind := strings.Replace(old, `"id":"0000000000000002","seq":2,"kind":"charge"`, `"id":"0000000000000002","seq":2,"kind":"hold"`, 1)
+	if string(raw) != onlyThatKind {
+		t.Fatalf("file after opening =\n%s\nwant\n%s", raw, onlyThatKind)
+	}
+
+	// a second start changes nothing
+	again := openStore(t, dir, c)
+	if got2 := again.List("family-a", 0); len(got2) != len(got) {
+		t.Fatalf("second start: %+v", got2)
+	} else {
+		for i := range got {
+			if got2[i] != got[i] {
+				t.Fatalf("second start changed %+v to %+v", got[i], got2[i])
+			}
+		}
+	}
+	raw2, _ := os.ReadFile(path)
+	if string(raw2) != string(raw) {
+		t.Fatalf("a second start rewrote the file:\n%s", raw2)
+	}
+}
+
+func TestOpeningAStoreWithNoPumpHoldDoesNotWriteTheFile(t *testing.T) {
+	dir := t.TempDir()
+	old := `{"nextSeq":1,"addresses":{"family-a":"abcdefghijkl"},"alerts":[{"id":"0000000000000001","seq":1,"kind":"charge","amount":"9.99","merchant":"Shop","family":"family-a","receivedAt":"2026-11-08T18:01:10Z"}]}` + "\n  "
+	path := filepath.Join(dir, fileName)
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	openStore(t, dir, newClock())
+	if raw, _ := os.ReadFile(path); string(raw) != old {
+		t.Fatalf("the file was rewritten: %s", raw)
+	}
+}

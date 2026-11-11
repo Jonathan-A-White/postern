@@ -828,6 +828,7 @@ func TestAnAlertNoPhoneCanActOnIsStoredAndListedButNotPushed(t *testing.T) {
 	}{
 		{"charge", `"amount":"9.99","merchant":"Hardware Store","last4":"4321"`, true},
 		{"forward-confirm", `"code":"123456"`, true},
+		{"hold", `"amount":"1.00","merchant":"COSTCO GAS #0304 BROOKFIELD US","last4":"4321"`, false},
 		{"amazon", `"merchant":"Amazon","amount":"0.00"`, false},
 		{"zelle-sent", `"merchant":"A Payee","amount":"20.00","last4":"1234"`, false},
 		{"deposit", `"merchant":"An Employer","amount":"100.00","last4":"1234"`, false},

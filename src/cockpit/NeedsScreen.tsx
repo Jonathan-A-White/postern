@@ -10,6 +10,7 @@ import { OpenLists } from './OpenLists';
 import { NeedCard } from './NeedCard';
 import { LiveCard } from './LiveCard';
 import { ArchivedCardsLink } from './ArchiveScreen';
+import { JobsChip } from './JobsScreen';
 import { useAnswers, useCardArchiveRead, useEmergencyCount, useMessages, useUnlockedKey, useViewIndex } from './hooks';
 import type { MessageRow } from '../data/db';
 import { refreshNow, useLive } from '../services/live';
@@ -336,6 +337,7 @@ export function NeedsScreen({ who = 'you' }: { who?: WaitsFor }) {
 
         <UnreadThreads index={index} />
         {index && <FoldedNeeds key={who} needs={folded} index={index} />}
+        {who === 'you' && <JobsChip />}
         {who === 'you' && <ArchivedCardsLink />}
       </div>
     </Screen>

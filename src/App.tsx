@@ -31,6 +31,7 @@ import { NoticeScreen } from './cockpit/NoticeScreen';
 import { AlarmScreen } from './cockpit/AlarmScreen';
 import { EmergencyScreen } from './cockpit/EmergencyScreen';
 import { ArchiveScreen } from './cockpit/ArchiveScreen';
+import { JobsScreen } from './cockpit/JobsScreen';
 import { RoadmapScreen } from './cockpit/RoadmapScreen';
 import { TodoScreen } from './cockpit/TodoScreen';
 import { ToastHost } from './ui/toast';
@@ -75,6 +76,8 @@ function Place({ route }: { route: Route }) {
       return <ArchiveScreen />;
     case 'roadmap':
       return <RoadmapScreen />;
+    case 'jobs':
+      return <JobsScreen id={route.id} />;
     case 'todo':
       return <TodoScreen />;
     default:

@@ -41,7 +41,9 @@ export type Route =
   /** The live cards untouched for 48 h, newest first, each still updating (src/cockpit/ArchiveScreen.tsx). */
   | { view: 'archive' }
   /** The Roadmap: Now / Next / Later / Icebox lanes of the open work, by app (src/cockpit/RoadmapScreen.tsx). */
-  | { view: 'roadmap' };
+  | { view: 'roadmap' }
+  /** The by-hand jobs and their progress, or one job (`id`) item by item (src/cockpit/JobsScreen.tsx, docs/jobs.md). */
+  | { view: 'jobs'; id?: string };
 
 export type TopView = 'needs' | 'todo' | 'map' | 'talk' | 'search' | 'me';
 
@@ -145,6 +147,8 @@ export function parseRoute(search: string): Route {
       return { view: 'archive' };
     case 'roadmap':
       return { view: 'roadmap' };
+    case 'jobs':
+      return { view: 'jobs', ...(params.get('j') ? { id: params.get('j') as string } : {}) };
     case 'todo':
       return { view: 'todo' };
     case 'needs': {
@@ -194,6 +198,9 @@ export function formatRoute(route: Route): string {
     case 'share':
       if (route.id) params.set('s', route.id);
       break;
+    case 'jobs':
+      if (route.id) params.set('j', route.id);
+      break;
     case 'notice':
       params.set('tx', route.tx);
       if (route.cls) params.set('c', route.cls);
@@ -241,6 +248,7 @@ export function isDeep(route: Route): boolean {
     route.view === 'emergency' ||
     route.view === 'archive' ||
     route.view === 'roadmap' ||
+    route.view === 'jobs' ||
     route.view === 'key' ||
     route.view === 'prompts' ||
     route.view === 'about' ||

@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.102
+_2026-11-11_
+- Fixed: A gas pump's $1.00 hold is no longer a charge to sort: it sends no ping and does not wait in Trade Tracker.
+
 ## 0.8.101
 _2026-11-11_
 - New: Postern has a Jobs page, opened from a chip on Home, that shows how far each by-hand job has got, sermon by sermon, with a "you are here" marker and when it was last refreshed.

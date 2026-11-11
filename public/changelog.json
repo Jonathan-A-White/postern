@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.102",
+    "date": "2026-11-11",
+    "story": "mw-mr4xgrw.49",
+    "kind": "fixed",
+    "text": "A gas pump's $1.00 hold is no longer a charge to sort: it sends no ping and does not wait in Trade Tracker."
+  },
+  {
     "version": "0.8.101",
     "date": "2026-11-11",
     "story": "mw-6ww.166.1",

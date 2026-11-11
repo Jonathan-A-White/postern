@@ -49,6 +49,52 @@ func TestCardAlertsYieldAmountMerchantLast4AndWhen(t *testing.T) {
 	}
 }
 
+// A pump's $1.00 pre-authorisation never posts as $1.00 and the real amount comes later, so it is a
+// hold, not a charge to sort (mw-mr4xgrw.49). The fixtures are the shape of the Governor's Costco Gas
+// alert with the card and name made up.
+func TestAPumpHoldAtAFuelSellerIsAHoldWhicheverBankSentIt(t *testing.T) {
+	for _, tc := range []struct {
+		file string
+		want Facts
+	}{
+		{"chase-gas-hold.eml", Facts{Kind: alerts.KindHold, Amount: "1.00", Merchant: "COSTCO GAS #0304 BROOKFIELD US", Last4: "5678", When: "2026-11-08T13:01:00-05:00"}},
+		{"citi-gas-hold.eml", Facts{Kind: alerts.KindHold, Amount: "1.00", Merchant: "COSTCO GAS #0304 BROOKFIELD US", Last4: "5678", When: "2026-11-08T13:01:00-05:00"}},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			if got := Parse(fixture(t, tc.file)); got != tc.want {
+				t.Fatalf("Parse(%s) =\n %+v\nwant\n %+v", tc.file, got, tc.want)
+			}
+			if alert := tc.want.Alert(); alert.Kind != "hold" {
+				t.Fatalf("alert = %+v, want kind hold", alert)
+			}
+		})
+	}
+}
+
+func TestOnlyExactlyOneDollarAtAFuelSellerIsAHold(t *testing.T) {
+	for _, file := range []string{"chase-gas-hold.eml", "citi-gas-hold.eml"} {
+		raw := string(fixture(t, file))
+		for _, tc := range []struct {
+			name, from, to string
+			want           string
+		}{
+			{"the real fill-up", "$1.00", "$41.27", alerts.KindCharge},
+			{"a hold at a shop", "COSTCO GAS #0304", "EXAMPLE MARKET #0304", alerts.KindCharge},
+			{"a hold at a pump brand", "COSTCO GAS #0304", "SHELL OIL 0304", alerts.KindHold},
+		} {
+			t.Run(file+" "+tc.name, func(t *testing.T) {
+				got := Parse([]byte(strings.ReplaceAll(raw, tc.from, tc.to)))
+				if got.Kind != tc.want {
+					t.Fatalf("Parse = %+v, want kind %s", got, tc.want)
+				}
+				if tc.want == alerts.KindCharge && (got.Amount == "" || got.Merchant == "") {
+					t.Fatalf("a charge lost its facts: %+v", got)
+				}
+			})
+		}
+	}
+}
+
 func TestAPNCZelleSentAlertYieldsPayeeAmountDateAndMemo(t *testing.T) {
 	got := Parse(fixture(t, "pnc-zelle-sent.eml"))
 	want := Facts{Kind: alerts.KindZelleSent, Amount: "25.00", Merchant: "Sam Example", Last4: "5678",
@@ -415,7 +461,7 @@ func TestTheAlertPostedHoldsOnlyTheFieldsTheBackendKeeps(t *testing.T) {
 
 // Every dollar amount in a fixture must be one of these made-up ones: the
 // repo is public and a mail printed from a real inbox carries a real purchase.
-var madeUpAmounts = map[string]bool{"0.00": true, "9.38": true, "187.53": true, "76.25": true, "42.17": true, "10.00": true, "25.00": true, "64.20": true}
+var madeUpAmounts = map[string]bool{"0.00": true, "9.38": true, "187.53": true, "76.25": true, "42.17": true, "10.00": true, "25.00": true, "64.20": true, "1.00": true, "41.27": true}
 
 func TestFixturesHoldOnlyMadeUpAmounts(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join("testdata", "*.eml"))
@@ -596,7 +642,7 @@ func TestAMailThatNearlyFitsAParserButIsUnreadLogsWhichCheckFailed(t *testing.T)
 // A mail that is read, one no parser nearly fits, and a mail that one parser
 // misses but another reads, log nothing of this kind.
 func TestOnlyAMailThatNearlyFitsAndIsUnreadLogsAMiss(t *testing.T) {
-	for _, file := range []string{"subsplash-notes.eml", "chase.eml", "chase-amazon.eml", "citi.eml", "citi-costco.eml", "pnc-zelle-sent.eml", "pnc-deposit.eml", "amazon-order.eml", "unknown.eml"} {
+	for _, file := range []string{"subsplash-notes.eml", "chase.eml", "chase-amazon.eml", "citi.eml", "citi-costco.eml", "chase-gas-hold.eml", "citi-gas-hold.eml", "pnc-zelle-sent.eml", "pnc-deposit.eml", "amazon-order.eml", "unknown.eml"} {
 		if _, logged := parseLogged(t, fixture(t, file)); logged != "" {
 			t.Errorf("%s: logged %q, want nothing", file, logged)
 		}

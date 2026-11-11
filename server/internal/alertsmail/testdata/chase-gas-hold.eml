@@ -1,0 +1,36 @@
+Return-Path: <no.reply.alerts@chase.com>
+Received: from mail.example.net by mx.example.org; Mon, 2 Nov 2026 12:42:40 -0500
+Date: Sun, 8 Nov 2026 13:01:31 -0500
+From: Chase <no.reply.alerts@chase.com>
+To: pat@example.com
+Subject: You made a $1.00 transaction with COSTCO GAS #0304 BROOKFIELD US
+Message-ID: <alert-gas@chase.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html><html><head><style type=3D"text/css">td { font-family: Arial=
+; }</style></head><body>
+<table width=3D"100%"><tr><td class=3D"title">Transaction alert</td></tr></=
+table>
+<table><tr><td><h1>You made a $1.00 transaction</h1></td></tr></table>
+<table>
+<tr><td class=3D"label">Account</td><td class=3D"value">Prime Visa (...5678=
+)</td></tr>
+<tr><td class=3D"label">Date</td><td class=3D"value">Nov 8, 2026 at 1:01 P=
+M ET</td></tr>
+<tr><td class=3D"label">Merchant</td><td class=3D"value">COSTCO GAS #0304 BROOKFIELD US=
+</td></tr>
+<tr><td class=3D"label">Amount</td><td class=3D"value">$1.00</td></tr>
+</table>
+<p>You are receiving this alert because your transaction was more than the =
+$0.00 level you set. You can visit our Resource Center anytime to help answ=
+er your questions or manage your account.</p>
+<p><a href=3D"https://www.chase.com/">Review account</a></p>
+<p>Securely access your accounts with the Chase Mobile&reg; app or chase.co=
+m.</p>
+<p>ABOUT THIS MESSAGE</p>
+<p>To protect your personal information, please don&#39;t reply to this me=
+ssage.</p>
+<p>&copy; 2026 JPMorgan Chase &amp; Co.</p>
+</body></html>

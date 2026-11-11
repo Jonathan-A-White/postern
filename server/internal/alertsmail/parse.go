@@ -172,7 +172,17 @@ func parseChase(m mailView) (Facts, bool) {
 		m.miss("chase", "no amount")
 		return Facts{}, false
 	}
+	f.Kind = cardKind(f)
 	return f, true
+}
+
+// cardKind is the kind of a card alert: a charge, unless it is a gas pump's $1.00 pre-authorisation
+// (alerts.IsPumpHold), which never posts as $1.00 and is a hold.
+func cardKind(f Facts) string {
+	if alerts.IsPumpHold(f.Amount, f.Merchant) {
+		return alerts.KindHold
+	}
+	return alerts.KindCharge
 }
 
 // ---- Citi ------------------------------------------------------------------
@@ -218,6 +228,7 @@ func parseCiti(m mailView) (Facts, bool) {
 		m.miss("citi", "no amount")
 		return Facts{}, false
 	}
+	f.Kind = cardKind(f)
 	return f, true
 }
 

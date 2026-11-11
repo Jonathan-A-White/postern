@@ -106,6 +106,8 @@ func TestAppServesTheV2RoutesBehindTheLicenceProof(t *testing.T) {
 		{http.MethodGet, "/api/prompts/sweep"},
 		{http.MethodPut, "/api/prompts/sweep"},
 		{http.MethodDelete, "/api/prompts/sweep"},
+		{http.MethodGet, "/api/jobs"},
+		{http.MethodGet, "/api/jobs/subsplash-links"},
 	} {
 		req, _ := http.NewRequest(route.method, server.URL+route.path, nil)
 		resp, err := http.DefaultClient.Do(req)

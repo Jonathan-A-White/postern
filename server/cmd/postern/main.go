@@ -20,6 +20,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/hook"
 	"github.com/Jonathan-A-White/postern/server/internal/ideasonly"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/jobs"
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/poller"
@@ -212,6 +213,7 @@ func newApp(cfg config.Config) (*app, error) {
 		api.WithCatalogue(cfg.Collections, cfg.AppCollections, cfg.IssuerKey),
 		api.WithCORS(cfg.CORSOrigins),
 		api.WithPrompts(promptStore),
+		api.WithJobs(jobs.Open(cfg.DataDir)),
 		api.WithIdeasOnly(ideasStore),
 		api.WithRegistration(registration, cfg.RegisterIPHeader),
 		api.WithAlerts(alertStore, api.RegisterFamilies(registration), alertPusher{sender}, cfg.AlertsDomain, string(cfg.AlertsSecret)),

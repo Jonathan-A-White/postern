@@ -27,6 +27,7 @@ import (
 	"github.com/Jonathan-A-White/postern/server/internal/events"
 	"github.com/Jonathan-A-White/postern/server/internal/ideasonly"
 	"github.com/Jonathan-A-White/postern/server/internal/index"
+	"github.com/Jonathan-A-White/postern/server/internal/jobs"
 	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/notify"
 	"github.com/Jonathan-A-White/postern/server/internal/poller"
@@ -68,6 +69,7 @@ type options struct {
 	cors     []string          // POSTERN_CORS_ORIGINS
 	prompts  *prompts.Store    // the saved prompts; nil answers 501
 	ideas    *ideasonly.Store  // each key's Ideas only setting (§25); nil answers 501
+	jobs     *jobs.Store       // the by-hand jobs' feeds (docs/jobs.md); nil answers 501
 
 	pollStatus func() poller.Status // the poller's own account of itself for /healthz; nil leaves it out
 
@@ -245,6 +247,8 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 		"GET /api/alerts":                handleAlertList(&o),
 		"DELETE /api/alerts/{id}":        handleAlertClaim(&o),
 		"GET /api/alerts/{id}/notes":     handleAlertNotes(&o),
+		"GET /api/jobs":                  handleJobList(o.jobs),
+		"GET /api/jobs/{id}":             handleJobGet(o.jobs),
 	}
 
 	mux := http.NewServeMux()

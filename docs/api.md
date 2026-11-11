@@ -41,6 +41,7 @@ Every error response, from every endpoint below, is:
 - [Saved prompts (`/api/prompts`)](#saved-prompts-apiprompts)
 - [Ideas only (`/api/ideas-only/{pubkey}`)](#ideas-only-apiideas-onlypubkey)
 - [Alerts (`/api/alerts`)](#alerts-apialerts)
+- [Jobs (`/api/jobs`)](#jobs-apijobs)
 - [The record fan-out](#the-record-fan-out)
 - [The push notifier](#the-push-notifier)
 - [The on-message hook](#the-on-message-hook)
@@ -801,6 +802,17 @@ licence, so two keys on it see the same address and feed.
 The first four admit a cockpit key or an app key (`403` for the mill's). Alerts older than 30 days are dropped,
 with their notes.
 Without `POSTERN_ALERTS_DOMAIN` they answer `501`; without `POSTERN_ALERTS_SECRET` so does inbound.
+
+## Jobs (`/api/jobs`)
+
+`docs/jobs.md`. The progress of the Governor's by-hand jobs, read from one JSON file per job under
+`POSTERN_DATA/jobs/` that the factory keeps current. Both routes need the usual signed proof and a cockpit key
+(`403` for an app key or the mill's); without the store they answer `501`; both are `Cache-Control: no-store`.
+
+- `GET /api/jobs` — `200 {"jobs": [{"id", "title", "updated", "done", "total"}]}`, newest `updated` first;
+  `[]` when there are none. A file that is not valid (docs/jobs.md, Rules) is skipped with a log line, not a `500`.
+- `GET /api/jobs/{id}` — `200 {"id", "title", "updated", "checks": [...], "items": [{"label", "date"?, "link"?,
+  "done": {check: bool}}], "here"?, "note"?}`, or `404 {"error": "no such job"}`.
 
 ## The record fan-out
 

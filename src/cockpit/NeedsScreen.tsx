@@ -4,6 +4,7 @@
 // replaces the old Inbox and Projects' "Needs you" (decision 10).
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Banner, Button, EmptyState, Icon, IconButton, SectionTitle, Segmented, Spinner, TimeAgo, useAlive } from '../ui';
+import { useNow } from '../ui/useNow';
 import { Screen } from './Shell';
 import { FactoryPulse } from './FactoryPulse';
 import { OpenLists } from './OpenLists';
@@ -19,6 +20,8 @@ import { isPushSubscribed, pushSupported, rememberPushSubscribed, subscribeToPus
 import { publicKeyHexFromMasterKey } from '../services/vault';
 import { beadHref, formatRoute, threadHrefFor } from '../nav/route';
 import { previewText } from '../model/conversation';
+import { listedAsUnread } from '../model/threads';
+import { markThreadSeen } from '../services/seen';
 import { needsByWaiter, splitFolded, unsettledNeeds } from '../model/needs';
 import type { ViewIndex } from '../model/tree';
 import type { Need, WaitsFor } from '../model/view';
@@ -28,20 +31,33 @@ import { toast } from '../ui/toastStore';
 
 function UnreadThreads({ index }: { index?: ViewIndex }) {
   const messages = useMessages();
+  const now = useNow(60_000);
   const threads = useMemo(() => {
     const latest = new Map<string, { row: MessageRow; count: number }>();
+    const newest = new Map<string, number>();
     for (const row of messages) {
-      if (row.direction !== 'received' || row.read) continue;
       const key = row.thread ?? 'general';
+      newest.set(key, Math.max(newest.get(key) ?? 0, row.ts));
+      if (row.direction !== 'received' || row.read) continue;
       const entry = latest.get(key);
       latest.set(key, { row: !entry || row.ts > entry.row.ts ? row : entry.row, count: (entry?.count ?? 0) + 1 });
     }
-    return [...latest.entries()].sort((a, b) => b[1].row.ts - a[1].row.ts);
-  }, [messages]);
+    return [...latest.entries()]
+      .filter(([key]) => listedAsUnread(key, newest.get(key) ?? 0, index, now))
+      .sort((a, b) => b[1].row.ts - a[1].row.ts);
+  }, [messages, index, now]);
   if (threads.length === 0) return null;
   return (
     <section className="flex flex-col gap-2" aria-label="Unread from the Mayor">
-      <SectionTitle>Unread from the Mayor</SectionTitle>
+      <SectionTitle
+        action={
+          <Button size="sm" variant="ghost" onClick={() => void Promise.all(threads.map(([key]) => markThreadSeen(key === 'general' ? undefined : key)))}>
+            Mark all read
+          </Button>
+        }
+      >
+        Unread from the Mayor
+      </SectionTitle>
       <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
         {threads.map(([key, { row, count }]) => {
           const bead = key.startsWith('bead:') ? key.slice(5) : undefined;

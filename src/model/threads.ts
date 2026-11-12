@@ -16,6 +16,18 @@ export const GENERAL = 'general';
  * once its newest message is older than this (mw-2y46l.6). */
 export const AUTO_ARCHIVE_AFTER_MS = 3 * 86_400_000;
 
+/** Needs you's 'Unread from the Mayor' drops a closed (or gone) bead's thread once its newest message is older than this (mw-mr4xgrw.55). */
+export const UNREAD_CLOSED_AFTER_MS = 7 * 86_400_000;
+
+/** Whether a thread belongs on Needs you's 'Unread from the Mayor' at `now`: every thread, but a bead's whose bead is closed (or not in the
+ * view, as threads archive) and whose newest message, his own included, is older than UNREAD_CLOSED_AFTER_MS. It stays unread in Channels. */
+export function listedAsUnread(key: string, newestTs: number, index: ViewIndex | undefined, now: number): boolean {
+  const ref = parseThreadKey(key);
+  if (!index || !ref || !('bead' in ref)) return true;
+  const bead = index.byId.get(ref.bead);
+  return !((!bead || isClosed(bead)) && now - newestTs * 1000 > UNREAD_CLOSED_AFTER_MS);
+}
+
 export type { ArchiveChoices };
 
 /** The newest entry the thread itself shows (its last message, or a bead comment

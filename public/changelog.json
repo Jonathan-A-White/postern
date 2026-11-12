@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.104",
+    "date": "2026-11-12",
+    "story": "mw-mr4xgrw.55",
+    "kind": "fixed",
+    "text": "Needs you no longer lists unread threads of beads that closed more than a week ago, and \"Unread from the Mayor\" has a \"Mark all read\" button."
+  },
+  {
     "version": "0.8.102",
     "date": "2026-11-11",
     "story": "mw-mr4xgrw.49",

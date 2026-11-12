@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.105",
+    "date": "2026-11-12",
+    "story": "mw-mr4xgrw.54",
+    "kind": "fixed",
+    "text": "Home no longer shows a red Emergencies row, or a count of old ones, when no emergency is open."
+  },
+  {
     "version": "0.8.104",
     "date": "2026-11-12",
     "story": "mw-mr4xgrw.55",

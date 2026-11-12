@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.105
+_2026-11-12_
+- Fixed: Home no longer shows a red Emergencies row, or a count of old ones, when no emergency is open.
+
 ## 0.8.104
 _2026-11-12_
 - Fixed: Needs you no longer lists unread threads of beads that closed more than a week ago, and "Unread from the Mayor" has a "Mark all read" button.

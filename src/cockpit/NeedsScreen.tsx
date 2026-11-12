@@ -4,6 +4,7 @@
 // replaces the old Inbox and Projects' "Needs you" (decision 10).
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Banner, Button, EmptyState, Icon, IconButton, SectionTitle, Segmented, Spinner, TimeAgo, useAlive } from '../ui';
+import { useNow } from '../ui/useNow';
 import { Screen } from './Shell';
 import { FactoryPulse } from './FactoryPulse';
 import { OpenLists } from './OpenLists';
@@ -30,6 +31,7 @@ import { toast } from '../ui/toastStore';
 
 function UnreadThreads({ index }: { index?: ViewIndex }) {
   const messages = useMessages();
+  const now = useNow(60_000);
   const threads = useMemo(() => {
     const latest = new Map<string, { row: MessageRow; count: number }>();
     const newest = new Map<string, number>();
@@ -40,11 +42,10 @@ function UnreadThreads({ index }: { index?: ViewIndex }) {
       const entry = latest.get(key);
       latest.set(key, { row: !entry || row.ts > entry.row.ts ? row : entry.row, count: (entry?.count ?? 0) + 1 });
     }
-    const now = Date.now();
     return [...latest.entries()]
       .filter(([key]) => listedAsUnread(key, newest.get(key) ?? 0, index, now))
       .sort((a, b) => b[1].row.ts - a[1].row.ts);
-  }, [messages, index]);
+  }, [messages, index, now]);
   if (threads.length === 0) return null;
   return (
     <section className="flex flex-col gap-2" aria-label="Unread from the Mayor">

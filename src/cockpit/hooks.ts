@@ -151,7 +151,7 @@ export function useRecentEmergencies(limit = 20): EventRow[] | undefined {
   return useLiveQuery(() => eventsRepo.recentEmergencies(limit), [limit], undefined as EventRow[] | undefined, `emergencies:${limit}`);
 }
 
-/** How many emergency events the phone holds; 0 until they have been read. */
+/** How many emergency events are still open (above the cleared mark); 0 until they have been read. */
 export function useEmergencyCount(): number {
   return useLiveQuery(() => eventsRepo.emergencyCount(), [], 0);
 }

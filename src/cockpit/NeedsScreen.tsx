@@ -83,7 +83,7 @@ function UnreadThreads({ index }: { index?: ViewIndex }) {
   );
 }
 
-/** The way in to the Emergency screen from the app (mw-gq6.285): shown while the phone holds any emergency. */
+/** The way in to the Emergency screen from the app (mw-gq6.285): shown while any emergency is open (above the cleared mark; mw-mr4xgrw.54). */
 function EmergenciesRow() {
   const count = useEmergencyCount();
   if (count === 0) return null;

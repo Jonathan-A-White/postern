@@ -93,7 +93,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
     And('the banner still shows the emergency he has not tapped away', async () => {
       expect((await eventsRepo.latestEmergency())?.detail).toBe('Boost is down');
-      expect(await eventsRepo.emergencyCount()).toBe(2);
+      expect(await eventsRepo.emergencyCount()).toBe(1);
     });
     And('the tidying took only a few steps of a cursor', () => {
       expect(cursorStepsTaken()).toBeLessThan(A_FEW_STEPS);

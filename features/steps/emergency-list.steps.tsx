@@ -2,7 +2,7 @@
 // Emergencies row on Needs you, the Emergency screen it opens, and the speaker on each emergency.
 // Held events are seeded in Dexie; speech is a fake synth.
 import '@testing-library/react/dont-cleanup-after-each';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
@@ -81,6 +81,21 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     Then('no Emergencies row is shown', async () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(screen.queryByRole('button', { name: /^Emergencies/ })).not.toBeInTheDocument();
+    });
+  });
+
+  Scenario('mw-mr4xgrw.54 AC1: Needs you counts only the emergencies still open, and shows no row when all are tapped away', ({ Given, And, When, Then }) => {
+    Given('the phone holds two emergencies, {string} and {string}', async (_c, first: string, second: string) => hold([first, second]));
+    And('he has tapped away the first of them', async () => eventsRepo.clearEmergency(1));
+    When('the Needs you screen opens', needsOpens);
+    Then('an {string} row is shown', async (_c, name: string) => {
+      expect(await screen.findByRole('button', { name })).toBeInTheDocument();
+    });
+    When('he taps away the second as well', async () => {
+      await act(async () => eventsRepo.clearEmergency(2));
+    });
+    Then('no Emergencies row is shown', async () => {
+      await waitFor(() => expect(screen.queryByRole('button', { name: /^Emergencies/ })).not.toBeInTheDocument());
     });
   });
 

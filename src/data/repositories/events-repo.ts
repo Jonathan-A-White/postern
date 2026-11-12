@@ -133,9 +133,12 @@ export const eventsRepo = {
     return (await emergencies().toArray()).sort((a, b) => b.seq - a.seq).slice(0, limit);
   },
 
-  /** How many emergency events the phone holds, tapped away or not: the count on Needs you's Emergencies row. */
+  /** How many emergency events are still open: those above emergencyCleared(), the seq his tap or a clears event
+   * dealt with up to. Cleared ones stay stored (recentEmergencies lists them) but are not counted: the count on
+   * Needs you's Emergencies row, which is not drawn at 0 (mw-mr4xgrw.54). */
   async emergencyCount(): Promise<number> {
-    return emergencies().count();
+    const cleared = await eventsRepo.emergencyCleared();
+    return (await emergencies().toArray()).filter((event) => event.seq > cleared).length;
   },
 
   async emergencyCleared(): Promise<number> {

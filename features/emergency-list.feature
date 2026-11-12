@@ -12,6 +12,14 @@ Feature: The Emergency screen is one tap from Needs you, and each emergency can 
     When the Needs you screen opens
     Then no Emergencies row is shown
 
+  Scenario: mw-mr4xgrw.54 AC1: Needs you counts only the emergencies still open, and shows no row when all are tapped away
+    Given the phone holds two emergencies, "Disk is full" and "Boost is down"
+    And he has tapped away the first of them
+    When the Needs you screen opens
+    Then an "Emergencies · 1" row is shown
+    When he taps away the second as well
+    Then no Emergencies row is shown
+
   Scenario: mw-gq6.285 AC2: each emergency has a Read aloud button that reads its words, then Stop reading
     Given the phone holds one emergency, "Disk is full"
     When the Emergency screen opens

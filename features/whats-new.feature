@@ -20,6 +20,27 @@ Feature: Postern says what changed with each release (mw-s061bg.3)
     Then the update banner shows no What's new button
     And the Update ready, tap to reload button is still there
 
+  Scenario: mw-6ww.175.34 AC-4: a build whose changelog has no line for him raises no banner and is taken quietly at start-up
+    Given the waiting build's changelog has no line after the running version
+    And Postern is open on a phone whose service worker has that build waiting
+    Then there is no Update ready banner
+    And the waiting worker is told to take over and the page reloads once it has
+
+  Scenario: mw-6ww.175.34 AC-4: a build with no line for him found while he is using Postern waits unseen until he leaves it
+    Given the waiting build's changelog has no line after the running version
+    And Postern is open on a phone with nothing waiting
+    When a build with nothing for him is found while he looks at Postern
+    Then there is no Update ready banner
+    And the waiting worker has not been told to take over
+    When he leaves Postern
+    Then the waiting worker is told to take over and the page reloads once it has
+
+  Scenario: mw-6ww.175.34 AC-2: a tap on the banner reloads the page, with the version named beneath it
+    Given the changelog of the waiting build lists 2 new and 1 fixed in a version newer than the running one
+    And Postern is open on a phone whose service worker has that build waiting
+    When he taps the Update ready, tap to reload button
+    Then the waiting worker is told to take over and the page reloads once it has
+
   Scenario: AC-1: the What's new sheet shows once after an update and not again
     Given the last version he saw was older than the running one
     When Postern opens

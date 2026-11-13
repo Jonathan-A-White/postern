@@ -10,7 +10,7 @@ import { UpdateBanner } from '../../src/cockpit/UpdateBanner';
 import { WhatsNewOnUpdate } from '../../src/cockpit/WhatsNew';
 import { AboutScreen } from '../../src/cockpit/AboutScreen';
 import { MeScreen } from '../../src/cockpit/MeScreen';
-import { APP_VERSION, WHATS_NEW_STORAGE_KEY } from '../../src/services/whatsNew';
+import { APP_VERSION, WHATS_NEW_STORAGE_KEY, updateOptions } from '../../src/services/whatsNew';
 import { fakeSetup, fakeWorker } from '../../tests/support/fake-registration';
 import { changelogFixture, WAITING_VERSION, stubChangelog } from '../../tests/support/changelog-fixture';
 
@@ -24,6 +24,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     stubChangelog(changelogFixture());
   });
   AfterEachScenario(() => {
+    delete (document as { visibilityState?: unknown }).visibilityState;
     stop?.();
     stop = undefined;
     cleanup();
@@ -32,12 +33,23 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
   });
   afterAll(() => cleanup());
 
-  const openWithWaiting = () => {
+  // Started as main.tsx starts it: with updateOptions(), the judge that keeps a build with nothing for him off the banner.
+  let current: ReturnType<typeof fakeSetup> | undefined;
+  let waitingWorker: ReturnType<typeof fakeWorker> | undefined;
+  const start = (waiting: ReturnType<typeof fakeWorker> | null) => {
     cleanup();
-    const setup = fakeSetup({ waiting: fakeWorker() });
-    stop = startAppUpdates({ container: setup.container, registration: setup.registration, reload: setup.reload }).stop;
+    current = fakeSetup({ waiting });
+    waitingWorker = waiting ?? undefined;
+    stop = startAppUpdates({ container: current.container, registration: current.registration, reload: current.reload }, updateOptions()).stop;
     render(<UpdateBanner />);
   };
+  const openWithWaiting = () => start(fakeWorker());
+  const openWithNothing = () => start(null);
+  const setVisibility = (state: 'visible' | 'hidden') => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+  const flush = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
 
   const banner = () => screen.getByRole('button', { name: 'Update ready, tap to reload' });
 
@@ -87,6 +99,67 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
     And('the Update ready, tap to reload button is still there', () => {
       expect(banner()).toBeEnabled();
+    });
+  });
+
+  Scenario('mw-6ww.175.34 AC-4: a build whose changelog has no line for him raises no banner and is taken quietly at start-up', ({ Given, And, Then }) => {
+    Given("the waiting build's changelog has no line after the running version", () => {
+      stubChangelog(changelogFixture().filter((line) => line.version !== WAITING_VERSION));
+    });
+    And('Postern is open on a phone whose service worker has that build waiting', openWithWaiting);
+    Then('there is no Update ready banner', async () => {
+      await waitFor(() => expect(waitingWorker!.postMessage).toHaveBeenCalled());
+      expect(screen.queryByRole('button', { name: 'Update ready, tap to reload' })).toBeNull();
+    });
+    And('the waiting worker is told to take over and the page reloads once it has', async () => {
+      expect(waitingWorker!.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+      expect(current!.reload).not.toHaveBeenCalled();
+      act(() => current!.controllerChanges());
+      expect(current!.reload).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  Scenario('mw-6ww.175.34 AC-4: a build with no line for him found while he is using Postern waits unseen until he leaves it', ({ Given, And, When, Then }) => {
+    Given("the waiting build's changelog has no line after the running version", () => {
+      stubChangelog(changelogFixture().filter((line) => line.version !== WAITING_VERSION));
+    });
+    And('Postern is open on a phone with nothing waiting', openWithNothing);
+    When('a build with nothing for him is found while he looks at Postern', async () => {
+      act(() => {
+        waitingWorker = current!.newWorkerWaits();
+      });
+      await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
+      await flush();
+    });
+    Then('there is no Update ready banner', () => {
+      expect(screen.queryByRole('button', { name: 'Update ready, tap to reload' })).toBeNull();
+    });
+    And('the waiting worker has not been told to take over', () => {
+      expect(waitingWorker!.postMessage).not.toHaveBeenCalled();
+    });
+    When('he leaves Postern', () => {
+      act(() => setVisibility('hidden'));
+    });
+    Then('the waiting worker is told to take over and the page reloads once it has', () => {
+      expect(waitingWorker!.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+      act(() => current!.controllerChanges());
+      expect(current!.reload).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  Scenario('mw-6ww.175.34 AC-2: a tap on the banner reloads the page, with the version named beneath it', ({ Given, And, When, Then }) => {
+    Given('the changelog of the waiting build lists 2 new and 1 fixed in a version newer than the running one', () => {
+      stubChangelog(changelogFixture());
+    });
+    And('Postern is open on a phone whose service worker has that build waiting', openWithWaiting);
+    When('he taps the Update ready, tap to reload button', async () => {
+      expect(await screen.findByText(`${WAITING_VERSION} · 2 new, 1 fixed ·`, { exact: false })).toBeInTheDocument();
+      fireEvent.click(banner());
+    });
+    Then('the waiting worker is told to take over and the page reloads once it has', () => {
+      expect(waitingWorker!.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+      act(() => current!.controllerChanges());
+      expect(current!.reload).toHaveBeenCalledTimes(1);
     });
   });
 

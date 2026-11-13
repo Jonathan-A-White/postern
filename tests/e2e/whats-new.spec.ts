@@ -79,6 +79,35 @@ test('the banner names the waiting version and what is in it, and What\'s new op
   }
 });
 
+test('a build whose changelog has no line for him raises no banner and the page stays as it is (mw-6ww.175.34)', async ({ page, baseURL }) => {
+  // The waiting build's changelog lists nothing after the running version: tests, lint, a version bump.
+  await page.route('**/changelog.json', (route) => route.fulfill({ json: CHANGELOG.filter((line) => line.version !== WAITING), headers: { 'cache-control': 'no-store' } }));
+  const origin = await startBuildOrigin(baseURL!);
+  try {
+    await page.goto(origin.url + '/');
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+    });
+    await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+    let reloaded = false;
+    page.on('load', () => (reloaded = true));
+
+    origin.setBuild(2);
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    // The newer build is found and waits behind the running one ...
+    await expect
+      .poll(() => page.evaluate(async () => Boolean((await navigator.serviceWorker.getRegistration())?.waiting)), { timeout: 20_000 })
+      .toBe(true);
+    // ... and he is told nothing, while he is looking at Postern: no banner, no reload, no take-over.
+    await page.waitForTimeout(1000);
+    await expect(page.getByRole('button', { name: 'Update ready, tap to reload' })).toHaveCount(0);
+    expect(reloaded).toBe(false);
+    expect(await page.evaluate(async () => Boolean((await navigator.serviceWorker.getRegistration())?.waiting))).toBe(true);
+  } finally {
+    await origin.close();
+  }
+});
+
 test('the sheet shows once after an update', async ({ page }) => {
   await routeChangelog(page);
   await page.addInitScript(() => {

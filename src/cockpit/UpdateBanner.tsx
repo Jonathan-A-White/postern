@@ -1,7 +1,8 @@
 // src/cockpit/UpdateBanner.tsx — 'Update ready, tap to reload', above the content on every screen while
 // a newer build waits (mw-yxwtth.1). The tap goes dead and says 'Updating…' until the page reloads.
 // Beneath it, once the waiting build's changelog is read, its version and what is in it, with a
-// What's new button that opens the lines (mw-s061bg.3); no changelog, no line.
+// What's new button that opens the lines (mw-s061bg.3); no changelog, no line. A build with no line for him is never
+// offered at all: main.tsx hands pwa-kit's app-update the judge in services/whatsNew.ts (mw-6ww.175.34).
 import { useState } from 'react';
 import { UpdateSummary, WhatsNewSheet, useChangelog } from 'pwa-kit/whats-new';
 import { Icon } from '../ui';

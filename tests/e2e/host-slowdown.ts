@@ -49,3 +49,40 @@ export class HostWatch {
     return this.last;
   }
 }
+
+/** The slowest the host was at any stretch of a window, read by a page of its own while another page is timed (mw-6ww.175.33). */
+export interface HostWindow {
+  /** Ends the readings and gives the window's worst: the largest median of three readings in a row (1 on a calm host). */
+  stop(): Promise<number>;
+}
+
+/**
+ * mw-6ww.175.33: the host as it was DURING a window, not at its two ends. A send of a 2 MB photo takes 15 to 25 s on a loaded host, and
+ * another worker's 20x test that started in the middle of it was seen by neither the reading before it (1.3x) nor the one after (1.4x):
+ * the page's longest task, 1942 ms, then met a promise scaled by 1.4x. A second page of the same browser, with no slowing on it, spins
+ * on every quarter second until `stop`; its worst stretch scales the promise with the two ends.
+ */
+export async function watchHostSlowdown(page: Page): Promise<HostWindow> {
+  const helper = await page.context().newPage();
+  const spins: number[] = [];
+  let running = true;
+  const loop = (async () => {
+    while (running) {
+      try {
+        spins.push(await spinOnce(helper));
+      } catch {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  })();
+  return {
+    async stop() {
+      running = false;
+      await loop;
+      await helper.close().catch(() => undefined);
+      const runs = spins.length < 3 ? [Math.max(...spins, 0)] : spins.slice(2).map((_, i) => [...spins.slice(i, i + 3)].sort((a, b) => a - b)[1]);
+      return Math.max(1, ...runs.map((ms) => ms / CALM_SPIN_MS));
+    },
+  };
+}

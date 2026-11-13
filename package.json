@@ -23,18 +23,18 @@
   "dependencies": {
     "@bsv/sdk": "^2.2.0",
     "@scure/bip39": "^2.4.0",
-    "audible-kit": "github:Jonathan-A-White/audible-kit#ac2224ca7dedccae47df7a33f7a71136e688cb2e",
-    "bsv-kit": "github:Jonathan-A-White/bsv-kit#6a22cfe448b03d2be6f1ad6bc4bde6aa38f22150",
+    "audible-kit": "github:Jonathan-A-White/audible-kit#273fadf8733ab4c99fbbfcde618a8eeb6d5fb0d4",
+    "bsv-kit": "github:Jonathan-A-White/bsv-kit#4dbd874edc1f5d6c151b0980ccaa9fcc60799d6a",
     "dexie": "^4.3.0",
     "mermaid": "^12.0.0",
-    "pwa-kit": "github:Jonathan-A-White/pwa-kit#0b7d6d4603acaf7b954a8dc364f37b92dfe79fb7",
+    "pwa-kit": "github:Jonathan-A-White/pwa-kit#182d2890c5d57c93d5b978da2981276d8f3f3e80",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "spell-forge-bsv": "https://github.com/Jonathan-A-White/spell-forge/releases/download/bsv-v0.1.0/spell-forge-bsv-0.1.0.tgz",
-    "voice-kit": "github:Jonathan-A-White/voice-kit#38f203176a4db55a36ff48912dd14afbe74393cc",
+    "voice-kit": "github:Jonathan-A-White/voice-kit#c5f76b2b7044d00eaecc827a7cbdce5b802768b0",
     "workbox-precaching": "7.4.1"
   },
   "devDependencies": {
@@ -65,9 +65,9 @@
     "vitest": "^4.0.18"
   },
   "allowScripts": {
-    "github:Jonathan-A-White/audible-kit#ac2224ca7dedccae47df7a33f7a71136e688cb2e": true,
-    "github:Jonathan-A-White/bsv-kit#6a22cfe448b03d2be6f1ad6bc4bde6aa38f22150": true,
-    "github:Jonathan-A-White/pwa-kit#0b7d6d4603acaf7b954a8dc364f37b92dfe79fb7": true,
-    "github:Jonathan-A-White/voice-kit#38f203176a4db55a36ff48912dd14afbe74393cc": true
+    "github:Jonathan-A-White/audible-kit#273fadf8733ab4c99fbbfcde618a8eeb6d5fb0d4": true,
+    "github:Jonathan-A-White/bsv-kit#4dbd874edc1f5d6c151b0980ccaa9fcc60799d6a": true,
+    "github:Jonathan-A-White/pwa-kit#182d2890c5d57c93d5b978da2981276d8f3f3e80": true,
+    "github:Jonathan-A-White/voice-kit#c5f76b2b7044d00eaecc827a7cbdce5b802768b0": true
   }
 }

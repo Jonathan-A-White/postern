@@ -35,7 +35,7 @@ const chainSends = vi.fn(async () => 'cd'.repeat(32));
 const accepted = () => new Response(JSON.stringify({ txid: 'direct:' + 'ab'.repeat(32) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
 /** What the backend saw: every POST that reached it, and every GET /api/view?why= it journaled. */
-let backend: { blobs: 'cut' | 'ok'; messages: 'ok' | 'cut'; posted: string[]; whys: string[]; uplink: number; stall: number };
+let backend: { blobs: 'cut' | 'ok'; messages: 'ok' | 'cut'; posted: string[]; whys: string[]; uplink: number; stall: number; working: number };
 
 /** His uplink that evening: the slowest the app waits for (UPLOAD_BYTES_PER_SECOND); what one picture's upload takes is its size over this. */
 const SLOW_UPLINK_BYTES_PER_S = UPLOAD_BYTES_PER_SECOND;
@@ -64,8 +64,15 @@ async function letStorageRun(): Promise<void> {
   for (let i = 0; i < 40; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
+/** Lets the work off the fake clock finish before the clock moves on: a request's own timeout runs on the fake clock, so time passed while its
+ * challenge is still being made would time it out on a loaded host, however long the real work takes (mw-gq6.1248). */
+async function workDone(): Promise<void> {
+  for (let i = 0; i < 250 && backend.working > 0; i++) await letStorageRun();
+}
+
 async function pass(ms: number): Promise<void> {
   for (let spent = 0; spent < ms; spent += 1000) {
+    await workDone();
     await vi.advanceTimersByTimeAsync(Math.min(1000, ms - spent));
     await letStorageRun();
   }
@@ -77,6 +84,13 @@ async function uploadMade(): Promise<void> {
   const made = () => vi.mocked(fetch).mock.calls.some(([input]) => String(input).endsWith('/blobs'));
   for (let i = 0; i < 250 && !made(); i++) await letStorageRun();
   expect(made()).toBe(true);
+}
+
+/** Waits on the work off the fake clock, not on more fake time: the report of a failing row is sent without being waited for (reportFailure),
+ * and its challenge takes `stall` rounds of real turns on a loaded host, so the journaled GET lands after settledOutbox() has resolved. */
+async function reported(count: number): Promise<void> {
+  for (let i = 0; i < 250 && backend.whys.length < count; i++) await letStorageRun();
+  expect(backend.whys.length).toBeGreaterThanOrEqual(count);
 }
 
 /** Passes time, a second at a time, until the sender is quiet (a try in flight ends at its own pace) or `maxMs` have gone by. */
@@ -101,7 +115,7 @@ beforeEach(async () => {
   forgetOutboxState();
   await db.outbox.clear();
   held.reachable = true;
-  backend = { blobs: 'cut', messages: 'ok', posted: [], whys: [], uplink: Infinity, stall: 0 };
+  backend = { blobs: 'cut', messages: 'ok', posted: [], whys: [], uplink: Infinity, stall: 30, working: 0 };
   chainSends.mockClear();
   setChain({ ...realChain, sendText: chainSends } as Chain);
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
@@ -111,7 +125,12 @@ beforeEach(async () => {
       const url = String(input);
       if (isChallengeRequest(url)) {
         // A loaded host: the work off the fake clock (the seal, the challenge's signing) takes `stall` rounds of real turns.
-        for (let i = 0; i < backend.stall; i++) await letStorageRun();
+        backend.working++;
+        try {
+          for (let i = 0; i < backend.stall; i++) await letStorageRun();
+        } finally {
+          backend.working--;
+        }
         return challengeResponse();
       }
       if (url.includes('/view?why=')) {
@@ -274,6 +293,7 @@ describe('a row whose every try fails while the phone reaches the backend (mw-o1
     await pass(retryDelay(2) + 100);
     await settledOutbox();
     expect((await db.outbox.get(id))?.attempts).toBe(REPORT_AFTER_ATTEMPTS);
+    await reported(1);
     expect(backend.whys).toEqual(['outbox-message-lost']);
     const reportedAt = (await db.outbox.get(id))?.reportedAt as number;
     expect(reportedAt).toBeGreaterThan(Date.now() - retryDelay(2) - 200);
@@ -286,6 +306,7 @@ describe('a row whose every try fails while the phone reaches the backend (mw-o1
     // the clock, mw-8xe671n, so where the tries fall against the hour mark is not fixed).
     await pass(REPORT_EVERY_MS + retryDelay(7));
     await settledOutbox();
+    await reported(2);
     expect(backend.whys).toHaveLength(2);
   });
 

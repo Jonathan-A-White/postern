@@ -15,8 +15,11 @@ import { joinMessageParts } from './messageParts';
 /** 'factory' is mw itself on a host (a comment by mw@<host>: a hands step's RAN line, a claim), never a Builder. */
 export type Speaker = 'you' | 'mayor' | 'builder' | 'factory' | 'other';
 
+/** docs/protocol.md §13: every action word the host applies (millwright's application/posternapply.go; docs/fixtures/contract.json). */
+export const ACTION_WORDS = ['release', 'hold', 'thaw', 'priority', 'verified', 'run', 'keep', 'close', 'chase', 'ask_done', 'keep_waiting', 'todo_add', 'todo_edit', 'todo_move'] as const;
+
 export interface GovernorAction {
-  action: 'release' | 'hold' | 'thaw' | 'priority' | 'verified' | 'run' | string;
+  action: (typeof ACTION_WORDS)[number] | string;
   /** The bead it is on; a todo_add names a `list` instead and has none. */
   bead?: string;
   priority?: number;

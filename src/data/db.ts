@@ -33,7 +33,14 @@ export interface PromptsCache {
 // docs/protocol.md's message classes (`card` and `card-update`, §24, are a live card and its changes: kept as rows so a locked phone decrypts them later, but never a message in a list, an unread or a Need; `talk`, §20, is the Talk line's turns and `call`, §21, its call records: never a channel, an unread or a Need). Defined here (not in src/services/messages.ts,
 // which re-exports it) so this file — the leaf data layer — never has to import from
 // the service layer.
-export type MessageClass = 'message' | 'decision-needed' | 'landing' | 'alarm' | 'move-home' | 'talk' | 'call' | 'events' | 'card' | 'card-update';
+export const MESSAGE_CLASS_LIST = ['message', 'decision-needed', 'landing', 'alarm', 'move-home', 'talk', 'call', 'events', 'card', 'card-update'] as const;
+export type MessageClass = (typeof MESSAGE_CLASS_LIST)[number];
+
+/** Classes the backend carries that the phone never stores or shows: `grist` (§19) is an app's AI work for the factory and the mill's answer. */
+export const PHONELESS_CLASSES = ['grist'] as const;
+
+/** Every class docs/fixtures/contract.json lists (tests/unit/contract.test.ts): the phone's own and the ones it never sees. */
+export const WIRE_CLASSES: readonly string[] = [...MESSAGE_CLASS_LIST, ...PHONELESS_CLASSES];
 
 export interface MessageRow {
   /** `${txid}:${vout}` — the record's own on-chain outpoint. */

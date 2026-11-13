@@ -18,7 +18,24 @@ export interface EventBatch {
 }
 
 /** docs/events.md: the kinds a screen subscribes to. */
-export const EVENT_KINDS = ['bead_changed', 'card_asked', 'card_answered', 'card_applied', 'message', 'talk_turn', 'hands_ran', 'mail', 'job'] as const;
+export const EVENT_KINDS = [
+  'bead_changed',
+  'card_asked',
+  'card_answered',
+  'card_applied',
+  'message',
+  'talk_turn',
+  'hands_ran',
+  'mail',
+  'job',
+  'handover',
+  'control',
+  'action_applied',
+  'cloud',
+  'verify_folded',
+  'seat_limited',
+  'seat_past_line',
+] as const;
 
 export type EventKind = (typeof EVENT_KINDS)[number];
 

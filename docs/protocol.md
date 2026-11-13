@@ -996,6 +996,7 @@ and the Mayor is told afterwards. An action is an ordinary message (§1, class
 | --- | --- | --- |
 | `release` | — | releases a held story, or every held story of an epic |
 | `hold` | — | holds an open, unclaimed story |
+| `thaw` | `"priority": 0..4`? (default 3) | takes a story out of the icebox: removes the `icebox` label, sets its priority (3 unless given), comments `Thawed by the Governor via postern, txid …`; refuses an epic (thaw its stories one by one) and a story that is not iced. The app offers it as **Thaw** on an iced bead's page |
 | `priority` | `"priority": 0..4` | sets the bead's priority |
 | `verified` | — | comments `VERIFIED by the Governor via postern (<txid>)` on the story. The app no longer sends this action: its Verified button sends the Verify word as a channel message to the bead, `VERIFIED (tapped Verified <where>)`, naming where it was tapped |
 | `run` | `step`, `sha256`, `approved_at`, `sig` | runs a hands step he approved (§17) |

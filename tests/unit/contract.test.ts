@@ -32,3 +32,14 @@ describe('the grist class (§19)', () => {
     expect(MESSAGE_CLASS_LIST as readonly string[]).not.toContain('grist');
   });
 });
+
+describe('docs/protocol.md §13', () => {
+  it('has a row in its table of action words for every word in the contract', async () => {
+    const { readFileSync } = await import('node:fs');
+    const doc = readFileSync('docs/protocol.md', 'utf8');
+    const section = doc.slice(doc.indexOf('## 13. The Governor'), doc.indexOf('## 14.'));
+    const rows = section.split('\n').filter((line) => line.startsWith('| `'));
+    const missing = (contract.action_words as string[]).filter((word) => !rows.some((row) => row.startsWith(`| \`${word}\` |`)));
+    expect(missing, 'action words with no row in the §13 table').toEqual([]);
+  });
+});

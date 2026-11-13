@@ -35,7 +35,7 @@ const chainSends = vi.fn(async () => 'cd'.repeat(32));
 const accepted = () => new Response(JSON.stringify({ txid: 'direct:' + 'ab'.repeat(32) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
 /** What the backend saw: every POST that reached it, and every GET /api/view?why= it journaled. */
-let backend: { blobs: 'cut' | 'ok'; messages: 'ok' | 'cut'; posted: string[]; whys: string[]; uplink: number };
+let backend: { blobs: 'cut' | 'ok'; messages: 'ok' | 'cut'; posted: string[]; whys: string[]; uplink: number; stall: number };
 
 /** His uplink that evening: the slowest the app waits for (UPLOAD_BYTES_PER_SECOND); what one picture's upload takes is its size over this. */
 const SLOW_UPLINK_BYTES_PER_S = UPLOAD_BYTES_PER_SECOND;
@@ -101,7 +101,7 @@ beforeEach(async () => {
   forgetOutboxState();
   await db.outbox.clear();
   held.reachable = true;
-  backend = { blobs: 'cut', messages: 'ok', posted: [], whys: [], uplink: Infinity };
+  backend = { blobs: 'cut', messages: 'ok', posted: [], whys: [], uplink: Infinity, stall: 0 };
   chainSends.mockClear();
   setChain({ ...realChain, sendText: chainSends } as Chain);
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
@@ -109,7 +109,11 @@ beforeEach(async () => {
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (isChallengeRequest(url)) return challengeResponse();
+      if (isChallengeRequest(url)) {
+        // A loaded host: the work off the fake clock (the seal, the challenge's signing) takes `stall` rounds of real turns.
+        for (let i = 0; i < backend.stall; i++) await letStorageRun();
+        return challengeResponse();
+      }
       if (url.includes('/view?why=')) {
         backend.whys.push(url.slice(url.indexOf('why=') + 4));
         return new Response(null, { status: 304 });
@@ -163,13 +167,17 @@ describe('his report (mw-o14xubc): Unlocked, Live, the count runs from a minute 
     ];
   }
 
-  it('AC-1/AC-6: the picture whose upload outran the 30 s every request was given is given the time its size needs, so it and the typed messages behind it reach the backend within one retry', async () => {
+  it.each([0, 30])('AC-1/AC-6: with %i rounds of real work off the clock per request, the picture whose upload outran the 30 s every request was given is given the time its size needs, so it and the typed messages behind it reach the backend within one retry', async (stall) => {
+    backend.stall = stall;
     const rows = await hisSlowQueue();
     const from = Date.now();
     kickOutbox(true);
-    // One retry's wait at its seventh try, within which the picture crosses the uplink; then until the lane is quiet.
-    await pass(retryDelay(7));
-    await quiet(2 * retryDelay(7));
+    // The clock waits for the upload to be made (the seal and the signing run off it), then passes the time the uplink takes
+    // to carry the picture, well inside one retry's wait at the seventh try; then the sender is waited on, not the clock.
+    await uploadMade();
+    await pass(Math.ceil(PICTURE_BYTES / SLOW_UPLINK_BYTES_PER_S) * 1000 + 1_000);
+    for (let i = 0; i < 250 && backend.posted.length < 4; i++) await letStorageRun();
+    await quiet(retryDelay(7));
     expect([...backend.posted].sort()).toEqual(['blob', 'message', 'message', 'message']);
     expect(chainSends).not.toHaveBeenCalled();
     for (const id of rows) {

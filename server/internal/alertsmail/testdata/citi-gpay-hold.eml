@@ -1,0 +1,42 @@
+Return-Path: <alerts@info6.citi.com>
+Date: Sun, 8 Nov 2026 13:01:52 -0500
+From: Citi Alerts <alerts@info6.citi.com>
+To: PAT <pat@example.com>
+Subject: =?UTF-8?Q?A_$1.00_transaction_was_made_on_your_Costco_Anywhere_account?=
+Message-ID: <citi-gas@citi.example>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="----=_Part_0001"
+
+------=_Part_0001
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+<!DOCTYPE html>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>Citi</title>
+<style>.amt { font-size: 20px; }</style></head>
+<body>
+<div style="display:none">View the transaction details.</div>
+<table><tr><td>CUSTOM ALERT</td></tr></table>
+<table><tr><td align="right">Pat Example<br>Cardmember since 2015<br>Card ending in 5678</td></tr></table>
+<table><tr><td><h2>A transaction of $1.00 was made on your account</h2></td></tr>
+<tr><td>You&rsquo;re receiving this email based on your custom alert settings.</td></tr></table>
+<p>Hi, Pat. The transaction made on your Costco Anywhere account exceeded $0.00. The transaction details are listed below.</p>
+<table>
+<tr><td class="amt" colspan="2">Amount: $1.00</td></tr>
+<tr><td>Card Ending In</td><td>5678</td></tr>
+<tr><td>Merchant</td><td>GOOGLE*GPAY TEMP
+ MOUNTAIN VIEW
+ USA</td></tr>
+<tr><td>Date</td><td>11/08/2026</td></tr>
+<tr><td>Time</td><td>01:01 PM ET</td></tr>
+</table>
+<p>To view transactions on your account or modify your custom alerts, simply visit the Citi Mobile&reg; App or Citi&reg; Online.</p>
+<p>Citi is at your side before, during and after every purchase.</p>
+<table><tr><td><a href="https://online.citi.com/">View Your Account</a></td><td><a href="https://online.citi.com/">Pay Your Bill</a></td><td><a href="https://online.citi.com/">Contact Us</a></td></tr></table>
+<p>ABOUT THIS MESSAGE</p>
+<p>&copy;2026 Citi, Citi and Arc Design and other marks used herein are service marks of Citigroup Inc. or its affiliates.</p>
+<p>&copy;2026 Costco is a registered trademark of Costco Wholesale Corporation. Visa is a registered trademark of Visa International Service Association and used under license.</p>
+<p>To make sure this message goes to your inbox, just add alerts@info6.citi.com to your address book.</p>
+</body></html>
+
+------=_Part_0001--

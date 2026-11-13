@@ -51,7 +51,7 @@ const (
 	KindZelleSent      = "zelle-sent"
 	KindDeposit        = "deposit"
 	KindSermonNotes    = "sermon-notes"
-	// KindHold is a gas pump's $1.00 pre-authorisation (IsPumpHold): kept, never pushed, never a charge to sort.
+	// KindHold is a gas pump's $1.00 pre-authorisation or a Google Pay card check (IsHold): kept, never pushed, never a charge to sort.
 	KindHold = "hold"
 )
 
@@ -192,13 +192,13 @@ func OpenStore(dir string, opts ...Option) (*Store, error) {
 	return s, nil
 }
 
-// holdStoredPumpHolds makes every stored charge the pump-hold rule calls a hold a hold, and writes the
+// holdStoredPumpHolds makes every stored charge the hold rule (IsHold) calls a hold a hold, and writes the
 // file only if one changed, so a second start changes nothing (mw-mr4xgrw.49). Before holds were a
 // kind, a pump's $1.00 pre-authorisation was stored as a charge and waited in the apps until sorted.
 func (s *Store) holdStoredPumpHolds() error {
 	changed := false
 	for i, a := range s.data.Alerts {
-		if a.Kind == KindCharge && IsPumpHold(a.Amount, a.Merchant) {
+		if a.Kind == KindCharge && IsHold(a.Amount, a.Merchant) {
 			s.data.Alerts[i].Kind = KindHold
 			changed = true
 		}

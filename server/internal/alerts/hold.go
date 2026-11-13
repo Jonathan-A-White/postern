@@ -21,6 +21,34 @@ var FuelWords = []string{"GAS", "FUEL"}
 // TestAPumpHoldIsExactlyOneDollarAtAFuelSeller (hold_test.go), and nowhere else.
 var PumpBrands = []string{"SHELL", "EXXONMOBIL", "EXXON", "MOBIL", "BP", "SUNOCO", "CITGO", "GULF", "VALERO", "CHEVRON", "SPEEDWAY", "CUMBERLAND"}
 
+// A Google Pay card check: Google asks the card for $1.00 to see it is good, the alert names the merchant
+// GOOGLE*GPAY TEMP, and it never posts as $1.00 (mw-6ww.148.43). Same kind, same rule of exactly $1.00:
+// a real charge from the same card, or $1.00 at another merchant, is a charge.
+//
+// IsHold is the one question both call sites ask (alertsmail's cardKind, the store's start-up pass): a
+// pump's hold or a card check. A new hold shape is a rule beside the pump's, a row in its
+// table test (hold_test.go), and nowhere else.
+
+// IsHold reports whether a card alert of this amount at this merchant is a hold: kept, never pushed,
+// never a charge to sort.
+func IsHold(amount, merchant string) bool {
+	return IsPumpHold(amount, merchant) || IsCardCheckHold(amount, merchant)
+}
+
+// IsCardCheckHold reports whether a card alert of this amount at this merchant is a Google Pay card
+// check: exactly $1.00 at a merchant whose words are GOOGLE, then GPAY TEMP.
+func IsCardCheckHold(amount, merchant string) bool {
+	return isOneDollar(amount) && isGooglePayTemp(merchant)
+}
+
+// isGooglePayTemp: the merchant's words (split at anything that is not a letter or digit) begin
+// GOOGLE GPAY TEMP, so GOOGLE*GPAY TEMP MOUNTAIN VIEW qualifies, and GOOGLE*GPAY, GOOGLE*GPAYTEMP,
+// GOOGLE*GPAY TEMPLATE and TEMPE MARKET do not.
+func isGooglePayTemp(merchant string) bool {
+	words := strings.FieldsFunc(strings.ToUpper(merchant), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	return len(words) >= 3 && words[0] == "GOOGLE" && words[1] == "GPAY" && words[2] == "TEMP"
+}
+
 // IsPumpHold reports whether a card alert of this amount at this merchant is a pump's $1.00 hold.
 func IsPumpHold(amount, merchant string) bool {
 	return isOneDollar(amount) && isFuelSeller(merchant)

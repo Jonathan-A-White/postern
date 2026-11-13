@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.121
+_2026-11-13_
+- Fixed: A temporary $1.00 Google Pay card check no longer sends a "New alert" ping or asks to be sorted.
+
 ## 0.8.105
 _2026-11-12_
 - Fixed: Home no longer shows a red Emergencies row, or a count of old ones, when no emergency is open.

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.121",
+    "date": "2026-11-13",
+    "story": "mw-6ww.148.43",
+    "kind": "fixed",
+    "text": "A temporary $1.00 Google Pay card check no longer sends a \"New alert\" ping or asks to be sorted."
+  },
+  {
     "version": "0.8.105",
     "date": "2026-11-12",
     "story": "mw-mr4xgrw.54",

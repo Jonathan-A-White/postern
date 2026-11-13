@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . && cd server && go vet ./...",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

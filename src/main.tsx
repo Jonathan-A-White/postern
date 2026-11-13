@@ -6,6 +6,7 @@ import 'voice-kit/speech/styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import { startAppUpdates } from 'pwa-kit/app-update';
+import { updateOptions } from './services/whatsNew';
 import { installScrollGuard } from './ui/scrollGuard';
 import { restoreLastRoute } from './nav/lastRoute';
 import { restoreScrolls } from './nav/scrollMemory';
@@ -23,10 +24,11 @@ createRoot(document.getElementById('root')!).render(
 
 // The worker registers here (vite.config.ts: registerType 'prompt', so a new build waits for his tap on
 // the banner). The registration is handed to the update logic, which shows the banner, sends
-// SKIP_WAITING on the tap, reloads once, and looks for a new build (pwa-kit/app-update).
+// SKIP_WAITING on the tap, reloads once, and looks for a new build (pwa-kit/app-update). A build whose
+// changelog has no line for him (tests, lint, a version bump) raises no banner and is taken quietly (updateOptions).
 registerSW({
   immediate: true,
   onRegisteredSW(_url, registration) {
-    if (registration) startAppUpdates({ container: navigator.serviceWorker, registration, reload: () => window.location.reload() });
+    if (registration) startAppUpdates({ container: navigator.serviceWorker, registration, reload: () => window.location.reload() }, updateOptions());
   },
 });

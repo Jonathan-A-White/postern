@@ -59,6 +59,9 @@ func TestAPumpHoldAtAFuelSellerIsAHoldWhicheverBankSentIt(t *testing.T) {
 	}{
 		{"chase-gas-hold.eml", Facts{Kind: alerts.KindHold, Amount: "1.00", Merchant: "COSTCO GAS #0304 BROOKFIELD US", Last4: "5678", When: "2026-11-08T13:01:00-05:00"}},
 		{"citi-gas-hold.eml", Facts{Kind: alerts.KindHold, Amount: "1.00", Merchant: "COSTCO GAS #0304 BROOKFIELD US", Last4: "5678", When: "2026-11-08T13:01:00-05:00"}},
+		// a Google Pay card check: $1.00 at GOOGLE*GPAY TEMP, never posted (mw-6ww.148.43)
+		{"chase-gpay-hold.eml", Facts{Kind: alerts.KindHold, Amount: "1.00", Merchant: "GOOGLE*GPAY TEMP MOUNTAIN VIEW USA", Last4: "5678", When: "2026-11-08T13:01:00-05:00"}},
+		{"citi-gpay-hold.eml", Facts{Kind: alerts.KindHold, Amount: "1.00", Merchant: "GOOGLE*GPAY TEMP MOUNTAIN VIEW USA", Last4: "5678", When: "2026-11-08T13:01:00-05:00"}},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			if got := Parse(fixture(t, tc.file)); got != tc.want {
@@ -88,6 +91,32 @@ func TestOnlyExactlyOneDollarAtAFuelSellerIsAHold(t *testing.T) {
 					t.Fatalf("Parse = %+v, want kind %s", got, tc.want)
 				}
 				if tc.want == alerts.KindCharge && (got.Amount == "" || got.Merchant == "") {
+					t.Fatalf("a charge lost its facts: %+v", got)
+				}
+			})
+		}
+	}
+}
+
+// A real charge from the same Google Pay card, and $1.00 at an ordinary shop, are still charges and still
+// push (mw-6ww.148.43).
+func TestOnlyExactlyOneDollarAtGooglePayTempIsAHold(t *testing.T) {
+	for _, file := range []string{"chase-gpay-hold.eml", "citi-gpay-hold.eml"} {
+		raw := string(fixture(t, file))
+		for _, tc := range []struct {
+			name, from, to string
+			want           string
+		}{
+			{"a real charge from the same card", "$1.00", "$12.99", alerts.KindCharge},
+			{"a dollar at an ordinary shop", "GOOGLE*GPAY TEMP", "TEMPE MARKET", alerts.KindCharge},
+			{"a dollar at another Google charge", "GOOGLE*GPAY TEMP", "GOOGLE*YOUTUBEPREMIUM", alerts.KindCharge},
+		} {
+			t.Run(file+" "+tc.name, func(t *testing.T) {
+				got := Parse([]byte(strings.ReplaceAll(raw, tc.from, tc.to)))
+				if got.Kind != tc.want {
+					t.Fatalf("Parse = %+v, want kind %s", got, tc.want)
+				}
+				if got.Amount == "" || got.Merchant == "" {
 					t.Fatalf("a charge lost its facts: %+v", got)
 				}
 			})
@@ -642,7 +671,7 @@ func TestAMailThatNearlyFitsAParserButIsUnreadLogsWhichCheckFailed(t *testing.T)
 // A mail that is read, one no parser nearly fits, and a mail that one parser
 // misses but another reads, log nothing of this kind.
 func TestOnlyAMailThatNearlyFitsAndIsUnreadLogsAMiss(t *testing.T) {
-	for _, file := range []string{"subsplash-notes.eml", "chase.eml", "chase-amazon.eml", "citi.eml", "citi-costco.eml", "chase-gas-hold.eml", "citi-gas-hold.eml", "pnc-zelle-sent.eml", "pnc-deposit.eml", "amazon-order.eml", "unknown.eml"} {
+	for _, file := range []string{"subsplash-notes.eml", "chase.eml", "chase-amazon.eml", "citi.eml", "citi-costco.eml", "chase-gas-hold.eml", "citi-gas-hold.eml", "chase-gpay-hold.eml", "citi-gpay-hold.eml", "pnc-zelle-sent.eml", "pnc-deposit.eml", "amazon-order.eml", "unknown.eml"} {
 		if _, logged := parseLogged(t, fixture(t, file)); logged != "" {
 			t.Errorf("%s: logged %q, want nothing", file, logged)
 		}

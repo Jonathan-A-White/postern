@@ -176,10 +176,10 @@ func parseChase(m mailView) (Facts, bool) {
 	return f, true
 }
 
-// cardKind is the kind of a card alert: a charge, unless it is a gas pump's $1.00 pre-authorisation
-// (alerts.IsPumpHold), which never posts as $1.00 and is a hold.
+// cardKind is the kind of a card alert: a charge, unless it is a gas pump's $1.00 pre-authorisation or a
+// Google Pay card check (alerts.IsHold), which never post as $1.00 and are holds.
 func cardKind(f Facts) string {
-	if alerts.IsPumpHold(f.Amount, f.Merchant) {
+	if alerts.IsHold(f.Amount, f.Merchant) {
 		return alerts.KindHold
 	}
 	return alerts.KindCharge

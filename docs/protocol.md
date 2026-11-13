@@ -2567,7 +2567,7 @@ One alert is parsed facts, as JSON:
 | `notes_sha256` | a `sermon-notes` alert's notes PDF: the sha256 of its bytes, 64 hex characters; only when the alert has notes, given by the backend |
 | `notes_size` | the same PDF's size in bytes, at most 5 MiB (5242880); only with `notes_sha256` |
 
-A `hold` is a gas pump's pre-authorisation, a card alert of exactly $1.00 at a fuel seller (a merchant whose name holds the word GAS or FUEL, or begins with a pump brand, `alerts.IsPumpHold`); it never posts as $1.00, so it is stored and listed, sends no push and is no charge to sort, and a charge the rule calls a hold that was stored before is made a hold once when the backend starts (the Governor, 2026-11-11; `mw-mr4xgrw.49`).
+A `hold` is a gas pump's pre-authorisation, a card alert of exactly $1.00 at a fuel seller (a merchant whose name holds the word GAS or FUEL, or begins with a pump brand, `alerts.IsPumpHold`) or a Google Pay card check, exactly $1.00 at a merchant whose words begin GOOGLE GPAY TEMP (`alerts.IsCardCheckHold`; `alerts.IsHold` asks both, `mw-6ww.148.43`); it never posts as $1.00, so it is stored and listed, sends no push and is no charge to sort, and a charge the rule calls a hold that was stored before is made a hold once when the backend starts (the Governor, 2026-11-11; `mw-mr4xgrw.49`).
 
 A `sermon-notes` alert is the forwarded Subsplash notes mail's title, passage and date and, when the mail had exactly
 one attached PDF (by its type, `application/pdf`, or a `.pdf` file name) that begins `%PDF-` and is at most 5 MiB,

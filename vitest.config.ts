@@ -48,7 +48,7 @@ export default defineConfig({
     hookTimeout: vitestTimeouts.hookTimeout,
     // voice-kit/composer is run through vite, not loaded by node on its own, so a test can vi.mock one of
     // its inner modules (the voice recorder) and the package's own hold sees the double (mw-jtzpw0.2).
-    server: { deps: { inline: ['voice-kit', 'pwa-kit', 'bsv-kit'] } },
+    server: { deps: { inline: ['voice-kit', 'pwa-kit'] } },
     projects: [
       // MW_TIMING (the rig's timing tests, left out of the gate with MW_TIMING=skip) is read here, per project.
       { extends: true, test: { name: 'main', ...timingFilter({ include: MAIN_INCLUDE, exclude: BUILD_FILES }) } },

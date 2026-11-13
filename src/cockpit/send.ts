@@ -23,7 +23,7 @@ import { recordedNoteNow } from '../services/ideasOnly';
 import type { TalkTurn } from '../model/talkLine';
 import { threadKey, type ThreadRef } from '../services/threads';
 import { toast } from '../ui/toastStore';
-import { useAlive } from '../ui/useAlive';
+import { useAlive } from 'pwa-kit/alive';
 import { navigate } from '../router';
 import type { Route } from '../nav/route';
 

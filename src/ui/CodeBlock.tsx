@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { copyText } from './copyText';
 import { cx } from './tokens';
-import { useAlive } from './useAlive';
+import { useAlive } from 'pwa-kit/alive';
 
 type CopyState = 'idle' | 'copied' | 'failed';
 

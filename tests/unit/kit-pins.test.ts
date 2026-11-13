@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest'
 // in dependencies has its install scripts skipped.
 const PINS: Record<string, string> = {
   'voice-kit': 'c5f76b2b7044d00eaecc827a7cbdce5b802768b0',
-  'bsv-kit': '4dbd874edc1f5d6c151b0980ccaa9fcc60799d6a',
   'pwa-kit': '182d2890c5d57c93d5b978da2981276d8f3f3e80',
   'audible-kit': '273fadf8733ab4c99fbbfcde618a8eeb6d5fb0d4',
 }

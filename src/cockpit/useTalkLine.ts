@@ -20,7 +20,7 @@ import { announceAnswer, clearAnnouncement } from '../services/talkAnswerNotice'
 import { refuseFile, sendTurn } from './send';
 import { toPicked } from './pickedFile';
 import { toast } from '../ui/toastStore';
-import { useAlive } from '../ui/useAlive';
+import { useAlive } from 'pwa-kit/alive';
 import { useBeadTitles, useTalkTurns } from './hooks';
 import { useMayorHere } from './useMayorHere';
 import { useRecordedWords } from './useIdeasOnly';

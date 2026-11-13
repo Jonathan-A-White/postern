@@ -10,7 +10,7 @@ import { publicKeyHexFromMasterKey } from '../services/vault';
 import { issuedTimes, rememberIssuedAt } from './issuedDates';
 import { hasBarcodeDetector } from './barcode';
 import { Scanner } from './Scanner';
-import { useAlive } from '../ui/useAlive';
+import { useAlive } from 'pwa-kit/alive';
 
 const WHATSONCHAIN_TESTNET_TX_URL = 'https://test.whatsonchain.com/tx/';
 

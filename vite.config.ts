@@ -2,13 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import { readFileSync } from 'fs';
 import { fileURLToPath } from 'node:url';
 import { pwaManifest } from './pwa-manifest';
 import { injectManifestOptions } from './pwa-precache';
-import { buildStampAt, buildStampHtml, buildVersion, shortCommit } from './build-version';
-
-const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+import { buildStampAt, buildStampHtml, buildVersion, packageVersion, shortCommit } from './build-version';
 
 // The build stamp rides in index.html, not in a chunk, and the libraries from node_modules that the first
 // screen needs sit in a chunk of their own: a build whose app code is unchanged gives the main chunk the
@@ -71,7 +68,7 @@ export default defineConfig({
     {
       name: 'postern-build-stamp',
       transformIndexHtml: () => [
-        { tag: 'script', children: buildStampHtml(buildVersion(pkg.version, stampedAt, shortCommit())), injectTo: 'head-prepend' },
+        { tag: 'script', children: buildStampHtml(buildVersion(packageVersion(), stampedAt, shortCommit())), injectTo: 'head-prepend' },
       ],
     },
     react(),

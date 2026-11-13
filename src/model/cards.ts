@@ -9,7 +9,7 @@ export type CardRecord = NonNullable<CardRow['card']>;
 export type CardUpdateRecord = Pick<StoredCardUpdate, 'items' | 'links' | 'tick'> & { re: string };
 
 /** The states an item may expect of a bead (domain/card.go ExpectStates). */
-export const EXPECT_STATES = ['open', 'landed', 'verified', 'closed', 'answered'] as const;
+export const EXPECT_STATES = ['open', 'landed', 'verified', 'closed', 'answered', 'held'] as const;
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;

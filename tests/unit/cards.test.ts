@@ -49,6 +49,11 @@ describe('decoding', () => {
     expect(card?.items[0].expect).toBeUndefined();
   });
 
+  it('keeps an expectation that names the state held, as millwright\'s ExpectStates does', () => {
+    const card = decodeCard(JSON.stringify({ title: 'T', items: [{ n: 1, text: 'x', expect: { bead: 'mw-a.1', state: 'held' } }] }), T0);
+    expect(card?.items[0].expect).toEqual({ bead: 'mw-a.1', state: 'held' });
+  });
+
   it('refuses plaintext that is not a card, or an update that names no card', () => {
     expect(decodeCard('plain words', T0)).toBeUndefined();
     expect(decodeCard(JSON.stringify({ items: [] }), T0)).toBeUndefined();

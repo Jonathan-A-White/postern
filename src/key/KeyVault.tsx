@@ -18,7 +18,7 @@ import { chain, type LicenceStatus } from '../chain';
 import { COCKPIT_COLLECTION, LEGACY_LICENCE_COLLECTION } from '../services/collections';
 import { plainMessage } from '../services/chainBusy';
 import { MyPublicKey } from './KeyQr';
-import { useAlive } from '../ui/useAlive';
+import { useAlive } from 'pwa-kit/alive';
 
 type CopyStatus = 'idle' | 'copied' | 'unavailable';
 

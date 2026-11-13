@@ -3,7 +3,7 @@
 // path (qr.ts), so nothing touches a canvas or injects markup.
 import { useState } from 'react';
 import { qrPath } from './qr';
-import { useAlive } from '../ui/useAlive';
+import { useAlive } from 'pwa-kit/alive';
 
 const QUIET_ZONE = 4;
 

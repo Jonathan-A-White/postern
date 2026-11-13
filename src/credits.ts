@@ -180,15 +180,6 @@ export const CREDIT_GROUPS: CreditGroup[] = [
         covers: ['spell-forge-bsv'],
       },
       {
-        name: 'bsv-kit',
-        url: 'https://github.com/Jonathan-A-White/bsv-kit',
-        use: "The Governor's shared BSV library; still pinned in package.json, but nothing in src imports it since What's new moved to pwa-kit.",
-        ...MIT,
-        licenceUrl: 'https://github.com/Jonathan-A-White/bsv-kit/blob/main/LICENSE',
-        changes: AS_PUBLISHED,
-        covers: ['bsv-kit'],
-      },
-      {
         name: 'pwa-kit',
         url: 'https://github.com/Jonathan-A-White/pwa-kit',
         use: "The Governor's shared PWA library: What's new (the Update ready summary, the sheet after an update).",

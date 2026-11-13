@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { settingsRepo } from '../data/repositories';
 import { onUntil, recordedWords, type IdeasOnlyKept, type IdeasOnlySetting } from '../model/ideasOnly';
 import { useNow } from '../ui/useNow';
-import { useAlive } from '../ui/useAlive';
+import { useAlive } from 'pwa-kit/alive';
 import { getIdeasOnly, putIdeasOnly } from '../services/ideasOnly';
 import { publicKeyHexFromMasterKey } from '../services/vault';
 import { useLiveQuery, useUnlockedKey } from './hooks';

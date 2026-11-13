@@ -8,7 +8,9 @@ import { eventsRepo, messagesRepo } from '../../src/data/repositories';
 import { twinsToDrop } from '../../src/model/twins';
 import { cursorStepsTaken, phonePaceCursors } from '../../tests/support/phone-cursor';
 
-const LONG = EVENTS_KEPT + 500;
+/** A few past EVENTS_KEPT, not hundreds: fake-indexeddb deletes a row in time that grows with the table, so cutting 500 of 5,500
+ * took 14 s of the 40 s test timeout on a loaded host (mw-gq6.1230); cutting 50 takes a second and asserts the same seqs. */
+const LONG = EVENTS_KEPT + 50;
 const MESSAGES = 400;
 /** A walk of 400 messages is 400 steps; an index read and a bulk delete take a handful. */
 const A_FEW_STEPS = 20;

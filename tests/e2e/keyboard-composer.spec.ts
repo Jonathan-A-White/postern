@@ -42,6 +42,34 @@ async function unlock(page: Page): Promise<void> {
   await page.getByLabel('Recovery phrase').fill(mnemonic);
   await page.getByRole('button', { name: 'Unlock' }).click();
   await expect(page.getByTestId('need-card').first()).toBeVisible();
+  await sessionKept(page);
+}
+
+/** The daily unlock is kept on the phone a moment after the screen shows (keySession.setKey wraps the key and writes it without
+ * being waited for). A reload before that write lands meets the door again, so the Emergency banner never shows (mw-6ww.175.33):
+ * a spec that reloads waits until the session row is stored. */
+async function sessionKept(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<number>((resolve, reject) => {
+            const open = indexedDB.open('PosternDB');
+            open.onerror = () => reject(open.error);
+            open.onsuccess = () => {
+              const db = open.result;
+              const count = db.transaction(['session'], 'readonly').objectStore('session').count();
+              count.onsuccess = () => {
+                db.close();
+                resolve(count.result);
+              };
+              count.onerror = () => reject(count.error);
+            };
+          }),
+      ),
+      { message: 'the daily unlock is stored on the phone before the page reloads' },
+    )
+    .toBeGreaterThan(0);
 }
 
 /** An emergency (§22) the phone holds and he has not tapped away: written into the events store, then the page reloads to read it. */

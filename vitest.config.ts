@@ -1,8 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import { readFileSync } from 'fs';
 import { timingFilter, vitestTimeouts } from 'pwa-kit/test-preset';
-import { buildStampAt, buildVersion, shortCommit } from './build-version';
+import { buildStampAt, buildVersion, packageVersion, shortCommit } from './build-version';
 
 const MAIN_INCLUDE = [
   'tests/unit/**/*.test.ts',
@@ -22,12 +21,10 @@ const BUILD_FILES = [
 const buildsFilter = () =>
   process.env.MW_TIMING === 'only' ? { include: [] as string[] } : timingFilter({ include: BUILD_FILES });
 
-const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
-
 export default defineConfig({
   plugins: [react()],
   define: {
-    __APP_VERSION__: JSON.stringify(buildVersion(pkg.version, buildStampAt(), shortCommit())),
+    __APP_VERSION__: JSON.stringify(buildVersion(packageVersion(), buildStampAt(), shortCommit())),
   },
   test: {
     globals: true,

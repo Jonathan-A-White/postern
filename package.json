@@ -2,7 +2,7 @@
   "name": "postern",
   "private": true,
   "license": "MIT",
-  "version": "0.8.115",
+  "version": "0.8.116",
   "type": "module",
   "scripts": {
     "dev": "vite",

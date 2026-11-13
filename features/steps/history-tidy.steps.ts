@@ -33,7 +33,10 @@ function longConversation(): MessageRow[] {
 }
 
 const TWIN_PAIRS = 100;
-const TWIN_MESSAGES = 20_000;
+/** Thousands of rows, not tens of thousands: the twins are found by one look at each message at any length (AC-2 holds the
+ * 20,000), but fake-indexeddb deletes a row in time that grows with the table (each delete scans the index records), so
+ * deleting the ~400 chain copies from 20,000 rows took ~26 s of the 40 s test timeout (mw-gq6.1224). Chrome's does not. */
+const TWIN_MESSAGES = 1_000;
 
 /** TWIN_MESSAGES rows in which TWIN_PAIRS * 3 answers are each also held under a chain txid (a third of them first, a third twice over). */
 function twinned(): MessageRow[] {

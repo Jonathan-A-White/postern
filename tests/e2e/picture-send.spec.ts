@@ -9,7 +9,7 @@ import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
 import { LONG_LINK_ROOT_TXID } from '../support/cockpit-fixture';
-import { hostSlowdown } from './host-slowdown';
+import { hostSlowdown, watchHostSlowdown } from './host-slowdown';
 
 // the width the shots run is at (390 unless `npm run shots` is on another size): nothing may be wider than it
 const PHONE_WIDTH = sized({ width: 390, height: 844 }).width;
@@ -244,6 +244,8 @@ test('a text and a 2 MB photo each show in the thread at once and leave the comp
   await expect(box).toBeVisible();
 
   const hostBefore = await hostSlowdown(page);
+  // mw-6ww.175.33: and the host all the way through, read by a page of its own: another worker's slow test that starts mid-send is in neither end's reading
+  const hostDuring = await watchHostSlowdown(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: PHONE_CPU });
   const send = page.getByRole('button', { name: 'Send', exact: true });
@@ -276,9 +278,10 @@ test('a text and a 2 MB photo each show in the thread at once and leave the comp
   // taken while the other workers were still starting held a photo that then met 10x to 13x to a 5x promise (shown 6319 ms of 5047).
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   const hostAfter = await hostSlowdown(page);
-  const host = Math.max(hostBefore, hostAfter);
+  const hostWorst = await hostDuring.stop();
+  const host = Math.max(hostBefore, hostAfter, hostWorst);
   const [freeWithin, shownWithin, busyAtMost] = [FREE_WITHIN_MS * host, SHOWN_WITHIN_MS * host, BUSY_AT_MOST_MS * host];
-  console.log(`mw-8xe671n host ${hostBefore.toFixed(1)}x before the sends, ${hostAfter.toFixed(1)}x after: the promise is scaled by ${host.toFixed(1)}x`);
+  console.log(`mw-8xe671n host ${hostBefore.toFixed(1)}x before the sends, ${hostAfter.toFixed(1)}x after, ${hostWorst.toFixed(1)}x at its worst between: the promise is scaled by ${host.toFixed(1)}x`);
 
   expect(text.free, 'the composer is free after a text').toBeLessThan(freeWithin);
   expect(picture.free, 'the composer is free after a photo').toBeLessThan(freeWithin);

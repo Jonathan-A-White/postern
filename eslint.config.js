@@ -5,6 +5,8 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import noOneshotFindAssert from './eslint-rules/no-oneshot-find-assert.js';
+import layers from './eslint-rules/layers.js';
+import { LAYERS, INVERSIONS } from './eslint-rules/layer-inversions.js';
 
 // The chain files: the code that talks to the chain (WhatsOnChain, the backend's coin and
 // broadcast routes, spell-forge-bsv's chain provider). Everything else under src reaches the
@@ -46,6 +48,14 @@ export default defineConfig([
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/chain.ts', 'src/services/**', ...CHAIN_COMPONENTS],
     rules: refuseChainModules(CHAIN_MODULES.map((name) => `**/services/${name}`)),
+  },
+  {
+    // mw-6ww.175.11: data under model under services under the screens. The upward imports that exist are
+    // listed in eslint-rules/layer-inversions.js; a new one is refused, and tests/unit/layers.test.ts keeps
+    // the list from growing.
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { postern: { rules: { layers } } },
+    rules: { 'postern/layers': ['error', { layers: LAYERS, inversions: INVERSIONS }] },
   },
   {
     // mw-gq6.362: findBy* resolves when the element exists, so a text or state matcher asserted once on its

@@ -3,7 +3,8 @@
 // tap on it makes the new worker take over and the page reload once. The "newer build" is the built
 // sw.js served with one more comment line, so the browser sees changed bytes and installs it. The
 // line is added by an origin of the test's own (tests/support/build-origin.ts) because the browser's
-// update check fetches sw.js where context.route does not see it (mw-qtu3zvz.49.21).
+// update check fetches sw.js where context.route does not see it (mw-qtu3zvz.49.21). The banner is raised only for a
+// build whose changelog has a line after the running version (mw-6ww.175.34), so the changelog is routed with one.
 import { test, expect } from '@playwright/test';
 import { startBuildOrigin } from '../support/build-origin';
 import { shot } from './shot';
@@ -11,6 +12,8 @@ import { shot } from './shot';
 test.use({ serviceWorkers: 'allow' });
 
 test('a newer build waits, the banner shows, one tap loads it and the page reloads once', async ({ page, baseURL }) => {
+  const changelog = [{ version: '99.1.0', date: '2026-12-01', story: 'a', kind: 'new', text: 'Pin a message to the top.' }];
+  await page.route('**/changelog.json', (route) => route.fulfill({ json: changelog, headers: { 'cache-control': 'no-store' } }));
   const origin = await startBuildOrigin(baseURL!);
   try {
     const registration = () =>

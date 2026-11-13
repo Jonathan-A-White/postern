@@ -14,7 +14,7 @@ import { retryDelay } from '../../src/model/outbox';
 import { settlePhone } from '../support/empty-phone';
 import { challengeResponse, isChallengeRequest } from '../support/challenge-fetch';
 
-const net = vi.hoisted(() => ({ key: new Uint8Array(Array.from({ length: 32 }, (_, i) => i + 1)), mayorKey: '', syncOk: false, probes: 0, posted: 0, streams: 0, latencyMs: 200 }));
+const net = vi.hoisted(() => ({ key: new Uint8Array(Array.from({ length: 32 }, (_, i) => i + 1)), mayorKey: '', syncOk: false, probes: 0, posted: 0, streams: 0, latencyMs: 200, working: 0 }));
 
 vi.mock('../../src/services/keySession', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/keySession')>()),
@@ -52,8 +52,15 @@ async function letStorageRun(): Promise<void> {
   for (let i = 0; i < 40; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
+/** Lets the work off the fake clock finish before the clock moves on: time passed while a request's challenge is still being made
+ * would run the live loop's own timers (probe, back-off, stream retry) out of step with the answers, on a loaded host (mw-gq6.1270). */
+async function workDone(): Promise<void> {
+  for (let i = 0; i < 250 && net.working > 0; i++) await letStorageRun();
+}
+
 async function pass(ms: number): Promise<void> {
   for (let spent = 0; spent < ms; spent += 250) {
+    await workDone();
     await vi.advanceTimersByTimeAsync(Math.min(250, ms - spent));
     await letStorageRun();
   }
@@ -81,7 +88,16 @@ beforeEach(async () => {
       const url = String(input);
       // A phone's round trip: the sender's own storage reads finish well before the network answers.
       await new Promise((resolve) => setTimeout(resolve, net.latencyMs));
-      if (isChallengeRequest(url)) return challengeResponse();
+      if (isChallengeRequest(url)) {
+        // A loaded host: the work off the fake clock (the seal, the challenge's signing) takes 1200 real turns.
+        net.working++;
+        try {
+          for (let i = 0; i < 1200; i++) await new Promise((resolve) => setImmediate(resolve));
+        } finally {
+          net.working--;
+        }
+        return challengeResponse();
+      }
       // The stream never stays up: his phone's dropped again and again.
       if (url.endsWith('/events')) {
         net.streams += 1;

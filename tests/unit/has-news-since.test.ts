@@ -1,8 +1,8 @@
 // tests/unit/has-news-since.test.ts: the judge Postern hands pwa-kit/app-update (mw-6ww.175.34): it reads the changelog fresh
 // and says whether any line is after the running version; a changelog it cannot read rejects, so the banner is offered.
 import { describe, expect, it } from 'vitest';
-import type { ChangelogEntry } from 'pwa-kit/whats-new';
-import { hasNewsSince } from '../../src/services/whatsNew';
+import { hasNewsSince, type ChangelogEntry } from 'pwa-kit/whats-new';
+import { APP_VERSION, updateOptions } from '../../src/services/whatsNew';
 
 const entry = (version: string): ChangelogEntry => ({ version, date: '2026-11-13', story: 'fx-1', kind: 'fixed', text: 'A line.' });
 
@@ -21,5 +21,13 @@ describe('hasNewsSince', () => {
 
   it('rejects when the read rejects', async () => {
     await expect(hasNewsSince(() => Promise.reject(new Error('offline')))('0.8.105')).rejects.toThrow('offline');
+  });
+
+  it('is what Postern hands app-update: the running version and the shared judge over the changelog it reads', async () => {
+    const quiet = updateOptions(async () => [entry(APP_VERSION)]);
+    expect(quiet.version).toBe(APP_VERSION);
+    await expect(quiet.hasNewsSince?.(APP_VERSION)).resolves.toBe(false);
+    await expect(updateOptions(async () => [entry('99.0.0')]).hasNewsSince?.(APP_VERSION)).resolves.toBe(true);
+    await expect(updateOptions(async () => null).hasNewsSince?.(APP_VERSION)).rejects.toThrow();
   });
 });

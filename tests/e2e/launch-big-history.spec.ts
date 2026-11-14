@@ -87,11 +87,14 @@ test(`${MESSAGES} stored messages: the app paints within 1 s of load and the doo
       if (root && /Recovery phrase/.test(root.textContent ?? '') && marks.door === undefined) marks.door = performance.now();
     }).observe(document, { childList: true, subtree: true, characterData: true });
   });
+  // mw-6ww.175.56: the host read before the navigation and after the marks, the larger counts. A burst of load that
+  // slows the launch and has passed by the reading after it is seen by the one before (page is on the seeded origin).
+  const slowdownBefore = await hostSlowdown(page);
   await page.goto('/');
   await expect(page.getByLabel('Recovery phrase')).toBeVisible({ timeout: 20_000 });
   const marks = await page.evaluate(() => (window as unknown as { __marks: Record<string, number> }).__marks);
   console.log(`launch with ${MESSAGES} messages: first paint ${Math.round(marks.paint)} ms, door ${Math.round(marks.door)} ms`);
-  const slowdown = await hostSlowdown(page);
+  const slowdown = Math.max(slowdownBefore, await hostSlowdown(page));
   expect(marks.paint, 'the app paints its own screen').toBeLessThan(1000 * slowdown);
   expect(marks.door, 'the door is reached').toBeLessThan(3000 * slowdown);
   // The clean-ups ran after the door was shown: the events rows and the twins are gone, the real messages stay.

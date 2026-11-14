@@ -10,7 +10,7 @@ import { PrivateKey } from '@bsv/sdk';
 import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
-import { CALM_SPIN_MS, HostWatch } from './host-slowdown';
+import { CALM_SPIN_MS, HostWatch, hostSlowdown } from './host-slowdown';
 import { needsBadgeShows, SLOWED_WAIT_MS } from './needs-badge';
 import { LIVE_SIZE, liveShapeView, type ViewSize } from '../support/live-shape-view';
 
@@ -200,9 +200,12 @@ test('a Needs you badge that never shows fails the wait, with the page in the me
 
 test('a Needs you badge that shows ends the wait at once', async ({ page }) => {
   await page.setContent('<nav aria-label="Places"><a href="/x">Needs you <span>12+</span></a></nav>');
+  // mw-6ww.175.56: the 5 s is real time, scaled by the larger of the host read before and after.
+  const before = await hostSlowdown(page);
   const started = Date.now();
   await needsBadgeShows(page, 60_000);
-  expect(Date.now() - started).toBeLessThan(5000);
+  const took = Date.now() - started;
+  expect(took).toBeLessThan(5000 * Math.max(before, await hostSlowdown(page)));
 });
 
 // mw-gq6.908: a spin is the most a slowed browser pays for on every tap (2 s in the page, 1-10 s on the wall at host 33x

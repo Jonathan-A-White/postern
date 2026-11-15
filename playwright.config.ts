@@ -41,6 +41,9 @@ export default defineConfig({
   // pwa-kit/test-preset: a test's 60 s and expect()'s 20 s (its own wait is 5 s) on a loaded host (mw-40qzg4.1).
   ...playwrightTimeouts,
   fullyParallel: false,
+  // mw gives a gate, an after-landing run and a Builder's test run JOBS (builder_jobs); Playwright reads its worker
+  // count only from here. Unset, Playwright's own default (half the cores) stands (mw-6ww.175.69).
+  workers: process.env.JOBS ? Number(process.env.JOBS) : undefined,
   // One more run, on a fresh browser, for a test whose page setup the watch stopped because the page's target detached
   // (mw-gq6.946); every other failure is marked not to be retried by the watch, so it fails once, as it always did.
   retries: 1,

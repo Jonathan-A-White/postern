@@ -4,7 +4,7 @@
 // answers from the stored `talk` records, speak them, count the wait, and keep the
 // screen awake while a talk is open.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { initialTalkLine, endTurn, MAX_TALK_FILES, isLateAnswer, talkLine, turnRecords, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
+import { initialTalkLine, busyWords, endTurn, MAX_TALK_FILES, isLateAnswer, talkLine, turnRecords, NO_ANSWER_IN_TIME, type TalkAbout, type TalkLineEvent, type TalkTurn } from '../model/talkLine';
 import { initialTalkScreen, talkScreenReducer } from '../model/talkScreen';
 import { earlierTalks, openTalk } from '../model/talkLog';
 import { messagesRepo } from '../data/repositories';
@@ -36,8 +36,22 @@ const NO_ROWS: never[] = [];
 /** The speech key of 'Recorded for after 21:00' said over a turn, apart from the Mayor's answer's. */
 const RECORDED_KEY = 'talk-recorded';
 
-/** `fresh`: the screen was opened to start a new talk (a Talk button says what it is about), so the open one is left as it is. */
-export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
+/** What begin() says: the line took the turn, or did not and says why in the words the screen shows. */
+export type WordsBegin = { taken: true } | { taken: false; status: string };
+
+/** A turn made from words with no hold of the button and no microphone: for whatever hears or reads the words itself. */
+export interface TalkWords {
+  begin(): WordsBegin;
+  heard(text: string): void;
+  send(text: string): void;
+  cancel(): void;
+}
+
+/**
+ * `fresh`: the screen was opened to start a new talk (a Talk button says what it is about), so the open one is left as it is.
+ * `onAnswerSpoken`: called once each time a real answer has been spoken to its end (not a holding reply, not one cut or paused, not one kept unspoken).
+ */
+export function useTalkLine({ fresh = false, onAnswerSpoken }: { fresh?: boolean; onAnswerSpoken?: () => void } = {}) {
   const [{ line, log }, dispatch] = useReducer(talkScreenReducer, initialTalkLine, initialTalkScreen);
   // What keeps the phone awake for the open talk; any event but the wait's own tick (a hold, an answer, a tap) re-arms it (mw-1ox07o.1).
   const holds = useRef(new Set<IdleHold>());
@@ -51,11 +65,18 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     },
     [alive],
   );
+  const answerSpoken = useRef(onAnswerSpoken);
+  useEffect(() => {
+    answerSpoken.current = onAnswerSpoken;
+  }, [onAnswerSpoken]);
   const setAbout = useCallback((about?: TalkAbout) => feed({ type: 'setAbout', about }), [feed]);
   const stored = useTalkTurns();
   const turns = stored ?? NO_ROWS;
   // Listening while the button is held is the hold's (useHold, shared with the composer); a recogniser that fails mid-hold ends the turn.
   const hold = useHold({ appName: APP_NAME, onFailed: () => feed({ type: 'cancel' }) });
+  // Whether the open turn came from words (not a hold), and the words heard so far.
+  const [wordsOn, setWordsOn] = useState(false);
+  const [wordsHeard, setWordsHeard] = useState('');
   const handled = useRef(new Set<string>());
   const sending = useRef<TalkTurn | undefined>(undefined);
   // Bead titles for the voice (mw-gq6.224): read through a ref so a view refresh never restarts speech.
@@ -181,7 +202,18 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     let fallback: ReturnType<typeof setTimeout> | undefined;
     const again = fromTheTop.current;
     fromTheTop.current = false;
-    if (canSpeak()) speak(spoken, { titles: titles.current, key: TALK_ANSWER_KEY, resumeIfPaused: !again, onEnd: () => current && feed({ type: 'spoken' }) });
+    const real = !holdingSpeech;
+    if (canSpeak())
+      speak(spoken, {
+        titles: titles.current,
+        key: TALK_ANSWER_KEY,
+        resumeIfPaused: !again,
+        onEnd: () => {
+          if (!current) return;
+          feed({ type: 'spoken' });
+          if (real) answerSpoken.current?.();
+        },
+      });
     else fallback = setTimeout(() => feed({ type: 'spoken' }), 0);
     return () => {
       current = false;
@@ -286,9 +318,37 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
   function press(): void {
     if (!hold.supported || line.phase === 'listening' || line.phase === 'sending' || line.phase === 'waiting') return;
     if (!hold.begin()) return;
+    setWordsOn(false);
     pauseAnswer();
     feed({ type: 'hold', talkId: line.talk?.id ?? newTalkId() });
   }
+
+  // A turn from words (no hold, no microphone): opened through the reducer's own 'hold', shown where a hold's live transcript shows,
+  // and sent through its own 'release', so the turn is the same record a hold of the same words sends.
+  const wordsOpen = wordsOn && line.phase === 'listening';
+  const words: TalkWords = {
+    begin() {
+      const busy = busyWords(line.phase);
+      if (busy !== undefined) return { taken: false, status: busy };
+      hold.setNotice(undefined);
+      pauseAnswer();
+      setWordsOn(true);
+      setWordsHeard('');
+      feed({ type: 'hold', talkId: line.talk?.id ?? newTalkId() });
+      return { taken: true };
+    },
+    heard: (text) => setWordsHeard(text),
+    send(text) {
+      setWordsOn(false);
+      setWordsHeard('');
+      feed(text.trim() ? { type: 'release', text } : { type: 'cancel' });
+    },
+    cancel() {
+      setWordsOn(false);
+      setWordsHeard('');
+      feed({ type: 'cancel' });
+    },
+  };
 
   // The pictures and files for his next turn (mw-q6n8m0.14, mw-6j8xmr): a picture is cut to 2400 px and JPEG as a message's is, any other
   // file goes as it is. Each choice joins the ones already chosen, up to MAX_TALK_FILES; one over 8 MB is refused and the others stay.
@@ -379,7 +439,9 @@ export function useTalkLine({ fresh = false }: { fresh?: boolean } = {}) {
     line,
     log,
     earlier,
-    transcript: hold.transcript,
+    transcript: wordsOpen ? wordsHeard : hold.transcript,
+    wordsOpen,
+    words,
     notice: hold.notice ?? line.error,
     // a hold ended with a notice and nothing heard: the button says Try again, and a hold on it is a fresh one (mw-hgtlf5.2)
     holdFailed: hold.notice !== undefined,

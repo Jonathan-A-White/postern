@@ -118,6 +118,17 @@ export type TalkLineEvent =
   | { type: 'setAbout'; about?: TalkAbout }
   | { type: 'end' };
 
+/** What the Talk line's button says while his turn goes out, and while it waits for the Mayor's answer (the screen's words, so a caller can say them too). */
+export const TALK_SENDING_WORDS = 'Sending…';
+export const TALK_WAITING_WORDS = 'Waiting for the Mayor…';
+/** What a new turn is told while the line cannot take it (the screen's words), or undefined when it can. */
+export function busyWords(phase: TalkPhase): string | undefined {
+  if (phase === 'sending') return TALK_SENDING_WORDS;
+  if (phase === 'waiting') return TALK_WAITING_WORDS;
+  if (phase === 'listening') return 'Listening…';
+  return undefined;
+}
+
 /** How long a wait goes on before the screen says 'The Mayor is thinking…'. */
 export const TALK_THINKING_MS = 8_000;
 /** How long the line waits for an answer while the Mayor is here; his answers take 20-40 s (mw-j0f2d.30), so this is generous. */

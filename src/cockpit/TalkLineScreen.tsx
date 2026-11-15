@@ -9,7 +9,7 @@ import { Button, Chip, Icon, IconButton, LengthNote, cx, isTooLong, useAlive } f
 import type { IconName } from '../ui';
 import { focusOnMount } from '../ui/focus';
 import { Screen } from './Shell';
-import { useTalkLine } from './useTalkLine';
+import { useTalkLine, type TalkWords } from './useTalkLine';
 import { HoldToTalkBar, micName } from 'voice-kit/composer';
 import { HOLD_BAR_CLASS } from './holdBar';
 import { useComposerSettings } from './talkSettings';
@@ -32,7 +32,7 @@ import { AttachmentList } from './Conversation';
 import type { Attachment } from '../services/threads';
 import { ShareButton } from './ShareButton';
 import { shareTitle } from '../model/shareText';
-import { NOT_KEPT, type TalkPhase } from '../model/talkLine';
+import { NOT_KEPT, TALK_SENDING_WORDS, TALK_WAITING_WORDS, type TalkPhase } from '../model/talkLine';
 import { EARLIER_PAGE, talkDividerLabel, type EarlierTalk } from '../model/talkLog';
 import type { TalkLogEntry } from '../model/talkScreen';
 
@@ -170,7 +170,7 @@ const MODELS = [
 ];
 
 const STATUS: Partial<Record<TalkPhase, string>> = {
-  sending: 'Sending…',
+  sending: TALK_SENDING_WORDS,
   waiting: 'Sent.',
   speaking: 'The Mayor is speaking…',
 };
@@ -188,9 +188,9 @@ function buttonLabel(phase: TalkPhase, supported: boolean, micOpen: boolean, hol
     case 'listening':
       return micOpen ? 'Release to send' : 'Starting the mic…';
     case 'sending':
-      return 'Sending…';
+      return TALK_SENDING_WORDS;
     case 'waiting':
-      return 'Waiting for the Mayor…';
+      return TALK_WAITING_WORDS;
     default:
       return holdFailed ? 'Try again' : 'Hold to talk';
   }
@@ -515,10 +515,14 @@ function PictureRow({ talk }: { talk: ReturnType<typeof useTalkLine> }) {
   );
 }
 
-export function TalkLineScreen() {
+/** `wordsRef`: where the screen leaves the line's words group (begin, heard, send, cancel) for whatever drives a turn from words with no hold of the button. */
+export function TalkLineScreen({ wordsRef }: { wordsRef?: { current: TalkWords | undefined } } = {}) {
   const route = useRoute();
   // A Talk button elsewhere says what a new talk is about; the open talk is left as it is.
   const talk = useTalkLine({ fresh: route.view === 'line' && route.about !== undefined });
+  useEffect(() => {
+    if (wordsRef) wordsRef.current = talk.words;
+  });
   const composerSettings = useComposerSettings();
   const { line } = talk;
   const reader = useReadAloud();
@@ -539,7 +543,7 @@ export function TalkLineScreen() {
   const listening = line.phase === 'listening';
   const dead = !talk.supported || line.phase === 'sending' || line.phase === 'waiting';
   const micOpen = talk.mic === 'ready';
-  const label = buttonLabel(line.phase, talk.supported, micOpen, talk.holdFailed);
+  const label = talk.wordsOpen ? 'Listening…' : buttonLabel(line.phase, talk.supported, micOpen, talk.holdFailed);
   const [calling, setCalling] = useState(false);
   // Ideas only was on when the request went: 'Recorded for after 21:00', shown and said (the turns do the same).
   const [callRecorded, setCallRecorded] = useState<string>();
@@ -642,7 +646,7 @@ export function TalkLineScreen() {
         <div role="status" aria-live="polite" className="pc-hold-status min-h-[2.75rem] w-full max-w-xl text-center text-[14px]">
           {listening ? (
             <p data-testid="live-transcript" className="pc-live-words bg-canvas text-fg">
-              {micOpen ? talk.transcript || 'Listening…' : 'Starting the mic…'}
+              {micOpen || talk.wordsOpen ? talk.transcript || 'Listening…' : 'Starting the mic…'}
             </p>
           ) : (
             <p className={cx(talk.notice ? 'text-danger' : 'text-muted')}>

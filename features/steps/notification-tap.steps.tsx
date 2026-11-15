@@ -279,6 +279,18 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario("mw-ev7oyy.61 AC-15: a push for a reply whose re is a Talk turn opens the reply's own post, never the empty Thread", ({ Given, And, When, Then }) => {
+    Given("the phone already holds a Talk turn and the Mayor's reply in Factory to it", async () => {
+      await messagesRepo.put({ ...generalRow(POST, 'what he said'), class: 'talk', direction: 'sent' });
+      await messagesRepo.put(replyRow());
+    });
+    And("the Mayor's message push for that reply arrives", () => arrive('message'));
+    When('he taps the notification', tap);
+    Then('the app opens at the reply thread of the reply itself in Factory', () => {
+      expect(parseRoute(new URL(tappedUrl!, 'https://postern.allmymind.org').search)).toEqual({ view: 'talk', thread: 'general', root: TXID });
+    });
+  });
+
   Scenario('mw-gq6.170 AC-12: the notice screen moves to the post\'s thread in the other channel once the reply arrives', ({ Given, And, When, Then }) => {
     Given('the phone holds a post in the channel of bead {string}', async (_ctx, bead: string) => {
       await messagesRepo.put(postIn(`bead:${bead}`));

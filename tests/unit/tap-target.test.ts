@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, type MessageRow } from '../../src/data/db';
 import { messagesRepo } from '../../src/data/repositories';
+import { mergeConversation } from '../../src/model/conversation';
+import { groupPosts } from '../../src/model/postThreads';
 import { parseRoute } from '../../src/nav/route';
 import { resolveTapUrl, threadUrlOfMessage } from '../../src/push/tapTarget';
 
@@ -159,5 +161,46 @@ describe('a live card is a thread root (mw-q6n8m0.13)', () => {
   it("a tap on the card's own record opens the channel it was sent to", async () => {
     await messagesRepo.put(card('mw-t.1'));
     expect(route(await resolveTapUrl({ txid: CARD, class: 'card' }))).toEqual({ view: 'talk', thread: 'bead:mw-t.1' });
+  });
+});
+
+describe('a reply whose re is a Talk turn or a call record opens its own post (mw-ev7oyy.61)', () => {
+  const TALK = `direct:${'f3'.repeat(32)}`;
+  const CALL = `direct:${'e5'.repeat(32)}`;
+
+  beforeEach(async () => {
+    await db.messages.clear();
+  });
+
+  it.each(['talk', 'call'] as const)('a reply to a %s row is its own thread root, not the row the Thread screen cannot show', async (cls) => {
+    await messagesRepo.put(row(TALK, 'what he said', { class: cls, direction: 'sent' }));
+    await messagesRepo.put(row(REPLY, { text: 'the answer', re: TALK }));
+    expect(route(await resolveTapUrl({ txid: REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'general', root: REPLY });
+  });
+
+  it('a reply to a reply to a Talk turn is rooted at the first post of the chain', async () => {
+    await messagesRepo.put(row(TALK, 'what he said', { class: 'talk', direction: 'sent' }));
+    await messagesRepo.put(row(REPLY, { text: 'the answer', re: TALK }));
+    await messagesRepo.put(row(REPLY_TO_REPLY, { text: 'and again', re: REPLY }));
+    expect(route(await resolveTapUrl({ txid: REPLY_TO_REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'general', root: REPLY });
+  });
+
+  it('keeps the reply\'s own channel when it names a bead and its re is a Talk turn', async () => {
+    await messagesRepo.put(row(TALK, 'what he said', { class: 'talk', direction: 'sent' }));
+    await messagesRepo.put(row(REPLY, { thread: { bead: 'mw-1' }, text: 'on a bead', re: TALK }, { thread: 'bead:mw-1' }));
+    expect(route(await resolveTapUrl({ txid: REPLY, class: 'message' }))).toEqual({ view: 'talk', thread: 'bead:mw-1' });
+  });
+
+  it('the notice screen path agrees: threadUrlOfMessage never roots a thread at a talk or call row', () => {
+    const rows = [row(TALK, 'x', { class: 'talk' }), row(CALL, 'y', { class: 'call' }), row(REPLY, { text: 'a', re: TALK }), row(REPLY_TO_REPLY, { text: 'b', re: CALL })];
+    expect(route(threadUrlOfMessage(rows[2], rows)!)).toEqual({ view: 'talk', thread: 'general', root: REPLY });
+    expect(route(threadUrlOfMessage(rows[3], rows)!)).toEqual({ view: 'talk', thread: 'general', root: REPLY_TO_REPLY });
+  });
+
+  it('the channel never groups a reply under a Talk turn either: the rows a channel lists hold no talk row (postThreads, seen.ts, NoticeScreen read the same rule)', async () => {
+    await messagesRepo.put(row(TALK, 'what he said', { class: 'talk', direction: 'sent' }));
+    await messagesRepo.put(row(REPLY, { text: 'the answer', re: TALK }));
+    const threads = groupPosts(mergeConversation(await messagesRepo.getAllOldestFirst()));
+    expect(threads.map((thread) => thread.root.txid)).toEqual([REPLY]);
   });
 });

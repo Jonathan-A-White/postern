@@ -98,3 +98,9 @@ Feature: Tapping a push notification opens the app at what it is about (mw-f758y
     And 5 seconds pass
     Then the app moves to the Needs-you queue
     And the screen says "Could not open that message yet"
+
+  Scenario: mw-ev7oyy.61 AC-15: a push for a reply whose re is a Talk turn opens the reply's own post, never the empty Thread
+    Given the phone already holds a Talk turn and the Mayor's reply in Factory to it
+    And the Mayor's message push for that reply arrives
+    When he taps the notification
+    Then the app opens at the reply thread of the reply itself in Factory

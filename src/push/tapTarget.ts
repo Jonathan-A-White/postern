@@ -36,8 +36,14 @@ function channelOf(row: MessageRow): string | undefined {
   return row.class === 'card' && row.plaintext !== undefined ? cardThread(row.plaintext) : row.thread;
 }
 
+/** A Talk turn or a call record is no channel's post (§20, §21): the Thread screen has no such root to draw,
+ * so a chain of `re` never steps onto one (mw-ev7oyy.61). */
+function isPost(row: MessageRow): boolean {
+  return row.class !== 'talk' && row.class !== 'call';
+}
+
 /** The root of the reply thread this message belongs to: the post its `re` chain
- * ends at among the rows `find` knows of, in whatever channel the post lives (a
+ * ends at among the rows `find` knows of (never a Talk turn or a call, which are no post), in whatever channel the post lives (a
  * reply sent with no channel to a post of a bead's channel belongs to that post's
  * thread, mw-gq6.170), or the message itself when it answers nothing the phone
  * holds (§14 keeps it a root). */
@@ -47,7 +53,7 @@ function rootOf(row: MessageRow, find: (txid: string) => MessageRow | undefined)
   for (;;) {
     const target = repliedTo(current);
     const next = target === undefined ? undefined : find(target);
-    if (!next) return current;
+    if (!next || !isPost(next)) return current;
     if (seen.has(next.txid.toLowerCase())) return row;
     seen.add(next.txid.toLowerCase());
     current = next;

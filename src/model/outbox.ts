@@ -135,7 +135,7 @@ function messageWords(row: OutboxRow): string {
 export function pendingMessageItems(rows: OutboxRow[], have: MessageRow[], inThread: (thread: string | undefined) => boolean): ConversationItem[] {
   const kept = new Set(have.map((row) => row.txid));
   return rows
-    .filter((row) => row.kind === 'message' && row.state !== 'acked' && inThread(row.thread) && !(row.txid && kept.has(row.txid)))
+    .filter((row) => row.kind === 'message' && row.state !== 'acked' && inThread(row.thread) && !(row.txid && kept.has(row.txid)) && !row.expectTxids?.some((txid) => kept.has(txid)))
     .map((row) => ({
       id: `outbox:${row.id}`,
       at: row.created,

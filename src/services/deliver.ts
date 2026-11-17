@@ -8,7 +8,7 @@
 // with its reason, never put on chain in the same try (mw-o14xubc): the live status, which
 // the failure marks as not reached, decides the road of the next try. Either way the sent
 // message is stored at once, so it shows in its thread before the event stream echoes it back.
-import { PrivateKey, Utils } from '@bsv/sdk';
+import { Hash, PrivateKey, Utils } from '@bsv/sdk';
 import { encodeRecordScript } from 'spell-forge-bsv';
 import { apiFetch, ApiTimeoutError, BackendUnreachableError, RefusedError, withTimeout } from './apiAuth';
 import { encryptMessage, type MessageClass } from './messages';
@@ -31,6 +31,8 @@ export interface DeliverOptions {
   offline?: boolean;
   /** The outbox row's client id, sent with a direct post so the backend stores a retry once (docs/protocol.md §9). */
   clientId?: string;
+  /** Told the txid a direct post will have, just before it is posted (the sha256 of its script, docs/protocol.md §9): the record can come back on the stream before the reply does (mw-pz7275r). */
+  onPosting?: (txid: string) => void;
   /** Told when a call to the backend got no answer, so the live status stops reading Live. */
   onUnreachable?: () => void;
   apiBase?: string;
@@ -130,6 +132,7 @@ export async function deliver(plaintext: string, messageClass: MessageClass, opt
   if (options.direct && !(onChainWhenDown && options.offline)) {
     try {
       const script = encodeRecordScript(Utils.toArray(JSON.stringify(payload), 'utf8'));
+      options.onPosting?.(`direct:${Utils.toHex(Hash.sha256(script.toBinary()))}`);
       delivered = { txid: await postDirect(script.toHex(), options), channel: 'direct' };
     } catch (err) {
       if (isNetworkFailure(err)) options.onUnreachable?.();

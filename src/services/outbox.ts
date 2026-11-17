@@ -386,7 +386,14 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
     // The row's id goes with every try; a row an older build wrote is given one now.
     const clientId = row.clientId ?? newClientId();
     if (row.clientId === undefined) await outboxRepo.update(row.id as number, { clientId });
-    const options = { ...base, clientId };
+    // A message's txid is known before it is posted: kept on the row at once, so its own record, streamed back before the
+    // reply to the post, is never shown beside its pending bubble (mw-pz7275r).
+    const expected: Promise<void>[] = [];
+    const options: DeliverOptions = {
+      ...base,
+      clientId,
+      ...(row.kind === 'message' ? { onPosting: (txid: string) => void expected.push(outboxRepo.expectTxid(row.id as number, txid).catch((err: unknown) => console.warn('Could not keep the id of the post on this phone:', err))) } : {}),
+    };
     let delivered: Delivered;
     try {
       delivered = await deliverRow(row, options, () => mine === generation && getActiveAccount().id === home.id);
@@ -413,6 +420,7 @@ async function drain(lane: Lane, force: boolean): Promise<void> {
       continue;
     }
     if (mine !== generation) return;
+    await Promise.all(expected);
     await outboxRepo.update(row.id as number, { state: 'sent', txid: delivered.txid, sentAt: Date.now(), attempts: row.attempts + 1, nextAt: undefined, note: undefined, error: undefined });
     rememberDelivered(row, delivered);
     // The note outlives the outbox row: the record that comes back is found by its txid.

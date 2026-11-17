@@ -244,6 +244,8 @@ export interface OutboxRow {
   /** Ms since the epoch: the next try waits until then. */
   nextAt?: number;
   txid?: string;
+  /** The txids a direct post of this row will have if the backend takes it, known before it is posted (the sha256 of the script's bytes, docs/protocol.md §9), one per try: the record may come back on the stream before the reply to the post does, and a row whose own record is kept under one of these is not shown again as pending (mw-pz7275r). */
+  expectTxids?: string[];
   /** Ms since the epoch: when the row was taken by the backend or the chain (a Talk turn on the chain holds the turns after it until its record is seen, or a while has passed). */
   sentAt?: number;
   /** Made once when the row is written (128 random bits, hex) and sent with every try, so the backend answers a retry of a send whose reply was lost with its first acceptance (mw-jrx0s.23). A row an older build wrote has none until its first try gives it one. */

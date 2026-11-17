@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.132
+_2026-11-17_
+- Fixed: Up next on the Map now lists each story once instead of once under every host, and the number counts stories.
+
 ## 0.8.131
 _2026-11-17_
 - Fixed: a post you send no longer shows twice for a split second before settling to one.

@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.132",
+    "date": "2026-11-17",
+    "story": "mw-njb33n.7",
+    "kind": "fixed",
+    "text": "Up next on the Map now lists each story once instead of once under every host, and the number counts stories."
+  },
+  {
     "version": "0.8.131",
     "date": "2026-11-17",
     "story": "mw-pz7275r",

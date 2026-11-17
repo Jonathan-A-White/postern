@@ -581,6 +581,33 @@ func TestASermonNotesAlertIsListedAndClaimedOnlyByTheFamilyOfItsToken(t *testing
 	}
 }
 
+// The nac-service-media reader is a family of its own: a service-recording
+// alert posted to its token is listed to it alone, carries its date and
+// nothing else, and is claimed by it.
+func TestAServiceRecordingAlertIsListedAndClaimedOnlyByTheFamilyOfItsToken(t *testing.T) {
+	s, keys, _, media := twoPhones(t)
+	watch := s.address(t, media)
+	if status, out := s.inbound(t, alertsSecret, fmt.Sprintf(`{"token":%q,"kind":"service-recording","when":"2026-11-01T00:00:00-04:00"}`, tokenOf(watch))); status != http.StatusCreated {
+		t.Fatalf("inbound service-recording = %d %s", status, out)
+	}
+	got := s.list(t, media, 0).Alerts
+	if len(got) != 1 || got[0].Kind != "service-recording" || got[0].When != "2026-11-01T00:00:00-04:00" || got[0].Subject != "" || got[0].Merchant != "" {
+		t.Fatalf("the reader's feed = %+v, want the one service-recording alert with its date only", got)
+	}
+	if other := s.list(t, keys[0], 0).Alerts; len(other) != 0 {
+		t.Fatalf("the bank family's feed lists %+v", other)
+	}
+	if status, _ := s.as(t, keys[0], http.MethodDelete, "/api/alerts/"+got[0].ID, ""); status != http.StatusNotFound {
+		t.Fatalf("the bank family's claim = %d, want 404", status)
+	}
+	if status, _ := s.as(t, media, http.MethodDelete, "/api/alerts/"+got[0].ID, ""); status != http.StatusNoContent {
+		t.Fatalf("the reader's claim = %d, want 204", status)
+	}
+	if s.pushes.Load() != 0 {
+		t.Fatal("a service-recording alert pushed")
+	}
+}
+
 // A Gmail confirmation mail goes through the receiver's parse and its real
 // post to the real inbound handler, and the alert read back carries the link:
 // the receiver left the link out of its post, so it was parsed and lost.

@@ -671,7 +671,7 @@ func TestAMailThatNearlyFitsAParserButIsUnreadLogsWhichCheckFailed(t *testing.T)
 // A mail that is read, one no parser nearly fits, and a mail that one parser
 // misses but another reads, log nothing of this kind.
 func TestOnlyAMailThatNearlyFitsAndIsUnreadLogsAMiss(t *testing.T) {
-	for _, file := range []string{"subsplash-notes.eml", "chase.eml", "chase-amazon.eml", "citi.eml", "citi-costco.eml", "chase-gas-hold.eml", "citi-gas-hold.eml", "chase-gpay-hold.eml", "citi-gpay-hold.eml", "pnc-zelle-sent.eml", "pnc-deposit.eml", "amazon-order.eml", "unknown.eml"} {
+	for _, file := range []string{"subsplash-notes.eml", "whiteplains-recording.eml", "chase.eml", "chase-amazon.eml", "citi.eml", "citi-costco.eml", "chase-gas-hold.eml", "citi-gas-hold.eml", "chase-gpay-hold.eml", "citi-gpay-hold.eml", "pnc-zelle-sent.eml", "pnc-deposit.eml", "amazon-order.eml", "unknown.eml"} {
 		if _, logged := parseLogged(t, fixture(t, file)); logged != "" {
 			t.Errorf("%s: logged %q, want nothing", file, logged)
 		}
@@ -683,6 +683,60 @@ func TestOnlyAMailThatNearlyFitsAndIsUnreadLogsAMiss(t *testing.T) {
 		if got, logged := parseLogged(t, []byte(raw)); got.Kind != alerts.KindUnread || logged != "" {
 			t.Errorf("%s: Parse = %+v, logged %q, want unread and nothing logged", name, got, logged)
 		}
+	}
+}
+
+// ---- the White Plains service-recording mail --------------------------------
+
+// The church's A/V mail (invented from the one it sends): the date is in the
+// subject, and nothing else of the mail is kept.
+func TestAWhitePlainsRecordingMailYieldsItsDateAndNothingElse(t *testing.T) {
+	got := Parse(fixture(t, "whiteplains-recording.eml"))
+	want := Facts{Kind: alerts.KindServiceRecording, When: "2026-11-01T00:00:00-04:00"}
+	if got != want {
+		t.Fatalf("Parse(whiteplains-recording.eml) =\n %+v\nwant\n %+v", got, want)
+	}
+	if alert := got.Alert(); alert != (alerts.Alert{Kind: "service-recording", When: "2026-11-01T00:00:00-04:00"}) {
+		t.Fatalf("alert = %+v, want the kind and the date only", alert)
+	}
+}
+
+// The same subject from anyone else, or another subject from the church's
+// address, is unread with its subject only.
+func TestAServiceRecordingSubjectFromAnotherSenderOrAnotherSubjectIsUnread(t *testing.T) {
+	mailOf := func(from, subject string) string {
+		return "From: x <" + from + ">\r\nSubject: " + subject + "\r\nContent-Type: text/plain\r\n\r\nDear Jonathan, Here is the audio and video from today's service.\r\n"
+	}
+	const subject = "White Plains: Recording of Service on 11/01/2026"
+	for name, raw := range map[string]string{
+		"another sender":       mailOf("someone@example.com", subject),
+		"another gmail sender": mailOf("whiteplainsnac2@gmail.com", subject),
+		"a lookalike domain":   mailOf("whiteplainsnac@notgmail.com", subject),
+		"another subject":      mailOf("whiteplainsnac@gmail.com", "White Plains: Weekly newsletter"),
+		"no date":              mailOf("whiteplainsnac@gmail.com", "White Plains: Recording of Service"),
+		"an impossible date":   mailOf("whiteplainsnac@gmail.com", "White Plains: Recording of Service on 13/45/2026"),
+	} {
+		got := Parse([]byte(raw))
+		if got.Kind != alerts.KindUnread || got.When != "" || got.Subject == "" {
+			t.Errorf("%s: Parse = %+v, want unread with its subject only", name, got)
+		}
+	}
+}
+
+// A near miss says which check failed, in fixed words and no address.
+func TestAServiceRecordingNearMissLogsTheCheckThatFailed(t *testing.T) {
+	_, logged := parseLogged(t, []byte("From: x <someone@example.com>\r\nSubject: White Plains: Recording of Service on 11/01/2026\r\nContent-Type: text/plain\r\n\r\nHi\r\n"))
+	if want := "service recording: sender is not the church's"; !strings.Contains(logged, want) {
+		t.Errorf("logged %q, want it to hold %q", logged, want)
+	}
+	for _, secret := range []string{"someone", "example.com", "White Plains", "11/01/2026"} {
+		if strings.Contains(logged, secret) {
+			t.Errorf("logged %q, which holds %q", logged, secret)
+		}
+	}
+	_, logged = parseLogged(t, []byte("From: White Plains <whiteplainsnac@gmail.com>\r\nSubject: White Plains: Newsletter\r\nContent-Type: text/plain\r\n\r\nHi\r\n"))
+	if want := "service recording: subject is not Recording of Service on a date"; !strings.Contains(logged, want) {
+		t.Errorf("logged %q, want it to hold %q", logged, want)
 	}
 }
 

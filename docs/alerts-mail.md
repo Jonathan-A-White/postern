@@ -9,6 +9,7 @@
 
 - [What it does](#what-it-does)
 - [A second token, for sermon notes](#a-second-token-for-sermon-notes)
+- [A third token, for the church's service recording](#a-third-token-for-the-churchs-service-recording)
 - [Install on the VPS](#install-on-the-vps)
 - [The way back](#the-way-back)
 
@@ -61,8 +62,13 @@
     subject or a byte of the PDF. A "Notes for ..." subject from any other domain is `unread`, and keeps nothing.
     No other mail's attachments are read or kept: a bank mail, a Gmail confirmation or an unread mail with a PDF
     attached is read as it would be without it.
+  - White Plains service-recording mail ("White Plains: Recording of Service on 11/01/2026", from exactly
+    `whiteplainsnac@gmail.com`, sent by nac-service-media on the church PC after a Sunday recording):
+    `service-recording` with the date in the subject as `when` (midnight Eastern) and nothing else: no address, Cc,
+    subject or body is kept or logged, and it sends no push. The same subject from any other sender (another Gmail
+    address too), or another subject from that address, is `unread`. The log says `posted a service-recording alert`.
   - Anything else: `unread` with its subject only. When the sender or subject of an unread mail nearly fit a
-    parser (a sermon-notes subject from another domain, a subsplash.com mail with another subject, a mail from chase.com,
+    parser (a sermon-notes subject from another domain, a recording subject from another sender, a subsplash.com mail with another subject, a mail from chase.com,
     citi.com, pnc.com or amazon.com that gave no amount, payee or order number) the log says so in one line:
     `a mail is unread; the checks that nearly fit it failed: sermon notes: sender's domain "example.com", not
     subsplash.com; ...`. Each note is a fixed phrase and at most the sender's domain; no token, address, subject,
@@ -85,6 +91,28 @@ check them against (`journalctl -u alerts-mail` says `posted a charge alert`, no
 
 It does not check SPF or DKIM: the token is what keeps strangers out, so a mail forged to look like a bank's and
 sent to a family's address would be listed as a charge. It keeps no per-sender rate limit.
+
+## A third token, for the church's service recording
+
+The Sunday watch (nac-service-media, on the Laptop) is a licensed key of its own, so it is a family of its own
+(`docs/protocol.md` §26) with its own `<token>@alerts.allmymind.org`, made as sermon-index's was: the key asks
+`POST /api/alerts/address` once and gets a token that is the same for ever after. The receiver is the same; a Gmail
+filter forwards the A/V team's recording mail to that address. The mail is read as `service-recording` (see What it
+does): only its kind and its date are kept, so the watch learns that a recording came for a Sunday, and nothing of
+who got it.
+
+How the reader lists and claims its alerts is the API sermon-index's fetch uses (`docs/api.md`, alerts), signed
+with the nac-service-media key:
+
+- `GET /api/alerts?since=<seq>` lists the family's alerts: `{"alerts": [{"id", "seq", "kind": "service-recording",
+  "when": "2026-11-01T00:00:00-04:00"}], "next"}`. The Sunday watch asks for the Sunday's date and looks for a
+  `service-recording` alert whose `when` is that day's midnight Eastern; none by 1 pm means it investigates.
+- `DELETE /api/alerts/{id}` claims an alert (`204`), once it has been seen; an unclaimed alert is dropped after 30
+  days. Another family's alert is `404` to it, and its alerts are never listed to the bank family.
+
+Where the token is kept: on the Laptop, in `~/.config/nac-service-media/postern.env`, mode 0600, never committed.
+It holds the key's own settings and the address's token; it is not a secret the way the shared
+`POSTERN_ALERTS_SECRET` is, but it is the only thing that routes a mail to the family, so it stays private.
 
 ## Install on the VPS
 

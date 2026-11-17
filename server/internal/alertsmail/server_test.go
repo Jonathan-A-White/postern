@@ -415,6 +415,30 @@ func TestASermonNotesMailIsPostedWithItsNotesAndLogsTheirSize(t *testing.T) {
 	assertLogHoldsNothingOfTheMail(t, logged(), []byte(fixtureNotesPDF))
 }
 
+// The service-recording mail posts its kind and date and nothing else: no
+// address, subject, body or Cc reaches the backend or the log.
+func TestAServiceRecordingMailIsPostedWithItsDateOnly(t *testing.T) {
+	logged := captureLog(t)
+	got := sendNotes(t, fixture(t, "whiteplains-recording.eml"))
+	want := map[string]string{"token": knownToken, "kind": "service-recording", "when": "2026-11-01T00:00:00-04:00"}
+	if len(got) != 1 || len(got[0]) != len(want) {
+		t.Fatalf("posted %+v, want %+v", got, want)
+	}
+	for k, v := range want {
+		if got[0][k] != v {
+			t.Fatalf("posted %s = %q, want %q", k, got[0][k], v)
+		}
+	}
+	if logged() != "alerts-mail: posted a service-recording alert\n" {
+		t.Fatalf("logged %q", logged())
+	}
+	for _, secret := range []string{knownToken, testDomain, "whiteplains", "White Plains", "Recording", "Jonathan", "example.org", "A/V"} {
+		if strings.Contains(logged(), secret) {
+			t.Errorf("the log holds %q: %q", secret, logged())
+		}
+	}
+}
+
 // A notes PDF at the limit fits in a mail the receiver takes, and reaches the
 // backend whole.
 func TestASermonNotesMailWithAPDFAtTheLimitIsTaken(t *testing.T) {

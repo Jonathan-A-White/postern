@@ -96,9 +96,9 @@ func Parse(raw []byte) Facts {
 	}
 	subject := decodeHeader(msg.Header.Get("Subject"))
 	unread := Facts{Kind: alerts.KindUnread, Subject: cut(subject)}
-	m := mailView{subject: subject, from: senderDomain(msg.Header.Get("From")), date: mailDate(msg.Header), misses: new([]string)}
+	m := mailView{subject: subject, from: senderDomain(msg.Header.Get("From")), addr: senderAddress(msg.Header.Get("From")), date: mailDate(msg.Header), misses: new([]string)}
 	m.lines = textLines(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Body)
-	for _, parse := range []func(mailView) (Facts, bool){parseChase, parseCiti, parsePNCZelleSent, parsePNCDeposit, parseAmazon, parseGmailConfirm, parseSermonNotes} {
+	for _, parse := range []func(mailView) (Facts, bool){parseChase, parseCiti, parsePNCZelleSent, parsePNCDeposit, parseAmazon, parseGmailConfirm, parseSermonNotes, parseServiceRecording} {
 		if facts, ok := parse(m); ok {
 			if facts.Kind == alerts.KindSermonNotes {
 				facts.Notes, facts.NotesWhy = sermonNotesPDF(raw)
@@ -117,8 +117,10 @@ func Parse(raw []byte) Facts {
 type mailView struct {
 	subject string
 	from    string
-	date    string
-	lines   []string
+	// addr is the sender's whole address, lower case; it is only ever compared, never kept or logged.
+	addr  string
+	date  string
+	lines []string
 	// misses is what the parsers a mail nearly fit say failed (see miss).
 	misses *[]string
 }
@@ -538,6 +540,39 @@ func parseSermonNotes(m mailView) (Facts, bool) {
 	return f, true
 }
 
+// ---- White Plains service recording -----------------------------------------
+
+// serviceRecordingSender is the one address the church's A/V team mails the
+// recording from (nac-service-media on the church PC, through Gmail).
+const serviceRecordingSender = "whiteplainsnac@gmail.com"
+
+// serviceRecordingSubject: White Plains: Recording of Service on 11/01/2026.
+var serviceRecordingSubject = regexp.MustCompile(`(?i)^White Plains: Recording of Service on (\d{1,2}/\d{1,2}/\d{4})$`)
+
+// parseServiceRecording reads the mail the church's A/V team sends once a
+// Sunday's recording is ready: the date is in the subject, as midnight
+// Eastern. Nothing else of the mail (its addresses, its Cc, its body) is read
+// or kept: the alert says only that the recording came, and for which day.
+func parseServiceRecording(m mailView) (Facts, bool) {
+	s := serviceRecordingSubject.FindStringSubmatch(m.subject)
+	if m.addr != serviceRecordingSender {
+		if s != nil {
+			m.miss("service recording", "sender is not the church's")
+		}
+		return Facts{}, false
+	}
+	if s == nil {
+		m.miss("service recording", "subject is not Recording of Service on a date")
+		return Facts{}, false
+	}
+	when := easternTime(s[1], "", "1/2/2006", "01/02/2006")
+	if when == "" {
+		m.miss("service recording", "the date is not a date")
+		return Facts{}, false
+	}
+	return Facts{Kind: alerts.KindServiceRecording, When: when}, true
+}
+
 // sermonNotesPDF is the one PDF attached to a sermon-notes mail, as the bytes
 // it came as, or "" and why there is none: no PDF, more than one, one over
 // alerts.MaxNotesBytes, one that does not begin '%PDF-' or cannot be decoded.
@@ -624,6 +659,15 @@ func senderDomain(from string) string {
 	}
 	_, domain, _ := strings.Cut(addr.Address, "@")
 	return strings.ToLower(domain)
+}
+
+// senderAddress is the From address, lower case, or "" when there is none.
+func senderAddress(from string) string {
+	addr, err := mail.ParseAddress(decodeHeader(from))
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(addr.Address)
 }
 
 func mailDate(h mail.Header) string {

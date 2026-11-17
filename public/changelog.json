@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.131",
+    "date": "2026-11-17",
+    "story": "mw-pz7275r",
+    "kind": "fixed",
+    "text": "a post you send no longer shows twice for a split second before settling to one."
+  },
+  {
     "version": "0.8.129",
     "date": "2026-11-15",
     "story": "mw-ev7oyy.61",

@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.131
+_2026-11-17_
+- Fixed: a post you send no longer shows twice for a split second before settling to one.
+
 ## 0.8.129
 _2026-11-15_
 - Fixed: Tapping a notification for a reply to something you said on the Talk line now opens that reply, not an empty "post is not on this phone" screen.

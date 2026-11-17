@@ -1,7 +1,7 @@
 {
-  "version": "0.8.131",
-  "commit": "c3a7d3cd",
-  "published_at": "2026-11-17T10:11:58.961Z",
+  "version": "0.8.132",
+  "commit": "8edbc7bd",
+  "published_at": "2026-11-17T21:35:06.193Z",
   "files": [
     {
       "name": "390x844/about.png",
@@ -1997,6 +1997,27 @@
       "width": 1280,
       "height": 800,
       "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/todo-rows-morning.png"
+    },
+    {
+      "name": "390x844/up-next-open.png",
+      "screen": "up-next-open",
+      "width": 390,
+      "height": 844,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/390x844/up-next-open.png"
+    },
+    {
+      "name": "360x640/up-next-open.png",
+      "screen": "up-next-open",
+      "width": 360,
+      "height": 640,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/360x640/up-next-open.png"
+    },
+    {
+      "name": "1280x800/up-next-open.png",
+      "screen": "up-next-open",
+      "width": 1280,
+      "height": 800,
+      "url": "https://raw.githubusercontent.com/Jonathan-A-White/postern/shots/latest/1280x800/up-next-open.png"
     },
     {
       "name": "390x844/update-banner.png",

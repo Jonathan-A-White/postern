@@ -827,9 +827,14 @@ is the host's time and may differ from the phone's by minutes.
 
 `hosts[].up_next` — optional, on a host: the first three stories a dispatch on that host would start,
 in its start order (`mw queue`), each `{ "id": "<full bead id>", "title": "<title>" }`. Omitted when
-none is ready, and absent from an older mw's view; the app then shows nothing. The Needs you and Map
-pulse shows one line, `Up next: N` (N counts every host's stories), closed; a tap opens the titles, each
-a link to its bead page, with the host named above its titles when more than one host lists any. An
+none is ready, and absent from an older mw's view; the app then shows nothing. A story may carry an
+optional `"waiting": "<reason>"` (e.g. `shares <file> with <a running story>`): it cannot start yet, and
+the row says `waiting: <reason>`. The Needs you and Map pulse shows one line, `Up next: N` (N counts
+different stories, not rows), closed; a tap opens the titles, each a link to its bead page. A story any
+host may run is in every host's list; the app shows it once, under `Any host`. A story whose bead's
+`path.host` names a host stays under that host; if that host has not synced for 20 minutes it sits
+under `<host> is not answering` with the words `waits for <host>`. A story the view has no bead for is
+pinned to its host only when that host alone lists it. An
 entry with no `id` is dropped; a missing `title` reads as the id.
 
 `beads` — every live epic (open or in progress), every bead under one at any depth

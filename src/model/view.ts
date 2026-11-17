@@ -97,6 +97,8 @@ export interface Need {
 export interface UpNextStory {
   id: string;
   title: string;
+  /** mw-njb33n.7: why it cannot start yet (e.g. 'shares <file> with <a running story>'); absent when it can, and from an older mw. */
+  waiting?: string;
 }
 
 export interface HostState {
@@ -272,9 +274,69 @@ function decodeUpNext(raw: unknown): UpNextStory[] {
   for (const item of raw) {
     const story = record(item);
     if (!story || typeof story.id !== 'string' || !story.id) continue;
-    stories.push({ id: story.id, title: str(story.title) || story.id });
+    const waiting = str(story.waiting);
+    stories.push({ id: story.id, title: str(story.title) || story.id, ...(waiting ? { waiting } : {}) });
   }
   return stories;
+}
+
+export interface UpNextGroup {
+  /** 'any' stories may run on any host; 'host' ones are pinned to an answering host; 'waiting' ones are pinned to a host that is not answering. */
+  kind: 'any' | 'host' | 'waiting';
+  host?: string;
+  stories: UpNextStory[];
+}
+
+/** A bead's pinned host: a real host name, or undefined for 'auto' / none. */
+function pinnedHost(host: string | undefined): string | undefined {
+  return host && host !== 'auto' ? host : undefined;
+}
+
+/**
+ * mw-njb33n.7: each host's up_next lists every story it could start, so a story that may run on any host
+ * is in all of them. Gather them into distinct stories: a story pinned to a host (its bead's path.host)
+ * stays with that host, or waits for it when it is not answering; any other story is one 'Any host' row.
+ * A story the view has no bead for is pinned to its host only when one host lists it.
+ */
+export function groupUpNext(
+  hosts: HostState[],
+  pathHost: (id: string) => string | undefined,
+  answering: (host: HostState) => boolean,
+): UpNextGroup[] {
+  const seen = new Map<string, { story: UpNextStory; listedBy: string[] }>();
+  for (const host of hosts) {
+    for (const story of host.up_next ?? []) {
+      const known = seen.get(story.id);
+      if (known) {
+        known.listedBy.push(host.name);
+        if (!known.story.waiting && story.waiting) known.story = story;
+      } else {
+        seen.set(story.id, { story, listedBy: [host.name] });
+      }
+    }
+  }
+  const state = new Map(hosts.map((host) => [host.name, answering(host)]));
+  const any: UpNextStory[] = [];
+  const byHost = new Map<string, UpNextStory[]>();
+  const waitingFor = new Map<string, UpNextStory[]>();
+  for (const { story, listedBy } of seen.values()) {
+    const bead = pinnedHost(pathHost(story.id));
+    const pinned = bead ?? (pathHost(story.id) === undefined && listedBy.length === 1 ? listedBy[0] : undefined);
+    if (!pinned) {
+      any.push(story);
+      continue;
+    }
+    const target = state.get(pinned) === false ? waitingFor : byHost;
+    target.set(pinned, [...(target.get(pinned) ?? []), story]);
+  }
+  const groups: UpNextGroup[] = [];
+  if (any.length > 0) groups.push({ kind: 'any', stories: any });
+  for (const host of hosts) {
+    const stories = byHost.get(host.name);
+    if (stories) groups.push({ kind: 'host', host: host.name, stories });
+  }
+  for (const [host, stories] of waitingFor) groups.push({ kind: 'waiting', host, stories });
+  return groups;
 }
 
 /** Parses a decrypted §11 plaintext. Anything that is not a v2 view is refused

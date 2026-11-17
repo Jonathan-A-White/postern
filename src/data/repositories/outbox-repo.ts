@@ -55,6 +55,13 @@ export const outboxRepo = {
     await db.outbox.update(id, patch);
   },
 
+  /** Adds a txid the row's post will have to the row's `expectTxids`, once (a write that cannot lose another try's). */
+  async expectTxid(id: number, txid: string): Promise<void> {
+    await db.outbox.where(':id').equals(id).modify((row) => {
+      if (!(row.expectTxids ?? []).includes(txid)) row.expectTxids = [...(row.expectTxids ?? []), txid];
+    });
+  },
+
   /** Discard: forgets one row (a refused one he does not want sent). */
   async remove(id: number): Promise<void> {
     await db.outbox.delete(id);

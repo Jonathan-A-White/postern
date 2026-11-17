@@ -46,6 +46,13 @@ describe('pendingMessageItems', () => {
     expect(pendingMessageItems(rows, [kept], () => true)).toEqual([]);
   });
 
+  it('leaves out one still pending whose record is kept under a txid its post was to have (the stream is faster than the reply, mw-pz7275r)', () => {
+    const pending = row({ id: 1, expectTxids: ['direct:0', 'direct:1'] });
+    expect(pendingMessageItems([pending], [kept], () => true)).toEqual([]);
+    expect(pendingMessageItems([pending], [], () => true)).toHaveLength(1);
+    expect(pendingMessageItems([row({ id: 2, expectTxids: ['direct:9'] })], [kept], () => true)).toHaveLength(1);
+  });
+
   it('names the files that go with the text and the post a reply answers', () => {
     const [item] = pendingMessageItems([row({ payload: { text: 'look', files: [{ name: 'a.png' }, { name: 'b.png' }], re: 'abc' } })], [], () => true);
     expect(item.text).toBe('look\n\n_Files: a.png, b.png_');

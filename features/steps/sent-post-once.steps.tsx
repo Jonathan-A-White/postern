@@ -66,6 +66,14 @@ vi.mock('../../src/services/keySession', async (importOriginal) => ({
 
 let before: ConversationItem[] = [];
 
+async function fresh(): Promise<void> {
+  await settlePhone();
+  forgetOutboxState();
+  seen.during = [];
+  seen.echoed = false;
+  await Promise.all([db.messages.clear(), db.outbox.clear()]);
+}
+
 afterAll(async () => {
   forgetOutboxState();
   await settledWrites();
@@ -74,13 +82,7 @@ afterAll(async () => {
 const feature = await loadFeature('features/sent-post-once.feature');
 
 describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
-  BeforeEachScenario(async () => {
-    await settlePhone();
-    forgetOutboxState();
-    seen.during = [];
-    seen.echoed = false;
-    await Promise.all([db.messages.clear(), db.outbox.clear()]);
-  });
+  BeforeEachScenario(fresh);
 
   Scenario('mw-pz7275r: its own echo arriving before the backend\'s reply leaves one bubble, not two', ({ Given, When, Then, And }) => {
     Given('the backend sends the record back to the phone before it answers the post', () => {

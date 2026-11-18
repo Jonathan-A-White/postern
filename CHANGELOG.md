@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.134
+_2026-11-18_
+- Fixed: A finished story waiting to land no longer shows "In progress" on its page; it says "Blocked", as on the Map.
+
 ## 0.8.133
 _2026-11-18_
 - Fixed: a story that is finished and waiting to be landed no longer shows as Working on the Map.

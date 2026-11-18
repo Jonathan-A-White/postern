@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.134",
+    "date": "2026-11-18",
+    "story": "mw-ud3caof",
+    "kind": "fixed",
+    "text": "A finished story waiting to land no longer shows \"In progress\" on its page; it says \"Blocked\", as on the Map."
+  },
+  {
     "version": "0.8.133",
     "date": "2026-11-18",
     "story": "mw-8a6vysw",

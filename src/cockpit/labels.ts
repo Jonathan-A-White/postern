@@ -2,7 +2,7 @@
 // need and each bead type, in one place so every screen says the same thing.
 import type { IconName, Tone } from '../ui';
 import type { NeedKind } from '../model/view';
-import { isIced } from '../model/tree';
+import { BUCKET_LABEL, isIced, QUEUED_LABEL } from '../model/tree';
 
 export const NEED_META: Record<NeedKind, { label: string; icon: IconName; tone: Tone; verb: string }> = {
   question: { label: 'Question', icon: 'talk', tone: 'needs', verb: 'The Mayor asks' },
@@ -44,7 +44,8 @@ export function statusWord(status: string, labels: string[] = []): string {
   if (isIced({ labels })) return 'Iced';
   switch (status) {
     case 'in_progress':
-      return 'In progress';
+      // Done and queued for its batch landing: nobody is working it, and the Map lists it Blocked.
+      return labels.includes(QUEUED_LABEL) ? BUCKET_LABEL.blocked : 'In progress';
     case 'deferred':
       return 'Held';
     case 'closed':

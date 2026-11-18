@@ -17,6 +17,18 @@ describe('statusWord', () => {
   });
 });
 
+describe('statusWord for a queued story (mw-ud3caof)', () => {
+  it("does not read 'In progress' for a story labelled run:queued", () => {
+    expect(statusWord('in_progress', ['run:queued'])).not.toBe('In progress');
+    expect(statusWord('in_progress', ['run:queued'])).toBe('Blocked');
+  });
+
+  it("still reads 'In progress' for an in-progress story that is not queued", () => {
+    expect(statusWord('in_progress', ['hitl'])).toBe('In progress');
+    expect(statusWord('in_progress')).toBe('In progress');
+  });
+});
+
 describe('isIced', () => {
   it('is true for the icebox label only', () => {
     expect(isIced({ labels: ['icebox'] })).toBe(true);

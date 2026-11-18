@@ -83,6 +83,18 @@ describe('the tree', () => {
     expect(at('mw-2rbm.9')).toBe('done');
   });
 
+  it('does not list a done story queued for its landing as Working', () => {
+    const base = index.byId.get('mw-f758y.30.2')!;
+    expect(bucketOf(base, index)).toBe('working');
+    const queued = { ...base, labels: [...base.labels, 'run:queued'] };
+    expect(bucketOf(queued, index)).not.toBe('working');
+    // the epic's counts and the factory's figure read the same bucket
+    const queuedView = { ...index.view, beads: index.view.beads.map((b) => (b.id === base.id ? queued : b)) };
+    const queuedIndex = indexView(queuedView);
+    expect(epicStats('mw-f758y', queuedIndex).counts.working).toBe(1);
+    expect(factoryStats(queuedIndex, new Date(NOW)).working).toBe(2);
+  });
+
   it('walks up and down', () => {
     expect(ancestors('mw-f758y.30.2', index).map((b) => b.id)).toEqual(['mw-f758y', 'mw-f758y.30']);
     expect(descendants('mw-f758y', index).map((b) => b.id)).toContain('mw-f758y.31.4');

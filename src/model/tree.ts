@@ -23,6 +23,8 @@ export const BUCKET_LABEL: Record<Bucket, string> = Object.fromEntries(BUCKETS.m
 export const MAP_LABEL = 'wayfinder:map';
 /** The triage ices a bead nobody will touch soon with this label (and holds it at P4). */
 export const ICEBOX_LABEL = 'icebox';
+/** mw puts this label on a story that is done and queued for its batch landing (status stays in_progress). */
+export const QUEUED_LABEL = 'run:queued';
 
 export interface ViewIndex {
   view: View;
@@ -96,11 +98,13 @@ export function isIced(bead: { labels: string[] }): boolean {
 
 /** Which board column a bead belongs in: anything waiting on the Governor first,
  * then what the tracker says. An open bead that still waits on unfinished work
- * is blocked; one that waits on nothing is ready. */
+ * is blocked; one that waits on nothing is ready. A done story queued for its landing is blocked, not working. */
 export function bucketOf(bead: ViewBead, index: ViewIndex): Bucket {
   if (isClosed(bead)) return index.needsByBead.get(bead.id)?.some((n) => n.kind === 'verify') ? 'needs' : 'done';
   if (index.needsByBead.has(bead.id)) return 'needs';
-  if (bead.status === 'in_progress') return 'working';
+  // A story whose Builder has finished and that waits for its batch landing is still in_progress
+  // to the tracker but nobody is working it: it waits on the landing, so it sits in Blocked.
+  if (bead.status === 'in_progress') return bead.labels.includes(QUEUED_LABEL) ? 'blocked' : 'working';
   if (bead.status === 'deferred') return 'held';
   const unfinished = bead.waits.filter((id) => {
     const blocker = index.byId.get(id);

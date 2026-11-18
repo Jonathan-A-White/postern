@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.133",
+    "date": "2026-11-18",
+    "story": "mw-8a6vysw",
+    "kind": "fixed",
+    "text": "a story that is finished and waiting to be landed no longer shows as Working on the Map."
+  },
+  {
     "version": "0.8.132",
     "date": "2026-11-17",
     "story": "mw-njb33n.7",

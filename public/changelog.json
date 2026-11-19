@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.138",
+    "date": "2026-11-19",
+    "story": "mw-6ww.148.10",
+    "kind": "fixed",
+    "text": "Amazon cancellation, refund and return emails no longer show up as new orders."
+  },
+  {
     "version": "0.8.137",
     "date": "2026-11-19",
     "story": "mw-6ww.148.9",

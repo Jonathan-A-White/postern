@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.138
+_2026-11-19_
+- Fixed: Amazon cancellation, refund and return emails no longer show up as new orders.
+
 ## 0.8.137
 _2026-11-19_
 - Fixed: Amazon order alerts now show the order's grand total, not a subtotal or nothing.

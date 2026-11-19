@@ -262,6 +262,10 @@ func NewHandler(store *index.Store, client chain.Chain, vapidPublicKey string, p
 	// A person's devices are linked only for the mill's key or one of the
 	// person's own devices: signed, but no licence on the chain.
 	mux.HandleFunc("GET /api/register/person", handleRegisterPerson(o.register, nonces, o.millKey))
+	// The Governor's 'API only' switch on a licence holder (mw-cvwm1u.22): his
+	// key only, which the handlers check, so no licence is walked for it.
+	mux.HandleFunc("PUT /api/register/billing", handleRegisterBillingSet(o.register, nonces, o.issuerKey))
+	mux.HandleFunc("GET /api/register/billing", handleRegisterBillingList(o.register, nonces, o.issuerKey))
 	// Removing a device needs a proof, but no licence on the chain: the
 	// signer must be a device of the same person, which register checks.
 	mux.HandleFunc("DELETE /api/register/device", handleRegisterDevice(o.register, nonces))

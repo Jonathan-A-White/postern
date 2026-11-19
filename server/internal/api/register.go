@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
@@ -116,15 +117,22 @@ func handleRegisterPerson(svc *register.Service, nonces *auth.NonceStore, millKe
 		}
 		key := r.URL.Query().Get("key")
 		if millKey != "" && signer == millKey {
+			unknown := struct {
+				Known bool `json:"known"`
+				// Billing is the Governor's mark on a key no one has
+				// registered; left out when it is max.
+				Billing string `json:"billing,omitempty"`
+			}{}
 			if svc != nil {
 				if person, ok := svc.Person(key); ok {
 					writePerson(w, person)
 					return
 				}
+				if svc.KeyBilling(key) == register.BillingAPI {
+					unknown.Billing = register.BillingAPI
+				}
 			}
-			writeJSON(w, http.StatusOK, struct {
-				Known bool `json:"known"`
-			}{})
+			writeJSON(w, http.StatusOK, unknown)
 			return
 		}
 		if svc != nil {
@@ -142,6 +150,78 @@ func writePerson(w http.ResponseWriter, person register.PersonView) {
 		Known bool `json:"known"`
 		register.PersonView
 	}{Known: true, PersonView: person})
+}
+
+// handleRegisterBilling is PUT /api/register/billing {key, billing}: the
+// Governor's switch 'API only' on a licence holder's key. billing is "max"
+// (the default) or "api"; the mark is the key's person's, so every device of
+// that person shares it, and a key no one registered keeps its own. Signed
+// ('Postern2') by the Governor's key only (POSTERN_ISSUER_KEY, the key the Key
+// screen issues licences with); every other signer, the mill and the person's
+// own devices included, is 403, and with no issuer key set everyone is. It
+// answers {key, billing}.
+func handleRegisterBillingSet(svc *register.Service, nonces *auth.NonceStore, governorKey string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if svc == nil {
+			writeError(w, http.StatusServiceUnavailable, register.ErrClosed.Error())
+			return
+		}
+		signer, ok := verifyProof(w, r, nonces)
+		if !ok {
+			return
+		}
+		if !isGovernor(signer, governorKey) {
+			refuse(w, r, http.StatusForbidden, reasonForbidden, "only the Governor's key may mark a licence holder's billing", signer)
+			return
+		}
+		var in struct {
+			Key     string `json:"key"`
+			Billing string `json:"billing"`
+		}
+		if !readRegisterBody(w, r, &in) {
+			return
+		}
+		if err := svc.SetBilling(in.Key, in.Billing); err != nil {
+			writeRegisterError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			Key     string `json:"key"`
+			Billing string `json:"billing"`
+		}{in.Key, in.Billing})
+	}
+}
+
+// handleRegisterBillingList is GET /api/register/billing: the keys billed
+// "api", for the Key screen's switches (a key not listed is max). The
+// Governor's key only, as the PUT.
+func handleRegisterBillingList(svc *register.Service, nonces *auth.NonceStore, governorKey string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		signer, ok := verifyProof(w, r, nonces)
+		if !ok {
+			return
+		}
+		if !isGovernor(signer, governorKey) {
+			refuse(w, r, http.StatusForbidden, reasonForbidden, "only the Governor's key may read the billing marks", signer)
+			return
+		}
+		keys := []string{}
+		if svc != nil {
+			for key := range svc.APIKeys() {
+				keys = append(keys, key)
+			}
+		}
+		sort.Strings(keys)
+		writeJSON(w, http.StatusOK, struct {
+			API []string `json:"api"`
+		}{keys})
+	}
+}
+
+// isGovernor says whether signer is the Governor's key, POSTERN_ISSUER_KEY;
+// with none set, no key is.
+func isGovernor(signer, governorKey string) bool {
+	return governorKey != "" && strings.EqualFold(signer, governorKey)
 }
 
 // handleRegisterDevice is DELETE /api/register/device {deviceKey, personId}:

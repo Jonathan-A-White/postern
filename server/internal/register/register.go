@@ -113,6 +113,9 @@ type PersonView struct {
 	PersonID   string   `json:"personId"`
 	Keys       []string `json:"keys"`
 	DailyLimit int      `json:"dailyLimit"`
+	// Billing is "max" or "api": who pays for this person's grists, as the
+	// Governor marked it (SetBilling); max when never marked.
+	Billing string `json:"billing"`
 	// Devices are the keys again, each with what Lampas's My devices shows.
 	Devices []DeviceView `json:"devices"`
 }
@@ -517,6 +520,10 @@ func (s *Service) plan(p *pending, userAgent string) (*person, error) {
 			return nil, err
 		}
 		next = &person{PersonID: id, FpE: fpE, FpP: fpP, DailyLimit: DefaultDailyLimit, CreatedAt: now}
+		// A key the Governor marked before it registered keeps its mark.
+		if s.people.keyBilling[p.key] == BillingAPI {
+			next.Billing = BillingAPI
+		}
 	}
 	if owner := s.people.byKey[p.key]; owner != nil && owner.PersonID != next.PersonID {
 		return nil, ErrDeviceTaken
@@ -673,6 +680,75 @@ func (s *Service) Person(key string) (PersonView, bool) {
 	return p.view(), true
 }
 
+// SetBilling marks the licence holder key as billed "max" or "api" (the
+// Governor's switch; the caller has checked who is asking). The mark is the
+// person's, so every device of the person shares it. A key no person holds is
+// kept apart, and a person later made from it starts with that mark. A mark
+// that is not max or api, or a key that is not a compressed public key, is an
+// InvalidError.
+func (s *Service) SetBilling(key, billing string) error {
+	if billing != BillingMax && billing != BillingAPI {
+		return &InvalidError{`billing is "max" or "api"`}
+	}
+	key, err := normaliseKey(key)
+	if err != nil {
+		return err
+	}
+	s.changing.Lock()
+	defer s.changing.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := s.people.byKey[key]
+	if owner == nil {
+		return s.people.putKeyBilling(key, billing)
+	}
+	next := owner.clone()
+	next.Billing = ""
+	if billing == BillingAPI {
+		next.Billing = BillingAPI
+	}
+	return s.people.put(next)
+}
+
+// KeyBilling is the mark on key: its person's, else the key's own, else max.
+func (s *Service) KeyBilling(key string) string {
+	key, err := normaliseKey(key)
+	if err != nil {
+		return BillingMax
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if owner := s.people.byKey[key]; owner != nil {
+		return owner.billing()
+	}
+	if s.people.keyBilling[key] == BillingAPI {
+		return BillingAPI
+	}
+	return BillingMax
+}
+
+// APIKeys is every key billed "api": the devices of each person marked so,
+// and each key marked before it registered.
+func (s *Service) APIKeys() map[string]bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keys := map[string]bool{}
+	for _, p := range s.people.list {
+		if p.billing() != BillingAPI {
+			continue
+		}
+		for _, d := range p.Devices {
+			keys[d.Key] = true
+		}
+	}
+	for key, mark := range s.people.keyBilling {
+		if mark == BillingAPI && s.people.byKey[key] == nil {
+			keys[key] = true
+		}
+	}
+	return keys
+}
+
 // PersonKeys is every device key on the licence of the person personID, or
 // none for an id no one has. It is how a push finds all of a person's phones.
 func (s *Service) PersonKeys(personID string) []string {
@@ -708,7 +784,7 @@ func (s *Service) PersonForDevice(signerKey, key string) (PersonView, error) {
 }
 
 func (p *person) view() PersonView {
-	view := PersonView{PersonID: p.PersonID, DailyLimit: p.DailyLimit, Keys: make([]string, len(p.Devices)), Devices: make([]DeviceView, len(p.Devices))}
+	view := PersonView{PersonID: p.PersonID, DailyLimit: p.DailyLimit, Billing: p.billing(), Keys: make([]string, len(p.Devices)), Devices: make([]DeviceView, len(p.Devices))}
 	for i, d := range p.Devices {
 		view.Keys[i] = d.Key
 		view.Devices[i] = DeviceView{Key: d.Key, Name: d.Name, AddedAt: d.AddedAt, LastSeen: d.LastSeen}

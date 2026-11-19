@@ -39,6 +39,26 @@ type person struct {
 	Devices    []Device  `json:"devices"`
 	DailyLimit int       `json:"dailyLimit"`
 	CreatedAt  time.Time `json:"createdAt"`
+	// Billing is the Governor's mark on who pays for this person's grists:
+	// BillingAPI, or empty for BillingMax (a record written before the field
+	// reads as max, and a person billed max carries no mark).
+	Billing string `json:"billing,omitempty"`
+}
+
+// The two billing marks (GET /api/register/person's billing). The mill bills
+// a "max" person's grists to the Governor's Max subscription and an "api"
+// person's to the API credit only.
+const (
+	BillingMax = "max"
+	BillingAPI = "api"
+)
+
+// billing is the person's mark as the API shows it: always max or api.
+func (p *person) billing() string {
+	if p.Billing == BillingAPI {
+		return BillingAPI
+	}
+	return BillingMax
 }
 
 func (p *person) clone() *person {
@@ -72,6 +92,10 @@ func (p *person) hasEmail(fp string) bool {
 
 type peopleFile struct {
 	People []*person `json:"people"`
+	// KeyBilling is the "api" mark of a key no person holds yet (the
+	// Governor marked a licence holder who has not registered): key -> mark.
+	// A person made from the key starts with it, and it is dropped then.
+	KeyBilling map[string]string `json:"keyBilling,omitempty"`
 }
 
 // people is the persisted set of persons, with the lookups registration
@@ -82,6 +106,8 @@ type people struct {
 	byFpE map[string]*person
 	byFpP map[string]*person
 	byKey map[string]*person
+	// keyBilling is peopleFile.KeyBilling: marks on keys no person holds.
+	keyBilling map[string]string
 }
 
 func openPeople(dir string) (*people, error) {
@@ -97,6 +123,10 @@ func openPeople(dir string) (*people, error) {
 		}
 	}
 	ps.index(file.People)
+	ps.keyBilling = file.KeyBilling
+	if ps.keyBilling == nil {
+		ps.keyBilling = map[string]string{}
+	}
 	return ps, nil
 }
 
@@ -119,19 +149,50 @@ func (ps *people) index(list []*person) {
 // file whole, to a temporary file renamed into place. If the write fails the
 // set is as it was.
 func (ps *people) put(p *person) error {
+	return ps.write(p, ps.keyBilling)
+}
+
+// putKeyBilling sets (or, for max, drops) the mark on a key no person holds,
+// and writes the file.
+func (ps *people) putKeyBilling(key, billing string) error {
+	marks := make(map[string]string, len(ps.keyBilling)+1)
+	for k, v := range ps.keyBilling {
+		marks[k] = v
+	}
+	if billing == BillingAPI {
+		marks[key] = BillingAPI
+	} else {
+		delete(marks, key)
+	}
+	return ps.write(nil, marks)
+}
+
+// write stores p (nil for none) and marks, and writes the file whole. A
+// person holding a key takes over the key's own mark: it is dropped here.
+func (ps *people) write(p *person, marks map[string]string) error {
 	next := make([]*person, 0, len(ps.list)+1)
 	replaced := false
+	if p != nil {
+		kept := make(map[string]string, len(marks))
+		for k, v := range marks {
+			kept[k] = v
+		}
+		for _, d := range p.Devices {
+			delete(kept, d.Key)
+		}
+		marks = kept
+	}
 	for _, old := range ps.list {
-		if old.PersonID == p.PersonID {
+		if p != nil && old.PersonID == p.PersonID {
 			next, replaced = append(next, p), true
 		} else {
 			next = append(next, old)
 		}
 	}
-	if !replaced {
+	if !replaced && p != nil {
 		next = append(next, p)
 	}
-	data, err := json.MarshalIndent(peopleFile{People: next}, "", "  ")
+	data, err := json.MarshalIndent(peopleFile{People: next, KeyBilling: marks}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding %s: %w", ps.path, err)
 	}
@@ -155,6 +216,10 @@ func (ps *people) put(p *person) error {
 		return fmt.Errorf("writing %s: %w", ps.path, err)
 	}
 	ps.index(next)
+	ps.keyBilling = marks
+	if ps.keyBilling == nil {
+		ps.keyBilling = map[string]string{}
+	}
 	return nil
 }
 

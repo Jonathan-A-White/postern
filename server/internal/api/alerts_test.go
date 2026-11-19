@@ -448,6 +448,16 @@ func TestThePushNamesNoMerchantAmountOrCard(t *testing.T) {
 	}
 }
 
+func TestAnAmazonAlertPostedWithItsOrderNumberAndItemsIsListedWithThem(t *testing.T) {
+	s, keys, _, _ := twoPhones(t)
+	address := s.address(t, keys[0])
+	s.inbound(t, alertsSecret, fmt.Sprintf(`{"token":%q,"kind":"amazon","merchant":"Amazon","amount":"42.17","order_id":"111-0000000-0000000","items":"2 Widgets, 1 Kitchen Gadgets"}`, tokenOf(address)))
+	got := s.list(t, keys[0], 0).Alerts
+	if len(got) != 1 || got[0].OrderID != "111-0000000-0000000" || got[0].Items != "2 Widgets, 1 Kitchen Gadgets" {
+		t.Fatalf("the feed read back: %+v", got)
+	}
+}
+
 func TestAnAlertOlderThanThirtyDaysIsGoneFromTheFeedOnceSwept(t *testing.T) {
 	s, keys, _, _ := twoPhones(t)
 	address := s.address(t, keys[0])

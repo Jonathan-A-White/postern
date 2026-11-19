@@ -2566,6 +2566,8 @@ One alert is parsed facts, as JSON:
 | `subject` | an `unread` alert's subject line; optional |
 | `code` | a `forward-confirm` alert's confirmation code, the one the mail provider sent when the family forwarded its first mail (Gmail sends a link and no code, so it is usually absent); optional |
 | `memo` | a `zelle-sent` alert's memo, the words its sender wrote with the payment; optional |
+| `order_id` | an `amazon` alert's order number, `NNN-NNNNNNN-NNNNNNN`, so an order can be linked to a charge; at most 200 characters; optional |
+| `items` | an `amazon` alert's items, as the mail lists them (`2 Widgets, 1 Kitchen Gadgets`); at most 200 characters; optional |
 | `title` | a `sermon-notes` alert's sermon title, from the mail's subject; optional |
 | `reference` | a `sermon-notes` alert's passage (`2 Peter 3:10-18`), from the mail's subject; optional |
 | `link` | a `forward-confirm` alert's confirmation link, `https://<host>/mail/vf-...` whole, its host exactly `mail.google.com`, `mail-settings.google.com` or `isolated.mail.google.com`, at most 500 characters, the one link an alert carries; optional |

@@ -115,6 +115,11 @@ type Alert struct {
 	Code     string `json:"code,omitempty"`
 	Link     string `json:"link,omitempty"`
 	Memo     string `json:"memo,omitempty"`
+	// OrderID and Items are an amazon alert's: the order number
+	// (NNN-NNNNNNN-NNNNNNN) and the items the mail names, so an order can be
+	// linked to a charge.
+	OrderID string `json:"order_id,omitempty"`
+	Items   string `json:"items,omitempty"`
 	// Title and Reference are a sermon-notes alert's: the sermon's title and
 	// the passage it is on, from the mail's subject.
 	Title     string `json:"title,omitempty"`
@@ -390,7 +395,7 @@ func check(a Alert) error {
 	if !slices.Contains(Kinds, a.Kind) {
 		return &InvalidError{Msg: fmt.Sprintf("kind must be charge, forward-confirm, amazon, unread, zelle-sent, deposit, sermon-notes, service-recording or hold, not %q", a.Kind)}
 	}
-	for name, value := range map[string]string{"amount": a.Amount, "merchant": a.Merchant, "subject": a.Subject, "code": a.Code, "memo": a.Memo, "title": a.Title, "reference": a.Reference} {
+	for name, value := range map[string]string{"amount": a.Amount, "merchant": a.Merchant, "subject": a.Subject, "code": a.Code, "memo": a.Memo, "order_id": a.OrderID, "items": a.Items, "title": a.Title, "reference": a.Reference} {
 		if utf8.RuneCountInString(value) > MaxFieldRunes {
 			return &InvalidError{Msg: name + " is longer than " + fmt.Sprint(MaxFieldRunes) + " characters; an alert holds parsed facts, never a mail body"}
 		}

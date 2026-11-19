@@ -9,6 +9,7 @@ import (
 	"net/mail"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -479,12 +480,67 @@ func TestAnOverLongSubjectIsCutToTheFieldLimit(t *testing.T) {
 
 func TestTheAlertPostedHoldsOnlyTheFieldsTheBackendKeeps(t *testing.T) {
 	order := Parse(fixture(t, "amazon-order.eml")).Alert()
-	if order != (alerts.Alert{Kind: alerts.KindAmazon, Amount: "42.17", Merchant: "Amazon", When: "2026-10-20T23:46:12-04:00"}) {
+	if order != (alerts.Alert{Kind: alerts.KindAmazon, Amount: "42.17", Merchant: "Amazon", When: "2026-10-20T23:46:12-04:00",
+		OrderID: "111-0000000-0000000", Items: "2 Widgets, 1 Kitchen Gadgets"}) {
 		t.Fatalf("amazon alert = %+v", order)
 	}
 	unread := Parse(fixture(t, "unknown.eml")).Alert()
 	if unread != (alerts.Alert{Kind: alerts.KindUnread, Subject: "Your November statement is ready — view it online"}) {
 		t.Fatalf("unread alert = %+v", unread)
+	}
+}
+
+func TestAnAmazonAlertCarriesItsOrderNumberAndItems(t *testing.T) {
+	order := Parse(fixture(t, "amazon-order.eml")).Alert()
+	if !regexp.MustCompile(`^\d{3}-\d{7}-\d{7}$`).MatchString(order.OrderID) {
+		t.Fatalf("Alert().OrderID = %q, want the mail's order number NNN-NNNNNNN-NNNNNNN", order.OrderID)
+	}
+	if order.Items == "" {
+		t.Fatalf("Alert().Items is empty")
+	}
+	long := Facts{Kind: alerts.KindAmazon, OrderID: strings.Repeat("9", 500), Items: strings.Repeat("é", 500)}.Alert()
+	if n := len([]rune(long.OrderID)); n != alerts.MaxFieldRunes {
+		t.Errorf("order id is %d runes, want it cut to %d", n, alerts.MaxFieldRunes)
+	}
+	if n := len([]rune(long.Items)); n != alerts.MaxFieldRunes {
+		t.Errorf("items are %d runes, want them cut to %d", n, alerts.MaxFieldRunes)
+	}
+}
+
+// Every field of Facts is passed by Alert() or named here as left out on
+// purpose, so a new field cannot be dropped without anyone deciding to.
+var (
+	factsPassedByAlert = map[string]bool{"Kind": true, "Amount": true, "Merchant": true, "Last4": true, "When": true, "Subject": true,
+		"Code": true, "Link": true, "OrderID": true, "Items": true, "Memo": true, "Title": true, "Reference": true, "Notes": true}
+	factsLeftOutOfAlert = map[string]bool{"NotesWhy": true}
+)
+
+func TestEveryFactIsPassedByAlertOrNamedAsLeftOut(t *testing.T) {
+	typ := reflect.TypeOf(Facts{})
+	for i := 0; i < typ.NumField(); i++ {
+		name := typ.Field(i).Name
+		if factsPassedByAlert[name] == factsLeftOutOfAlert[name] {
+			t.Errorf("Facts.%s is in neither list, or both: pass it in Alert() and add it to factsPassedByAlert, or name it as left out in factsLeftOutOfAlert and in the comment beside Alert()", name)
+		}
+	}
+	for name := range factsPassedByAlert {
+		if _, ok := typ.FieldByName(name); !ok {
+			t.Errorf("factsPassedByAlert names %s, which Facts does not have", name)
+		}
+	}
+	for name := range factsLeftOutOfAlert {
+		if _, ok := typ.FieldByName(name); !ok {
+			t.Errorf("factsLeftOutOfAlert names %s, which Facts does not have", name)
+		}
+	}
+	// A field said to be passed must change the alert when it is set.
+	for name := range factsPassedByAlert {
+		f := Facts{Kind: alerts.KindSermonNotes}
+		fv := reflect.ValueOf(&f).Elem().FieldByName(name)
+		fv.SetString("x")
+		if f.Alert() == (Facts{Kind: alerts.KindSermonNotes}).Alert() && name != "Kind" {
+			t.Errorf("Facts.%s is listed as passed but setting it does not change Alert()", name)
+		}
 	}
 }
 

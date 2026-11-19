@@ -261,12 +261,15 @@ func (h *HTTPInbound) Post(ctx context.Context, token string, alert alerts.Alert
 		Code     string `json:"code,omitempty"`
 		Link     string `json:"link,omitempty"`
 		Memo     string `json:"memo,omitempty"`
+		// an amazon alert's order number and items.
+		OrderID string `json:"order_id,omitempty"`
+		Items   string `json:"items,omitempty"`
 		// a sermon-notes alert's own facts; every other kind leaves them out.
 		// Notes is the base64 of the mail's notes PDF, when it had one.
 		Title     string `json:"title,omitempty"`
 		Reference string `json:"reference,omitempty"`
 		Notes     string `json:"notes,omitempty"`
-	}{token, alert.Kind, alert.Amount, alert.Merchant, alert.Last4, alert.When, alert.Subject, alert.Code, alert.Link, alert.Memo, alert.Title, alert.Reference, alert.Notes})
+	}{token, alert.Kind, alert.Amount, alert.Merchant, alert.Last4, alert.When, alert.Subject, alert.Code, alert.Link, alert.Memo, alert.OrderID, alert.Items, alert.Title, alert.Reference, alert.Notes})
 	if err != nil {
 		return err
 	}

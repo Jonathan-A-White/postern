@@ -223,6 +223,38 @@ func TestAZelleSentAndADepositAreKeptWithTheirMemoAndSurviveARestart(t *testing.
 	}
 }
 
+func TestAnAmazonAlertIsKeptWithItsOrderNumberAndItemsAndSurvivesARestart(t *testing.T) {
+	dir, c := t.TempDir(), newClock()
+	s := openStore(t, dir, c)
+	token, _ := s.Address("family-a")
+	order, _, err := s.Add(token, Alert{Kind: KindAmazon, Amount: "42.17", Merchant: "Amazon", OrderID: "111-0000000-0000000", Items: "2 Widgets, 1 Kitchen Gadgets"})
+	if err != nil {
+		t.Fatalf("Add amazon: %v", err)
+	}
+	plain, _, err := s.Add(token, Alert{Kind: KindAmazon, Amount: "9.38", Merchant: "Amazon"})
+	if err != nil {
+		t.Fatalf("Add amazon without an order: %v", err)
+	}
+	got := openStore(t, dir, c).List("family-a", 0)
+	if len(got) != 2 || got[0] != order || got[0].OrderID != "111-0000000-0000000" || got[0].Items != "2 Widgets, 1 Kitchen Gadgets" {
+		t.Fatalf("after a restart: %+v", got)
+	}
+	raw, _ := json.Marshal(order)
+	if !strings.Contains(string(raw), `"order_id":"111-0000000-0000000"`) || !strings.Contains(string(raw), `"items":"2 Widgets, 1 Kitchen Gadgets"`) {
+		t.Fatalf("the alert read back is %s", raw)
+	}
+	raw, _ = json.Marshal(plain)
+	if strings.Contains(string(raw), "order_id") || strings.Contains(string(raw), "items") {
+		t.Fatalf("an alert with no order answers one: %s", raw)
+	}
+	long := strings.Repeat("x", MaxFieldRunes+1)
+	for name, a := range map[string]Alert{"order_id": {Kind: KindAmazon, OrderID: long}, "items": {Kind: KindAmazon, Items: long}} {
+		if _, _, err := s.Add(token, a); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("a %s over the limit: err = %v, want a refusal naming it", name, err)
+		}
+	}
+}
+
 func TestASermonNotesAlertIsKeptWithItsTitleReferenceAndDateAndSurvivesARestart(t *testing.T) {
 	dir, c := t.TempDir(), newClock()
 	s := openStore(t, dir, c)

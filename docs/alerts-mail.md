@@ -33,7 +33,7 @@
     account." mail: `deposit` with the payer ("Deposit made by") as `merchant`, `amount`, `last4` and the date as
     `when`. The transaction id is never kept. Any other PNC mail is `unread`.
   - Amazon order and shipment mails: `amazon` with the total as `amount`, `merchant` "Amazon" and the mail's date.
-    The order id and items are read too, but §26 has no field for them, so they are not posted.
+    The order number is posted as `order_id` and the items as `items` (each at most 200 characters), so an order can be linked to a charge.
   - Gmail's forwarding confirmation (subject `(Gmail Forwarding Confirmation - Receive Mail from ...`, from
     google.com): `forward-confirm` with its `link`, the `https://<host>/mail/vf-...` one, which the family's app shows
     to tap and confirm. The host is one of an exact list, the hosts Gmail's real confirmations have used:

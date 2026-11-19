@@ -28,8 +28,8 @@ import (
 )
 
 // Facts is what one mail says, as far as the receiver understands it. OrderID
-// and Items are an Amazon mail's; §26 has no field for them, so Alert leaves
-// them out.
+// and Items are an Amazon mail's. Every field is passed by Alert but NotesWhy
+// (see the comment beside Alert).
 type Facts struct {
 	Kind     string
 	Amount   string
@@ -53,7 +53,10 @@ type Facts struct {
 }
 
 // Alert is the facts as POST /api/alerts/inbound takes them: only §26's
-// fields, each cut to its limit.
+// fields, each cut to its limit. Every field of Facts is passed but NotesWhy,
+// which is left out on purpose: it is the receiver's own log line about a
+// sermon-notes mail with no PDF, and §26 has no field for it
+// (TestEveryFactIsPassedByAlertOrNamedAsLeftOut holds this).
 func (f Facts) Alert() alerts.Alert {
 	return alerts.Alert{
 		Kind:      f.Kind,
@@ -65,6 +68,8 @@ func (f Facts) Alert() alerts.Alert {
 		Code:      cut(f.Code),
 		Link:      f.Link,
 		Memo:      cut(f.Memo),
+		OrderID:   cut(f.OrderID),
+		Items:     cut(f.Items),
 		Title:     cut(f.Title),
 		Reference: cut(f.Reference),
 		Notes:     f.notesBase64(),

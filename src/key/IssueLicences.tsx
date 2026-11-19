@@ -4,6 +4,7 @@
 // app key's /api/me names no collections, and then this renders nothing.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { plainMessage } from '../services/chainBusy';
+import { readApiOnly, setApiOnly } from '../services/billing';
 import { fetchMe, type MeCollection } from '../services/me';
 import { chain, type IssuedLicence, type IssuedLicenceEntry } from '../chain';
 import { publicKeyHexFromMasterKey } from '../services/vault';
@@ -46,6 +47,9 @@ const BALANCE_RETRIES = 5;
 /** The issuer's balance: loading, read, or refused with the reason (shown as the Key screen shows it). */
 type Balance = { name: 'loading' } | { name: 'loaded'; satoshis: number } | { name: 'error'; message: string; failures: number };
 
+/** Which holders the backend bills API only (the Governor's 'API only' switch); a holder not in it is billed Max. */
+type BillingMarks = { name: 'loading' } | { name: 'loaded'; apiOnly: Set<string> } | { name: 'error'; message: string };
+
 type IssueOutcome = { name: 'idle' } | { name: 'issuing'; busy?: boolean } | { name: 'issued'; txid: string } | { name: 'error'; message: string };
 
 
@@ -82,9 +86,13 @@ function dateOf(row: Row, times: Record<string, number>): string {
   return row.height === null ? 'Not in a block yet' : `Block ${row.height}`;
 }
 
+/** What a row shows of its holder's billing: unread until the backend has said. */
+type RowBilling = { state: 'unread' } | { state: 'max' | 'api'; saving: boolean; error: string | null; onChange: (apiOnly: boolean) => void };
+
 function IssuedRow({
   row,
   times,
+  billing,
   confirming,
   revoking,
   busy,
@@ -95,6 +103,7 @@ function IssuedRow({
 }: {
   row: Row;
   times: Record<string, number>;
+  billing: RowBilling;
   confirming: boolean;
   revoking: boolean;
   /** WhatsOnChain was busy and the revoke is being tried again. */
@@ -118,6 +127,32 @@ function IssuedRow({
           {shorten(row.txid, 8, 6)}
         </a>
       </div>
+      {row.status === 'held' && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2">
+            <span data-testid="issued-billing" className="text-muted">
+              {billing.state === 'unread' ? '' : billing.state === 'api' ? 'Billing: API only' : 'Billing: Max'}
+            </span>
+            <label className="inline-flex min-h-8 items-center gap-2">
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label="API only"
+                className="size-5"
+                checked={billing.state === 'api'}
+                disabled={billing.state === 'unread' || billing.saving}
+                onChange={(e) => billing.state !== 'unread' && billing.onChange(e.target.checked)}
+              />
+              <span aria-hidden="true">{billing.state !== 'unread' && billing.saving ? 'Saving…' : 'API only'}</span>
+            </label>
+          </div>
+          {billing.state !== 'unread' && billing.error && (
+            <p role="alert" className={`text-danger ${WRAP}`}>
+              Could not save: {billing.error}
+            </p>
+          )}
+        </div>
+      )}
       {row.status === 'held' && !confirming && (
         <button className={`${SMALL_BUTTON} self-start`} onClick={onAskRevoke}>
           Revoke
@@ -159,6 +194,10 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
   const failedBalanceReads = useRef(0);
   const [listing, setListing] = useState<Listing>({ name: 'loading' });
   const [times, setTimes] = useState<Record<string, number>>({});
+  const [marks, setMarks] = useState<BillingMarks>({ name: 'loading' });
+  const [marksToken, setMarksToken] = useState(0);
+  const [savingBilling, setSavingBilling] = useState<string | null>(null);
+  const [billingError, setBillingError] = useState<{ holder: string; message: string } | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   // What the list last read, and how many reads in a row failed since: a failed re-read keeps the rows.
   const knownEntries = useRef<IssuedLicenceEntry[]>([]);
@@ -218,6 +257,22 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       current = false;
     };
   }, [enabled, issuerKey, issuerPublicKeyHex, refreshToken]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let current = true;
+    void readApiOnly(issuerKey).then(
+      (apiOnly) => {
+        if (current) setMarks({ name: 'loaded', apiOnly });
+      },
+      (error) => {
+        if (current) setMarks({ name: 'error', message: plainMessage(error) });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [enabled, issuerKey, marksToken]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -357,6 +412,37 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
       if (alive()) setRevoking(null);
     }
   }
+
+  async function handleBilling(holder: string, apiOnly: boolean) {
+    if (marks.name !== 'loaded') return;
+    setSavingBilling(holder);
+    setBillingError(null);
+    try {
+      await setApiOnly(issuerKey, holder, apiOnly);
+      if (!alive()) return;
+      setMarks((previous) => {
+        if (previous.name !== 'loaded') return previous;
+        const next = new Set(previous.apiOnly);
+        if (apiOnly) next.add(holder);
+        else next.delete(holder);
+        return { name: 'loaded', apiOnly: next };
+      });
+    } catch (error) {
+      if (alive()) setBillingError({ holder, message: plainMessage(error) });
+    } finally {
+      if (alive()) setSavingBilling(null);
+    }
+  }
+
+  const billingOf = (holder: string): RowBilling =>
+    marks.name !== 'loaded'
+      ? { state: 'unread' }
+      : {
+          state: marks.apiOnly.has(holder) ? 'api' : 'max',
+          saving: savingBilling === holder,
+          error: billingError?.holder === holder ? billingError.message : null,
+          onChange: (apiOnly) => void handleBilling(holder, apiOnly),
+        };
 
   const entries = listing.name === 'loaded' || listing.name === 'retrying' ? listing.entries : [];
   const listed = new Set(entries.map((entry) => entry.origin));
@@ -518,6 +604,20 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
             </button>
           </div>
         )}
+        {marks.name === 'error' && (
+          <div role="status" className="flex flex-col gap-2">
+            <p className={`text-sm text-muted ${WRAP}`}>Billing is not loaded, so the API only switches are off: {marks.message}</p>
+            <button
+              className={`${BUTTON} self-start`}
+              onClick={() => {
+                setMarks({ name: 'loading' });
+                setMarksToken((token) => token + 1);
+              }}
+            >
+              Read billing again
+            </button>
+          </div>
+        )}
         {listing.name === 'loaded' && rows.length === 0 && <p className="text-sm text-muted">No licence issued from this key yet.</p>}
         {groups.map((group) => (
           <div key={group.name} data-testid="issued-group" className="flex flex-col gap-2">
@@ -528,6 +628,7 @@ export function IssueLicences({ issuerKey }: { issuerKey: Uint8Array }) {
                   key={row.origin}
                   row={row}
                   times={times}
+                  billing={billingOf(row.holder)}
                   confirming={confirming === row.origin}
                   revoking={revoking === row.origin}
                   busy={revokeBusy}

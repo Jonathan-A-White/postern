@@ -6,7 +6,8 @@ import { readApiOnly, setApiOnly } from '../../src/services/billing';
 import { challengeResponse, isChallengeRequest } from '../support/challenge-fetch';
 
 const MASTER = new Uint8Array(PrivateKey.fromHex('11'.repeat(32)).toArray('be', 32));
-const HOLDER = PrivateKey.fromHex('22'.repeat(32)).toPublicKey().toString();
+/** A holder as the Key screen lists it: a testnet address. */
+const HOLDER = PrivateKey.fromHex('22'.repeat(32)).toPublicKey().toAddress('testnet');
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 function backend(answer: (method: string, url: string, body: string) => Response) {
@@ -22,10 +23,10 @@ function backend(answer: (method: string, url: string, body: string) => Response
 }
 
 describe('the billing service', () => {
-  it('reads the keys billed API only, lower-cased', async () => {
-    const { calls, fetchImpl } = backend(() => json(200, { api: [HOLDER.toUpperCase(), 'aa'] }));
+  it('reads the holders billed API only', async () => {
+    const { calls, fetchImpl } = backend(() => json(200, { api: [HOLDER, 'mnotherholder'] }));
     const keys = await readApiOnly(MASTER, { apiBase: 'https://b.test/api', fetchImpl });
-    expect(keys).toEqual(new Set([HOLDER, 'aa']));
+    expect(keys).toEqual(new Set([HOLDER, 'mnotherholder']));
     expect(calls).toEqual([{ method: 'GET', url: 'https://b.test/api/register/billing', body: '' }]);
   });
 
@@ -34,8 +35,8 @@ describe('the billing service', () => {
     await setApiOnly(MASTER, HOLDER, true, { apiBase: 'https://b.test/api', fetchImpl });
     await setApiOnly(MASTER, HOLDER, false, { apiBase: 'https://b.test/api', fetchImpl });
     expect(calls.map((c) => [c.method, c.url, JSON.parse(c.body)])).toEqual([
-      ['PUT', 'https://b.test/api/register/billing', { key: HOLDER, billing: 'api' }],
-      ['PUT', 'https://b.test/api/register/billing', { key: HOLDER, billing: 'max' }],
+      ['PUT', 'https://b.test/api/register/billing', { holder: HOLDER, billing: 'api' }],
+      ['PUT', 'https://b.test/api/register/billing', { holder: HOLDER, billing: 'max' }],
     ]);
   });
 
@@ -47,7 +48,7 @@ describe('the billing service', () => {
 
   it('says an older backend needs updating', async () => {
     const { fetchImpl } = backend(() => json(404, {}));
-    await expect(readApiOnly(MASTER, { apiBase: 'https://b.test/api', fetchImpl })).rejects.toThrow('needs a newer backend');
+    await expect(readApiOnly(MASTER, { apiBase: 'https://b.test/api', fetchImpl })).rejects.toThrow('need a newer backend');
   });
 
   it('refuses an answer that is not the list', async () => {

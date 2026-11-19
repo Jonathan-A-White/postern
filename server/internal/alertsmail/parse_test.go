@@ -186,6 +186,105 @@ func TestAnAmazonOrderYieldsItsOrderIDItemsAndTotal(t *testing.T) {
 	}
 }
 
+// parseAmazon reads the order's grand total in each shape a mail's table gives it
+// (the fixtures amazon-total-*.eml): the amount on the label's line, on the next
+// non-empty line after a bare label, or in an amount column after a label column,
+// where the first amount is the subtotal's and never the grand total's.
+func TestAnAmazonGrandTotalIsReadInEachShapeAMailGivesIt(t *testing.T) {
+	for _, tc := range []struct{ file, shape string }{
+		{"amazon-order.eml", "the amount in the cell after the label"},
+		{"amazon-total-same-line.eml", "the amount on the label's line"},
+		{"amazon-total-next-line.eml", "the amount on the next non-empty line after a bare label"},
+		{"amazon-total-columns.eml", "a label column, then an amount column (Subtotal 25.00, Shipping 10.00, Grand Total 42.17)"},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			got := Parse(fixture(t, tc.file))
+			if got.Kind != alerts.KindAmazon || got.Amount != "42.17" {
+				t.Fatalf("Parse(%s) = %+v, want the grand total 42.17 read from %s", tc.file, got, tc.shape)
+			}
+		})
+	}
+}
+
+// A mail with an "Order Total" (25.00, the items before shipping and tax) and
+// later a "Grand Total" (42.17, what the card is charged) is read as the Grand
+// Total: the Grand Total wins over the Order Total wherever each is, and of the
+// same label seen twice the last readable one wins, as a summary follows its items.
+func TestAnAmazonGrandTotalBeatsAnOrderTotalAndALaterLabelBeatsAnEarlierOne(t *testing.T) {
+	if got := Parse(fixture(t, "amazon-total-twice.eml")); got.Amount != "42.17" {
+		t.Errorf("Order Total 25.00 then Grand Total 42.17: Amount = %q, want 42.17", got.Amount)
+	}
+	mail := func(lines ...string) []byte {
+		return []byte("From: Amazon.com <auto-confirm@amazon.com>\r\nSubject: Ordered: Widget\r\nContent-Type: text/plain\r\n\r\nOrder # 111-0000000-0000000\r\n" + strings.Join(lines, "\r\n") + "\r\n")
+	}
+	for name, tc := range map[string]struct {
+		raw  []byte
+		want string
+	}{
+		"grand total first, order total after": {mail("Grand Total: $42.17", "Order Total: $25.00"), "42.17"},
+		"order total only":                     {mail("Order Total: $25.00"), "25.00"},
+		"two grand totals":                     {mail("Grand Total: $25.00", "Grand Total: $42.17"), "42.17"},
+		"a later grand total with no amount":   {mail("Grand Total: $42.17", "Grand Total:", "Questions? Call us."), "42.17"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := Parse(tc.raw); got.Amount != tc.want {
+				t.Errorf("Amount = %q, want %q", got.Amount, tc.want)
+			}
+		})
+	}
+}
+
+// A mail with no readable total gives Amount empty, never "0.00".
+func TestAnAmazonMailWithNoReadableTotalHasNoAmount(t *testing.T) {
+	got := Parse(fixture(t, "amazon-no-total.eml"))
+	if got.Kind != alerts.KindAmazon || got.OrderID != "111-0000000-0000000" {
+		t.Fatalf("Parse(amazon-no-total.eml) = %+v, want an Amazon alert with its order id", got)
+	}
+	if got.Amount != "" {
+		t.Errorf("Amount = %q, want empty", got.Amount)
+	}
+	if a := got.Alert(); a.Amount != "" {
+		t.Errorf("Alert().Amount = %q, want empty", a.Amount)
+	}
+}
+
+// Sweep (mw-6ww.148.9): Chase, Citi and PNC read an amount through m.value ("Amount" then its
+// value on the next line when the line has none) and money(), which reads
+// nothing for a line that is not an amount, so a label with its amount on another line is read
+// and one with no amount is unread, never 0.00. Their mails are rows of one label and one
+// value, never a label column followed by an amount column (a first-match fault only a total of
+// several amounts has), and each label is looked for by its whole name ("Threshold amount:" is not "Amount:").
+func TestCardAndBankAmountsOnTheNextLineAreRead(t *testing.T) {
+	mail := func(from, subject string, lines ...string) []byte {
+		return []byte("From: x <" + from + ">\r\nDate: Mon, 2 Nov 2026 12:42:00 -0500\r\nSubject: " + subject + "\r\nContent-Type: text/plain\r\n\r\n" + strings.Join(lines, "\r\n") + "\r\n")
+	}
+	for name, tc := range map[string]struct {
+		raw  []byte
+		want string
+	}{
+		"chase":              {mail("alerts@chase.com", "Your card", "Merchant", "ACME", "Account", "Prime Visa (...1234)", "Amount", "$9.38"), "9.38"},
+		"citi":               {mail("alerts@citi.com", "A transaction was made", "Amount:", "$187.53", "Merchant", "ACME", "Card Ending In", "4321"), "187.53"},
+		"pnc zelle":          {mail("pncalerts@pnc.com", "You sent a Zelle® payment to Sam Example", "From Account:", "x1234", "Amount:", "$25.00"), "25.00"},
+		"pnc deposit":        {mail("pncalerts@pnc.com", "A deposit was credited to your account.", "Threshold amount:", "$10.00", "Amount:", "$64.20", "Deposit made by:", "SOMEONE"), "64.20"},
+		"pnc deposit, later": {mail("pncalerts@pnc.com", "A deposit was credited to your account.", "Amount:", "$64.20", "Amount:", "$10.00"), "64.20"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := Parse(tc.raw); got.Amount != tc.want {
+				t.Errorf("Parse = %+v, want Amount %q", got, tc.want)
+			}
+		})
+	}
+	// No amount: unread, not a charge of 0.00.
+	for name, raw := range map[string][]byte{
+		"chase": mail("alerts@chase.com", "Your card", "Merchant", "ACME", "Amount", "Merchant"),
+		"citi":  mail("alerts@citi.com", "A transaction was made", "Amount:", "Merchant", "ACME"),
+	} {
+		if got := Parse(raw); got.Kind != alerts.KindUnread {
+			t.Errorf("%s with no amount: Parse = %+v, want unread", name, got)
+		}
+	}
+}
+
 func TestAnAmazonShipmentYieldsItsOrderID(t *testing.T) {
 	raw := "From: Amazon.com <shipment-tracking@amazon.com>\r\n" +
 		"Date: Thu, 22 Oct 2026 10:00:00 -0400\r\n" +

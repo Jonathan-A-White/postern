@@ -155,6 +155,9 @@ var (
 
 // parseChase reads a Chase transaction alert: "Account Prime Visa (...1234)",
 // "Date Nov 2, 2026 at 12:42 PM ET", "Merchant ...", "Amount $9.38".
+//
+// Sweep (mw-6ww.148.9): the amount is m.value("Amount"), which reads a value on the label's line or the next line, and
+// Chase's mail is one label and one value per row, never a label column then an amount column, so its first match is its only one.
 func parseChase(m mailView) (Facts, bool) {
 	if !m.fromDomain("chase.com") {
 		return Facts{}, false
@@ -201,6 +204,8 @@ var (
 
 // parseCiti reads a Citi custom alert: "Amount: $187.53", "Card Ending In
 // 4321", "Merchant ...", "Date 10/31/2026", "Time 04:53 PM ET".
+//
+// Sweep (mw-6ww.148.9): "Amount: $x" is read from its line or, split, by m.value; the mail's one amount is not a column of several.
 func parseCiti(m mailView) (Facts, bool) {
 	if !m.fromDomain("citi.com") {
 		return Facts{}, false
@@ -253,6 +258,8 @@ var (
 // "From Account: x1234", "Amount: $25.00", "Payment Date: 11/02/26",
 // "Memo: ...", "Transaction ID: ..." (the id is not kept). A payment with no
 // payee or no amount is unread.
+//
+// Sweep (mw-6ww.148.9): "Amount:" is a row of its own, read by m.value from its line or the next; there is one amount in the mail.
 func parsePNCZelleSent(m mailView) (Facts, bool) {
 	if !m.fromDomain("pnc.com") {
 		return Facts{}, false
@@ -288,6 +295,9 @@ func parsePNCZelleSent(m mailView) (Facts, bool) {
 // parsePNCDeposit reads PNC's "A $64.20 deposit was credited to your account."
 // alert: "Account ending in: x1234", "Amount: $64.20", "Deposit made by:
 // <payer>", "Date: 11/01/26". A deposit with no amount is unread.
+//
+// Sweep (mw-6ww.148.9): "Amount:" is matched whole (not "Threshold amount:") and read from its line or the next by m.value;
+// the mail has no column of labels followed by a column of amounts.
 func parsePNCDeposit(m mailView) (Facts, bool) {
 	if !m.fromDomain("pnc.com") {
 		return Facts{}, false
@@ -336,17 +346,17 @@ var (
 	amazonOrderID   = regexp.MustCompile(`\b(\d{3}-\d{7}-\d{7})\b`)
 	amazonItemsLine = regexp.MustCompile(`(?i)^\d+ items?:\s*(.+)$`)
 	amazonOrdered   = regexp.MustCompile(`(?i)^Ordered:?\s*(?:\d+ items?:\s*)?(.+)$`)
-	amazonTotal     = regexp.MustCompile(`(?i)^(?:Grand|Order) Total:?\s*(\$?[0-9,]+\.\d{2})?$`)
+	amazonTotal     = regexp.MustCompile(`(?i)^(Grand|Order) Total:?\s*(\$?[0-9,]+\.\d{2})?$`)
 )
 
 // parseAmazon reads an Amazon order or shipment mail: "Order # 111-...",
-// "3 items: 2 Widgets, 1 Kitchen Gadgets", "Grand Total: $42.17".
+// "3 items: 2 Widgets, 1 Kitchen Gadgets", "Grand Total: $42.17" (see amazonGrandTotal).
 func parseAmazon(m mailView) (Facts, bool) {
 	if !m.fromDomain("amazon.com") {
 		return Facts{}, false
 	}
 	f := Facts{Kind: alerts.KindAmazon, Merchant: "Amazon", When: m.date}
-	for i, line := range m.lines {
+	for _, line := range m.lines {
 		if f.OrderID == "" && strings.Contains(strings.ToLower(line), "order") {
 			if id := amazonOrderID.FindStringSubmatch(line); id != nil {
 				f.OrderID = id[1]
@@ -357,16 +367,8 @@ func parseAmazon(m mailView) (Facts, bool) {
 				f.Items = items[1]
 			}
 		}
-		if f.Amount == "" {
-			if total := amazonTotal.FindStringSubmatch(line); total != nil {
-				if total[1] != "" {
-					f.Amount = money(total[1])
-				} else if i+1 < len(m.lines) {
-					f.Amount = money(m.lines[i+1])
-				}
-			}
-		}
 	}
+	f.Amount = amazonGrandTotal(m.lines)
 	if f.Items == "" {
 		if s := amazonOrdered.FindStringSubmatch(m.subject); s != nil {
 			f.Items = strings.Trim(s[1], `"“” `)
@@ -377,6 +379,69 @@ func parseAmazon(m mailView) (Facts, bool) {
 		return Facts{}, false
 	}
 	return f, true
+}
+
+// amazonLabelRun is how many lines after a total's label a label column may run before its amounts.
+const amazonLabelRun = 8
+
+// amazonGrandTotal is the order's total as the mail's lines give it, or "" when
+// none is readable (never "0.00"). A "Grand Total" beats an "Order Total": the
+// Order Total of a mail can be the items' sum before shipping and tax, the Grand
+// Total is what the card is charged. Of one label seen more than once, the last
+// readable one is read, as a summary comes after the items it sums.
+//
+// A label's amount is on its own line ("Grand Total: $42.17"); else the next
+// non-empty line (lines has no empty ones), a table's next cell; else, in a
+// label column ("Item(s) Subtotal:", "Shipping:", "Grand Total:" in a row and
+// then their amounts in a row), the amount in the same place of the amount
+// column as the label is in the label column, never the first amount.
+func amazonGrandTotal(lines []string) string {
+	var grand, order string
+	for i, line := range lines {
+		t := amazonTotal.FindStringSubmatch(line)
+		if t == nil {
+			continue
+		}
+		amount := money(t[2])
+		if amount == "" {
+			amount = amazonAmountBelow(lines, i)
+		}
+		if amount == "" {
+			continue
+		}
+		if strings.EqualFold(t[1], "Grand") {
+			grand = amount
+		} else {
+			order = amount
+		}
+	}
+	if grand != "" {
+		return grand
+	}
+	return order
+}
+
+// amazonAmountBelow reads the amount of the label at lines[i] from the lines
+// after it: the label's gap lines are the labels still to come in a label
+// column, then the run of amounts; the label's amount is the run's entry that
+// has as many entries after it as the label has labels after it.
+func amazonAmountBelow(lines []string, i int) string {
+	gap := 0
+	for j := i + 1; j < len(lines) && gap <= amazonLabelRun; j++ {
+		if money(lines[j]) == "" {
+			gap++
+			continue
+		}
+		run := 0
+		for k := j; k < len(lines) && money(lines[k]) != ""; k++ {
+			run++
+		}
+		if idx := run - 1 - gap; idx >= 0 {
+			return money(lines[j+idx])
+		}
+		return ""
+	}
+	return ""
 }
 
 // ---- Gmail's forwarding confirmation ---------------------------------------

@@ -1056,3 +1056,68 @@ func TestNoPDFLibraryIsRequired(t *testing.T) {
 		t.Fatalf("go.mod requires a PDF library:\n%s", mod)
 	}
 }
+
+// An amazon.com mail that cancels an order, refunds it or confirms a return names an order number
+// and a total, but is not a new order: it is read as unread, never as kind amazon (mw-6ww.148.10).
+// The fixtures are shaped after amazon-order.eml, with an order number in each.
+func TestAnAmazonCancellationRefundOrReturnMailIsNotAnOrder(t *testing.T) {
+	for _, file := range []string{"amazon-cancelled.eml", "amazon-refund.eml", "amazon-return.eml"} {
+		t.Run(file, func(t *testing.T) {
+			got, logged := parseLogged(t, fixture(t, file))
+			if got.Kind != alerts.KindUnread || got.Amount != "" || got.OrderID != "" {
+				t.Fatalf("Parse(%s) = %+v, want unread with no amount and no order id", file, got)
+			}
+			if !strings.Contains(logged, "amazon: a cancellation, refund or return, not an order") {
+				t.Errorf("logged %q, want it to say why", logged)
+			}
+		})
+	}
+}
+
+// Only the words of a cancellation, refund or return in the subject or a heading turn an order away: an
+// order or shipment whose item is called "Return Address Labels" is still an order.
+func TestAnAmazonOrderOrShipmentNamingAReturnIsStillAnOrder(t *testing.T) {
+	for name, tc := range map[string]struct{ subject, body string }{
+		"an order for return labels":   {`Ordered: "Return Address Labels"`, "Order # 111-0000000-0000000"},
+		"a shipment of a refund kit":   {`Shipped: "Refund Policy Poster" and 1 more item`, "Order # 111-0000000-0000000"},
+		"a delivery of cancel buttons": {`Delivered: "Cancel Culture Buttons"`, "Order # 111-0000000-0000000"},
+		"an order with a returns link": {`Ordered: Widget`, "Order # 111-0000000-0000000\r\nReturn or replace items\r\nGrand Total: $42.17"},
+		"a subject-less order number":  {``, "Order # 111-0000000-0000000"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw := "From: Amazon.com <auto-confirm@amazon.com>\r\nSubject: " + tc.subject + "\r\nContent-Type: text/plain\r\n\r\n" + tc.body + "\r\n"
+			if got := Parse([]byte(raw)); got.Kind != alerts.KindAmazon || got.OrderID != "111-0000000-0000000" {
+				t.Fatalf("Parse = %+v, want an Amazon alert with its order id", got)
+			}
+		})
+	}
+}
+
+// Sweep: every parser that takes its kind from the sender's domain is given a non-charge mail from that
+// sender (a statement, a payment received, a security notice, a promotion), and none reads it as a charge,
+// a Zelle payment, a deposit or notes. subsplash.com and the Chase, Citi and PNC subjects are the checks.
+func TestANonChargeMailFromABankOrChurchSenderIsUnread(t *testing.T) {
+	mailOf := func(from, subject string, body ...string) []byte {
+		return []byte("From: x <" + from + ">\r\nSubject: " + subject + "\r\nContent-Type: text/plain\r\n\r\n" + strings.Join(body, "\r\n") + "\r\n")
+	}
+	for name, raw := range map[string][]byte{
+		"chase statement ready":     mailOf("no.reply.alerts@chase.com", "Your statement is ready", "Statement balance", "$123.45", "Amount", "$25.00", "Due Nov 20, 2026"),
+		"chase payment received":    mailOf("no.reply.alerts@chase.com", "We received your payment", "Account", "Prime Visa (...1234)", "Amount", "$25.00"),
+		"chase security notice":     mailOf("no.reply.alerts@chase.com", "Security alert: new sign-in", "Amount", "$0.00 limit", "Review your account"),
+		"chase promotion":           mailOf("no.reply.alerts@chase.com", "Earn 5% back this month", "Amount", "$500.00", "Offer ends soon"),
+		"citi statement ready":      mailOf("alerts@citi.com", "Your statement is ready", "Amount: $25.00", "Card Ending In 4321"),
+		"citi promotion":            mailOf("alerts@citi.com", "A new offer for you", "Amount: $200.00", "Merchant ACME"),
+		"citi security notice":      mailOf("alerts@citi.com", "Security notice: password changed", "Amount: $0.00", "Card Ending In 4321"),
+		"pnc statement ready":       mailOf("pncalerts@pnc.com", "Your statement is ready", "Amount: $25.00", "From Account: x1234"),
+		"pnc promotion":             mailOf("pncalerts@pnc.com", "A bonus for you", "Amount: $300.00", "Account ending in: x1234"),
+		"pnc security notice":       mailOf("pncalerts@pnc.com", "Security notice: new device", "Amount: $0.00", "Account ending in: x1234"),
+		"subsplash newsletter":      mailOf("noreply@mail.subsplash.com", "This week at church", "Sun, Nov 8, 2026"),
+		"subsplash security notice": mailOf("noreply@mail.subsplash.com", "Your password was changed", "Date: Nov 8, 2026"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := Parse(raw); got.Kind != alerts.KindUnread {
+				t.Fatalf("Parse = %+v, want unread", got)
+			}
+		})
+	}
+}

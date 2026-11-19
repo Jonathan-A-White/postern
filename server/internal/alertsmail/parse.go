@@ -165,7 +165,8 @@ func parseChase(m mailView) (Facts, bool) {
 	f := Facts{Kind: alerts.KindCharge}
 	f.Amount = money(m.value("Amount"))
 	f.Merchant = m.value("Merchant")
-	if s := chaseSubject.FindStringSubmatch(m.subject); s != nil {
+	s := chaseSubject.FindStringSubmatch(m.subject)
+	if s != nil {
 		if f.Amount == "" {
 			f.Amount = money(s[1])
 		}
@@ -180,6 +181,12 @@ func parseChase(m mailView) (Facts, bool) {
 		"Jan 2, 2006 3:04 PM", "January 2, 2006 3:04 PM", "Jan 2, 2006 15:04")
 	if f.Amount == "" {
 		m.miss("chase", "no amount")
+		return Facts{}, false
+	}
+	if s == nil && f.Merchant == "" {
+		// A charge names its merchant or says "You made a $x transaction with ..." in its subject; a statement,
+		// a payment received or a promotion with an "Amount" in it is neither (mw-6ww.148.10).
+		m.miss("chase", "not a transaction alert")
 		return Facts{}, false
 	}
 	f.Kind = cardKind(f)
@@ -355,6 +362,10 @@ func parseAmazon(m mailView) (Facts, bool) {
 	if !m.fromDomain("amazon.com") {
 		return Facts{}, false
 	}
+	if amazonNotAnOrder(m) {
+		m.miss("amazon", "a cancellation, refund or return, not an order")
+		return Facts{}, false
+	}
 	f := Facts{Kind: alerts.KindAmazon, Merchant: "Amazon", When: m.date}
 	for _, line := range m.lines {
 		if f.OrderID == "" && strings.Contains(strings.ToLower(line), "order") {
@@ -379,6 +390,35 @@ func parseAmazon(m mailView) (Facts, bool) {
 		return Facts{}, false
 	}
 	return f, true
+}
+
+var (
+	// amazonOrderSubject: the subjects of an order or shipment mail, whose item may be named anything
+	// ("Ordered: "Return Address Labels"").
+	amazonOrderSubject = regexp.MustCompile(`(?i)^(?:(?:fwd?|re):\s*)*(?:ordered|shipped|delivered|out for delivery|arriving)\b`)
+	// amazonNotOrderWords: a mail that cancels an order, refunds it or confirms a return.
+	amazonNotOrderWords = regexp.MustCompile(`(?i)\b(?:cancell?ed|cancell?ation|refunds?|refunded|returns?|returned)\b`)
+	// amazonNotOrderHeading: the same said as a heading of the body, in a short line of its own.
+	amazonNotOrderHeading = regexp.MustCompile(`(?i)\b(?:(?:has|have|was|were) (?:been )?(?:cancell?ed|refunded)|refund (?:has been |was |is )?(?:issued|initiated|processed|on its way)|return (?:has been |was |is )?(?:received|confirmed|approved|processed)|we(?:'ve| have)? (?:received|processed) your return)\b`)
+)
+
+// amazonNotAnOrder is true for an amazon.com mail that cancels an order, refunds it or confirms a return: it
+// names an order number and a total like a new order does, but nothing is being charged. An order or shipment
+// subject (amazonOrderSubject) is never turned away; any other mail is, when its subject holds one of the
+// words, or a short line of its body says so (amazonNotOrderHeading).
+func amazonNotAnOrder(m mailView) bool {
+	if amazonOrderSubject.MatchString(m.subject) {
+		return false
+	}
+	if amazonNotOrderWords.MatchString(m.subject) {
+		return true
+	}
+	for _, line := range m.lines {
+		if len(line) <= 120 && amazonNotOrderHeading.MatchString(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // amazonLabelRun is how many lines after a total's label a label column may run before its amounts.

@@ -25,7 +25,9 @@
   card alert is a few tens of kilobytes, and 8 MiB fits a notes mail with a 5 MiB PDF in base64. At
   most 5 recipients a mail; a connection idle for 2 minutes is closed.
 - Each mail is parsed in memory into one alert and posted once per family it was sent to:
-  - Chase and Citi charge alerts: `charge` with `amount`, `merchant`, `last4` and `when` (the mail's ET time); but
+  - Chase and Citi charge alerts: `charge` with `amount`, `merchant`, `last4` and `when` (the mail's ET time). A Chase mail
+    is a charge only when its subject says "You made a $x transaction with ..." or it names a merchant, and a Citi mail only
+    when its subject has "transaction": a statement, a payment received, a promotion or a security notice is `unread`. But
     exactly $1.00 at a fuel seller (GAS or FUEL in the merchant's name, or a pump brand at its start) is a gas pump's
     pre-authorisation, `hold` with the same fields, which sends no push (`alerts.IsPumpHold`). So is exactly $1.00 at GOOGLE*GPAY TEMP, a Google Pay card check (`alerts.IsCardCheckHold`; `alerts.IsHold` asks both).
   - PNC's "You sent a Zelle payment to ..." mail (from pnc.com): `zelle-sent` with the payee as `merchant`, `amount`,
@@ -34,6 +36,11 @@
     `when`. The transaction id is never kept. Any other PNC mail is `unread`.
   - Amazon order and shipment mails: `amazon` with the total as `amount`, `merchant` "Amazon" and the mail's date.
     The order number is posted as `order_id` and the items as `items` (each at most 200 characters), so an order can be linked to a charge.
+    An amazon.com mail that cancels an order, refunds it or confirms a return is not a new order: it is `unread` (skipped, with
+    its subject only), though it names an order number and a total. A mail whose subject begins `Ordered`, `Shipped`,
+    `Delivered`, `Out for delivery` or `Arriving` is always an order or shipment; any other is turned away when its subject
+    holds cancel, refund or return, or a short line of its body says an order was canceled or refunded or a return received.
+    The log notes `amazon: a cancellation, refund or return, not an order`.
   - Gmail's forwarding confirmation (subject `(Gmail Forwarding Confirmation - Receive Mail from ...`, from
     google.com): `forward-confirm` with its `link`, the `https://<host>/mail/vf-...` one, which the family's app shows
     to tap and confirm. The host is one of an exact list, the hosts Gmail's real confirmations have used:
@@ -69,7 +76,7 @@
     address too), or another subject from that address, is `unread`. The log says `posted a service-recording alert`.
   - Anything else: `unread` with its subject only. When the sender or subject of an unread mail nearly fit a
     parser (a sermon-notes subject from another domain, a recording subject from another sender, a subsplash.com mail with another subject, a mail from chase.com,
-    citi.com, pnc.com or amazon.com that gave no amount, payee or order number) the log says so in one line:
+    citi.com, pnc.com or amazon.com that gave no amount, payee or order number, or that was not a transaction, or that cancels, refunds or returns an order) the log says so in one line:
     `a mail is unread; the checks that nearly fit it failed: sermon notes: sender's domain "example.com", not
     subsplash.com; ...`. Each note is a fixed phrase and at most the sender's domain; no token, address, subject,
     body, amount, merchant or account is ever logged. A mail that some parser reads logs nothing of this kind.

@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.135
+_2026-11-19_
+- New: On the Key screen you can mark a licence holder "API only", so their use is billed to the API instead of your Max subscription.
+
 ## 0.8.134
 _2026-11-18_
 - Fixed: A finished story waiting to land no longer shows "In progress" on its page; it says "Blocked", as on the Map.

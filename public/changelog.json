@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.135",
+    "date": "2026-11-19",
+    "story": "mw-cvwm1u.22",
+    "kind": "new",
+    "text": "On the Key screen you can mark a licence holder \"API only\", so their use is billed to the API instead of your Max subscription."
+  },
+  {
     "version": "0.8.134",
     "date": "2026-11-18",
     "story": "mw-ud3caof",

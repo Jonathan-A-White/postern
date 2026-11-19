@@ -92,9 +92,10 @@ func (p *person) hasEmail(fp string) bool {
 
 type peopleFile struct {
 	People []*person `json:"people"`
-	// KeyBilling is the "api" mark of a key no person holds yet (the
-	// Governor marked a licence holder who has not registered): key -> mark.
-	// A person made from the key starts with it, and it is dropped then.
+	// KeyBilling is the "api" mark of a holder no person has yet (the
+	// Governor marked a licence holder who has not registered): the holder's
+	// testnet address -> mark. A person made from a key at that address
+	// starts with it, and it is dropped then.
 	KeyBilling map[string]string `json:"keyBilling,omitempty"`
 }
 
@@ -106,7 +107,7 @@ type people struct {
 	byFpE map[string]*person
 	byFpP map[string]*person
 	byKey map[string]*person
-	// keyBilling is peopleFile.KeyBilling: marks on keys no person holds.
+	// keyBilling is peopleFile.KeyBilling: marks on holders no person has.
 	keyBilling map[string]string
 }
 
@@ -152,23 +153,24 @@ func (ps *people) put(p *person) error {
 	return ps.write(p, ps.keyBilling)
 }
 
-// putKeyBilling sets (or, for max, drops) the mark on a key no person holds,
-// and writes the file.
-func (ps *people) putKeyBilling(key, billing string) error {
+// putKeyBilling sets (or, for max, drops) the mark on a holder's address no
+// person has, and writes the file.
+func (ps *people) putKeyBilling(address, billing string) error {
 	marks := make(map[string]string, len(ps.keyBilling)+1)
 	for k, v := range ps.keyBilling {
 		marks[k] = v
 	}
 	if billing == BillingAPI {
-		marks[key] = BillingAPI
+		marks[address] = BillingAPI
 	} else {
-		delete(marks, key)
+		delete(marks, address)
 	}
 	return ps.write(nil, marks)
 }
 
 // write stores p (nil for none) and marks, and writes the file whole. A
-// person holding a key takes over the key's own mark: it is dropped here.
+// person with a key at an address takes over the address's own mark: it is
+// dropped here.
 func (ps *people) write(p *person, marks map[string]string) error {
 	next := make([]*person, 0, len(ps.list)+1)
 	replaced := false
@@ -178,7 +180,7 @@ func (ps *people) write(p *person, marks map[string]string) error {
 			kept[k] = v
 		}
 		for _, d := range p.Devices {
-			delete(kept, d.Key)
+			delete(kept, deviceAddress(d.Key))
 		}
 		marks = kept
 	}

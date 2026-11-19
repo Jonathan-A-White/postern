@@ -6,12 +6,22 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/Jonathan-A-White/postern/server/internal/licence"
 	"github.com/Jonathan-A-White/postern/server/internal/register"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 // mw-cvwm1u.22: the Governor marks a licence holder "API only" (billing
 // "api", default "max"); GET /api/register/person answers it as billing.
+
+func addr(t *testing.T, pub string) string {
+	t.Helper()
+	address, err := licence.AddressForPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return address
+}
 
 type billingRig struct {
 	url      string
@@ -22,6 +32,9 @@ type billingRig struct {
 	a0Pub, a1Pub string
 	stranger     *btcec.PrivateKey
 	strangerPub  string
+	strangerAddr string
+	a0Addr       string
+	a1Addr       string
 	other        *btcec.PrivateKey
 	call         func(method, path string, signer *btcec.PrivateKey, body any) (int, map[string]any)
 }
@@ -36,6 +49,7 @@ func newBillingRig(t *testing.T) *billingRig {
 	r.a1, r.a1Pub = newKey(t)
 	r.stranger, r.strangerPub = newKey(t)
 	r.other, _ = newKey(t)
+	r.strangerAddr, r.a0Addr, r.a1Addr = addr(t, r.strangerPub), addr(t, r.a0Pub), addr(t, r.a1Pub)
 	svc, err := register.Open(t.TempDir(), register.WithVerifier(regVerifier{}), register.WithIssuer(&regIssuer{}), register.WithSendLimits(5, 10, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +101,7 @@ func TestRegisterPersonAnswersBillingMaxUntilTheGovernorMarksItAPI(t *testing.T)
 	if got := r.billingOf(t, r.a0Pub); got != "max" {
 		t.Fatalf("billing = %v, want max by default", got)
 	}
-	if status, body := r.call(http.MethodPut, "/api/register/billing", r.governor, map[string]string{"key": r.a0Pub, "billing": "api"}); status != http.StatusOK || body["billing"] != "api" {
+	if status, body := r.call(http.MethodPut, "/api/register/billing", r.governor, map[string]string{"holder": r.a0Addr, "billing": "api"}); status != http.StatusOK || body["billing"] != "api" {
 		t.Fatalf("the Governor's PUT = %d %v, want 200 with billing api", status, body)
 	}
 	for _, key := range []string{r.a0Pub, r.a1Pub} {
@@ -99,7 +113,7 @@ func TestRegisterPersonAnswersBillingMaxUntilTheGovernorMarksItAPI(t *testing.T)
 	if status, body := r.call(http.MethodGet, "/api/register/person?key="+r.a1Pub, r.a0, nil); status != http.StatusOK || body["billing"] != "api" {
 		t.Fatalf("the person's own device reads %d %v, want billing api", status, body)
 	}
-	if status, _ := r.call(http.MethodPut, "/api/register/billing", r.governor, map[string]string{"key": r.a1Pub, "billing": "max"}); status != http.StatusOK {
+	if status, _ := r.call(http.MethodPut, "/api/register/billing", r.governor, map[string]string{"holder": r.a1Pub, "billing": "max"}); status != http.StatusOK {
 		t.Fatalf("switching back = %d", status)
 	}
 	if got := r.billingOf(t, r.a0Pub); got != "max" {
@@ -112,7 +126,7 @@ func TestRegisterPersonAnswersBillingMaxUntilTheGovernorMarksItAPI(t *testing.T)
 // 401, and nothing changed.
 func TestOnlyTheGovernorsKeySetsBilling(t *testing.T) {
 	r := newBillingRig(t)
-	set := map[string]string{"key": r.a0Pub, "billing": "api"}
+	set := map[string]string{"holder": r.a0Pub, "billing": "api"}
 	for name, signer := range map[string]*btcec.PrivateKey{"the mill": r.mill, "the person's own device": r.a0, "another of their devices": r.a1, "a stranger": r.stranger} {
 		if status, body := r.call(http.MethodPut, "/api/register/billing", signer, set); status != http.StatusForbidden {
 			t.Fatalf("%s setting billing = %d %v, want 403", name, status, body)
@@ -137,7 +151,7 @@ func TestNoIssuerKeyMeansNobodySetsBilling(t *testing.T) {
 		t.Fatal(err)
 	}
 	server, _ := newServerWithOptions(t, WithRegistration(svc, ""))
-	raw, _ := json.Marshal(map[string]string{"key": regKey(0), "billing": "api"})
+	raw, _ := json.Marshal(map[string]string{"holder": regKey(0), "billing": "api"})
 	req, _ := http.NewRequest(http.MethodPut, server.URL+"/api/register/billing", bytes.NewReader(raw))
 	signRequest(t, server, key, req)
 	if status, _ := regDo(t, req); status != http.StatusForbidden {
@@ -148,9 +162,9 @@ func TestNoIssuerKeyMeansNobodySetsBilling(t *testing.T) {
 func TestBillingRefusesWhatIsNotMaxOrAPIOrAKey(t *testing.T) {
 	r := newBillingRig(t)
 	for _, bad := range []map[string]string{
-		{"key": r.a0Pub, "billing": "free"},
-		{"key": r.a0Pub, "billing": ""},
-		{"key": "nonsense", "billing": "api"},
+		{"holder": r.a0Pub, "billing": "free"},
+		{"holder": r.a0Pub, "billing": ""},
+		{"holder": "nonsense", "billing": "api"},
 	} {
 		if status, body := r.call(http.MethodPut, "/api/register/billing", r.governor, bad); status != http.StatusBadRequest {
 			t.Fatalf("PUT %v = %d %v, want 400", bad, status, body)
@@ -158,28 +172,28 @@ func TestBillingRefusesWhatIsNotMaxOrAPIOrAKey(t *testing.T) {
 	}
 }
 
-// A licence holder who has not registered keeps the mark apart; GET lists the
-// api keys so the Key screen can show them; the mill, asking after that key,
+// A licence holder who has not registered keeps the mark apart (by address, as
+// the Key screen names a holder); GET lists the api holders so the Key screen can show them; the mill, asking after that key,
 // still gets known:false, now with the billing it should use.
 func TestBillingOfAKeyNoOneRegisteredIsKeptAndListed(t *testing.T) {
 	r := newBillingRig(t)
-	if status, body := r.call(http.MethodPut, "/api/register/billing", r.governor, map[string]string{"key": r.strangerPub, "billing": "api"}); status != http.StatusOK {
+	if status, body := r.call(http.MethodPut, "/api/register/billing", r.governor, map[string]string{"holder": r.strangerAddr, "billing": "api"}); status != http.StatusOK {
 		t.Fatalf("PUT = %d %v", status, body)
 	}
-	if status, _ := r.call(http.MethodPut, "/api/register/billing", r.governor, map[string]string{"key": r.a1Pub, "billing": "api"}); status != http.StatusOK {
+	if status, _ := r.call(http.MethodPut, "/api/register/billing", r.governor, map[string]string{"holder": r.a1Pub, "billing": "api"}); status != http.StatusOK {
 		t.Fatal("marking a registered device failed")
 	}
 	status, body := r.call(http.MethodGet, "/api/register/billing", r.governor, nil)
 	list, _ := body["api"].([]any)
 	if status != http.StatusOK || len(list) != 3 {
-		t.Fatalf("GET = %d %v, want 200 and the three api keys", status, body)
+		t.Fatalf("GET = %d %v, want 200 and the three api holders", status, body)
 	}
 	seen := map[string]bool{}
 	for _, k := range list {
 		seen[k.(string)] = true
 	}
-	if !seen[r.strangerPub] || !seen[r.a0Pub] || !seen[r.a1Pub] {
-		t.Fatalf("api keys = %v", list)
+	if !seen[r.strangerAddr] || !seen[r.a0Addr] || !seen[r.a1Addr] {
+		t.Fatalf("api holders = %v", list)
 	}
 	status, body = r.call(http.MethodGet, "/api/register/person?key="+r.strangerPub, r.mill, nil)
 	if status != http.StatusOK || body["known"] != false || body["billing"] != "api" {

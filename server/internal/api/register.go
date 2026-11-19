@@ -152,14 +152,15 @@ func writePerson(w http.ResponseWriter, person register.PersonView) {
 	}{Known: true, PersonView: person})
 }
 
-// handleRegisterBilling is PUT /api/register/billing {key, billing}: the
-// Governor's switch 'API only' on a licence holder's key. billing is "max"
-// (the default) or "api"; the mark is the key's person's, so every device of
-// that person shares it, and a key no one registered keeps its own. Signed
+// handleRegisterBillingSet is PUT /api/register/billing {holder, billing}: the
+// Governor's switch 'API only' on a licence holder, named as the Key screen
+// lists it, by testnet address (a public key is read as its address). billing
+// is "max" (the default) or "api"; the mark is the holder's person's, so every
+// device of that person shares it, and a holder no one registered keeps its own. Signed
 // ('Postern2') by the Governor's key only (POSTERN_ISSUER_KEY, the key the Key
 // screen issues licences with); every other signer, the mill and the person's
 // own devices included, is 403, and with no issuer key set everyone is. It
-// answers {key, billing}.
+// answers {holder, billing}.
 func handleRegisterBillingSet(svc *register.Service, nonces *auth.NonceStore, governorKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if svc == nil {
@@ -175,25 +176,25 @@ func handleRegisterBillingSet(svc *register.Service, nonces *auth.NonceStore, go
 			return
 		}
 		var in struct {
-			Key     string `json:"key"`
+			Holder  string `json:"holder"`
 			Billing string `json:"billing"`
 		}
 		if !readRegisterBody(w, r, &in) {
 			return
 		}
-		if err := svc.SetBilling(in.Key, in.Billing); err != nil {
+		if err := svc.SetBilling(in.Holder, in.Billing); err != nil {
 			writeRegisterError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, struct {
-			Key     string `json:"key"`
+			Holder  string `json:"holder"`
 			Billing string `json:"billing"`
-		}{in.Key, in.Billing})
+		}{in.Holder, in.Billing})
 	}
 }
 
-// handleRegisterBillingList is GET /api/register/billing: the keys billed
-// "api", for the Key screen's switches (a key not listed is max). The
+// handleRegisterBillingList is GET /api/register/billing: the addresses of
+// the holders billed "api", for the Key screen's switches (a key not listed is max). The
 // Governor's key only, as the PUT.
 func handleRegisterBillingList(svc *register.Service, nonces *auth.NonceStore, governorKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -205,16 +206,16 @@ func handleRegisterBillingList(svc *register.Service, nonces *auth.NonceStore, g
 			refuse(w, r, http.StatusForbidden, reasonForbidden, "only the Governor's key may read the billing marks", signer)
 			return
 		}
-		keys := []string{}
+		holders := []string{}
 		if svc != nil {
-			for key := range svc.APIKeys() {
-				keys = append(keys, key)
+			for holder := range svc.APIHolders() {
+				holders = append(holders, holder)
 			}
 		}
-		sort.Strings(keys)
+		sort.Strings(holders)
 		writeJSON(w, http.StatusOK, struct {
 			API []string `json:"api"`
-		}{keys})
+		}{holders})
 	}
 }
 

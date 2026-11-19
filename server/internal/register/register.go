@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Jonathan-A-White/postern/server/internal/auth"
+	"github.com/Jonathan-A-White/postern/server/internal/licence"
 )
 
 const (
@@ -520,8 +521,8 @@ func (s *Service) plan(p *pending, userAgent string) (*person, error) {
 			return nil, err
 		}
 		next = &person{PersonID: id, FpE: fpE, FpP: fpP, DailyLimit: DefaultDailyLimit, CreatedAt: now}
-		// A key the Governor marked before it registered keeps its mark.
-		if s.people.keyBilling[p.key] == BillingAPI {
+		// A holder the Governor marked before it registered keeps its mark.
+		if address := deviceAddress(p.key); address != "" && s.people.keyBilling[address] == BillingAPI {
 			next.Billing = BillingAPI
 		}
 	}
@@ -680,17 +681,19 @@ func (s *Service) Person(key string) (PersonView, bool) {
 	return p.view(), true
 }
 
-// SetBilling marks the licence holder key as billed "max" or "api" (the
-// Governor's switch; the caller has checked who is asking). The mark is the
-// person's, so every device of the person shares it. A key no person holds is
-// kept apart, and a person later made from it starts with that mark. A mark
-// that is not max or api, or a key that is not a compressed public key, is an
-// InvalidError.
-func (s *Service) SetBilling(key, billing string) error {
+// SetBilling marks the licence holder as billed "max" or "api" (the
+// Governor's switch; the caller has checked who is asking). holder is what
+// the Key screen lists, the holder's testnet address (a compressed public key
+// is taken too, and read as its address). The mark is the person's, so every
+// device of the person whose key has that address shares it. A holder no
+// person has is kept apart, and a person later made from a key at that
+// address starts with the mark. A mark that is not max or api, or a holder
+// that is neither an address nor a public key, is an InvalidError.
+func (s *Service) SetBilling(holder, billing string) error {
 	if billing != BillingMax && billing != BillingAPI {
 		return &InvalidError{`billing is "max" or "api"`}
 	}
-	key, err := normaliseKey(key)
+	address, err := holderAddress(holder)
 	if err != nil {
 		return err
 	}
@@ -698,9 +701,9 @@ func (s *Service) SetBilling(key, billing string) error {
 	defer s.changing.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	owner := s.people.byKey[key]
+	owner := s.personAt(address)
 	if owner == nil {
-		return s.people.putKeyBilling(key, billing)
+		return s.people.putKeyBilling(address, billing)
 	}
 	next := owner.clone()
 	next.Billing = ""
@@ -710,7 +713,48 @@ func (s *Service) SetBilling(key, billing string) error {
 	return s.people.put(next)
 }
 
-// KeyBilling is the mark on key: its person's, else the key's own, else max.
+// holderAddress is the testnet address a holder names: itself, when it is
+// one, or the address of the compressed public key it is.
+func holderAddress(raw string) (string, error) {
+	holder := strings.TrimSpace(raw)
+	if key, err := normaliseKey(holder); err == nil {
+		address, err := licence.AddressForPublicKey(key)
+		if err != nil {
+			return "", &InvalidError{"that is not a public key"}
+		}
+		return address, nil
+	}
+	if _, err := addressHash(holder); err != nil {
+		return "", &InvalidError{"holder must be a testnet address or a compressed public key"}
+	}
+	return holder, nil
+}
+
+// deviceAddress is the address of a device's key, "" for a key that is not a
+// point on the curve.
+func deviceAddress(key string) string {
+	address, err := licence.AddressForPublicKey(key)
+	if err != nil {
+		return ""
+	}
+	return address
+}
+
+// personAt is the person with a device whose key has address, or nil. Called
+// with mu held.
+func (s *Service) personAt(address string) *person {
+	for _, p := range s.people.list {
+		for _, d := range p.Devices {
+			if deviceAddress(d.Key) == address {
+				return p
+			}
+		}
+	}
+	return nil
+}
+
+// KeyBilling is the mark on key: its person's, else the one on its address,
+// else max.
 func (s *Service) KeyBilling(key string) string {
 	key, err := normaliseKey(key)
 	if err != nil {
@@ -721,32 +765,34 @@ func (s *Service) KeyBilling(key string) string {
 	if owner := s.people.byKey[key]; owner != nil {
 		return owner.billing()
 	}
-	if s.people.keyBilling[key] == BillingAPI {
+	if address := deviceAddress(key); address != "" && s.people.keyBilling[address] == BillingAPI {
 		return BillingAPI
 	}
 	return BillingMax
 }
 
-// APIKeys is every key billed "api": the devices of each person marked so,
-// and each key marked before it registered.
-func (s *Service) APIKeys() map[string]bool {
+// APIHolders is the address of every holder billed "api": each device of each
+// person marked so, and each address marked before anyone registered there.
+func (s *Service) APIHolders() map[string]bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	keys := map[string]bool{}
+	holders := map[string]bool{}
 	for _, p := range s.people.list {
 		if p.billing() != BillingAPI {
 			continue
 		}
 		for _, d := range p.Devices {
-			keys[d.Key] = true
+			if address := deviceAddress(d.Key); address != "" {
+				holders[address] = true
+			}
 		}
 	}
-	for key, mark := range s.people.keyBilling {
-		if mark == BillingAPI && s.people.byKey[key] == nil {
-			keys[key] = true
+	for address, mark := range s.people.keyBilling {
+		if mark == BillingAPI && s.personAt(address) == nil {
+			holders[address] = true
 		}
 	}
-	return keys
+	return holders
 }
 
 // PersonKeys is every device key on the licence of the person personID, or

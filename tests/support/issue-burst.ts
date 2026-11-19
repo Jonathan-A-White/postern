@@ -64,6 +64,8 @@ export async function serveBackendAndWhatsOnChain(
         const me = { pubkey: ISSUER.toPublicKey().toString(), mayor: '', network: 'testnet', features: ['me'], collections: [{ name: 'postern' }] };
         return new Response(JSON.stringify(me), { status: 200 });
       }
+      // The Key screen's 'API only' marks (mw-cvwm1u.22): none are set.
+      if (url.endsWith('/register/billing')) return new Response(JSON.stringify({ api: [] }), { status: 200 });
       if (url.includes('/utxos/')) {
         const refused = refusal('utxos');
         if (refused) return refused;

@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.137
+_2026-11-19_
+- Fixed: Amazon order alerts now show the order's grand total, not a subtotal or nothing.
+
 ## 0.8.135
 _2026-11-19_
 - New: On the Key screen you can mark a licence holder "API only", so their use is billed to the API instead of your Max subscription.

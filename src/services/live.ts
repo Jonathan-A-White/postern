@@ -23,10 +23,13 @@
 // batch seen on both roads applies once, by seq); a gap on that road is tolerated
 // until the backend returns and the view is fetched. No sync holds the line for good: one that has not finished in
 // SYNC_LIMIT_MS, that was under way when the page was hidden and the app comes back, or whose session has ended, is cut
-// off and the next goes on (mw-q6n8m0.15).
+// off and the next goes on (mw-q6n8m0.15). While the backend is out of reach it is also asked every BACK_PROBE_MS whether it
+// answers again (a GET /api/challenge, a few bytes): the moment it does, whatever the loop still waits on from the outage (a
+// call that will never be answered, a back-off) is cut short and the stream is opened at once, so Live comes back within
+// seconds of the backend, as a reopen of the app brings it, not a minute or more later (mw-gq6.1570).
 import { useSyncExternalStore } from 'react';
 import { apiFetch } from './apiAuth';
-import { getActiveAccount, onAccountLeaving } from './accounts';
+import { activeBackendUrl, getActiveAccount, onAccountLeaving } from './accounts';
 import { chain } from '../chain';
 import { onIdeasOnlyEvent } from './ideasOnly';
 import { projectBatches, syncMessagesAndEvents } from './events';
@@ -74,6 +77,8 @@ const STREAM_STALE_MS = 60_000;
 const STREAM_HEALTHY_MS = 30_000;
 /** How often an open stream is checked for having gone quiet. */
 const STALE_CHECK_MS = 5_000;
+/** While the backend is out of reach, how often it is asked whether it answers again, and how long one asking may take. */
+export const BACK_PROBE_MS = 5_000;
 /** Two returns to the foreground closer than this are one. */
 const FOREGROUND_DEBOUNCE_MS = 3_000;
 /** The longest one sync may hold the queue (twice apiFetch's API_TIMEOUT_MS). Each request in it is bounded by apiFetch,
@@ -87,7 +92,14 @@ const SYNC_CUT_OFF = 'A sync did not finish in time.';
 
 let state: LiveState = { status: 'idle', me: null, reconnects: 0, syncs: 0 };
 const listeners = new Set<() => void>();
-let current: { key: Uint8Array; accountId: string; abort: AbortController; interrupt?: AbortController } | null = null;
+let current: {
+  key: Uint8Array;
+  accountId: string;
+  abort: AbortController;
+  interrupt?: AbortController;
+  /** When the loop began what it waits on now (opening the stream, a back-off, a sync), ms. */
+  waitingSince?: number;
+} | null = null;
 let lastForeground = 0;
 /** When this session last applied an events batch (ms), 0 before the first. */
 let lastProjected = 0;
@@ -119,6 +131,7 @@ function watchChainWhileDown(): void {
     const abort = new AbortController();
     chainWatch = abort;
     void pollChain(abort.signal);
+    void probeBackendWhileDown(abort.signal);
   } else if (!backendOutOfReach() && chainWatch) {
     chainWatch.abort();
     chainWatch = null;
@@ -163,6 +176,69 @@ async function pollChain(signal: AbortSignal): Promise<void> {
     // A message or a ring is on chain, so the backend may be back: cut the backoff short and try it now.
     if (!signal.aborted) session.interrupt?.abort();
   }
+}
+
+/** Asks the backend for a sign-in code every BACK_PROBE_MS while it is out of reach and the page is on screen. When it
+ * answers after an asking it did not answer, what the loop began waiting on before that asking went out may be a call the
+ * backend will never answer, or a back-off: it is cut short, as is a sync begun before then, and the stream is opened at
+ * once (mw-gq6.1570). A backend that answers every asking (a standby host, a stream that fails for another reason, a
+ * sync stuck on the phone's own storage) cuts nothing, so the loop's back-off and its own cut-offs hold as they were. */
+async function probeBackendWhileDown(signal: AbortSignal): Promise<void> {
+  let wasDown = false;
+  for (;;) {
+    await sleep(BACK_PROBE_MS, signal);
+    const session = current;
+    if (signal.aborted || !session) return;
+    if (typeof document !== 'undefined' && document.hidden) continue; // the return to the app asks for itself (onForeground)
+    const sent = Date.now();
+    const answers = await backendAnswers(signal);
+    if (signal.aborted || current !== session) return;
+    if (!answers) {
+      wasDown = true;
+      continue;
+    }
+    if (!wasDown) continue;
+    wasDown = false;
+    if (running && running.began < sent) running.cut.abort();
+    if (session.waitingSince !== undefined && session.waitingSince < sent) session.interrupt?.abort();
+  }
+}
+
+/** Whether the backend gives a sign-in code (GET /api/challenge) within BACK_PROBE_MS. */
+async function backendAnswers(signal: AbortSignal): Promise<boolean> {
+  const asking = new AbortController();
+  const stop = () => asking.abort();
+  signal.addEventListener('abort', stop, { once: true });
+  const timer = setTimeout(stop, BACK_PROBE_MS);
+  try {
+    const response = await fetch(`${activeBackendUrl()}/challenge`, { signal: asking.signal, cache: 'no-store' });
+    void response.body?.cancel().catch(() => undefined);
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', stop);
+  }
+}
+
+/** Settles like `work`, or with undefined as soon as `signal` aborts (the work goes on, unwaited for). */
+function unlessAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T | undefined> {
+  if (signal.aborted) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const stop = () => resolve(undefined);
+    signal.addEventListener('abort', stop, { once: true });
+    void work.then(
+      (value) => {
+        signal.removeEventListener('abort', stop);
+        resolve(value);
+      },
+      () => {
+        signal.removeEventListener('abort', stop);
+        resolve(undefined);
+      },
+    );
+  });
 }
 
 export function subscribeLive(listener: () => void): () => void {
@@ -493,6 +569,7 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
     if (!known && !(await learnMe())) return;
     if (me.features.includes('events')) {
       const opened = Date.now();
+      if (session) session.waitingSince = opened;
       try {
         await listen(key, wake);
         if (Date.now() - opened >= STREAM_HEALTHY_MS) backoff = 1000; // a stream that closes at once, over and over, keeps its back-off
@@ -511,12 +588,21 @@ async function run(key: Uint8Array, signal: AbortSignal): Promise<void> {
         // asked since (a return's sync, a probe) has been answered (mw-j4usch0).
         setState({ status: recoverySyncFailed && !state.reached ? 'offline' : 'reconnecting', error: err instanceof Error ? err.message : String(err) });
       }
+      if (session) session.waitingSince = Date.now();
       await sleep(backoff, wake);
       backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
-      if (!signal.aborted) recoverySyncFailed = !(await syncMessagesKeepingView(key));
+      if (!signal.aborted) {
+        // A return to the app that woke the back-off waits for this sync as ever; the backend answering again while this
+        // sync waits on a call sent before cuts the wait, and the stream is opened at once (mw-gq6.1570).
+        const woken = wake.aborted;
+        if (session) session.waitingSince = Date.now();
+        const synced = woken ? await syncMessagesKeepingView(key) : await unlessAborted(syncMessagesKeepingView(key), wake);
+        if (synced !== undefined) recoverySyncFailed = !synced;
+      }
     } else {
       setState({ status: state.error ? 'offline' : 'polling' });
       // Not yet told who is who: ask again soon, backing off as a dropped stream does.
+      if (session) session.waitingSince = Date.now();
       await sleep(known ? POLL_MS : backoff, wake);
       if (!known) backoff = Math.min(MAX_BACKOFF_MS, backoff * 2);
       if (!signal.aborted && (typeof document === 'undefined' || !document.hidden)) {

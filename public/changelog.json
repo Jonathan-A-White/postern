@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.8.139",
+    "date": "2026-11-20",
+    "story": "mw-gq6.1570",
+    "kind": "fixed",
+    "text": "when the backend comes back after it stopped answering, the badge goes from \"Live from the chain\" back to \"Live\" within seconds by itself, without closing and reopening the app."
+  },
+  {
     "version": "0.8.138",
     "date": "2026-11-19",
     "story": "mw-6ww.148.10",

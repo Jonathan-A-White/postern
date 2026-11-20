@@ -2,6 +2,10 @@
 
 What changed in each version of Postern, newest first. The app shows the same lines from `public/changelog.json`.
 
+## 0.8.139
+_2026-11-20_
+- Fixed: when the backend comes back after it stopped answering, the badge goes from "Live from the chain" back to "Live" within seconds by itself, without closing and reopening the app.
+
 ## 0.8.138
 _2026-11-19_
 - Fixed: Amazon cancellation, refund and return emails no longer show up as new orders.

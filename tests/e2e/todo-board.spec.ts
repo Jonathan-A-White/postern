@@ -161,6 +161,8 @@ test('add a card, drag it above another, edit its title: the outbox holds the th
   await page.route('**/api/messages**', async (route) => {
     if (route.request().method() === 'POST') {
       txids.push(`direct:${String(txids.length + 1).padStart(64, '0')}`);
+      // The reply to the add comes late, as it does on a loaded host: the page has not yet written the row as sent when the POST has arrived here.
+      if (txids.length === 1) await new Promise((resolve) => setTimeout(resolve, 2_000));
       return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ txid: txids[txids.length - 1], seq: 900 + txids.length }) });
     }
     if (!applied || Number(new URL(route.request().url()).searchParams.get('since') ?? 0) >= 1000) return route.fallback();
@@ -196,6 +198,25 @@ test('add a card, drag it above another, edit its title: the outbox holds the th
   await expect.poll(names).toEqual([FIRST, 'Do the recycling on the back deck', 'Buy bin bags']);
   await expect(column.getByTestId('todo-card').last().getByTestId('pending-mark')).toBeVisible();
   await expect.poll(() => txids.length).toBe(1);
+  // The POST having reached the host is not the page having the reply: reloaded before the row is sent, the page posts the add again (a new txid,
+  // since each try is encrypted afresh), and the host's echo, naming the first, matches no row, so the card stays pending. Wait for the row to carry the txid the host gave (it is written with the reply).
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<string[]>((resolve, reject) => {
+            const request = indexedDB.open('PosternDB');
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const all = request.result.transaction(['outbox'], 'readonly').objectStore('outbox').getAll();
+              all.onsuccess = () => resolve(all.result.filter((row: { txid?: string }) => row.txid).map((row: { txid: string }) => row.txid));
+              all.onerror = () => reject(all.error);
+            };
+          }),
+      ),
+    )
+    .toEqual([txids[0]]);
+  expect(txids).toHaveLength(1);
 
   // The host applies it: the card is real once the view has reached the echo.
   applied = true;

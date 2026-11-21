@@ -62,7 +62,8 @@ npm run test:e2e     # playwright, against `npm run preview`
   the calls with no answer, the browser's processes, the host's load and memory. Read that line in the gate log first after a
   `while setting up "page"` timeout. A setup whose page target detaches (`Inspector.detached`, 'Render process gone.') is
   stopped at once with a `page setup stopped` line, and only such a test gets the config's `retries: 1`: the watch marks
-  every other failure not to be retried.
+  every other failure not to be retried. `npm run shots` ends with a line counting those retried tests
+  (`shots: N tests retried for a detached page`; tests/support/detached-retries-reporter.ts, scripts/shots-retries.mjs).
 
 ## Layout
 

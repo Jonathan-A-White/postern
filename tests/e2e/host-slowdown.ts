@@ -86,3 +86,58 @@ export async function watchHostSlowdown(page: Page): Promise<HostWindow> {
     },
   };
 }
+
+/** One stretch in which the host did not run the page's process: a worker with nothing to do answered this late (ms), ending at `end` (epoch ms). */
+export interface HostStall {
+  end: number;
+  ms: number;
+}
+
+/** The stalls of the host seen from inside the page being timed (mw-6ww.175.67). */
+export interface HostStalls {
+  /** Every stall so far, oldest first (the page is asked, so any the worker has seen are in). */
+  read(): Promise<HostStall[]>;
+}
+
+/** A gap of this much past a worker's own tick (ms) is a stall: a calm tick is 10 ms and a loaded host's lateness is what hostSlowdown scales by. */
+export const STALL_MS = 150;
+
+/**
+ * mw-6ww.175.67: what the median-of-three readings cannot show. hostSlowdown and watchHostSlowdown scale a promise by how much slower the
+ * host ran a fixed spin, and the median of three hides one stall: a send that met a single 2.8 s task (the host's: nothing the page was
+ * doing) was held to a promise scaled by 2.3x and failed. A worker is started in the page being timed, so it lives in the page's own
+ * process, CPU slowing aside: it does nothing but tick every 10 ms and note a tick that came more than STALL_MS late. A stall of the
+ * process (the OS not running it, memory pressure) is late for the worker as well as for the page's main thread; a long task of the
+ * page's own work (its main thread busy, the worker idle) is not. A spec adds the stalls that fell inside its timed window to its promise.
+ */
+export async function watchHostStalls(page: Page): Promise<HostStalls> {
+  await page.evaluate((stallMs) => {
+    const source = `
+      let last = Date.now();
+      const stalls = [];
+      setInterval(() => {
+        const now = Date.now();
+        if (now - last - 10 > ${stallMs}) stalls.push({ end: now, ms: now - last - 10 });
+        last = now;
+      }, 10);
+      onmessage = () => postMessage(stalls);`;
+    const worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
+    (window as unknown as { hostStallWorker: Worker }).hostStallWorker = worker;
+  }, STALL_MS);
+  return {
+    read: () =>
+      page.evaluate(
+        () =>
+          new Promise<{ end: number; ms: number }[]>((resolve) => {
+            const worker = (window as unknown as { hostStallWorker: Worker }).hostStallWorker;
+            worker.onmessage = (event) => resolve(event.data);
+            worker.postMessage('read');
+          }),
+      ),
+  };
+}
+
+/** The stalls that ended inside a window (epoch ms), added up: what the host took from a timed step that no ratio of spins shows. */
+export function stalledWithin(stalls: HostStall[], from: number, to: number): number {
+  return stalls.filter((stall) => stall.end > from && stall.end - stall.ms < to).reduce((sum, stall) => sum + stall.ms, 0);
+}

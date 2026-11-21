@@ -9,7 +9,7 @@ import { createMnemonic, deriveMasterKey } from '../../src/services/vault';
 import { seedVault, stubBackend } from './cockpit-stub';
 import { shot, sized } from './shot';
 import { LONG_LINK_ROOT_TXID } from '../support/cockpit-fixture';
-import { hostSlowdown, watchHostSlowdown } from './host-slowdown';
+import { hostSlowdown, stalledWithin, watchHostSlowdown, watchHostStalls } from './host-slowdown';
 
 // the width the shots run is at (390 unless `npm run shots` is on another size): nothing may be wider than it
 const PHONE_WIDTH = sized({ width: 390, height: 844 }).width;
@@ -174,6 +174,8 @@ interface SendTimes {
   shown: number;
   /** The longest the main thread was busy at a stretch since the tap (ms). */
   longest: number;
+  /** The tap as an epoch time (ms), to set the host's stalls against. */
+  tapAt: number;
   /** The app's own marks, ms after its tap mark. */
   marks: Record<string, number>;
 }
@@ -224,6 +226,7 @@ async function sendTimes(page: Page): Promise<SendTimes> {
       free: times.free - times.tap,
       shown: times.shown - times.tap,
       longest: times.longest,
+      tapAt: performance.timeOrigin + times.tap,
       marks: Object.fromEntries(marks.map((mark) => [mark.name.replace('postern:send:', ''), Math.round(mark.startTime - tap)])),
     };
   });
@@ -246,6 +249,8 @@ test('a text and a 2 MB photo each show in the thread at once and leave the comp
   const hostBefore = await hostSlowdown(page);
   // mw-6ww.175.33: and the host all the way through, read by a page of its own: another worker's slow test that starts mid-send is in neither end's reading
   const hostDuring = await watchHostSlowdown(page);
+  // mw-6ww.175.67: and the stalls of the page's own process, seen by a worker in it: a stall is added to the promise, which no ratio of spins shows
+  const hostStalls = await watchHostStalls(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: PHONE_CPU });
   const send = page.getByRole('button', { name: 'Send', exact: true });
@@ -280,12 +285,18 @@ test('a text and a 2 MB photo each show in the thread at once and leave the comp
   const hostAfter = await hostSlowdown(page);
   const hostWorst = await hostDuring.stop();
   const host = Math.max(hostBefore, hostAfter, hostWorst);
+  // mw-6ww.175.67: the host's stalls in a step's window are added to what it is held to. A single 2.8 s task met a promise scaled by 2.3x
+  // (the median of three spins hides one stall): the worker in the page, idle, was as late as the page's main thread, so it was the host's.
+  // A long task of the page's own work leaves the worker on time and still fails. The promises themselves (300, 1000, 1000 ms) are as they were.
+  const stalls = await hostStalls.read();
+  const now = Date.now();
+  const stalled = (send: SendTimes, until: number) => stalledWithin(stalls, send.tapAt, until);
   const [freeWithin, shownWithin, busyAtMost] = [FREE_WITHIN_MS * host, SHOWN_WITHIN_MS * host, BUSY_AT_MOST_MS * host];
-  console.log(`mw-8xe671n host ${hostBefore.toFixed(1)}x before the sends, ${hostAfter.toFixed(1)}x after, ${hostWorst.toFixed(1)}x at its worst between: the promise is scaled by ${host.toFixed(1)}x`);
+  console.log(`mw-8xe671n host ${hostBefore.toFixed(1)}x before the sends, ${hostAfter.toFixed(1)}x after, ${hostWorst.toFixed(1)}x at its worst between: the promise is scaled by ${host.toFixed(1)}x; stalls of the page's process ${JSON.stringify(stalls)}`);
 
-  expect(text.free, 'the composer is free after a text').toBeLessThan(freeWithin);
-  expect(picture.free, 'the composer is free after a photo').toBeLessThan(freeWithin);
-  expect(text.shown, 'a text shows in its thread at once').toBeLessThan(shownWithin);
-  expect(picture.shown, 'a photo shows in its thread at once').toBeLessThan(shownWithin);
-  expect(done.longest, 'the page answers taps while the photo goes').toBeLessThan(busyAtMost);
+  expect(text.free, 'the composer is free after a text').toBeLessThan(freeWithin + stalled(text, text.tapAt + text.free));
+  expect(picture.free, 'the composer is free after a photo').toBeLessThan(freeWithin + stalled(picture, picture.tapAt + picture.free));
+  expect(text.shown, 'a text shows in its thread at once').toBeLessThan(shownWithin + stalled(text, text.tapAt + text.shown));
+  expect(picture.shown, 'a photo shows in its thread at once').toBeLessThan(shownWithin + stalled(picture, picture.tapAt + picture.shown));
+  expect(done.longest, 'the page answers taps while the photo goes').toBeLessThan(busyAtMost + stalled(picture, now));
 });

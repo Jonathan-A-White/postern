@@ -64,10 +64,16 @@ async function letStorageRun(): Promise<void> {
   for (let i = 0; i < 40; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
+/** Lets real turns go by until `condition` holds. There is no round count to run out of, however slow the host: the work waited on always
+ * ends (the backend double answers it), and a work that never ended would stop at the test's own timeout (mw-gq6.1511). */
+async function until(condition: () => boolean): Promise<void> {
+  while (!condition()) await letStorageRun();
+}
+
 /** Lets the work off the fake clock finish before the clock moves on: a request's own timeout runs on the fake clock, so time passed while its
  * challenge is still being made would time it out on a loaded host, however long the real work takes (mw-gq6.1248). */
 async function workDone(): Promise<void> {
-  for (let i = 0; i < 250 && backend.working > 0; i++) await letStorageRun();
+  await until(() => backend.working === 0);
 }
 
 async function pass(ms: number): Promise<void> {
@@ -82,15 +88,13 @@ async function pass(ms: number): Promise<void> {
  * challenge's signing hashes the body, both off the clock, so on a loaded host the upload's own timer can start late. */
 async function uploadMade(): Promise<void> {
   const made = () => vi.mocked(fetch).mock.calls.some(([input]) => String(input).endsWith('/blobs'));
-  for (let i = 0; i < 250 && !made(); i++) await letStorageRun();
-  expect(made()).toBe(true);
+  await until(made);
 }
 
 /** Waits on the work off the fake clock, not on more fake time: the report of a failing row is sent without being waited for (reportFailure),
  * and its challenge takes `stall` rounds of real turns on a loaded host, so the journaled GET lands after settledOutbox() has resolved. */
 async function reported(count: number): Promise<void> {
-  for (let i = 0; i < 250 && backend.whys.length < count; i++) await letStorageRun();
-  expect(backend.whys.length).toBeGreaterThanOrEqual(count);
+  await until(() => backend.whys.length >= count);
 }
 
 /** Passes time, a second at a time, until the sender is quiet (a try in flight ends at its own pace) or `maxMs` have gone by. */
@@ -186,7 +190,7 @@ describe('his report (mw-o14xubc): Unlocked, Live, the count runs from a minute 
     ];
   }
 
-  it.each([0, 30])('AC-1/AC-6: with %i rounds of real work off the clock per request, the picture whose upload outran the 30 s every request was given is given the time its size needs, so it and the typed messages behind it reach the backend within one retry', async (stall) => {
+  it.each([0, 30, 600])('AC-1/AC-6: with %i rounds of real work off the clock per request, the picture whose upload outran the 30 s every request was given is given the time its size needs, so it and the typed messages behind it reach the backend within one retry', async (stall) => {
     backend.stall = stall;
     const rows = await hisSlowQueue();
     const from = Date.now();
@@ -195,7 +199,7 @@ describe('his report (mw-o14xubc): Unlocked, Live, the count runs from a minute 
     // to carry the picture, well inside one retry's wait at the seventh try; then the sender is waited on, not the clock.
     await uploadMade();
     await pass(Math.ceil(PICTURE_BYTES / SLOW_UPLINK_BYTES_PER_S) * 1000 + 1_000);
-    for (let i = 0; i < 250 && backend.posted.length < 4; i++) await letStorageRun();
+    await until(() => backend.posted.length >= 4);
     await quiet(retryDelay(7));
     expect([...backend.posted].sort()).toEqual(['blob', 'message', 'message', 'message']);
     expect(chainSends).not.toHaveBeenCalled();

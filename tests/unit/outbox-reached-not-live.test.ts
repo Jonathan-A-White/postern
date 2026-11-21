@@ -55,7 +55,8 @@ async function letStorageRun(): Promise<void> {
 /** Lets the work off the fake clock finish before the clock moves on: time passed while a request's challenge is still being made
  * would run the live loop's own timers (probe, back-off, stream retry) out of step with the answers, on a loaded host (mw-gq6.1270). */
 async function workDone(): Promise<void> {
-  for (let i = 0; i < 250 && net.working > 0; i++) await letStorageRun();
+  // Awaited on the work itself, with no round count to run out on a loaded host; a work that never ended would stop at the test's timeout (mw-gq6.1511).
+  while (net.working > 0) await letStorageRun();
 }
 
 async function pass(ms: number): Promise<void> {

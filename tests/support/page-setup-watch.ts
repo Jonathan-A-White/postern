@@ -50,6 +50,9 @@ const PAGE_CALL = 'Page.enable';
 /** How many detached sessions the watch remembers: a setup asks about its own within seconds. */
 const MOST_DETACHES_KEPT = 32;
 
+/** The words of the error a stopped setup gives; tests/support/detached-retries-reporter.ts counts the tests that carry them. */
+export const DETACHED_SETUP_WORDS = "the page's target detached during its setup";
+
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
@@ -162,7 +165,7 @@ export class PageSetupWatch {
   /** Ends the open setup because the page's target detached: says the line, keeps the test for its one retry, and gives the error. */
   stopSetup(reason: string): string {
     const age = this.openedAt === undefined ? 0 : Math.round((this.options.now() - this.openedAt) / 1000);
-    const why = `the page's target detached during its setup (${reason}), so nothing is left to answer it`;
+    const why = `${DETACHED_SETUP_WORDS} (${reason}), so nothing is left to answer it`;
     this.say(`page-setup-watch: worker ${this.options.worker}: page setup stopped after ${age} s: ${why}; ${this.parts().join('; ')}; the test may run once more, on a fresh browser`);
     if (this.currentTest) this.stoppedTests.add(this.currentTest);
     this.openedAt = undefined;

@@ -47,7 +47,8 @@ export default defineConfig({
   // One more run, on a fresh browser, for a test whose page setup the watch stopped because the page's target detached
   // (mw-gq6.946); every other failure is marked not to be retried by the watch, so it fails once, as it always did.
   retries: 1,
-  reporter: 'list',
+  // The second reporter counts the tests run again for a detached page, for the last line of `npm run shots` (mw-6ww.175.61).
+  reporter: [['list'], ['./tests/support/detached-retries-reporter.ts']],
   use: {
     baseURL: PREVIEW_BASE_URL,
     trace: 'retain-on-failure',

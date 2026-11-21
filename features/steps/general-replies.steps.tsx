@@ -194,4 +194,24 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(screen.queryByText(text)).not.toBeInTheDocument();
     });
   });
+  Scenario('mw-ev7oyy.63: a link whose root is a Talk turn opens General, never the empty Thread', ({ Given, And, When, Then }) => {
+    Given('a General post {string}', (_ctx, text: string) => {
+      say(text);
+    });
+    And('a Talk turn {string}', (_ctx, text: string) => {
+      say(text).class = 'talk';
+    });
+    When('the link names the Talk turn as its root', async () => {
+      const turn = seeded.find((row) => row.class === 'talk')!;
+      window.history.replaceState(null, '', `/?v=talk&t=general&r=${turn.txid}`);
+      await open();
+    });
+    Then('General shows {string} once', async (_ctx, text: string) => {
+      await generalShows(text);
+      expect(screen.getAllByText(text)).toHaveLength(1);
+    });
+    And('the screen does not say {string}', (_ctx, text: string) => {
+      expect(screen.queryByText(text)).not.toBeInTheDocument();
+    });
+  });
 });

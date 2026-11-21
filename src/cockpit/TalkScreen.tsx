@@ -17,7 +17,7 @@ import { TopicForm } from './TopicForm';
 import { topicKey } from './topicKey';
 import type { MessageRow } from '../data/db';
 import type { LiveCard as LiveCardData } from '../model/cards';
-import { useBeadComments, useBeadDetail, useCardRoot, useMessages, useOutbox, useThreadArchive, useThreadMessages, useThreadRead, useViewIndex, useWide } from './hooks';
+import { useBeadComments, useBeadDetail, useCardRoot, useMessages, useOutbox, useStoredMessages, useThreadArchive, useThreadMessages, useThreadRead, useViewIndex, useWide } from './hooks';
 import { pendingMessageItems } from '../model/outbox';
 import { mergeConversation, type ConversationItem } from '../model/conversation';
 import { groupPosts } from '../model/postThreads';
@@ -289,7 +289,7 @@ function aboutThread(key: string, title: string): TalkAbout {
   return key.startsWith('bead:') ? { kind: 'bead', id: key.slice(5), title } : { kind: 'channel', id: key, title };
 }
 
-export function TalkScreen({ thread, root, prefill, msg }: { thread?: string; root?: string; prefill?: string; msg?: string }) {
+export function TalkScreen({ thread, root: linkedRoot, prefill, msg }: { thread?: string; root?: string; prefill?: string; msg?: string }) {
   const wide = useWide();
   // The channel list keeps its place whatever address opens beside it.
   const rememberList = useScrollMemory('channels', false);
@@ -297,6 +297,12 @@ export function TalkScreen({ thread, root, prefill, msg }: { thread?: string; ro
   const [filter, setFilter] = useState('');
   const messages = useMessages();
   // A reply thread opens in the channel its post lives in, whatever channel the link names.
+  const stored = useStoredMessages();
+  const linkedRow = linkedRoot ? stored.find((row) => row.txid.toLowerCase() === linkedRoot.toLowerCase()) : undefined;
+  // A Talk turn or a call record is no channel's post (§20, §21), so a root= naming one (a notification an older
+  // build stored) has no thread to draw: the channel opens instead of the empty "not on this phone" state (mw-ev7oyy.63).
+  const notAPost = linkedRow !== undefined && (linkedRow.class === 'talk' || linkedRow.class === 'call');
+  const root = notAPost ? undefined : linkedRoot;
   const rootRow = root ? messages.find((row) => row.txid.toLowerCase() === root.toLowerCase()) : undefined;
   const current = thread !== undefined && rootRow ? (rootRow.thread ?? GENERAL) : thread;
   const inReplies = current !== undefined && root !== undefined;

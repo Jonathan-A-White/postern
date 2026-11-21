@@ -36,3 +36,10 @@ Feature: General shows N replies under a post; tapping it opens that post's thre
     When Back is tapped
     Then General shows "the post" once and its row says "2 replies"
     And "with a link" is not shown in General
+
+  Scenario: mw-ev7oyy.63: a link whose root is a Talk turn opens General, never the empty Thread
+    Given a General post "the post"
+    And a Talk turn "what he said"
+    When the link names the Talk turn as its root
+    Then General shows "the post" once
+    And the screen does not say "That post is not on this phone"

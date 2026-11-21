@@ -159,11 +159,12 @@ Feature: The Key screen shows my public key and issues and revokes licences (mw-
 
   Scenario: AC20: the collection picker starts on no choice, and Issue asks for one before it spends
     Given my key is unlocked and the backend names two collections
+    And the licence check cannot reach WhatsOnChain
     When the key screen is opened
     And I type a holder's key without choosing a collection
     Then the collection picker shows "Choose a collection"
     When I press Issue
-    Then I am told to choose a collection and there is no confirm
+    Then the Issue section tells me to choose a collection and there is no confirm
     And issueLicence has not been called
 
   Scenario: AC21: when the holder is my own key the picker starts on postern

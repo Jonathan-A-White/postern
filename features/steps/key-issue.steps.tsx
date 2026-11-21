@@ -10,6 +10,8 @@ import { afterAll, expect, vi } from 'vitest';
 import { loadFeature, describeFeature } from '@amiceli/vitest-cucumber';
 import { PrivateKey } from '@bsv/sdk';
 import { KeyVault } from '../../src/key';
+import { chain, setChain, type Chain, type LicenceStatus } from '../../src/chain';
+import { COCKPIT_COLLECTION } from '../../src/services/collections';
 import { qrPathData } from '../../src/key/qr';
 import { db } from '../../src/data/db';
 import { vaultRepo } from '../../src/data/repositories';
@@ -61,6 +63,13 @@ const meWith = (collections?: Array<{ name: string; app?: string }>): Me => ({
 
 const TWO_COLLECTIONS = [{ name: 'postern' }, { name: 'cairn', app: 'Cairn' }];
 
+const LICENCE: LicenceStatus = {
+  held: true,
+  outpoint: { txid: 'e'.repeat(64), vout: 0 },
+  collection: COCKPIT_COLLECTION,
+  checkedAt: '2026-10-15T00:00:00Z',
+};
+
 const HELD: IssuedLicenceEntry = {
   txid: HELD_TXID,
   origin: `${HELD_TXID}:0`,
@@ -80,6 +89,15 @@ const REVOKED: IssuedLicenceEntry = {
 
 async function unlockedWith(collections?: Array<{ name: string; app?: string }>) {
   cleanup();
+  // The Key screen's own reads of the chain (licence, balance) are answered here, never by the network:
+  // a read that failed late put the licence block's alert beside the Issue section's (mw-cvwm1u.24).
+  if (previousChain) setChain(previousChain);
+  previousChain = setChain({
+    ...chain,
+    cachedLicenceStatus: () => Promise.resolve(LICENCE),
+    checkLicence: () => Promise.resolve(LICENCE),
+    balance: () => Promise.resolve(BALANCE),
+  });
   vi.clearAllMocks();
   delete (window as { BarcodeDetector?: unknown }).BarcodeDetector;
   await db.vault.clear();
@@ -120,8 +138,11 @@ function heldRow() {
   return screen.getAllByTestId('issued-row').find((row) => row.textContent?.includes('held'))!;
 }
 
+let previousChain: Chain | undefined;
+
 afterAll(() => {
   cleanup();
+  if (previousChain) setChain(previousChain);
   delete (window as { BarcodeDetector?: unknown }).BarcodeDetector;
   lock();
 });
@@ -593,7 +614,18 @@ describeFeature(feature, ({ Scenario }) => {
     Given('my key is unlocked and the backend names two collections', async () => {
       await unlockedWith(TWO_COLLECTIONS);
     });
-    When('the key screen is opened', openKeyScreen);
+    And('the licence check cannot reach WhatsOnChain', () => {
+      setChain({
+        ...chain,
+        cachedLicenceStatus: () => Promise.resolve(undefined),
+        checkLicence: () => Promise.reject(new Error('WhatsOnChain could not be reached')),
+      });
+    });
+    When('the key screen is opened', async () => {
+      await openKeyScreen();
+      // The licence block's own alert is on screen beside the Issue section's: the step must pick the right one.
+      await screen.findByRole('button', { name: 'Check the licence again' });
+    });
     And("I type a holder's key without choosing a collection", async () => {
       await typeHolder();
     });
@@ -605,8 +637,10 @@ describeFeature(feature, ({ Scenario }) => {
     When('I press Issue', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Issue' }));
     });
-    Then('I am told to choose a collection and there is no confirm', () => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Choose a collection to issue in.');
+    Then('the Issue section tells me to choose a collection and there is no confirm', async () => {
+      // Other alerts may be on screen (the licence block's); this one is the Issue section's own.
+      const section = await issueSection();
+      expect(within(section).getByRole('alert')).toHaveTextContent('Choose a collection to issue in.');
       expect(screen.queryByRole('button', { name: 'Confirm issue' })).not.toBeInTheDocument();
     });
     And('issueLicence has not been called', () => {

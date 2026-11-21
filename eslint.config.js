@@ -5,6 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import noOneshotFindAssert from './eslint-rules/no-oneshot-find-assert.js';
+import noRealTimeWait from './eslint-rules/no-real-time-wait.js';
 import layers from './eslint-rules/layers.js';
 import { LAYERS, INVERSIONS } from './eslint-rules/layer-inversions.js';
 
@@ -63,5 +64,12 @@ export default defineConfig([
     files: ['tests/**/*.{ts,tsx}', 'features/**/*.{ts,tsx}'],
     plugins: { postern: { rules: { 'no-oneshot-find-assert': noOneshotFindAssert } } },
     rules: { 'postern/no-oneshot-find-assert': 'error' },
+  },
+  {
+    // mw-t5shinh.48: a test does not sleep in real time unless its line says why (eslint-rules/no-real-time-wait.js;
+    // old sleeps: eslint-suppressions.json, one count per file, a list that only gets shorter).
+    files: ['tests/**/*.{ts,tsx}', 'features/**/*.{ts,tsx}'],
+    plugins: { local: { rules: { 'no-real-time-wait': noRealTimeWait } } },
+    rules: { 'local/no-real-time-wait': 'error' },
   },
 ]);

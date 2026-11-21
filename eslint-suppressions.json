@@ -1,0 +1,227 @@
+{
+  "features/steps/answer-names-card.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 3
+    }
+  },
+  "features/steps/answered-in-thread.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/answered-in-words.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/api-after-outage.steps.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/attachment-viewer.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/bead-thread-read-before-empty.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/blob-loading.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 3
+    }
+  },
+  "features/steps/card-archive.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/cockpit.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 5
+    }
+  },
+  "features/steps/composer-draft.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "features/steps/composer-hold-to-talk.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/emergency-info.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/emergency-list.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/emergency.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 3
+    }
+  },
+  "features/steps/hands-fingerprint.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/ideas-only-banner.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/launch-gate.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/live-card.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "features/steps/long-channel.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 3
+    }
+  },
+  "features/steps/notification-tap.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/outbox-reached.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "features/steps/outbox-stuck.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 3
+    }
+  },
+  "features/steps/preview-guard.steps.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/prompt-call.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "features/steps/second-backend.steps.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "features/steps/talk-screen.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 8
+    }
+  },
+  "features/steps/thread-read-before-empty.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "features/steps/unlock-persist-in-flight.steps.ts": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "features/steps/whats-new.steps.tsx": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "tests/e2e-live/api-proxy.spec.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/e2e/host-slowdown.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/e2e/needs-at-size.spec.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/e2e/page-setup-watch.spec.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/e2e/todo-board.spec.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/e2e/update-banner.spec.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/e2e/whats-new.spec.ts": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "tests/unit/account-switch-stores.test.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/unit/attachment-retry.test.tsx": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "tests/unit/bead-screen-release.test.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/unit/cards-read-empty-line.test.tsx": {
+    "local/no-real-time-wait": {
+      "count": 4
+    }
+  },
+  "tests/unit/empty-phone.test.ts": {
+    "local/no-real-time-wait": {
+      "count": 4
+    }
+  },
+  "tests/unit/outbox-reached-not-live.test.ts": {
+    "local/no-real-time-wait": {
+      "count": 2
+    }
+  },
+  "tests/unit/outbox-stuck-rows.test.ts": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/unit/roadmap-picture.test.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  },
+  "tests/unit/search-bead-id.test.tsx": {
+    "local/no-real-time-wait": {
+      "count": 1
+    }
+  }
+}

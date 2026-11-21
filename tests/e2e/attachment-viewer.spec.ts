@@ -35,9 +35,11 @@ test('a tapped picture in the composer opens full screen; Close and Back return;
   const viewer = page.getByRole('dialog', { name: 'Picture' });
   await expect(viewer).toBeVisible();
   const size = page.viewportSize();
-  const box = await viewer.boundingBox();
-  expect(box?.width).toBe(size?.width);
-  expect(box?.height).toBe(size?.height);
+  // read the box until it is the window's: one read right after the dialog shows can meet a layout still settling on a loaded host
+  await expect.poll(async () => {
+    const box = await viewer.boundingBox();
+    return { width: box?.width, height: box?.height };
+  }).toEqual({ width: size?.width, height: size?.height });
   await expect(viewer.getByText('screenshot.png')).toBeVisible();
   await shot(page, 'attachment-viewer');
 
